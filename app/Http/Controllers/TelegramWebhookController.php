@@ -28,20 +28,18 @@ class TelegramWebhookController extends Controller
             $update = $request->all();
 
             if (isset($update['message'])) {
-                $message = $update['message'];
-                $chatId = $message['chat']['id'];
-                $text = $message['text'] ?? '';
-                $from = $message['from'] ?? [];
+                $message    = $update['message'];
+                $chatId     = $message['chat']['id'];
+                $text       = $message['text'] ?? '';
+                $from       = $message['from'] ?? [];
                 $telegramId = $from['id'] ?? null;
-                $username = $from['username'] ?? null;
-                $firstName = $from['first_name'] ?? '';
+                $username   = $from['username'] ?? null;
+                $firstName  = $from['first_name'] ?? '';
 
-                // Check if user is start command
                 if (str_starts_with($text, '/start')) {
                     return $this->handleStart($chatId, $telegramId, $username, $firstName);
                 }
 
-                // Check if user is registered technician
                 $technician = Technician::where('telegram_id', $telegramId)
                     ->where('status', 'active')
                     ->first();
@@ -50,10 +48,8 @@ class TelegramWebhookController extends Controller
                     return $this->sendMessage($chatId, 'Maaf, akun kamu belum terdaftar atau belum disetujui. Silakan hubungi admin.');
                 }
 
-                // Update last active
                 $technician->update(['last_active_at' => now()]);
 
-                // Handle the report
                 return $this->handleReport($chatId, $technician, $text);
             }
 
@@ -66,7 +62,6 @@ class TelegramWebhookController extends Controller
 
     protected function handleStart($chatId, $telegramId, $username, $firstName)
     {
-        // Check if already registered
         $existing = Technician::where('telegram_id', $telegramId)->first();
         if ($existing) {
             if ($existing->status === 'active') {
@@ -75,7 +70,6 @@ class TelegramWebhookController extends Controller
             return $this->sendMessage($chatId, "Akun kamu masih menunggu persetujuan admin.");
         }
 
-        // Check if already requested registration
         $pending = BotRegistration::where('telegram_id', $telegramId)
             ->where('status', 'pending')
             ->first();
@@ -84,12 +78,11 @@ class TelegramWebhookController extends Controller
             return $this->sendMessage($chatId, "Pendaftaran kamu masih diproses. Silakan tunggu konfirmasi dari admin.");
         }
 
-        // Create new registration
         BotRegistration::create([
-            'telegram_id' => $telegramId,
+            'telegram_id'       => $telegramId,
             'telegram_username' => $username,
-            'name' => $firstName,
-            'status' => 'pending',
+            'name'              => $firstName,
+            'status'            => 'pending',
         ]);
 
         return $this->sendMessage(
@@ -100,7 +93,7 @@ class TelegramWebhookController extends Controller
 
     protected function handleReport($chatId, Technician $technician, string $text)
     {
-        // Handle NIK registration follow-up
+        // Tangani follow-up pengiriman NIK
         if (preg_match('/^NIK\s+(\S+)$/i', $text, $matches)) {
             $nik = $matches[1];
 
@@ -119,25 +112,24 @@ class TelegramWebhookController extends Controller
             return $this->sendMessage($chatId, "Pendaftaran kamu sedang diproses atau sudah selesai.");
         }
 
-        // PERBAIKAN: Hapus sesi klarifikasi yang mungkin masih tersisa dari pesan sebelumnya
+        // Hapus sesi klarifikasi yang mungkin masih tersisa dari pesan sebelumnya
         $clarification = app(\App\Services\Telegram\ClarificationService::class);
         $clarification->destroySession((string)$chatId);
 
-        // Process as report
         $analysis = $this->aiService->analyzeReportText($text);
 
         $report = Report::create([
-            'technician_id' => $technician->id,
-            'report_date' => now()->toDateString(),
+            'technician_id'    => $technician->id,
+            'report_date'      => now()->toDateString(),
             'work_description' => $text,
-            'report_type' => $analysis['report_type'] ?? 'general',
-            'ai_analyzed' => true,
-            'ai_confidence' => $analysis['confidence'] ?? 0,
+            'report_type'      => $analysis['report_type'] ?? 'general',
+            'ai_analyzed'      => true,
+            'ai_confidence'    => $analysis['confidence'] ?? 0,
             'ai_suggestion_json' => $analysis,
-            'status' => 'draft',
+            'status'           => 'draft',
         ]);
 
-        // PERBAIKAN: TechIdentNo adalah kunci utama, bukan equipment_no
+        // TechIdentNo adalah kunci utama, bukan equipment_no
         // 1. Jika AI langsung mendeteksi equipment_id — paling akurat
         $equipmentId = $analysis['detected_equipment_id'] ?? null;
         if ($equipmentId) {
@@ -145,7 +137,7 @@ class TelegramWebhookController extends Controller
             if ($asset) {
                 $report->update([
                     'asset_id' => $asset->id,
-                    'area_id' => $asset->area_id,
+                    'area_id'  => $asset->area_id,
                 ]);
             }
         } else {
@@ -156,11 +148,11 @@ class TelegramWebhookController extends Controller
                 if ($asset) {
                     $report->update([
                         'asset_id' => $asset->id,
-                        'area_id' => $asset->area_id,
+                        'area_id'  => $asset->area_id,
                     ]);
                 } else {
                     BotUnknownAsset::create([
-                        'report_id' => $report->id,
+                        'report_id'        => $report->id,
                         'keyword_mentioned' => $equipmentKey,
                     ]);
                 }
@@ -173,14 +165,14 @@ class TelegramWebhookController extends Controller
                     $report->update(['area_id' => $area->id]);
                 } else {
                     BotUnknownAsset::create([
-                        'report_id' => $report->id,
+                        'report_id'        => $report->id,
                         'keyword_mentioned' => $analysis['suggested_area'],
                     ]);
                 }
             }
         }
 
-        // PERBAIKAN: Integrasi ClarificationService jika AI butuh klarifikasi
+        // Integrasi ClarificationService jika AI butuh klarifikasi
         if (!empty($analysis['needs_clarification'])) {
             $clarification = app(\App\Services\Telegram\ClarificationService::class);
             $session = $clarification->getOrCreateSession((string)$chatId, $text, $analysis);
@@ -193,8 +185,8 @@ class TelegramWebhookController extends Controller
                     "{$msgData['auto_level']}:select:{$msgData['auto_id']}"
                 );
                 if ($autoResult['success']) {
-                    $msgData = $clarification->buildCurrentMessage($autoResult['session']);
-                    $maxAuto = 5;
+                    $msgData  = $clarification->buildCurrentMessage($autoResult['session']);
+                    $maxAuto  = 5;
                     while (!empty($msgData['auto_select']) && $maxAuto > 0) {
                         $autoResult = $clarification->processSelection(
                             (string)$chatId,
@@ -209,10 +201,10 @@ class TelegramWebhookController extends Controller
             }
 
             if (!empty($msgData['message'])) {
-                $token = config('services.telegram.bot_token');
+                $token  = config('services.telegram.bot_token');
                 $params = [
-                    'chat_id' => $chatId,
-                    'text' => $msgData['message'],
+                    'chat_id'    => $chatId,
+                    'text'       => $msgData['message'],
                     'parse_mode' => 'Markdown',
                 ];
 
@@ -234,20 +226,20 @@ class TelegramWebhookController extends Controller
             }
         }
 
-        $response = "✅ Laporan diterima!\n\n";
-        $response .= "📋 *ID Laporan:* #{$report->id}\n";
-        $response .= "📅 *Tanggal:* " . now()->format('d/m/Y') . "\n";
+        $response  = "Laporan diterima!\n\n";
+        $response .= "ID Laporan: #{$report->id}\n";
+        $response .= "Tanggal: " . now()->format('d/m/Y') . "\n";
 
         if ($analysis['confidence'] > 0) {
-            $response .= "🤖 *AI Confidence:* {$analysis['confidence']}%\n";
+            $response .= "AI Confidence: {$analysis['confidence']}%\n";
         }
 
         if (!empty($analysis['detected_area'])) {
-            $response .= "📍 *Area terdeteksi:* {$analysis['detected_area']}\n";
+            $response .= "Area terdeteksi: {$analysis['detected_area']}\n";
         }
 
         if (!empty($analysis['detected_equipment'])) {
-            $response .= "🔧 *Equipment:* {$analysis['detected_equipment']}\n";
+            $response .= "Equipment: {$analysis['detected_equipment']}\n";
         }
 
         $response .= "\n" . ($analysis['message'] ?? 'Laporan akan direview oleh admin.');
@@ -266,8 +258,8 @@ class TelegramWebhookController extends Controller
 
         try {
             $response = Http::timeout(10)->post("https://api.telegram.org/bot{$token}/sendMessage", [
-                'chat_id' => $chatId,
-                'text' => $text,
+                'chat_id'    => $chatId,
+                'text'       => $text,
                 'parse_mode' => 'Markdown',
             ]);
 

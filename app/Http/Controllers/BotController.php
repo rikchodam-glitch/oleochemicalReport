@@ -40,7 +40,7 @@ class BotController extends Controller
 
         $running = false;
 
-        // Cek dengan lock file — jika lock file ada dan diupdate <120 detik lalu, polling hidup
+        // Cek dengan lock file — jika lock file ada dan diupdate <150 detik lalu, polling hidup
         if (file_exists($lockFile)) {
             $lockTime = (int) file_get_contents($lockFile);
             if (time() - $lockTime < 150) {
@@ -64,6 +64,7 @@ class BotController extends Controller
 
         return ['running' => $running];
     }
+
     public function index()
     {
         // Teknisi yang sudah terhubung ke bot (memiliki telegram_id)
@@ -110,7 +111,7 @@ class BotController extends Controller
         $departments = Department::orderBy('name')->get();
 
         // Cek apakah polling sedang berjalan
-        $pollStatus = $this->getPollingStatus();
+        $pollStatus     = $this->getPollingStatus();
         $pollingRunning = $pollStatus['running'];
 
         return view('bot.index', compact(
@@ -128,15 +129,13 @@ class BotController extends Controller
     public function updateSettings(Request $request)
     {
         $request->validate([
-            'token' => 'nullable|string',
-            'status' => 'required|in:active,inactive',
-            'auto_approve' => 'boolean',
-            'max_item' => 'integer|min:1|max:20',
+            'token'         => 'nullable|string',
+            'status'        => 'required|in:active,inactive',
+            'auto_approve'  => 'boolean',
+            'max_item'      => 'integer|min:1|max:20',
             'notif_channel' => 'nullable|string',
         ]);
 
-        // Save settings to config or settings table
-        // For now just flash success
         return back()->with('success', 'Pengaturan bot berhasil disimpan.');
     }
 
@@ -158,14 +157,14 @@ class BotController extends Controller
                 $botInfo = $response->json()['result'] ?? [];
                 return response()->json([
                     'success' => true,
-                    'message' => "Koneksi berhasil! 🤖 @{$botInfo['username']} ({$botInfo['first_name']}) terhubung.",
-                ]);
-            } else {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Gagal: ' . ($response->json()['description'] ?? 'Unknown error'),
+                    'message' => "Koneksi berhasil! @{$botInfo['username']} ({$botInfo['first_name']}) terhubung.",
                 ]);
             }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal: ' . ($response->json()['description'] ?? 'Unknown error'),
+            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -183,17 +182,16 @@ class BotController extends Controller
                 return back()->with('error', 'Token bot belum dikonfigurasi.');
             }
 
-            $url = route('telegram.webhook');
-
+            $url      = route('telegram.webhook');
             $response = Http::timeout(10)->post("https://api.telegram.org/bot{$token}/setWebhook", [
                 'url' => $url,
             ]);
 
             if ($response->successful()) {
                 return back()->with('success', 'Webhook berhasil disetel ke: ' . $url);
-            } else {
-                return back()->with('error', 'Gagal: ' . ($response->json()['description'] ?? 'Unknown error'));
             }
+
+            return back()->with('error', 'Gagal: ' . ($response->json()['description'] ?? 'Unknown error'));
         } catch (\Exception $e) {
             return back()->with('error', 'Gagal: ' . $e->getMessage());
         }
@@ -212,9 +210,9 @@ class BotController extends Controller
 
             if ($response->successful()) {
                 return back()->with('success', 'Webhook berhasil dihapus.');
-            } else {
-                return back()->with('error', 'Gagal: ' . ($response->json()['description'] ?? 'Unknown error'));
             }
+
+            return back()->with('error', 'Gagal: ' . ($response->json()['description'] ?? 'Unknown error'));
         } catch (\Exception $e) {
             return back()->with('error', 'Gagal: ' . $e->getMessage());
         }
@@ -222,24 +220,26 @@ class BotController extends Controller
 
     /**
      * Setujui pendaftaran langsung (tanpa data tambahan) — dipertahankan sebagai fallback.
+     *
+     * @param  BotRegistration  $registration
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function approveRegistration(BotRegistration $registration)
     {
         $registration->update([
-            'status' => 'approved',
+            'status'       => 'approved',
             'processed_by' => Auth::id(),
             'processed_at' => now(),
         ]);
 
-        // Buat teknisi dari pendaftaran
         Technician::create([
-            'telegram_id' => $registration->telegram_id,
+            'telegram_id'       => $registration->telegram_id,
             'telegram_username' => $registration->telegram_username,
-            'name' => $registration->name,
-            'nik' => $registration->nik,
-            'status' => 'active',
-            'approved_by' => Auth::id(),
-            'approved_at' => now(),
+            'name'              => $registration->name,
+            'nik'               => $registration->nik,
+            'status'            => 'active',
+            'approved_by'       => Auth::id(),
+            'approved_at'       => now(),
         ]);
 
         return back()->with('success', 'Pendaftaran ' . $registration->name . ' disetujui.');
@@ -265,10 +265,10 @@ class BotController extends Controller
             'group'         => 'nullable|in:' . implode(',', array_keys(Technician::GROUPS)),
             'section'       => 'nullable|in:' . implode(',', array_keys(Technician::SECTIONS)),
         ], [
-            'name.required'         => 'Nama teknisi wajib diisi.',
-            'department_id.exists'  => 'Departemen tidak ditemukan.',
-            'group.in'              => 'Nilai group tidak valid.',
-            'section.in'            => 'Nilai section tidak valid.',
+            'name.required'        => 'Nama teknisi wajib diisi.',
+            'department_id.exists' => 'Departemen tidak ditemukan.',
+            'group.in'             => 'Nilai group tidak valid.',
+            'section.in'           => 'Nilai section tidak valid.',
         ]);
 
         // Cek duplikat NIK di tabel technicians
@@ -281,14 +281,12 @@ class BotController extends Controller
             }
         }
 
-        // Tandai pendaftaran sebagai approved
         $registration->update([
             'status'       => 'approved',
             'processed_by' => Auth::id(),
             'processed_at' => now(),
         ]);
 
-        // Buat record Technician dengan data lengkap
         Technician::create([
             'telegram_id'       => $registration->telegram_id,
             'telegram_username' => $registration->telegram_username,
@@ -308,7 +306,7 @@ class BotController extends Controller
     public function rejectRegistration(BotRegistration $registration)
     {
         $registration->update([
-            'status' => 'rejected',
+            'status'       => 'rejected',
             'processed_by' => Auth::id(),
             'processed_at' => now(),
         ]);
@@ -345,17 +343,16 @@ class BotController extends Controller
     {
         $status = $this->getPollingStatus();
 
-        // Baca log
         $logContent = '';
-        $logFile = storage_path('logs/telegram-poll.log');
+        $logFile    = storage_path('logs/telegram-poll.log');
         if (file_exists($logFile)) {
             $logContent = file_get_contents($logFile);
-            $lines = explode("\n", $logContent);
+            $lines      = explode("\n", $logContent);
             $logContent = implode("\n", array_slice($lines, -20));
         }
 
         return response()->json([
-            'running' => $status['running'],
+            'running'  => $status['running'],
             'last_log' => $logContent ?: '(Belum ada log)',
         ]);
     }

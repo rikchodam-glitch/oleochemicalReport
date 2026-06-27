@@ -12,17 +12,27 @@ class TelegramService
 
     public function __construct()
     {
-        $this->token = config('services.telegram.bot_token', '');
+        $this->token  = config('services.telegram.bot_token', '');
         $this->apiUrl = 'https://api.telegram.org/bot' . $this->token;
     }
 
+    /**
+     * Periksa apakah token bot sudah dikonfigurasi.
+     *
+     * @return bool
+     */
     public function isConfigured(): bool
     {
         return !empty($this->token);
     }
 
     /**
-     * Send a text message to a specific chat ID
+     * Kirim pesan teks ke chat ID tertentu.
+     *
+     * @param  int|string  $chatId ID chat Telegram tujuan
+     * @param  string      $text   Isi pesan (mendukung HTML)
+     * @param  array       $extra  Parameter tambahan untuk Telegram API
+     * @return bool                True jika berhasil terkirim
      */
     public function sendMessage(int|string $chatId, string $text, array $extra = []): bool
     {
@@ -33,8 +43,8 @@ class TelegramService
 
         try {
             $response = Http::timeout(10)->post("{$this->apiUrl}/sendMessage", array_merge([
-                'chat_id' => $chatId,
-                'text' => $text,
+                'chat_id'    => $chatId,
+                'text'       => $text,
                 'parse_mode' => 'HTML',
             ], $extra));
 
@@ -52,7 +62,13 @@ class TelegramService
     }
 
     /**
-     * Broadcast a message to multiple technicians
+     * Kirim pesan ke banyak teknisi sekaligus (broadcast).
+     * Hanya teknisi aktif dengan telegram_id yang akan dikirimi.
+     *
+     * @param  array        $technicianIds Daftar ID teknisi yang dituju
+     * @param  string       $message       Isi pesan yang akan dikirim
+     * @param  string|null  $assetInfo     Info asset yang ditambahkan di awal pesan (opsional)
+     * @return array{sent: int, failed: int, total: int, details: array}
      */
     public function broadcastToTechnicians(array $technicianIds, string $message, ?string $assetInfo = null): array
     {
@@ -62,9 +78,9 @@ class TelegramService
             ->get();
 
         $results = [
-            'sent' => 0,
-            'failed' => 0,
-            'total' => $technicians->count(),
+            'sent'    => 0,
+            'failed'  => 0,
+            'total'   => $technicians->count(),
             'details' => [],
         ];
 
@@ -80,15 +96,15 @@ class TelegramService
                 $results['sent']++;
                 $results['details'][] = [
                     'technician_id' => $technician->id,
-                    'name' => $technician->name,
-                    'status' => 'sent',
+                    'name'          => $technician->name,
+                    'status'        => 'sent',
                 ];
             } else {
                 $results['failed']++;
                 $results['details'][] = [
                     'technician_id' => $technician->id,
-                    'name' => $technician->name,
-                    'status' => 'failed',
+                    'name'          => $technician->name,
+                    'status'        => 'failed',
                 ];
             }
         }
@@ -97,12 +113,16 @@ class TelegramService
     }
 
     /**
-     * Format asset info for broadcast
+     * Format informasi asset menjadi string HTML untuk dikirim via Telegram.
+     * Dipakai sebagai header pesan notifikasi penugasan ke teknisi.
+     *
+     * @param  \App\Models\Asset  $asset
+     * @return string
      */
     public function formatAssetInfo(\App\Models\Asset $asset): string
     {
-        $lines = [];
-        $lines[] = "🔧 <b>ASSET ASSIGNMENT</b>";
+        $lines   = [];
+        $lines[] = "<b>ASSET ASSIGNMENT</b>";
         $lines[] = "";
         $lines[] = "<b>Kode Alat:</b> " . ($asset->tech_ident_no ?? '-');
         if ($asset->equipment_no) {

@@ -2,7 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\BotRegistration;
+use App\Console\Commands\Traits\TelegramMessageHandlerTrait;
+use App\Console\Commands\Traits\TelegramSenderTrait;
 use App\Models\Technician;
 use App\Services\AiService;
 use App\Services\Telegram\PhotoStorageService;
@@ -11,10 +12,34 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
+/**
+ * PollTelegramUpdates
+ *
+ * Command Artisan untuk long polling Telegram Bot API secara terus-menerus.
+ * Berjalan sebagai proses background dan memproses update masuk satu per satu.
+ *
+ * Penggunaan:
+ *   php artisan telegram:poll             # mulai polling
+ *   php artisan telegram:poll --action=status  # cek status
+ *   php artisan telegram:poll --action=stop    # hentikan dan reset offset
+ *
+ * Tanggung jawab class ini (orkestrator):
+ *   - handle()            : entry point command, routing ke action
+ *   - startPolling()      : loop utama long polling
+ *   - processCallbackQuery() : routing callback inline keyboard
+ *   - State management    : getLastOffset, saveLastOffset, updateLock
+ *   - Status & kontrol    : showStatus, stopPolling
+ *
+ * Logika detail tersimpan di trait:
+ *   - TelegramSenderTrait        : kirim, edit, dan jawab pesan/callback ke Telegram API
+ *   - TelegramMessageHandlerTrait: routing pesan masuk, handler wizard, start, NIK, foto
+ */
 class PollTelegramUpdates extends Command
 {
+    use TelegramSenderTrait;
+    use TelegramMessageHandlerTrait;
+
     protected $signature   = 'telegram:poll {--action= : start|stop|status}';
     protected $description = 'Poll Telegram updates continuously (long polling)';
 
@@ -40,6 +65,11 @@ class PollTelegramUpdates extends Command
         $this->stopFile     = storage_path('app/telegram_poll.stop');
     }
 
+    /**
+     * Entry point command — routing berdasarkan option --action.
+     *
+     * @return int|null
+     */
     public function handle()
     {
         $action = $this->option('action');
@@ -52,10 +82,19 @@ class PollTelegramUpdates extends Command
             return $this->stopPolling();
         }
 
-        // Default: start polling
+        // Default: mulai polling
         $this->startPolling();
     }
 
+    /**
+     * Loop utama long polling Telegram.
+     *
+     * Berjalan terus-menerus hingga stop signal muncul (file stopFile)
+     * atau Ctrl+C ditekan. Setiap iterasi memproses semua update yang masuk,
+     * menyimpan offset, dan memperbarui lock file.
+     *
+     * @return int|null
+     */
     private function startPolling()
     {
         $token = config('services.telegram.bot_token');
@@ -65,7 +104,7 @@ class PollTelegramUpdates extends Command
             return Command::FAILURE;
         }
 
-        // Hapus stop signal jika ada
+        // Hapus stop signal jika ada sisa dari sesi sebelumnya
         if (file_exists($this->stopFile)) {
             @unlink($this->stopFile);
         }
@@ -75,7 +114,6 @@ class PollTelegramUpdates extends Command
         $this->info('Tekan Ctrl+C untuk berhenti.');
         $this->newLine();
 
-        // Tulis lock file
         $this->updateLock();
 
         $offset         = $this->getLastOffset();
@@ -119,15 +157,12 @@ class PollTelegramUpdates extends Command
                     }
                 }
 
-                // Simpan offset terakhir
                 $this->saveLastOffset($offset);
-
-                // Update lock file setiap iterasi
                 $this->updateLock();
 
                 // Tampilkan status setiap 30 detik
                 if (time() - $startTime >= 30) {
-                    $uptime = gmdate('H:i:s', time() - $startTime);
+                    $uptime    = gmdate('H:i:s', time() - $startTime);
                     $this->info("[{$uptime}] Polling aktif — {$processedCount} pesan diproses");
                     $startTime = time();
                 }
@@ -140,7 +175,14 @@ class PollTelegramUpdates extends Command
     }
 
     /**
-     * Handle callback query dari inline keyboard
+     * Proses callback query dari inline keyboard.
+     *
+     * Melakukan deduplication via Cache (60 detik) untuk mencegah double-processing
+     * jika Telegram mengirim callback yang sama lebih dari sekali.
+     * Jika tidak ada wizard aktif, keyboard lama dibersihkan dan teknisi diberi tahu.
+     *
+     * @param array $update Update mentah dari Telegram getUpdates
+     * @return void
      */
     private function processCallbackQuery(array $update): void
     {
@@ -160,21 +202,20 @@ class PollTelegramUpdates extends Command
 
         $this->line("Callback: {$data}");
 
-        // Jawab callback (hilangkan loading)
+        // Jawab callback agar loading state hilang dari tombol
         $this->answerCallbackQuery($callbackId);
 
         try {
-            // === F6: ReportWizardService adalah satu-satunya sumber kebenaran
-            // untuk callback. Alur klarifikasi berdiri sendiri (ClarificationService)
-            // sudah sepenuhnya digantikan oleh wizard sejak F4/F5. ===
-            if ($this->reportWizard->hasActiveWizard((string)$chatId)) {
+            // ReportWizardService adalah satu-satunya sumber kebenaran untuk callback.
+            // Alur klarifikasi berdiri sendiri (ClarificationService) sudah sepenuhnya
+            // digantikan oleh wizard sejak F4/F5.
+            if ($this->reportWizard->hasActiveWizard((string) $chatId)) {
                 $this->handleWizardCallback($chatId, $messageId, $data);
                 return;
             }
 
-            // Tidak ada wizard aktif untuk chat ini — tombol berasal dari pesan
-            // lama yang sesinya sudah berakhir/timeout. Bersihkan keyboard agar
-            // tidak bisa dipencet berulang dan beri tahu teknisi.
+            // Tidak ada wizard aktif — tombol berasal dari pesan lama yang sesinya
+            // sudah berakhir/timeout. Bersihkan keyboard agar tidak bisa dipencet berulang.
             $this->editMessageTextSimple(
                 $chatId,
                 $messageId,
@@ -186,379 +227,15 @@ class PollTelegramUpdates extends Command
         }
     }
 
-    /**
-     * Jawab callback query (hilangkan loading state)
-     */
-    private function answerCallbackQuery(string $callbackId): void
-    {
-        $token = config('services.telegram.bot_token');
-        try {
-            Http::timeout(5)->post("https://api.telegram.org/bot{$token}/answerCallbackQuery", [
-                'callback_query_id' => $callbackId,
-            ]);
-        } catch (\Exception $e) {
-            // Abaikan
-        }
-    }
-
-    /**
-     * Edit pesan dengan keyboard baru
-     */
-    private function editMessageText($chatId, int $messageId, string $text, array $buttons = []): void
-    {
-        $token    = config('services.telegram.bot_token');
-        $keyboard = [];
-
-        foreach ($buttons as $btn) {
-            $keyboard[] = [['text' => $btn['text'], 'callback_data' => $btn['callback_data']]];
-        }
-
-        $params = [
-            'chat_id'      => $chatId,
-            'message_id'   => $messageId,
-            'text'         => $text,
-            'parse_mode'   => 'Markdown',
-            // Selalu sertakan reply_markup — inline_keyboard kosong akan
-            // menghapus keyboard lama yang masih menempel di pesan.
-            'reply_markup' => json_encode(['inline_keyboard' => $keyboard]),
-        ];
-
-        try {
-            Http::timeout(10)->post("https://api.telegram.org/bot{$token}/editMessageText", $params);
-        } catch (\Exception $e) {
-            Log::error("editMessageText error: " . $e->getMessage());
-        }
-    }
-
-    /**
-     * Edit pesan tanpa keyboard
-     */
-    private function editMessageTextSimple($chatId, int $messageId, string $text): void
-    {
-        $this->editMessageText($chatId, $messageId, $text);
-    }
-
-    private function processUpdate(array $update)
-    {
-        $message    = $update['message'];
-        $chatId     = $message['chat']['id'];
-        $text       = $message['text'] ?? '';
-        $from       = $message['from'] ?? [];
-        $telegramId = (string)($from['id'] ?? '');
-        $username   = $from['username'] ?? null;
-        $firstName  = $from['first_name'] ?? '';
-
-        // Deteksi apakah pesan mengandung foto
-        $hasPhoto  = !empty($message['photo']);
-        $caption   = $message['caption'] ?? '';
-
-        $this->line("Pesan dari {$firstName} (@{$username}): " . Str::limit($text ?: $caption ?: '[foto]', 80));
-
-        // Handle /start
-        if (str_starts_with($text, '/start')) {
-            $this->handleStart($chatId, $telegramId, $username, $firstName);
-            return;
-        }
-
-        // Handle NIK registration
-        if (preg_match('/^NIK\s+(\S+)$/i', $text, $matches)) {
-            $this->handleNikRegistration($chatId, $telegramId, $matches[1]);
-            return;
-        }
-
-        // Cek teknisi terdaftar & aktif
-        $technician = Technician::where('telegram_id', $telegramId)
-            ->where('status', 'active')
-            ->first();
-
-        if (!$technician) {
-            $this->sendMessage($chatId, 'Maaf, akun kamu belum terdaftar atau belum disetujui. Silakan hubungi admin.');
-            return;
-        }
-
-        // Update last active
-        $technician->update(['last_active_at' => now()]);
-
-        // === F5: Routing foto ===
-        if ($hasPhoto) {
-            $this->handlePhotoMessage($chatId, $message, $technician, $caption);
-            return;
-        }
-
-        // === Routing teks: wizard aktif atau mulai baru ===
-        if ($this->reportWizard->hasActiveWizard((string)$chatId)) {
-            $this->handleWizardText($chatId, $text);
-        } else {
-            $this->handleReport($chatId, $technician, $text);
-        }
-    }
-
     // =========================================================
-    // F5 — HANDLER FOTO & WIZARD ROUTING
+    // State management
     // =========================================================
 
     /**
-     * Handle pesan foto dari teknisi.
+     * Baca offset update Telegram terakhir dari file storage.
      *
-     * Tiga kemungkinan:
-     * A) Wizard aktif di step foto → tambah ke wizard
-     * B) Caption mengandung kode RPT-... → tambah ke laporan lama
-     * C) Tidak keduanya → mulai wizard baru (foto jadi foto awal Step 1)
+     * @return int Offset terakhir, atau 0 jika file belum ada
      */
-    private function handlePhotoMessage(
-        int|string $chatId,
-        array $message,
-        Technician $technician,
-        string $caption
-    ): void {
-        $this->sendChatAction($chatId);
-
-        // Ambil file_id resolusi tertinggi (foto Telegram dikirim multi-resolusi,
-        // array terakhir adalah yang terbesar)
-        $photos = $message['photo'] ?? [];
-        if (empty($photos)) {
-            $this->sendMessage($chatId, "Foto tidak bisa dibaca. Coba kirim ulang.");
-            return;
-        }
-        $bestPhoto = end($photos);
-        $fileId    = $bestPhoto['file_id'] ?? null;
-
-        if (!$fileId) {
-            $this->sendMessage($chatId, "File ID foto tidak ditemukan. Coba kirim ulang.");
-            return;
-        }
-
-        // A) Wizard aktif — teruskan ke wizard
-        if ($this->reportWizard->hasActiveWizard((string)$chatId)) {
-            // Download & simpan dulu baru teruskan path ke wizard
-            $path = $this->photoStorage->store($fileId, (string)$chatId);
-
-            if ($path === null) {
-                $this->sendMessage($chatId, "Gagal menyimpan foto. Coba kirim ulang.");
-                return;
-            }
-
-            // Ganti file_id dengan path di state wizard
-            $response = $this->reportWizard->handlePhotoInput((string)$chatId, $path, $caption);
-            $this->dispatchWizardResponse($chatId, $response);
-            return;
-        }
-
-        // B) Caption mengandung kode RPT-... → tambah foto ke laporan lama
-        $reportCode = $this->reportWizard->extractReportCode($caption);
-        if ($reportCode) {
-            $path = $this->photoStorage->store($fileId, (string)$chatId);
-
-            if ($path === null) {
-                $this->sendMessage($chatId, "Gagal menyimpan foto untuk laporan {$reportCode}. Coba kirim ulang.");
-                return;
-            }
-
-            $response = $this->reportWizard->addPhotoToReport($reportCode, $path, $caption);
-
-            // Laporan tidak ditemukan — foto sudah terlanjur diunduh ke storage,
-            // hapus agar tidak jadi file yatim.
-            if (!empty($response['error'])) {
-                $this->photoStorage->delete($path);
-            }
-
-            $this->sendMessage($chatId, $response['message'] ?? 'Foto ditambahkan.');
-            return;
-        }
-
-        // C) Tidak ada wizard & tidak ada RPT code → mulai wizard baru dengan foto ini
-        // Foto akan menjadi foto awal dan dikonfirmasi di Step 6
-        $response = $this->reportWizard->startWizard(
-            chatId:      (string)$chatId,
-            text:        $caption ?: 'Laporan dengan foto',
-            photoFileId: $fileId          // file_id diteruskan, download terjadi di Step 6
-        );
-        $this->dispatchWizardResponse($chatId, $response);
-    }
-
-    /**
-     * Teruskan teks ke ReportWizardService saat wizard sedang aktif.
-     */
-    private function handleWizardText(int|string $chatId, string $text): void
-    {
-        $this->sendChatAction($chatId);
-        $response = $this->reportWizard->handleTextInput((string)$chatId, $text);
-        $this->dispatchWizardResponse($chatId, $response);
-    }
-
-    /**
-     * Teruskan callback ke ReportWizardService saat wizard sedang aktif.
-     * Dipanggil dari processCallbackQuery.
-     */
-    private function handleWizardCallback(int|string $chatId, int $messageId, string $data): void
-    {
-        $response = $this->reportWizard->handleCallback((string)$chatId, $data);
-
-        if (!empty($response['message'])) {
-            if (!empty($response['keyboard'])) {
-                $this->editMessageText($chatId, $messageId, $response['message'], $response['keyboard']);
-            } else {
-                $this->editMessageTextSimple($chatId, $messageId, $response['message']);
-            }
-        }
-
-        // Jika laporan berhasil disimpan, kirim pesan terpisah dengan kode laporan
-        if (!empty($response['saved']) && !empty($response['report_code'])) {
-            $this->sendMessage($chatId, $response['message'] ?? "Laporan tersimpan.");
-        }
-    }
-
-    /**
-     * Dispatch respons dari wizard ke Telegram (kirim pesan + keyboard jika ada).
-     * Pesan wizard selalu dikirim sebagai pesan baru (bukan edit) karena
-     * tiap step membuka konteks baru.
-     */
-    private function dispatchWizardResponse(int|string $chatId, array $response): void
-    {
-        $message  = $response['message'] ?? '';
-        $keyboard = $response['keyboard'] ?? [];
-
-        if (empty($message)) {
-            return;
-        }
-
-        if (!empty($keyboard)) {
-            $this->sendMessageWithKeyboard($chatId, $message, $keyboard);
-        } else {
-            $this->sendMessage($chatId, $message);
-        }
-    }
-
-    private function handleStart($chatId, $telegramId, $username, $firstName)
-    {
-        $existing = Technician::where('telegram_id', $telegramId)->first();
-        if ($existing) {
-            if ($existing->status === 'active') {
-                $this->sendMessage($chatId, "Halo $firstName! Akun kamu sudah aktif. Silakan kirim laporan harian.");
-            } else {
-                $this->sendMessage($chatId, "Akun kamu masih menunggu persetujuan admin.");
-            }
-            return;
-        }
-
-        $pending = BotRegistration::where('telegram_id', $telegramId)
-            ->where('status', 'pending')
-            ->first();
-
-        if ($pending) {
-            $this->sendMessage($chatId, "Pendaftaran kamu masih diproses. Silakan tunggu konfirmasi dari admin.");
-            return;
-        }
-
-        BotRegistration::create([
-            'telegram_id'       => $telegramId,
-            'telegram_username' => $username,
-            'name'              => $firstName,
-            'status'            => 'pending',
-        ]);
-
-        $this->sendMessage(
-            $chatId,
-            "Halo $firstName! Untuk mendaftar sebagai teknisi, silakan kirim NIK kamu.\n\nContoh: NIK 123456"
-        );
-    }
-
-    private function handleNikRegistration($chatId, string $telegramId, string $nik)
-    {
-        $registration = BotRegistration::where('telegram_id', $telegramId)
-            ->where('status', 'pending')
-            ->latest()
-            ->first();
-
-        if ($registration) {
-            $registration->update(['nik' => $nik]);
-            $this->sendMessage(
-                $chatId,
-                "Terima kasih! NIK kamu ($nik) sudah dicatat. Admin akan memproses pendaftaran kamu segera."
-            );
-        } else {
-            $this->sendMessage($chatId, "Tidak ada pendaftaran yang menunggu untuk NIK. Silakan kirim /start dulu.");
-        }
-    }
-
-    // =========================================================
-    // F5 — handleReport: delegasi ke ReportWizardService
-    // Alur lama (simpan draft langsung) digantikan wizard "Create at End".
-    // Method ini tetap ada agar mudah di-trace; isinya sekarang tipis.
-    // =========================================================
-    private function handleReport($chatId, Technician $technician, string $text)
-    {
-        $this->sendChatAction($chatId);
-
-        // Mulai wizard baru — laporan hanya disimpan setelah konfirmasi Step 8
-        $response = $this->reportWizard->startWizard((string)$chatId, $text);
-        $this->dispatchWizardResponse($chatId, $response);
-    }
-
-
-    private function sendChatAction($chatId, string $action = 'typing'): void
-    {
-        $token = config('services.telegram.bot_token');
-        try {
-            Http::timeout(5)->post("https://api.telegram.org/bot{$token}/sendChatAction", [
-                'chat_id' => $chatId,
-                'action'  => $action,
-            ]);
-        } catch (\Exception $e) {
-            // Abaikan error
-        }
-    }
-
-    /**
-     * Kirim pesan dengan inline keyboard.
-     * $buttons bisa berupa array of strings atau array of ['text' => ..., 'callback_data' => ...]
-     */
-    private function sendMessageWithKeyboard($chatId, string $text, array $buttons)
-    {
-        $token    = config('services.telegram.bot_token');
-        $keyboard = [];
-
-        foreach ($buttons as $btn) {
-            if (is_string($btn)) {
-                $keyboard[] = [['text' => $btn, 'callback_data' => 'clarify_' . md5($btn)]];
-            } elseif (isset($btn['text']) && isset($btn['callback_data'])) {
-                $keyboard[] = [['text' => $btn['text'], 'callback_data' => $btn['callback_data']]];
-            }
-        }
-
-        if (empty($keyboard)) {
-            $this->sendMessage($chatId, $text);
-            return;
-        }
-
-        try {
-            Http::timeout(10)->post("https://api.telegram.org/bot{$token}/sendMessage", [
-                'chat_id'      => $chatId,
-                'text'         => $text,
-                'parse_mode'   => 'Markdown',
-                'reply_markup' => json_encode(['inline_keyboard' => $keyboard]),
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Poll sendMessageWithKeyboard error: " . $e->getMessage());
-            $this->sendMessage($chatId, $text);
-        }
-    }
-
-    private function sendMessage($chatId, string $text)
-    {
-        $token = config('services.telegram.bot_token');
-
-        try {
-            Http::timeout(10)->post("https://api.telegram.org/bot{$token}/sendMessage", [
-                'chat_id'    => $chatId,
-                'text'       => $text,
-                'parse_mode' => 'Markdown',
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Poll sendMessage error: " . $e->getMessage());
-        }
-    }
-
     private function getLastOffset(): int
     {
         if (file_exists($this->offsetFile)) {
@@ -567,17 +244,39 @@ class PollTelegramUpdates extends Command
         return 0;
     }
 
+    /**
+     * Simpan offset update Telegram terakhir ke file storage.
+     *
+     * @param int $offset Nilai offset yang akan disimpan
+     * @return void
+     */
     private function saveLastOffset(int $offset): void
     {
         file_put_contents($this->offsetFile, $offset);
     }
 
+    /**
+     * Perbarui lock file dengan timestamp saat ini.
+     *
+     * Dipakai untuk menandai bahwa proses polling masih hidup.
+     *
+     * @return void
+     */
     private function updateLock(): void
     {
         file_put_contents($this->lockFile, time());
     }
 
-    private function showStatus()
+    // =========================================================
+    // Status dan kontrol
+    // =========================================================
+
+    /**
+     * Tampilkan informasi status polling ke console.
+     *
+     * @return int Command::SUCCESS | Command::FAILURE
+     */
+    private function showStatus(): int
     {
         $this->info('Status Polling Telegram');
         $this->newLine();
@@ -596,10 +295,16 @@ class PollTelegramUpdates extends Command
         return Command::SUCCESS;
     }
 
-    private function stopPolling()
+    /**
+     * Hentikan polling dan reset offset ke 0.
+     *
+     * Reset offset menyebabkan polling mulai dari awal saat dijalankan kembali.
+     *
+     * @return int Command::SUCCESS
+     */
+    private function stopPolling(): int
     {
         $this->info('Menghentikan polling...');
-        // Simpan offset 0 untuk reset
         $this->saveLastOffset(0);
         $this->info('Offset di-reset ke 0. Polling akan mulai dari awal saat dijalankan lagi.');
         return Command::SUCCESS;
