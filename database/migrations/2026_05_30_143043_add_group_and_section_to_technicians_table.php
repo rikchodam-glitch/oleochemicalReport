@@ -1,0 +1,30 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('technicians', function (Blueprint $table) {
+            $table->string('group', 50)->nullable()->after('area_ids');
+            $table->string('section', 100)->nullable()->after('group');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('technicians', function (Blueprint $table) {
+            $table->dropColumn(['group', 'section']);
+        });
+    }
+};
+
