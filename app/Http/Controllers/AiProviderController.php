@@ -7,6 +7,10 @@ use App\Models\AiProvider;
 use App\Models\AiUsageLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class AiProviderController extends Controller
 {
@@ -35,16 +39,13 @@ class AiProviderController extends Controller
             'sisa_harian'       => $sisaHarian,
         ];
 
-        // Log terbaru 30 baris — tambah kolom request_type dan response_time_ms
         $recentLogs = AiUsageLog::with('provider')
             ->latest()
             ->take(30)
             ->get();
 
-        // Breakdown pemakaian per request_type dalam 24 jam
         $statsByType = AiUsageLog::statsByRequestType(24);
 
-        // Statistik per provider dalam 24 jam (untuk ditampilkan di provider card)
         $statsPerProvider = AiUsageLog::statsPerProvider24h();
 
         $pendingAliases = AiAlias::with(['asset', 'area', 'technician'])
@@ -137,31 +138,67 @@ class AiProviderController extends Controller
     }
 
     /**
-     * Test koneksi ke satu provider AI.
+     * Test koneksi ke satu provider AI dengan benar-benar memanggil API.
+     *
+     * Mengirim prompt minimal ke endpoint provider dan memverifikasi
+     * bahwa respons HTTP 200 diterima dan berisi konten yang valid.
+     * Status provider diperbarui berdasarkan hasil aktual dari API.
      *
      * @param AiProvider $aiProvider
      * @return \Illuminate\Http\JsonResponse
      */
     public function test(AiProvider $aiProvider)
     {
+        $startTime    = microtime(true);
+        $responseTime = 0;
+
         try {
-            $startTime = microtime(true);
-            // Placeholder — implementasi ping nyata ada di service layer
-            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $result       = $this->pingProvider($aiProvider);
+            $responseTime = $result['response_time_ms'];
+
+            if ($result['success']) {
+                $aiProvider->update([
+                    'last_health_check' => now(),
+                    'status'            => 'healthy',
+                ]);
+
+                // Catat ke usage log sebagai health_check
+                $this->logUsage($aiProvider, $responseTime, 'health_check', 'success');
+
+                return response()->json([
+                    'success' => true,
+                    'message' => "Koneksi berhasil. Response time: {$responseTime}ms",
+                ]);
+            }
+
+            // Tentukan status error berdasarkan HTTP code
+            $newStatus = $result['http_code'] === 429 ? 'exhausted' : 'error';
 
             $aiProvider->update([
                 'last_health_check' => now(),
-                'status'            => 'healthy',
+                'status'            => $newStatus,
             ]);
 
+            $this->logUsage($aiProvider, $responseTime, 'health_check', 'error', $result['error']);
+
             return response()->json([
-                'success' => true,
-                'message' => "Koneksi berhasil. Response time: {$responseTime}ms",
+                'success' => false,
+                'message' => 'Gagal: ' . $result['error'],
             ]);
+
         } catch (\Exception $e) {
+            $responseTime = (int) ((microtime(true) - $startTime) * 1000);
+
             $aiProvider->update([
                 'last_health_check' => now(),
                 'status'            => 'error',
+            ]);
+
+            $this->logUsage($aiProvider, $responseTime, 'health_check', 'error', $e->getMessage());
+
+            Log::error("AiProviderController::test() exception", [
+                'provider' => $aiProvider->name,
+                'error'    => $e->getMessage(),
             ]);
 
             return response()->json([
@@ -172,7 +209,7 @@ class AiProviderController extends Controller
     }
 
     /**
-     * Test koneksi ke semua provider AI sekaligus.
+     * Test koneksi ke semua provider AI sekaligus dengan memanggil API nyata.
      *
      * @return \Illuminate\Http\JsonResponse
      */
@@ -183,21 +220,49 @@ class AiProviderController extends Controller
 
         foreach ($providers as $provider) {
             try {
-                $startTime    = microtime(true);
-                $responseTime = round((microtime(true) - $startTime) * 1000);
+                $result       = $this->pingProvider($provider);
+                $responseTime = $result['response_time_ms'];
 
+                if ($result['success']) {
+                    $provider->update([
+                        'last_health_check' => now(),
+                        'status'            => 'healthy',
+                    ]);
+
+                    $this->logUsage($provider, $responseTime, 'health_check', 'success');
+
+                    $results[] = [
+                        'name'          => $provider->name,
+                        'success'       => true,
+                        'response_time' => $responseTime,
+                    ];
+                } else {
+                    $newStatus = $result['http_code'] === 429 ? 'exhausted' : 'error';
+
+                    $provider->update([
+                        'last_health_check' => now(),
+                        'status'            => $newStatus,
+                    ]);
+
+                    $this->logUsage($provider, $responseTime, 'health_check', 'error', $result['error']);
+
+                    $results[] = [
+                        'name'    => $provider->name,
+                        'success' => false,
+                        'error'   => $result['error'],
+                    ];
+                }
+
+            } catch (\Exception $e) {
                 $provider->update([
                     'last_health_check' => now(),
-                    'status'            => 'healthy',
+                    'status'            => 'error',
                 ]);
 
-                $results[] = [
-                    'name'          => $provider->name,
-                    'success'       => true,
-                    'response_time' => $responseTime,
-                ];
-            } catch (\Exception $e) {
-                $provider->update(['status' => 'error']);
+                Log::error("AiProviderController::testAll() exception", [
+                    'provider' => $provider->name,
+                    'error'    => $e->getMessage(),
+                ]);
 
                 $results[] = [
                     'name'    => $provider->name,
@@ -257,5 +322,212 @@ class AiProviderController extends Controller
 
         return redirect()->route('ai-providers.index')
             ->with('success', 'Alias "' . $alias->alias_text . '" berhasil ditolak.');
+    }
+
+    // =========================================================
+    // Private helpers
+    // =========================================================
+
+    /**
+     * Ping satu provider AI dengan mengirim prompt minimal ke API-nya.
+     *
+     * Mendukung provider_type: groq, openai (format OpenAI-compatible),
+     * dan ollama (endpoint berbeda, tidak perlu API key).
+     *
+     * @param  AiProvider $provider
+     * @return array{success: bool, response_time_ms: int, http_code: int|null, error: string|null}
+     */
+    private function pingProvider(AiProvider $provider): array
+    {
+        $startTime = microtime(true);
+
+        // Dekripsi API key menggunakan accessor yang sudah ada di model
+        $apiKey = $provider->api_key;
+
+        // Tentukan endpoint berdasarkan provider_type
+        $endpoint = $this->resolveEndpoint($provider);
+
+        // Prompt minimal untuk health check — tidak butuh respons panjang
+        $payload = $this->buildPingPayload($provider);
+
+        $httpCode = null;
+
+        try {
+            $headers = ['Content-Type' => 'application/json'];
+
+            // Ollama tidak pakai Authorization header
+            if ($provider->provider_type !== 'ollama') {
+                if (empty($apiKey)) {
+                    return [
+                        'success'         => false,
+                        'response_time_ms'=> 0,
+                        'http_code'       => null,
+                        'error'           => 'API key kosong. Isi API key provider terlebih dahulu.',
+                    ];
+                }
+                $headers['Authorization'] = 'Bearer ' . $apiKey;
+            }
+
+            $response = Http::timeout(15)
+                ->withHeaders($headers)
+                ->post($endpoint, $payload);
+
+            $responseTime = (int) ((microtime(true) - $startTime) * 1000);
+            $httpCode     = $response->status();
+
+            if ($response->successful()) {
+                // Pastikan respons benar-benar mengandung konten model
+                $content = $this->extractContent($provider, $response->json());
+
+                if ($content !== null) {
+                    return [
+                        'success'          => true,
+                        'response_time_ms' => $responseTime,
+                        'http_code'        => $httpCode,
+                        'error'            => null,
+                    ];
+                }
+
+                return [
+                    'success'          => false,
+                    'response_time_ms' => $responseTime,
+                    'http_code'        => $httpCode,
+                    'error'            => 'Respons API tidak mengandung konten yang valid.',
+                ];
+            }
+
+            // HTTP error — buat pesan yang informatif
+            $errorBody = substr($response->body(), 0, 200);
+            $errorMsg  = match ($httpCode) {
+                401     => 'API key tidak valid atau tidak diizinkan (401 Unauthorized).',
+                403     => 'Akses ditolak oleh provider (403 Forbidden).',
+                429     => 'Kuota API habis (429 Too Many Requests).',
+                500     => 'Server provider error (500 Internal Server Error).',
+                default => "HTTP {$httpCode}: {$errorBody}",
+            };
+
+            return [
+                'success'          => false,
+                'response_time_ms' => $responseTime,
+                'http_code'        => $httpCode,
+                'error'            => $errorMsg,
+            ];
+
+        } catch (\Exception $e) {
+            return [
+                'success'          => false,
+                'response_time_ms' => (int) ((microtime(true) - $startTime) * 1000),
+                'http_code'        => $httpCode,
+                'error'            => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Tentukan endpoint URL yang akan digunakan untuk ping.
+     *
+     * @param  AiProvider $provider
+     * @return string
+     */
+    private function resolveEndpoint(AiProvider $provider): string
+    {
+        if (!empty($provider->endpoint_url)) {
+            return $provider->endpoint_url;
+        }
+
+        return match ($provider->provider_type) {
+            'groq'   => 'https://api.groq.com/openai/v1/chat/completions',
+            'openai' => 'https://api.openai.com/v1/chat/completions',
+            'ollama' => 'http://localhost:11434/api/chat',
+            default  => 'https://api.groq.com/openai/v1/chat/completions',
+        };
+    }
+
+    /**
+     * Bangun payload minimal untuk health check.
+     * max_tokens=1 agar tidak membuang kuota untuk ping.
+     *
+     * @param  AiProvider $provider
+     * @return array
+     */
+    private function buildPingPayload(AiProvider $provider): array
+    {
+        $model = $provider->model ?? 'llama-3.3-70b-versatile';
+
+        // Ollama pakai format berbeda
+        if ($provider->provider_type === 'ollama') {
+            return [
+                'model'    => $model,
+                'messages' => [
+                    ['role' => 'user', 'content' => 'ping'],
+                ],
+                'stream'   => false,
+            ];
+        }
+
+        // Groq / OpenAI pakai format OpenAI-compatible
+        return [
+            'model'      => $model,
+            'messages'   => [
+                ['role' => 'user', 'content' => 'ping'],
+            ],
+            'max_tokens' => 1,
+        ];
+    }
+
+    /**
+     * Ekstrak konten dari respons API berdasarkan format provider.
+     *
+     * @param  AiProvider $provider
+     * @param  array|null $json
+     * @return string|null  Konten teks, atau null jika tidak valid
+     */
+    private function extractContent(AiProvider $provider, ?array $json): ?string
+    {
+        if (empty($json)) {
+            return null;
+        }
+
+        // Format Ollama
+        if ($provider->provider_type === 'ollama') {
+            return $json['message']['content'] ?? null;
+        }
+
+        // Format OpenAI-compatible (Groq & OpenAI)
+        return $json['choices'][0]['message']['content'] ?? null;
+    }
+
+    /**
+     * Simpan log penggunaan untuk health check ke tabel ai_usage_logs.
+     *
+     * @param  AiProvider  $provider
+     * @param  int         $responseTimeMs
+     * @param  string      $requestType
+     * @param  string      $status           'success'|'error'
+     * @param  string|null $errorMessage
+     * @return void
+     */
+    private function logUsage(
+        AiProvider $provider,
+        int $responseTimeMs,
+        string $requestType,
+        string $status,
+        ?string $errorMessage = null
+    ): void {
+        try {
+            AiUsageLog::create([
+                'provider_id'      => $provider->id,
+                'tokens_used'      => 0,   // Health check tidak mengkonsumsi token signifikan
+                'request_type'     => $requestType,
+                'response_time_ms' => $responseTimeMs,
+                'status'           => $status,
+                'error_message'    => $errorMessage,
+            ]);
+        } catch (\Exception $e) {
+            // Jangan biarkan kegagalan logging mengganggu respons utama
+            Log::warning("AiProviderController: gagal menyimpan usage log", [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
