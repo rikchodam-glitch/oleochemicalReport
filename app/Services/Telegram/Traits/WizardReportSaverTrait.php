@@ -4,6 +4,7 @@ namespace App\Services\Telegram\Traits;
 
 use App\Models\Report;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * WizardReportSaverTrait
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\Log;
  * Trait ini bergantung pada method berikut dari kelas pemakai:
  *   - equipmentLabel(array $state): string
  *   - formatDuration(int $minutes): string
+ *   - formatIndonesianDate(string $dateString): string
  *   - destroyWizard(string $chatId): void
  *   - errorResponse(string $message): array
  */
@@ -42,8 +44,13 @@ trait WizardReportSaverTrait
         $photoDocCount  = count($state['photo_documentation'] ?? []);
         $photoHygCount  = count($state['photo_hygiene_clearance'] ?? []);
 
+        // Tanggal laporan: pakai hasil deteksi dari Step 1, fallback ke hari ini
+        $reportDate      = $state['report_date'] ?? now()->toDateString();
+        $formattedDate   = $this->formatIndonesianDate($reportDate);
+
         $msg  = "*Step 8/8* — Konfirmasi Laporan\n\n";
         $msg .= "Periksa ringkasan berikut sebelum disimpan:\n\n";
+        $msg .= "*Tanggal*   : {$formattedDate}\n";
         $msg .= "*Equipment* : {$equipmentLabel}\n";
         $msg .= "*Durasi*    : {$duration}\n";
         $msg .= "*Root Cause*: {$rootCause}\n";
@@ -65,9 +72,16 @@ trait WizardReportSaverTrait
      * Hanya dipanggil setelah teknisi mengonfirmasi di Step 8.
      * Foto yang bukan path lokal (belum diproses PhotoStorageService) dibuang.
      *
+     * Respons sukses membawa dua pesan terpisah agar tidak terjadi pesan ganda
+     * di Telegram:
+     *   - edit_message    : pesan pendek yang dipakai untuk menimpa pesan
+     *                       konfirmasi Step 8 (via editMessageText)
+     *   - success_message : pesan detail lengkap yang dikirim sebagai pesan
+     *                       baru (via sendMessage)
+     *
      * @param  string $chatId Chat ID Telegram
      * @param  array  $state  State wizard saat ini
-     * @return array  Respons sukses atau error
+     * @return array  Respons sukses (dengan edit_message & success_message) atau error
      */
     protected function saveReport(string $chatId, array $state): array
     {
@@ -89,6 +103,10 @@ trait WizardReportSaverTrait
 
             $reportCode = $this->generateReportCode();
 
+            // Tanggal laporan: pakai hasil deteksi parseDateFromText() dari Step 1,
+            // fallback ke hari ini jika tidak terdeteksi/tidak valid.
+            $reportDate = $state['report_date'] ?? now()->toDateString();
+
             // Filter foto: hanya path lokal hasil PhotoStorageService->store() yang masuk DB.
             // Path lokal selalu mengandung tanda "/" (format reports/YYYY/MM/DD/{chat_id}/{file}.jpg).
             // File ID Telegram mentah tanpa "/" dibuang dan dicatat ke log.
@@ -98,7 +116,7 @@ trait WizardReportSaverTrait
             $report = Report::create([
                 'report_code'             => $reportCode,
                 'technician_id'           => $technician->id,
-                'report_date'             => now()->toDateString(),
+                'report_date'             => $reportDate,
                 'work_description'        => $state['text'],
                 'asset_id'                => $state['equipment_id'] ?? null,
                 'area_id'                 => $state['area_id'] ?? null,
@@ -119,25 +137,44 @@ trait WizardReportSaverTrait
             Log::info("WizardService: Report saved for chat {$chatId}", [
                 'report_id'       => $report->id,
                 'report_code'     => $reportCode,
+                'report_date'     => $reportDate,
                 'photo_doc_count' => count($photoDocumentation),
                 'photo_hyg_count' => count($photoHygieneClearance),
             ]);
 
             $equipmentLabel = $this->equipmentLabel($state);
             $duration       = $this->formatDuration($state['work_duration_minutes'] ?? 0);
+            $formattedDate  = $this->formatIndonesianDate($reportDate);
+            $rootCauseShort = Str::limit($state['root_cause'] ?? '-', 80);
+            $submittedAt    = $report->submitted_at?->format('d/m/Y H:i') ?? now()->format('d/m/Y H:i');
+            $photoDocCount  = count($photoDocumentation);
+            $photoHygCount  = count($photoHygieneClearance);
 
-            $msg  = "*Laporan Berhasil Disimpan!*\n\n";
-            $msg .= "Kode Laporan: `{$reportCode}`\n";
-            $msg .= "Equipment: {$equipmentLabel}\n";
-            $msg .= "Durasi: {$duration}\n\n";
-            $msg .= "Gunakan kode di atas untuk menambah foto ke laporan ini di kemudian hari.";
+            // Pesan pendek untuk menimpa pesan konfirmasi Step 8 (edit in-place)
+            $editMsg  = "*Laporan Tersimpan*\n\n";
+            $editMsg .= "Kode: `{$reportCode}`\n";
+            $editMsg .= "Detail laporan dikirim di pesan berikutnya.";
+
+            // Pesan detail lengkap, dikirim sebagai pesan baru
+            $successMsg  = "*Laporan Berhasil Disimpan!*\n\n";
+            $successMsg .= "Kode Laporan : `{$reportCode}`\n";
+            $successMsg .= "Teknisi      : {$technician->name}\n";
+            $successMsg .= "Tanggal      : {$formattedDate}\n";
+            $successMsg .= "Equipment    : {$equipmentLabel}\n";
+            $successMsg .= "Durasi       : {$duration}\n";
+            $successMsg .= "Foto Dok     : {$photoDocCount} foto\n";
+            $successMsg .= "Foto HC      : {$photoHygCount} foto\n";
+            $successMsg .= "Root Cause   : {$rootCauseShort}\n";
+            $successMsg .= "Waktu Submit : {$submittedAt}\n\n";
+            $successMsg .= "Gunakan kode di atas untuk menambah foto ke laporan ini di kemudian hari.";
 
             return [
-                'message'     => $msg,
-                'keyboard'    => [],
-                'report_code' => $reportCode,
-                'report_id'   => $report->id,
-                'saved'       => true,
+                'edit_message'    => $editMsg,
+                'success_message' => $successMsg,
+                'keyboard'        => [],
+                'report_code'     => $reportCode,
+                'report_id'       => $report->id,
+                'saved'           => true,
             ];
         } catch (\Throwable $e) {
             Log::error("WizardService: Failed to save report for chat {$chatId}", [

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace App\Services\Telegram;
 
@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Log;
  * teknisi mengonfirmasi di Step 8. Semua state disimpan di Laravel Cache
  * per chat_id.
  *
- * Step 1: Terima Laporan Awal    -> jalankan TechIdentSearch 3-pass
+ * Step 1: Terima Laporan Awal    -> jalankan TechIdentSearch 3-pass, deteksi tanggal laporan
  * Step 2: Klarifikasi Equipment  -> keyboard kandidat / tulis ulang / hierarki
  * Step 3: Akselerasi FuncLoc     -> ditangani ClarificationService & FuncLocParser
  * Step 4: Waktu Pengerjaan       -> parse durasi atau tanya ke teknisi
@@ -47,7 +47,7 @@ use Illuminate\Support\Facades\Log;
  *   - WizardStepHandlerTrait    : handler per-step (4, 5, 6, 7, konfirmasi teks)
  *   - WizardCallbackHandlerTrait: handler semua callback inline keyboard
  *   - WizardReportSaverTrait    : simpan laporan ke DB, validasi foto, generate kode
- *   - WizardUtilityTrait        : format durasi, label equipment, state awal, error response
+ *   - WizardUtilityTrait        : format durasi/tanggal, label equipment, state awal, error response
  *   - WizardPhotoAddonTrait     : tambah foto ke laporan tersimpan via report_code
  */
 class ReportWizardService
@@ -119,6 +119,15 @@ class ReportWizardService
         // durasi, root cause — hasil digunakan di step-step berikutnya
         $analysis             = $this->aiService->analyzeReportText($text);
         $state['ai_analysis'] = $analysis;
+
+        // Deteksi tanggal laporan dari teks awal (mendukung "kemarin", format
+        // numerik, dan nama bulan Bahasa Indonesia). 'date' bernilai null jika
+        // tidak terdeteksi atau di luar rentang valid — saveReport() akan
+        // fallback ke hari ini. 'status' dipakai appendDateConfirmationNote()
+        // untuk menentukan notifikasi apa yang perlu ditampilkan ke teknisi.
+        $dateResult                  = $this->parseDateFromText($text);
+        $state['report_date']        = $dateResult['date'];
+        $state['report_date_status'] = $dateResult['status'];
 
         if (!empty($analysis['parsed_duration_minutes'])) {
             $state['work_duration_minutes'] = (int) $analysis['parsed_duration_minutes'];
@@ -260,7 +269,8 @@ class ReportWizardService
             $state['step']                      = self::STEP_EQUIPMENT_CLARIFY;
             $this->saveState($chatId, $state);
 
-            return $this->buildEquipmentConfirmKeyboard($exactMatch, $confidence);
+            $response = $this->buildEquipmentConfirmKeyboard($exactMatch, $confidence);
+            return $this->appendDateConfirmationNote($response, $state);
         }
 
         // Confidence 80-94%: ada kandidat ambigu -> tampilkan keyboard kandidat (Step 2)
@@ -270,7 +280,8 @@ class ReportWizardService
             $state['retype_attempts'] = 0;
             $this->saveState($chatId, $state);
 
-            return $this->buildCandidateKeyboard($candidates, $results);
+            $response = $this->buildCandidateKeyboard($candidates, $results);
+            return $this->appendDateConfirmationNote($response, $state);
         }
 
         // Tidak ada kandidat: tanya jenis pekerjaan terlebih dahulu
@@ -281,7 +292,7 @@ class ReportWizardService
         $state['awaiting_work_type'] = true;
         $this->saveState($chatId, $state);
 
-        return [
+        $response = [
             'message'  => "Tidak ditemukan kode equipment dari laporan Anda.\n\n" .
                           "Ini jenis pekerjaan apa?",
             'keyboard' => [
@@ -290,6 +301,50 @@ class ReportWizardService
                 ['text' => 'Batalkan Laporan',          'callback_data' => 'wizard:cancel_wizard'],
             ],
         ];
+
+        return $this->appendDateConfirmationNote($response, $state);
+    }
+
+    /**
+     * Tambahkan catatan singkat tentang tanggal laporan ke pesan respons Step 1.
+     * Tidak menambah step baru — hanya menyisipkan catatan di bawah pesan
+     * Step 1 (equipment search), dengan isi tergantung status parseDateFromText():
+     *   - 'ok'      : konfirmasi tanggal yang akan dipakai
+     *   - 'future'  : tanggal ditolak karena ada di masa depan
+     *   - 'too_old' : tanggal ditolak karena melewati batas hari mundur
+     *   - lainnya   : tidak ada tanggal terdeteksi di teks, tidak perlu catatan
+     *                 (laporan akan pakai tanggal hari ini seperti biasa)
+     *
+     * @param  array $response Respons yang akan dikirim (berisi key 'message')
+     * @param  array $state    State wizard saat ini
+     * @return array           Respons dengan catatan tanggal ditambahkan (jika ada)
+     */
+    protected function appendDateConfirmationNote(array $response, array $state): array
+    {
+        $status = $state['report_date_status'] ?? 'not_detected';
+
+        if ($status === 'ok' && !empty($state['report_date'])) {
+            $formattedDate = $this->formatIndonesianDate($state['report_date']);
+            $response['message'] .= "\n\n_Tanggal laporan terdeteksi: {$formattedDate}. " .
+                "Ini yang akan dipakai kecuali Anda ubah nanti._";
+            return $response;
+        }
+
+        if ($status === 'future') {
+            $response['message'] .= "\n\n_Catatan: tanggal yang Anda tulis ada di masa depan, " .
+                "jadi tidak bisa dipakai. Laporan akan memakai tanggal hari ini._";
+            return $response;
+        }
+
+        if ($status === 'too_old') {
+            $maxDays = self::REPORT_DATE_MAX_BACKDATE_DAYS;
+            $response['message'] .= "\n\n_Catatan: tanggal yang Anda tulis lebih dari {$maxDays} hari " .
+                "yang lalu, jadi tidak bisa dipakai (maksimal mundur {$maxDays} hari). " .
+                "Laporan akan memakai tanggal hari ini._";
+            return $response;
+        }
+
+        return $response;
     }
 
     /**

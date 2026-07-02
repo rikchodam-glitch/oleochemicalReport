@@ -35,6 +35,14 @@ use Illuminate\Support\Facades\Log;
  *   - buildConfirmationSummary(array $state): array
  *   - saveReport(string $chatId, array $state): array
  *   - $clarificationService: ClarificationService
+ *
+ * CATATAN — Callback foto (photo_doc_* / photo_hygiene_*):
+ * Semua callback_data foto yang tiba di handleConfirmationCallback() WAJIB
+ * dalam bentuk pendek (photo_doc_done/skip, photo_hygiene_done/skip).
+ * Pembentukan callback_data foto dilakukan di WizardStepHandlerTrait lewat
+ * helper photoCallbackKey() — jangan bangun callback_data foto secara manual
+ * di tempat lain agar tidak terjadi lagi mismatch seperti sebelumnya
+ * (photo_documentation_done tidak pernah dikenali switch-case ini).
  */
 trait WizardCallbackHandlerTrait
 {
@@ -123,7 +131,7 @@ trait WizardCallbackHandlerTrait
                 $state['work_duration_minutes'] = null;
                 $this->saveState($chatId, $state);
                 return [
-                    'message'  => "Ketik durasi pekerjaan:\n_(contoh: `2 jam`, `30 menit`, `1 jam 30 menit`)_",
+                    'message'  => "Ketik durasi pekerjaan:\n_(contoh: `2 jam`, `30 menit`, `1 jam 30 menit`, `1:30`)_",
                     'keyboard' => [],
                 ];
 
@@ -140,15 +148,6 @@ trait WizardCallbackHandlerTrait
                 return [
                     'message'  => "Ketik root cause (penyebab kerusakan/pekerjaan):",
                     'keyboard' => [],
-                ];
-
-            // Step 6 — foto dokumentasi: minta foto tambahan
-            case 'photo_doc_more':
-                return [
-                    'message'  => "Silakan kirim foto tambahan:",
-                    'keyboard' => [
-                        ['text' => 'Selesai', 'callback_data' => 'wizard:confirm:photo_doc_done'],
-                    ],
                 ];
 
             // Step 6 — foto dokumentasi selesai / skip

@@ -379,16 +379,36 @@ trait AiKeywordParserTrait
     /**
      * Coba ekstrak estimasi durasi pekerjaan (dalam menit) dari teks awal teknisi.
      *
-     * Pola yang dikenali: "2 jam", "1,5 jam", "90 menit", "2 jam 30 menit".
+     * Pola yang dikenali:
+     *   - "2 jam", "1,5 jam", "90 menit", "2 jam 30 menit"
+     *   - Rentang waktu: "08:00 sampai 09:00", "8:00-9:00", "08.00 s/d 09.30", "08:00 sd 10:00"
+     *   - Format singkat: "1h30m", "1h 30m", "0h45m"
+     *   - Jam:menit numerik: "1:30" (= 90 menit)
      * Hasil dipakai untuk pre-fill Step 4 (Waktu Pengerjaan) wizard agar teknisi
      * tidak perlu mengetik ulang jika durasi sudah disebut di pesan pertama.
+     * Hasil divalidasi: tidak boleh 0/negatif dan tidak boleh lebih dari 24 jam (1440 menit).
      *
      * @param string $text Teks laporan
      * @return int|null Total menit yang diekstrak, atau null jika tidak ditemukan pola durasi
      */
     protected function parseWorkDurationMinutes(string $text): ?int
     {
-        $textLower    = strtolower($text);
+        $textLower = strtolower($text);
+
+        // Format rentang waktu — dicek lebih dulu karena mengandung pola jam:menit
+        // yang bisa salah tertangkap oleh pola "jam:menit numerik" di bawah
+        if (preg_match('/(\d{1,2})[:.](\d{2})\s*(?:sampai|s\/d|sd|hingga|\-)\s*(\d{1,2})[:.](\d{2})/', $textLower, $m)) {
+            $startMinutes = ((int) $m[1]) * 60 + (int) $m[2];
+            $endMinutes   = ((int) $m[3]) * 60 + (int) $m[4];
+            $diff         = $endMinutes - $startMinutes;
+
+            if ($diff <= 0) {
+                $diff += 1440; // Rentang melewati tengah malam
+            }
+
+            return $this->validateWorkDurationMinutes($diff);
+        }
+
         $totalMinutes = 0;
         $found        = false;
 
@@ -405,7 +425,43 @@ trait AiKeywordParserTrait
             $found = true;
         }
 
-        return $found ? $totalMinutes : null;
+        if ($found) {
+            return $this->validateWorkDurationMinutes($totalMinutes);
+        }
+
+        // Format singkat: "1h30m", "1h 30m", "0h45m"
+        if (preg_match('/\b(\d+)\s*h\s*(?:(\d+)\s*m)?\b/', $textLower, $m)) {
+            $hours   = (int) $m[1];
+            $minutes = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0;
+
+            return $this->validateWorkDurationMinutes($hours * 60 + $minutes);
+        }
+
+        // Format jam:menit numerik: "1:30" (= 90 menit)
+        if (preg_match('/\b(\d{1,2}):(\d{2})\b/', $textLower, $m)) {
+            $hours   = (int) $m[1];
+            $minutes = (int) $m[2];
+
+            return $this->validateWorkDurationMinutes($hours * 60 + $minutes);
+        }
+
+        return null;
+    }
+
+    /**
+     * Validasi hasil parsing durasi pekerjaan.
+     * Durasi tidak boleh 0/negatif dan tidak boleh lebih dari 24 jam (1440 menit).
+     *
+     * @param  int|null    $minutes Durasi mentah hasil parsing
+     * @return int|null             Durasi jika valid, null jika di luar rentang
+     */
+    private function validateWorkDurationMinutes(?int $minutes): ?int
+    {
+        if ($minutes === null || $minutes <= 0 || $minutes > 1440) {
+            return null;
+        }
+
+        return $minutes;
     }
 
     /**

@@ -197,7 +197,13 @@ trait TelegramMessageHandlerTrait
      *
      * Dipanggil dari processCallbackQuery. Jika respons mengandung keyboard,
      * pesan diedit in-place; jika tidak, hanya teks yang diperbarui.
-     * Jika laporan berhasil disimpan, kirim pesan terpisah dengan kode laporan.
+     *
+     * Jika laporan berhasil disimpan (saved === true), ReportWizardService
+     * mengembalikan dua pesan terpisah untuk mencegah pesan ganda:
+     *   - edit_message    : dipakai untuk menimpa pesan konfirmasi Step 8
+     *   - success_message : dikirim sebagai pesan baru berisi detail laporan
+     * Untuk respons biasa (bukan hasil penyimpanan), hanya field 'message'
+     * yang tersedia dan dipakai sebagai fallback untuk edit_message.
      *
      * @param int|string $chatId    ID chat
      * @param int        $messageId ID pesan yang memicu callback
@@ -208,17 +214,23 @@ trait TelegramMessageHandlerTrait
     {
         $response = $this->reportWizard->handleCallback((string) $chatId, $data);
 
-        if (!empty($response['message'])) {
+        // Pesan untuk menimpa pesan lama (inline keyboard). Fallback ke 'message'
+        // untuk respons wizard biasa yang belum memisahkan edit_message/success_message.
+        $editMessage = $response['edit_message'] ?? $response['message'] ?? '';
+
+        if (!empty($editMessage)) {
             if (!empty($response['keyboard'])) {
-                $this->editMessageText($chatId, $messageId, $response['message'], $response['keyboard']);
+                $this->editMessageText($chatId, $messageId, $editMessage, $response['keyboard']);
             } else {
-                $this->editMessageTextSimple($chatId, $messageId, $response['message']);
+                $this->editMessageTextSimple($chatId, $messageId, $editMessage);
             }
         }
 
-        // Jika laporan berhasil disimpan, kirim pesan terpisah dengan kode laporan
+        // Jika laporan berhasil disimpan, kirim pesan sukses terpisah (pesan baru).
+        // Menggunakan success_message agar tidak identik dengan edit_message di atas.
         if (!empty($response['saved']) && !empty($response['report_code'])) {
-            $this->sendMessage($chatId, $response['message'] ?? "Laporan tersimpan.");
+            $successMessage = $response['success_message'] ?? $response['message'] ?? "Laporan tersimpan.";
+            $this->sendMessage($chatId, $successMessage);
         }
     }
 

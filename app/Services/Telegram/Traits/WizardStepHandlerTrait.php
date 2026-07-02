@@ -17,6 +17,8 @@ namespace App\Services\Telegram\Traits;
  *   - addPhotoToStep()            : Tambah file ID foto ke state wizard
  *   - advanceFromPhotoStep()      : Transisi keluar dari step foto
  *   - handleConfirmation()        : Proses teks konfirmasi di Step 8
+ *   - photoCallbackKey()          : Peta $photoStep ke kunci callback_data pendek
+ *   - photoDoneButtonLabel()      : Label tombol "selesai" yang sesuai step foto
  *
  * Trait ini bergantung pada method berikut dari kelas pemakai:
  *   - parseDurationToMinutes(string $text): ?int
@@ -29,6 +31,15 @@ namespace App\Services\Telegram\Traits;
  *   - buildPhotoHygienePrompt(array $state): array
  *   - buildConfirmationSummary(array $state): array
  *   - saveReport(string $chatId, array $state): array
+ *
+ * PENTING — Konsistensi callback_data foto:
+ * Semua callback_data untuk step foto WAJIB menggunakan format pendek:
+ *   wizard:confirm:photo_doc_done      wizard:confirm:photo_doc_skip
+ *   wizard:confirm:photo_hygiene_done  wizard:confirm:photo_hygiene_skip
+ * BUKAN 'photo_documentation_done' (bentuk panjang $photoStep). Switch-case
+ * di WizardCallbackHandlerTrait::handleConfirmationCallback() hanya mengenali
+ * bentuk pendek ini. Gunakan photoCallbackKey() setiap kali membangun
+ * callback_data foto agar tidak terulang lagi bug ini.
  */
 trait WizardStepHandlerTrait
 {
@@ -80,7 +91,9 @@ trait WizardStepHandlerTrait
         return [
             'message'  => "Equipment dikunci: *{$equipmentLabel}*\n\n" .
                 "*Step 4/8* — Berapa lama pekerjaan berlangsung?\n" .
-                "Ketik durasi (contoh: `2 jam`, `30 menit`, `1.5 jam`)",
+                "Ketik durasi, contoh:\n" .
+                "`2 jam`, `30 menit`, `1.5 jam`, `1:30`, `1h30m`\n" .
+                "Atau rentang waktu: `08:00 sampai 09:00`, `08:00-10:00`",
             'keyboard' => [],
         ];
     }
@@ -100,7 +113,8 @@ trait WizardStepHandlerTrait
         if ($minutes === null || $minutes <= 0) {
             return [
                 'message'  => "Durasi tidak dikenali. Coba format lain:\n" .
-                    "`2 jam`, `30 menit`, `1 jam 30 menit`, `90 menit`",
+                    "`2 jam`, `30 menit`, `1 jam 30 menit`, `1:30`, `1h30m`\n" .
+                    "Atau rentang waktu: `08:00 sampai 09:00`, `08:00-10:00`",
                 'keyboard' => [],
             ];
         }
@@ -198,10 +212,9 @@ trait WizardStepHandlerTrait
             return [
                 'message'  => "*Step 6/8* — Foto Dokumentasi\n\n" .
                     "Sudah ada 1 foto yang dikirim bersama laporan awal.\n" .
-                    "Tambah foto lagi, atau lanjutkan?",
+                    "Kirim foto tambahan jika ada, atau lanjutkan:",
                 'keyboard' => [
-                    ['text' => 'Cukup, Lanjutkan',  'callback_data' => 'wizard:confirm:photo_doc_done'],
-                    ['text' => 'Tambah Foto Lagi',   'callback_data' => 'wizard:confirm:photo_doc_more'],
+                    ['text' => 'Cukup, Lanjutkan', 'callback_data' => 'wizard:confirm:photo_doc_done'],
                     ['text' => 'Skip (Tanpa Foto)',   'callback_data' => 'wizard:confirm:photo_doc_skip'],
                 ],
             ];
@@ -235,6 +248,8 @@ trait WizardStepHandlerTrait
 
     /**
      * Bangun pesan prompt Step 7 (foto hygiene clearance).
+     * Ini adalah step foto terakhir — setelah selesai, wizard langsung
+     * masuk ke Step 8 (konfirmasi & kirim laporan), bukan step foto lain.
      *
      * @param  array $state State wizard
      * @return array Respons
@@ -247,10 +262,10 @@ trait WizardStepHandlerTrait
             return [
                 'message'  => "*Step 7/8* — Foto Hygiene Clearance\n\n" .
                     "{$currentPhotos} foto sudah diterima.\n" .
-                    "Kirim foto lagi, atau lanjutkan ke konfirmasi:",
+                    "Ini step foto terakhir. Kirim foto lagi, atau lanjutkan untuk kirim laporan:",
                 'keyboard' => [
-                    ['text' => 'Cukup, Lanjutkan', 'callback_data' => 'wizard:confirm:photo_hygiene_done'],
-                    ['text' => 'Skip Sisa',         'callback_data' => 'wizard:confirm:photo_hygiene_skip'],
+                    ['text' => $this->photoDoneButtonLabel('hygiene'), 'callback_data' => 'wizard:confirm:photo_hygiene_done'],
+                    ['text' => 'Skip Sisa',                            'callback_data' => 'wizard:confirm:photo_hygiene_skip'],
                 ],
             ];
         }
@@ -258,7 +273,7 @@ trait WizardStepHandlerTrait
         return [
             'message'  => "*Step 7/8* — Foto Hygiene Clearance\n\n" .
                 "Kirim foto hygiene clearance (opsional).\n" .
-                "Atau skip untuk langsung ke konfirmasi:",
+                "Ini step foto terakhir sebelum laporan dikirim:",
             'keyboard' => [
                 ['text' => 'Skip (Tanpa Foto)', 'callback_data' => 'wizard:confirm:photo_hygiene_skip'],
             ],
@@ -268,6 +283,33 @@ trait WizardStepHandlerTrait
     // =========================================================
     // HANDLER FOTO (STEP 6 & 7)
     // =========================================================
+
+    /**
+     * Peta $photoStep ('documentation'/'hygiene') ke kunci pendek yang dipakai
+     * di callback_data ('doc'/'hygiene'). Wajib dipakai setiap kali membangun
+     * callback_data foto agar konsisten dengan switch-case di
+     * WizardCallbackHandlerTrait::handleConfirmationCallback().
+     *
+     * @param  string $photoStep Tipe step: 'documentation' atau 'hygiene'
+     * @return string            Kunci pendek untuk callback_data
+     */
+    private function photoCallbackKey(string $photoStep): string
+    {
+        return $photoStep === 'documentation' ? 'doc' : 'hygiene';
+    }
+
+    /**
+     * Label tombol "selesai" yang sesuai dengan step foto.
+     * Step hygiene adalah step foto terakhir sebelum konfirmasi, sehingga
+     * labelnya menegaskan bahwa laporan akan langsung dikirim.
+     *
+     * @param  string $photoStep Tipe step: 'documentation' atau 'hygiene'
+     * @return string            Label tombol
+     */
+    private function photoDoneButtonLabel(string $photoStep): string
+    {
+        return $photoStep === 'hygiene' ? 'Selesai, Kirim Laporan' : 'Selesai, Lanjutkan';
+    }
 
     /**
      * Proses perintah teks di step foto ("selesai", "skip", dll).
@@ -289,13 +331,14 @@ trait WizardStepHandlerTrait
 
         $currentCount = count($state['photo_' . ($photoStep === 'documentation' ? 'documentation' : 'hygiene_clearance')] ?? []);
         $stepNum      = $photoStep === 'documentation' ? '6' : '7';
+        $callbackKey  = $this->photoCallbackKey($photoStep);
 
         return [
             'message'  => "*Step {$stepNum}/8* — {$currentCount} foto diterima.\n" .
                 "Kirim foto berikutnya, atau ketik *selesai* untuk lanjut.",
             'keyboard' => [
-                ['text' => 'Selesai, Lanjutkan', 'callback_data' => 'wizard:confirm:photo_' . $photoStep . '_done'],
-                ['text' => 'Skip',                'callback_data' => 'wizard:confirm:photo_' . $photoStep . '_skip'],
+                ['text' => $this->photoDoneButtonLabel($photoStep), 'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_done'],
+                ['text' => 'Skip',                                  'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_skip'],
             ],
         ];
     }
@@ -324,12 +367,14 @@ trait WizardStepHandlerTrait
         $count         = count($state[$key]);
         $this->saveState($chatId, $state);
 
+        $callbackKey = $this->photoCallbackKey($photoStep);
+
         return [
             'message'  => "Foto {$count} diterima.\n" .
                 "Kirim foto berikutnya, atau tekan *Selesai* untuk lanjut.",
             'keyboard' => [
-                ['text' => 'Selesai, Lanjutkan', 'callback_data' => 'wizard:confirm:photo_' . $photoStep . '_done'],
-                ['text' => 'Skip Sisa',           'callback_data' => 'wizard:confirm:photo_' . $photoStep . '_skip'],
+                ['text' => $this->photoDoneButtonLabel($photoStep), 'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_done'],
+                ['text' => 'Skip Sisa',                             'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_skip'],
             ],
         ];
     }
