@@ -168,13 +168,30 @@ trait TelegramMessageHandlerTrait
             return;
         }
 
-        // C) Tidak ada wizard aktif & tidak ada RPT code → mulai wizard baru
-        // Foto akan menjadi foto awal dan dikonfirmasi di Step 6
+        // C) Tidak ada wizard aktif & tidak ada RPT code → mulai wizard baru.
+        // Foto harus di-download ke storage lokal terlebih dahulu agar path yang
+        // diteruskan ke startWizard() adalah path lokal (bukan raw file_id Telegram).
+        // Jika tidak di-download di sini, filterValidLocalPhotoPaths() di saver
+        // akan membuang foto karena raw file_id tidak mengandung karakter '/'.
+        $localPath = $this->photoStorage->store($fileId, (string) $chatId);
+
+        if ($localPath === null) {
+            $this->sendMessage($chatId, "Gagal menyimpan foto awal. Coba kirim ulang.");
+            return;
+        }
+
         $response = $this->reportWizard->startWizard(
             chatId:      (string) $chatId,
             text:        $caption ?: 'Laporan dengan foto',
-            photoFileId: $fileId   // file_id diteruskan, download terjadi di Step 6
+            photoFileId: $localPath
         );
+
+        // Jika wizard gagal dimulai, hapus foto yang sudah terlanjur disimpan
+        // agar tidak jadi file yatim di storage.
+        if (!empty($response['error'])) {
+            $this->photoStorage->delete($localPath);
+        }
+
         $this->dispatchWizardResponse($chatId, $response);
     }
 

@@ -166,7 +166,17 @@ trait WizardReportSaverTrait
             $successMsg .= "Foto HC      : {$photoHygCount} foto\n";
             $successMsg .= "Root Cause   : {$rootCauseShort}\n";
             $successMsg .= "Waktu Submit : {$submittedAt}\n\n";
-            $successMsg .= "Gunakan kode di atas untuk menambah foto ke laporan ini di kemudian hari.";
+
+            if ($photoHygCount === 0) {
+                // Foto HC belum ada — sertakan instruksi cara menambahkannya nanti.
+                // Sistem deteksi caption di detectPhotoTypeFromCaption() sudah mengenali
+                // kata "hygiene" untuk menentukan tipe foto yang ditambahkan.
+                $successMsg .= "_Foto HC belum ada. Untuk menambahkan foto Hygiene Clearance ";
+                $successMsg .= "nanti, kirim foto dengan caption:_\n";
+                $successMsg .= "`{$reportCode} hygiene`";
+            } else {
+                $successMsg .= "Gunakan kode di atas untuk menambah foto ke laporan ini di kemudian hari.";
+            }
 
             return [
                 'edit_message'    => $editMsg,

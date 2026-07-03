@@ -100,9 +100,15 @@ class ReportWizardService
      * Mulai wizard baru dari teks laporan awal teknisi.
      * Jika ada wizard aktif sebelumnya, wizard lama di-reset.
      *
+     * PENTING: Parameter $photoFileId harus berisi path lokal hasil
+     * PhotoStorageService::store() (contoh: "reports/2026/07/03/123456/photo_abc.jpg"),
+     * BUKAN raw file_id Telegram (contoh: "AgACAgIAAxkBAAI...").
+     * Download ke storage lokal wajib dilakukan sebelum memanggil method ini.
+     * Path yang tidak mengandung "/" akan diabaikan dan tidak disimpan ke state.
+     *
      * @param  string      $chatId      Chat ID Telegram
      * @param  string      $text        Teks laporan dari teknisi
-     * @param  string|null $photoFileId File ID foto yang disertakan di pesan awal (opsional)
+     * @param  string|null $photoFileId Path lokal foto awal (opsional)
      * @return array       Respons yang harus dikirim ke teknisi
      */
     public function startWizard(string $chatId, string $text, ?string $photoFileId = null): array
@@ -112,7 +118,16 @@ class ReportWizardService
         $state = $this->createInitialState($chatId, $text);
 
         if ($photoFileId) {
-            $state['initial_photo_file_id'] = $photoFileId;
+            // Guard: tolak raw file_id Telegram yang belum di-download.
+            // Path lokal selalu mengandung "/" sebagai pemisah direktori.
+            if (!str_contains($photoFileId, '/')) {
+                Log::warning("startWizard: photoFileId ditolak karena bukan path lokal.", [
+                    'chat_id'      => $chatId,
+                    'photo_file_id' => $photoFileId,
+                ]);
+            } else {
+                $state['initial_photo_file_id'] = $photoFileId;
+            }
         }
 
         // Analisa teks awal dengan AI untuk ekstrak area, equipment,

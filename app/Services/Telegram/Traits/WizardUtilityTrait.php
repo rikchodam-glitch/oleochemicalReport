@@ -25,8 +25,9 @@ trait WizardUtilityTrait
     /**
      * Batas maksimal jumlah hari mundur yang diizinkan untuk tanggal laporan.
      * Tanggal yang terdeteksi lebih lampau dari ini akan ditolak (status 'too_old').
+     * Nilai 7 hari untuk mengakomodasi teknisi shift dan libur akhir pekan.
      */
-    public const REPORT_DATE_MAX_BACKDATE_DAYS = 3;
+    public const REPORT_DATE_MAX_BACKDATE_DAYS = 7;
 
     // =========================================================
     // FORMAT & PARSING DURASI

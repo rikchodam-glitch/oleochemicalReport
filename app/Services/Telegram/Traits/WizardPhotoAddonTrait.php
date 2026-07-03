@@ -97,9 +97,20 @@ trait WizardPhotoAddonTrait
 
         $count = count($photos);
 
+        // Bangun pesan balasan yang informatif: sebutkan total foto setelah penambahan
+        // dan ingatkan format caption jika teknisi ingin menambah foto lagi.
+        $successMessage  = "Foto {$field} berhasil ditambahkan ke laporan `{$reportCode}`.\n";
+        $successMessage .= "Total foto {$field} sekarang: {$count}.\n\n";
+        $successMessage .= "_Untuk menambah foto lagi ke laporan ini, kirim foto dengan caption:_\n";
+
+        if ($type === 'hygiene') {
+            $successMessage .= "`{$reportCode} hygiene`";
+        } else {
+            $successMessage .= "`{$reportCode}`";
+        }
+
         return [
-            'message'  => "Foto {$field} berhasil ditambahkan ke laporan `{$reportCode}`.\n" .
-                "Total foto {$field}: {$count}.",
+            'message'  => $successMessage,
             'keyboard' => [],
         ];
     }
