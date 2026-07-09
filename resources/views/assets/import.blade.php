@@ -78,6 +78,35 @@
                     </div>
                 </div>
 
+                <!-- FuncLoc Preview -->
+                <div class="bg-white rounded-xl border border-slate-200 p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-medium text-slate-900">Functional Location Terdeteksi</h3>
+                        <div class="flex items-center gap-2 text-xs">
+                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
+                                <span x-text="analysis.funcloc_preview.new_count"></span> FuncLoc Baru
+                            </span>
+                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
+                                <span x-text="analysis.funcloc_preview.existing_count"></span> Sudah Ada
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="max-h-72 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
+                        <template x-for="node in analysis.funcloc_preview.nodes" :key="node.code">
+                            <div class="flex items-center gap-3 px-4 py-2 text-sm" :style="{ paddingLeft: (16 + node.level * 20) + 'px' }">
+                                <span class="font-mono text-xs text-slate-700 flex-1 truncate" x-text="node.code"></span>
+                                <span class="text-xs text-slate-400 shrink-0" x-text="'L' + node.level"></span>
+                                <span x-show="!node.exists" class="inline-flex px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded shrink-0">FuncLoc Baru</span>
+                                <span x-show="node.exists" class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded shrink-0">Sudah Ada</span>
+                            </div>
+                        </template>
+                        <template x-if="analysis.funcloc_preview.nodes.length === 0">
+                            <div class="px-4 py-6 text-center text-sm text-slate-400">Tidak ada Functional Location terdeteksi di file ini.</div>
+                        </template>
+                    </div>
+                </div>
+
                 <!-- Actions -->
                 <div class="bg-white rounded-xl border border-slate-200 p-6">
                     <h3 class="font-medium text-slate-900 mb-4">Pilihan Aksi Import</h3>

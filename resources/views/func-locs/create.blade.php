@@ -1,0 +1,97 @@
+@extends('layouts.app')
+
+@section('title', 'Tambah Functional Location')
+@section('breadcrumb')
+    <a href="{{ route('dashboard') }}" class="hover:text-slate-700">Dashboard</a>
+    <span class="text-slate-300">/</span>
+    <a href="{{ route('func-locs.index') }}" class="hover:text-slate-700">Functional Location</a>
+    <span class="text-slate-300">/</span>
+    <span class="text-slate-900 font-medium">Tambah</span>
+@endsection
+
+@section('content')
+    <div class="max-w-xl">
+        <div class="bg-white rounded-xl border border-slate-200 p-6">
+
+            @if ($errors->any())
+                <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+                    <ul class="list-disc list-inside space-y-1">
+                        @foreach ($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            <form method="POST" action="{{ route('func-locs.store') }}" x-data="funcLocForm()" x-init="updatePreview()">
+                @csrf
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Parent</label>
+                    <select name="parent_id" x-model="parentCode" @change="updatePreview($event)"
+                            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                        <option value="" data-code="" data-level="-1">Tidak ada (buat sebagai node Level 0 / Site)</option>
+                        @foreach($parentOptions as $parent)
+                            <option value="{{ $parent->id }}"
+                                    data-code="{{ $parent->code }}"
+                                    data-level="{{ $parent->level }}"
+                                    {{ (string) $selectedParentId === (string) $parent->id ? 'selected' : '' }}>
+                                {{ str_repeat('— ', $parent->level) }}{{ $parent->code }} (L{{ $parent->level }} - {{ $levelLabels[$parent->level] }})
+                            </option>
+                        @endforeach
+                    </select>
+                    <p class="text-xs text-slate-400 mt-1">Pilih parent untuk menentukan level dan prefix kode secara otomatis.</p>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Segment</label>
+                    <input type="text" name="segment" value="{{ old('segment') }}" x-model="segment" @input="updatePreview($event)"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="mis. BD01" required>
+                    <p class="text-xs text-slate-400 mt-1">Bagian terakhir kode. Otomatis diubah menjadi huruf besar.</p>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Nama</label>
+                    <input type="text" name="name" value="{{ old('name') }}"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="Deskripsi lokasi" required>
+                </div>
+
+                <div class="mb-6 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Preview Kode</p>
+                    <p class="font-mono text-sm text-slate-900" x-text="previewCode || '-'"></p>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+                        Simpan
+                    </button>
+                    <a href="{{ route('func-locs.index') }}" class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                        Batal
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+@endsection
+
+@push('scripts')
+<script>
+    function funcLocForm() {
+        return {
+            parentCode: '{{ $selectedParentId }}',
+            segment: '{{ old('segment') }}',
+            previewCode: '',
+            updatePreview(event) {
+                const select = document.querySelector('select[name="parent_id"]');
+                const selectedOption = select.options[select.selectedIndex];
+                const parentCode = selectedOption ? selectedOption.getAttribute('data-code') : '';
+                const segment = (this.segment || '').trim().toUpperCase();
+
+                this.previewCode = parentCode ? parentCode + '-' + segment : segment;
+            }
+        };
+    }
+</script>
+@endpush

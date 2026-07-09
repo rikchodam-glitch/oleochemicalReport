@@ -2,16 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Traits\ReportLocationTrait;
 use App\Models\Area;
+use App\Models\Asset;
+use App\Models\FunctionalLocation;
 use App\Models\Report;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
+use Illuminate\Support\Facades\Storage;
 
 class ReportController extends Controller
 {
+    use ReportLocationTrait;
+
     public function index(Request $request)
     {
-        $query = Report::with(['technician', 'area', 'asset']);
+        $query = Report::with(['technician', 'area', 'asset', 'creator'])
+            ->withCount(['collaboratorReports as collaborator_count']);
 
         // Filter by date range
         if ($request->filled('date_from')) {
@@ -39,6 +46,14 @@ class ReportController extends Controller
         // Filter by technician
         if ($request->filled('technician_id')) {
             $query->where('technician_id', $request->technician_id);
+        }
+
+        // Filter by kode alat (tech_ident_no pada tabel assets)
+        if ($request->filled('asset_code')) {
+            $assetCode = $request->asset_code;
+            $query->whereHas('asset', function ($q) use ($assetCode) {
+                $q->where('tech_ident_no', 'like', '%' . $assetCode . '%');
+            });
         }
 
         // Search
@@ -91,9 +106,85 @@ class ReportController extends Controller
     }
 
     public function show(Report $report)
+{
+    $report->load([
+        'technician',
+        'area',
+        'asset',
+        'aiSuggestions.suggestedArea',
+        'aiSuggestions.suggestedAsset',
+        'creator',
+        'parentReport.technician',
+        'collaboratorReports.technician',
+    ]);
+
+    // Variabel untuk dropdown inline edit di show.blade.php.
+    // Mengikuti pola yang sama dengan edit() agar prefetch awal sudah terisi.
+    $areas = Area::orderBy('code')->get(['id', 'code', 'name']);
+
+    $funcLocs = $report->area_id
+        ? FunctionalLocation::where('area_id', $report->area_id)->orderBy('code')->get(['id', 'code', 'name', 'level'])
+        : collect();
+
+    $assets = $report->area_id
+        ? Asset::where('area_id', $report->area_id)->orderBy('tech_ident_no')->get(['id', 'equipment_no', 'tech_ident_no', 'description'])
+        : collect();
+
+    return view('reports.show', compact('report', 'areas', 'funcLocs', 'assets'));
+}
+
+    /**
+     * Tampilkan form edit laporan untuk admin.
+     * Functional Location dan Asset di-prefetch berdasarkan area_id laporan
+     * saat ini (jika ada) agar dropdown sudah terisi tanpa perlu AJAX awal,
+     * mengikuti pola yang sama dengan AssetController@edit.
+     *
+     * @param  Report  $report  Laporan yang akan diedit.
+     * @return \Illuminate\View\View
+     */
+    public function edit(Report $report)
     {
-        $report->load(['technician', 'area', 'asset', 'aiSuggestions.suggestedArea', 'aiSuggestions.suggestedAsset']);
-        return view('reports.show', compact('report'));
+        $areas = Area::orderBy('code')->get(['id', 'code', 'name']);
+
+        $funcLocs = $report->area_id
+            ? FunctionalLocation::where('area_id', $report->area_id)->orderBy('code')->get(['id', 'code', 'name', 'level'])
+            : collect();
+
+        $assets = $report->area_id
+            ? Asset::where('area_id', $report->area_id)->orderBy('tech_ident_no')->get(['id', 'equipment_no', 'tech_ident_no', 'description'])
+            : collect();
+
+        return view('reports.edit', compact('report', 'areas', 'funcLocs', 'assets'));
+    }
+
+    /**
+     * Simpan perubahan hasil edit admin pada laporan.
+     * Menandai laporan sebagai is_manually_edited agar panel AI di halaman
+     * show/index menampilkan badge "Edited" alih-alih persentase confidence.
+     * Termasuk perubahan Area, Functional Location, dan Asset (kode alat).
+     *
+     * @param  Request  $request  Data form edit.
+     * @param  Report  $report  Laporan yang diperbarui.
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function update(Request $request, Report $report)
+    {
+        $validated = $request->validate([
+            'work_description'       => 'required|string',
+            'work_duration_minutes'  => 'required|integer|min:0',
+            'root_cause'              => 'nullable|string',
+            'report_date'             => 'required|date',
+            'area_id'                 => 'nullable|exists:areas,id',
+            'funcloc_id'              => 'nullable|exists:functional_locations,id',
+            'asset_id'                => 'nullable|exists:assets,id',
+        ]);
+
+        $validated['is_manually_edited'] = true;
+
+        $report->update($validated);
+
+        return redirect()->route('reports.show', $report)
+            ->with('success', 'Laporan berhasil diperbarui.');
     }
 
     public function updateStatus(Request $request, Report $report)
@@ -146,6 +237,50 @@ class ReportController extends Controller
         }
 
         return back()->with('success', 'Foto berhasil ditambahkan ke laporan.');
+    }
+
+    /**
+     * Hapus satu foto dari laporan (dokumentasi atau hygiene clearance).
+     * Dipanggil via fetch() dari halaman detail — return JSON, tidak redirect.
+     * File fisik dihapus dari storage; array di DB di-splice dan di-reindex.
+     *
+     * @param  Request  $request  Query param: type (documentation|hygiene)
+     * @param  Report   $report   Laporan yang fotonya dihapus.
+     * @param  int      $index    Index foto dalam array JSON (0-based).
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function deletePhoto(Request $request, Report $report, int $index)
+    {
+        $request->validate([
+            'type' => 'required|in:documentation,hygiene',
+        ]);
+
+        // Tentukan kolom DB berdasarkan tipe foto
+        $column = $request->type === 'hygiene'
+            ? 'photo_hygiene_clearance'
+            : 'photo_documentation';
+
+        $photos = $report->{$column} ?? [];
+
+        // Pastikan index valid sebelum proses apapun
+        if (!array_key_exists($index, $photos)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Foto tidak ditemukan pada index tersebut.',
+            ], 404);
+        }
+
+        // Hapus file fisik dari storage (gagal diam-diam jika file sudah tidak ada)
+        $disk = config('telegram.photo_disk', 'public');
+        Storage::disk($disk)->delete($photos[$index]);
+
+        // Buang elemen dari array, pastikan tetap sequential (bukan associative)
+        // agar disimpan sebagai JSON array bukan JSON object
+        array_splice($photos, $index, 1);
+
+        $report->update([$column => array_values($photos)]);
+
+        return response()->json(['success' => true]);
     }
 
     public function exportCsv(Request $request)

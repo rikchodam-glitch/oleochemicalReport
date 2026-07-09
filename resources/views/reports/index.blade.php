@@ -32,6 +32,11 @@
                        placeholder="Cari kode laporan...">
             </div>
             <div>
+                <input type="text" name="asset_code" value="{{ request('asset_code') }}"
+                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       placeholder="Cari kode alat...">
+            </div>
+            <div>
                 <input type="date" name="date_from" value="{{ request('date_from') }}"
                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
@@ -80,6 +85,7 @@
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Teknisi</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Deskripsi</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Area</th>
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Kode Alat</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Tipe</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Durasi</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Foto</th>
@@ -95,11 +101,20 @@
                             <td class="px-5 py-3.5 text-slate-600 whitespace-nowrap">{{ $report->report_date->format('d/m/Y') }}</td>
                             <td class="px-5 py-3.5">
                                 <span class="font-medium text-slate-700">{{ $report->technician->name ?? '-' }}</span>
+                                @if($report->collaborator_of)
+                                    <div class="mt-1">
+                                        <x-status-badge status="collaboration" label="Kolaborasi" />
+                                    </div>
+                                @endif
+                                @if($report->creator_id && $report->creator_id !== $report->technician_id)
+                                    <p class="text-xs text-slate-400 mt-1">Dibuat oleh: {{ $report->creator->name ?? '-' }}</p>
+                                @endif
                             </td>
                             <td class="px-5 py-3.5">
                                 <p class="text-slate-600 truncate max-w-xs">{{ Str::limit($report->work_description, 60) }}</p>
                             </td>
                             <td class="px-5 py-3.5 text-xs text-slate-600">{{ $report->area?->code ?? '-' }}</td>
+                            <td class="px-5 py-3.5 text-xs text-slate-600 whitespace-nowrap">{{ $report->asset->tech_ident_no ?? '-' }}</td>
                             <td class="px-5 py-3.5">
                                 <x-status-badge :status="$report->report_type" />
                             </td>
@@ -114,7 +129,9 @@
                                 Doc:{{ $report->photo_doc_count }} <span class="text-slate-300">│</span> HC:{{ $report->photo_hyg_count }}
                             </td>
                             <td class="px-5 py-3.5 text-xs">
-                                @if($report->ai_analyzed)
+                                @if($report->is_manually_edited)
+                                    <x-status-badge status="edited" label="Edited" />
+                                @elseif($report->ai_analyzed)
                                     <span class="{{ $report->ai_confidence >= 70 ? 'text-green-600' : ($report->ai_confidence >= 40 ? 'text-amber-600' : 'text-red-600') }}">
                                         {{ $report->ai_confidence }}%
                                     </span>
@@ -126,13 +143,17 @@
                                 <x-status-badge :status="$report->status" />
                             </td>
                             <td class="px-5 py-3.5">
-                                <a href="{{ route('reports.show', $report) }}"
-                                   class="text-blue-600 hover:text-blue-700 text-xs font-medium">Detail</a>
+                                <div class="flex items-center gap-3">
+                                    <a href="{{ route('reports.show', $report) }}"
+                                       class="text-blue-600 hover:text-blue-700 text-xs font-medium">Detail</a>
+                                    <a href="{{ route('reports.edit', $report) }}"
+                                       class="text-slate-500 hover:text-slate-700 text-xs font-medium">Edit</a>
+                                </div>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="11" class="px-5 py-8 text-center text-sm text-slate-400">Belum ada laporan.</td>
+                            <td colspan="12" class="px-5 py-8 text-center text-sm text-slate-400">Belum ada laporan.</td>
                         </tr>
                     @endforelse
                 </tbody>

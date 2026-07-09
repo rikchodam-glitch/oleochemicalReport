@@ -14,6 +14,7 @@ class Asset extends Model
         'tech_ident_no',
         'object_type',
         'functional_loc',
+        'funcloc_id',
         'company_id',
         'department_id',
         'area_id',
@@ -31,7 +32,7 @@ class Asset extends Model
     {
         return [
             'has_equipment_no' => 'boolean',
-            'imported_at' => 'datetime',
+            'imported_at'      => 'datetime',
         ];
     }
 
@@ -53,6 +54,15 @@ class Asset extends Model
     public function subArea(): BelongsTo
     {
         return $this->belongsTo(SubArea::class);
+    }
+
+    /**
+     * FuncLoc yang menjadi sumber kebenaran lokasi asset ini.
+     * Menggantikan kolom functional_loc (string) secara bertahap.
+     */
+    public function functionalLocation(): BelongsTo
+    {
+        return $this->belongsTo(FunctionalLocation::class, 'funcloc_id');
     }
 
     public function technicians(): BelongsToMany

@@ -4,6 +4,7 @@ use App\Http\Controllers\AiProviderController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\BotController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FunctionalLocationController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\ReportController;
@@ -39,6 +40,9 @@ Route::middleware('admin')->group(function () {
     Route::get('/assets/{asset}/technicians/list', [AssetController::class, 'listTechnicians'])->name('assets.technicians.list');
     Route::resource('assets', AssetController::class);
 
+    // Functional Location
+    Route::resource('func-locs', FunctionalLocationController::class)->except(['show']);
+
     // Technicians
     Route::resource('technicians', TechnicianController::class);
     Route::post('/technicians/{technician}/approve', [TechnicianController::class, 'approve'])->name('technicians.approve');
@@ -47,11 +51,21 @@ Route::middleware('admin')->group(function () {
     Route::post('/technicians/bulk-approve', [TechnicianController::class, 'bulkApprove'])->name('technicians.bulk-approve');
     Route::post('/technicians/{technician}/broadcast', [TechnicianController::class, 'broadcast'])->name('technicians.broadcast');
 
-    // Reports
+    // Reports - static dan custom routes WAJIB sebelum resource
+    // agar tidak ditimpa oleh wildcard {report} milik resource.
+    Route::get('/reports/locations/funclocs', [ReportController::class, 'getFuncLocsByArea'])->name('reports.locations.funclocs');
+    Route::get('/reports/locations/assets', [ReportController::class, 'getAssetsByArea'])->name('reports.locations.assets');
+    Route::get('/reports/export/csv', [ReportController::class, 'exportCsv'])->name('reports.export-csv');
+
+    // Hapus satu foto dari laporan — index adalah posisi dalam array JSON (0-based).
+    // Constraint [0-9]+ mencegah injeksi nilai non-numerik sebagai index.
+    Route::delete('/reports/{report}/photos/{index}', [ReportController::class, 'deletePhoto'])
+        ->name('reports.photos.delete')
+        ->where('index', '[0-9]+');
+
     Route::resource('reports', ReportController::class);
     Route::post('/reports/{report}/update-status', [ReportController::class, 'updateStatus'])->name('reports.update-status');
     Route::post('/reports/{report}/photos', [ReportController::class, 'addPhoto'])->name('reports.add-photo');
-    Route::get('/reports/export/csv', [ReportController::class, 'exportCsv'])->name('reports.export-csv');
 
     // AI Providers
     Route::get('/ai-providers', [AiProviderController::class, 'index'])->name('ai-providers.index');

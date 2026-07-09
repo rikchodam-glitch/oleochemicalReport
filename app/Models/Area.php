@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Area extends Model
 {
-    protected $fillable = ['department_id', 'code', 'name'];
+    protected $fillable = ['department_id', 'code', 'name', 'funcloc_id'];
 
     public function department(): BelongsTo
     {
@@ -23,6 +23,14 @@ class Area extends Model
     public function assets(): HasMany
     {
         return $this->hasMany(Asset::class);
+    }
+
+    /**
+     * FuncLoc L2 yang merepresentasikan area ini.
+     */
+    public function functionalLocation(): BelongsTo
+    {
+        return $this->belongsTo(FunctionalLocation::class, 'funcloc_id');
     }
 
     public function getFullNameAttribute(): string

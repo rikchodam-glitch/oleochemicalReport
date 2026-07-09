@@ -7,6 +7,7 @@ use App\Models\Asset;
 use App\Services\AiService;
 use App\Services\TechIdentSearchService;
 use App\Services\Telegram\Traits\WizardCallbackHandlerTrait;
+use App\Services\Telegram\Traits\WizardFuncLocPickerTrait;
 use App\Services\Telegram\Traits\WizardPhotoAddonTrait;
 use App\Services\Telegram\Traits\WizardReportSaverTrait;
 use App\Services\Telegram\Traits\WizardStepHandlerTrait;
@@ -17,19 +18,20 @@ use Illuminate\Support\Facades\Log;
 /**
  * ReportWizardService
  *
- * Orkestrator utama wizard 8-step laporan via Telegram Bot.
+ * Orkestrator utama wizard 9-step laporan via Telegram Bot.
  * Pendekatan "Create at End" — laporan hanya disimpan ke DB setelah
  * teknisi mengonfirmasi di Step 8. Semua state disimpan di Laravel Cache
  * per chat_id.
  *
- * Step 1: Terima Laporan Awal    -> jalankan TechIdentSearch 3-pass, deteksi tanggal laporan
- * Step 2: Klarifikasi Equipment  -> keyboard kandidat / tulis ulang / hierarki
- * Step 3: Akselerasi FuncLoc     -> ditangani ClarificationService & FuncLocParser
- * Step 4: Waktu Pengerjaan       -> parse durasi atau tanya ke teknisi
- * Step 5: Root Cause             -> input teks bebas, wajib min 3 karakter
- * Step 6: Foto Dokumentasi       -> multi-foto opsional, bisa skip
- * Step 7: Foto Hygiene Clearance -> multi-foto opsional, bisa skip
- * Step 8: Konfirmasi & Simpan    -> tampilkan ringkasan, simpan ke DB jika OK
+ * Step 1 : Terima Laporan Awal     -> jalankan TechIdentSearch 3-pass, deteksi tanggal laporan
+ * Step 2 : Klarifikasi Equipment   -> keyboard kandidat / tulis ulang / hierarki
+ * Step 3 : Akselerasi FuncLoc      -> ditangani ClarificationService & FuncLocParser
+ * Step 4 : Waktu Pengerjaan        -> parse durasi atau tanya ke teknisi
+ * Step 5 : Root Cause              -> input teks bebas, wajib min 3 karakter
+ * Step 6 : Foto Dokumentasi        -> multi-foto opsional, bisa skip
+ * Step 7 : Foto Hygiene Clearance  -> multi-foto opsional, bisa skip
+ * Step 8a: Kolaborator (opsional)  -> input NIK rekan kerja, bisa dilewati
+ * Step 8 : Konfirmasi & Simpan     -> tampilkan ringkasan, simpan ke DB jika OK
  *
  * Tanggung jawab class ini (orkestrator):
  *   - Entry point publik: startWizard, handleTextInput, handlePhotoInput, handleCallback
@@ -44,16 +46,18 @@ use Illuminate\Support\Facades\Log;
  *   - Polling Telegram & dispatch pesan masuk (PollTelegramUpdates)
  *
  * Trait yang digunakan:
- *   - WizardStepHandlerTrait    : handler per-step (4, 5, 6, 7, konfirmasi teks)
+ *   - WizardStepHandlerTrait    : handler per-step (4, 5, 6, 7, 8a, konfirmasi teks)
  *   - WizardCallbackHandlerTrait: handler semua callback inline keyboard
  *   - WizardReportSaverTrait    : simpan laporan ke DB, validasi foto, generate kode
  *   - WizardUtilityTrait        : format durasi/tanggal, label equipment, state awal, error response
  *   - WizardPhotoAddonTrait     : tambah foto ke laporan tersimpan via report_code
+ *   - WizardFuncLocPickerTrait  : keyboard hierarki FuncLoc untuk alur laporan area/section
  */
 class ReportWizardService
 {
     use WizardStepHandlerTrait;
     use WizardCallbackHandlerTrait;
+    use WizardFuncLocPickerTrait;
     use WizardReportSaverTrait;
     use WizardUtilityTrait;
     use WizardPhotoAddonTrait;
@@ -69,6 +73,7 @@ class ReportWizardService
     const STEP_ROOT_CAUSE          = 'root_cause';
     const STEP_PHOTO_DOCUMENTATION = 'photo_documentation';
     const STEP_PHOTO_HYGIENE       = 'photo_hygiene';
+    const STEP_COLLABORATOR        = 'collaborator';
     const STEP_CONFIRMATION        = 'confirmation';
     const STEP_DONE                = 'done';
 
@@ -186,6 +191,9 @@ class ReportWizardService
 
             case self::STEP_PHOTO_HYGIENE:
                 return $this->handlePhotoCommand($chatId, $text, $state, 'hygiene');
+
+            case self::STEP_COLLABORATOR:
+                return $this->handleCollaboratorInput($chatId, $text, $state);
 
             case self::STEP_CONFIRMATION:
                 return $this->handleConfirmation($chatId, $text, $state);

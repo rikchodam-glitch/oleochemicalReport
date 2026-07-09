@@ -7,6 +7,7 @@ use App\Models\Asset;
 use App\Models\AssetImportLog;
 use App\Models\Company;
 use App\Models\Department;
+use App\Models\FunctionalLocation;
 use App\Models\SubArea;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -96,6 +97,12 @@ class ImportService
             }
         }
 
+        $results['funcloc_preview'] = $this->previewFuncLocs(array_merge(
+            array_column($results['clean'], 'functional_loc'),
+            array_column($results['duplicate'], 'functional_loc'),
+            array_column($results['no_equip'], 'functional_loc'),
+        ));
+
         return $results;
     }
 
@@ -140,10 +147,13 @@ class ImportService
             // Process clean rows
             foreach ($analysis['clean'] as $row) {
                 $location = $this->findOrCreateLocation($row['location']);
+                $funcLocNode = $row['functional_loc'] !== '' ? $this->syncFuncLocFromRow($row['functional_loc']) : null;
+
                 Asset::create(array_merge(
                     $this->mapToAsset($row),
                     $location,
                     [
+                        'funcloc_id' => $funcLocNode?->id,
                         'status' => 'active',
                         'has_equipment_no' => true,
                         'data_source' => 'import_excel',
@@ -161,10 +171,12 @@ class ImportService
 
                     if ($duplicateAction === 'replace') {
                         $location = $this->findOrCreateLocation($row['location']);
+                        $funcLocNode = $row['functional_loc'] !== '' ? $this->syncFuncLocFromRow($row['functional_loc']) : null;
+
                         $existing->update(array_merge(
                             $this->mapToAsset($row),
                             $location,
-                            ['imported_at' => now()]
+                            ['funcloc_id' => $funcLocNode?->id, 'imported_at' => now()]
                         ));
                         $successCount++;
                     } elseif ($duplicateAction === 'keep_flag') {
@@ -177,17 +189,19 @@ class ImportService
             // Process no equipment rows
             if ($noEquipAction === 'flag') {
                 foreach ($analysis['no_equip'] as $row) {
-                    $location = $this->findOrCreateLocation(
-                        $this->parseFunctionalLoc($row['functional_loc'] ?? '')
-                    );
+                    $funcLocString = $row['functional_loc'] ?? '';
+                    $location = $this->findOrCreateLocation($this->parseFunctionalLoc($funcLocString));
+                    $funcLocNode = $funcLocString !== '' ? $this->syncFuncLocFromRow($funcLocString) : null;
+
                     Asset::create(array_merge(
                         [
                             'equipment_no' => null,
                             'description' => $row['description'] ?? '',
-                            'functional_loc' => $row['functional_loc'] ?? '',
+                            'functional_loc' => $funcLocString,
                         ],
                         $location,
                         [
+                            'funcloc_id' => $funcLocNode?->id,
                             'status' => 'needs_review',
                             'has_equipment_no' => false,
                             'data_source' => 'import_excel',
@@ -283,5 +297,121 @@ class ImportService
             'model_number'   => $row['model_number'] ?? '',
             'construct_year' => $row['construct_year'] ?? '',
         ];
+    }
+
+    /**
+     * Susun preview FuncLoc dari kumpulan string "Functional Loc." mentah,
+     * tanpa membuat record apapun. Dipakai di halaman preview import agar
+     * admin bisa melihat node mana yang baru dan mana yang sudah ada
+     * sebelum menekan tombol import.
+     *
+     * @param  array<int, string>  $funcLocPaths
+     * @return array{nodes: array, new_count: int, existing_count: int}
+     */
+    public function previewFuncLocs(array $funcLocPaths): array
+    {
+        $codeLevels = collect();
+
+        foreach ($funcLocPaths as $path) {
+            $segments = $this->splitFuncLocSegments((string) $path);
+            $code = null;
+
+            foreach ($segments as $level => $segment) {
+                $code = $code !== null ? $code . '-' . $segment : $segment;
+                $codeLevels->put($code, $level);
+            }
+        }
+
+        if ($codeLevels->isEmpty()) {
+            return ['nodes' => [], 'new_count' => 0, 'existing_count' => 0];
+        }
+
+        $existingCodes = FunctionalLocation::whereIn('code', $codeLevels->keys())
+            ->pluck('code')
+            ->flip();
+
+        $nodes = $codeLevels
+            ->map(fn ($level, $code) => [
+                'code'   => $code,
+                'level'  => $level,
+                'exists' => $existingCodes->has($code),
+            ])
+            ->values()
+            ->sortBy('code')
+            ->values()
+            ->all();
+
+        return [
+            'nodes'          => $nodes,
+            'new_count'      => collect($nodes)->where('exists', false)->count(),
+            'existing_count' => collect($nodes)->where('exists', true)->count(),
+        ];
+    }
+
+    /**
+     * Buat semua node FuncLoc (termasuk parent) dari satu baris "Functional
+     * Loc." Excel jika belum ada, lalu kembalikan node paling dalam (yang
+     * cocok dengan path penuh) untuk di-assign sebagai funcloc_id asset.
+     *
+     * Nama node diisi sama dengan kode karena Excel ZPM tidak menyediakan
+     * deskripsi per level hierarki. Admin bisa memperbaiki nama tersebut
+     * belakangan lewat halaman admin Functional Location.
+     *
+     * @param  string  $funcLoc
+     * @return FunctionalLocation|null
+     */
+    public function syncFuncLocFromRow(string $funcLoc): ?FunctionalLocation
+    {
+        $segments = $this->splitFuncLocSegments($funcLoc);
+
+        if (empty($segments)) {
+            return null;
+        }
+
+        $parent = null;
+        $node = null;
+
+        foreach ($segments as $level => $segment) {
+            $code = $parent !== null ? $parent->code . '-' . $segment : $segment;
+
+            $node = FunctionalLocation::firstOrCreate(
+                ['code' => $code],
+                [
+                    'segment'   => $segment,
+                    'name'      => $code,
+                    'level'     => $level,
+                    'parent_id' => $parent?->id,
+                    'is_active' => true,
+                ]
+            );
+
+            $parent = $node;
+        }
+
+        return $node;
+    }
+
+    /**
+     * Pecah string "Functional Loc." mentah menjadi segment per level.
+     * Sengaja tidak melakukan uppercase supaya kode yang dihasilkan persis
+     * sama dengan kode Company/Department/Area/SubArea yang dibuat oleh
+     * findOrCreateLocation() dari string yang sama — mencegah node duplikat
+     * akibat perbedaan kapitalisasi.
+     *
+     * @param  string  $funcLoc
+     * @return array<int, string>
+     */
+    private function splitFuncLocSegments(string $funcLoc): array
+    {
+        $funcLoc = trim($funcLoc);
+
+        if ($funcLoc === '') {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map('trim', explode('-', $funcLoc)),
+            fn ($segment) => $segment !== ''
+        ));
     }
 }

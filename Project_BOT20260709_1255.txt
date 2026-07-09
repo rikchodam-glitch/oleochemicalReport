@@ -169,13 +169,30 @@ trait TelegramMessageHandlerTrait
             return;
         }
 
-        // C) Tidak ada wizard aktif & tidak ada RPT code → mulai wizard baru
-        // Foto akan menjadi foto awal dan dikonfirmasi di Step 6
+        // C) Tidak ada wizard aktif & tidak ada RPT code → mulai wizard baru.
+        // Foto harus di-download ke storage lokal terlebih dahulu agar path yang
+        // diteruskan ke startWizard() adalah path lokal (bukan raw file_id Telegram).
+        // Jika tidak di-download di sini, filterValidLocalPhotoPaths() di saver
+        // akan membuang foto karena raw file_id tidak mengandung karakter '/'.
+        $localPath = $this->photoStorage->store($fileId, (string) $chatId);
+
+        if ($localPath === null) {
+            $this->sendMessage($chatId, "Gagal menyimpan foto awal. Coba kirim ulang.");
+            return;
+        }
+
         $response = $this->reportWizard->startWizard(
             chatId:      (string) $chatId,
             text:        $caption ?: 'Laporan dengan foto',
-            photoFileId: $fileId   // file_id diteruskan, download terjadi di Step 6
+            photoFileId: $localPath
         );
+
+        // Jika wizard gagal dimulai, hapus foto yang sudah terlanjur disimpan
+        // agar tidak jadi file yatim di storage.
+        if (!empty($response['error'])) {
+            $this->photoStorage->delete($localPath);
+        }
+
         $this->dispatchWizardResponse($chatId, $response);
     }
 
@@ -198,7 +215,13 @@ trait TelegramMessageHandlerTrait
      *
      * Dipanggil dari processCallbackQuery. Jika respons mengandung keyboard,
      * pesan diedit in-place; jika tidak, hanya teks yang diperbarui.
-     * Jika laporan berhasil disimpan, kirim pesan terpisah dengan kode laporan.
+     *
+     * Jika laporan berhasil disimpan (saved === true), ReportWizardService
+     * mengembalikan dua pesan terpisah untuk mencegah pesan ganda:
+     *   - edit_message    : dipakai untuk menimpa pesan konfirmasi Step 8
+     *   - success_message : dikirim sebagai pesan baru berisi detail laporan
+     * Untuk respons biasa (bukan hasil penyimpanan), hanya field 'message'
+     * yang tersedia dan dipakai sebagai fallback untuk edit_message.
      *
      * @param int|string $chatId    ID chat
      * @param int        $messageId ID pesan yang memicu callback
@@ -209,17 +232,23 @@ trait TelegramMessageHandlerTrait
     {
         $response = $this->reportWizard->handleCallback((string) $chatId, $data);
 
-        if (!empty($response['message'])) {
+        // Pesan untuk menimpa pesan lama (inline keyboard). Fallback ke 'message'
+        // untuk respons wizard biasa yang belum memisahkan edit_message/success_message.
+        $editMessage = $response['edit_message'] ?? $response['message'] ?? '';
+
+        if (!empty($editMessage)) {
             if (!empty($response['keyboard'])) {
-                $this->editMessageText($chatId, $messageId, $response['message'], $response['keyboard']);
+                $this->editMessageText($chatId, $messageId, $editMessage, $response['keyboard']);
             } else {
-                $this->editMessageTextSimple($chatId, $messageId, $response['message']);
+                $this->editMessageTextSimple($chatId, $messageId, $editMessage);
             }
         }
 
-        // Jika laporan berhasil disimpan, kirim pesan terpisah dengan kode laporan
+        // Jika laporan berhasil disimpan, kirim pesan sukses terpisah (pesan baru).
+        // Menggunakan success_message agar tidak identik dengan edit_message di atas.
         if (!empty($response['saved']) && !empty($response['report_code'])) {
-            $this->sendMessage($chatId, $response['message'] ?? "Laporan tersimpan.");
+            $successMessage = $response['success_message'] ?? $response['message'] ?? "Laporan tersimpan.";
+            $this->sendMessage($chatId, $successMessage);
         }
     }
 
@@ -840,6 +869,447 @@ class PollTelegramUpdates extends Command
         $this->saveLastOffset(0);
         $this->info('Offset di-reset ke 0. Polling akan mulai dari awal saat dijalankan lagi.');
         return Command::SUCCESS;
+    }
+}
+
+================ WARNAI DENGAN FILE: SeedFuncLocFromAssets.php =================
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\Area;
+use App\Models\Asset;
+use App\Models\Company;
+use App\Models\Department;
+use App\Models\FunctionalLocation;
+use App\Models\SubArea;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+
+class SeedFuncLocFromAssets extends Command
+{
+    protected $signature = 'funcloc:seed-from-assets
+                            {--dry-run : Tampilkan rencana tanpa menyimpan ke database}';
+
+    protected $description = 'Populasi tabel functional_locations dari data companies, departments, areas, sub_areas, dan assets yang sudah ada.';
+
+    // Cache node yang sudah diproses untuk menghindari query berulang
+    private array $cache = [];
+
+    public function handle(): int
+    {
+        $isDryRun = $this->option('dry-run');
+
+        if ($isDryRun) {
+            $this->warn('[DRY RUN] Semua query dijalankan di dalam transaksi yang akan di-rollback.');
+        }
+
+        $this->info('Memulai seeding FuncLoc dari data yang sudah ada...');
+        $this->newLine();
+
+        // Dry-run tetap menggunakan transaksi nyata agar seluruh logika berjalan benar,
+        // namun di-rollback di akhir sehingga tidak ada perubahan yang tersimpan.
+        DB::beginTransaction();
+
+        try {
+            $this->seedFromCompanies();
+            $this->seedFromDepartments();
+            $this->seedFromAreas();
+            $this->seedFromSubAreas();
+            $this->seedOrphanNodesFromAssets();
+            $this->linkAssetsToFuncLoc($isDryRun);
+
+            if ($isDryRun) {
+                DB::rollBack();
+                $this->newLine();
+                $this->warn('[DRY RUN] Rollback selesai — tidak ada perubahan tersimpan.');
+            } else {
+                DB::commit();
+                $this->newLine();
+                $this->info('Seeding selesai dan berhasil disimpan.');
+            }
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            $this->error('Terjadi kesalahan: ' . $e->getMessage());
+            $this->error($e->getTraceAsString());
+
+            return self::FAILURE;
+        }
+
+        return self::SUCCESS;
+    }
+
+    // =========================================================
+    // TAHAP 1 — L0: Site/Company
+    // =========================================================
+
+    /**
+     * Buat satu node L0 untuk setiap company yang ada.
+     *
+     * @return void
+     */
+    private function seedFromCompanies(): void
+    {
+        $this->info('Tahap 1/6: Membuat node L0 (Site/Company)...');
+
+        $companies = Company::all();
+
+        foreach ($companies as $company) {
+            $code = strtoupper(trim($company->code));
+
+            $this->firstOrCreateNode(
+                code: $code,
+                segment: $code,
+                name: $company->name,
+                level: FunctionalLocation::LEVEL_SITE,
+                parentId: null,
+                extraAttributes: ['company_id' => $company->id]
+            );
+
+            $this->line("  [L0] {$code} — {$company->name}");
+        }
+
+        $this->info("  Selesai: {$companies->count()} company diproses.");
+    }
+
+    // =========================================================
+    // TAHAP 2 — L1: Department
+    // =========================================================
+
+    /**
+     * Buat satu node L1 untuk setiap department.
+     *
+     * @return void
+     */
+    private function seedFromDepartments(): void
+    {
+        $this->info('Tahap 2/6: Membuat node L1 (Department)...');
+
+        $departments = Department::with('company')->get();
+        $count = 0;
+
+        foreach ($departments as $dept) {
+            $companyCode = strtoupper(trim($dept->company->code));
+            $deptCode    = strtoupper(trim($dept->code));
+            $fullCode    = "{$companyCode}-{$deptCode}";
+
+            $parentNode = $this->cache[$companyCode] ?? null;
+
+            $this->firstOrCreateNode(
+                code: $fullCode,
+                segment: $deptCode,
+                name: $dept->name,
+                level: FunctionalLocation::LEVEL_DEPARTMENT,
+                parentId: $parentNode?->id,
+                extraAttributes: [
+                    'company_id'    => $dept->company_id,
+                    'department_id' => $dept->id,
+                ]
+            );
+
+            $this->line("  [L1] {$fullCode} — {$dept->name}");
+            $count++;
+        }
+
+        $this->info("  Selesai: {$count} department diproses.");
+    }
+
+    // =========================================================
+    // TAHAP 3 — L2: Area
+    // =========================================================
+
+    /**
+     * Buat node L2 untuk setiap area dan set area.funcloc_id.
+     *
+     * @return void
+     */
+    private function seedFromAreas(): void
+    {
+        $this->info('Tahap 3/6: Membuat node L2 (Area)...');
+
+        $areas = Area::with('department.company')->get();
+        $count = 0;
+
+        foreach ($areas as $area) {
+            $dept        = $area->department;
+            $company     = $dept->company;
+            $companyCode = strtoupper(trim($company->code));
+            $deptCode    = strtoupper(trim($dept->code));
+            $areaCode    = strtoupper(trim($area->code));
+            $fullCode    = "{$companyCode}-{$deptCode}-{$areaCode}";
+            $parentCode  = "{$companyCode}-{$deptCode}";
+
+            $parentNode = $this->cache[$parentCode] ?? null;
+
+            $node = $this->firstOrCreateNode(
+                code: $fullCode,
+                segment: $areaCode,
+                name: $area->name,
+                level: FunctionalLocation::LEVEL_AREA,
+                parentId: $parentNode?->id,
+                extraAttributes: [
+                    'company_id'    => $company->id,
+                    'department_id' => $dept->id,
+                    'area_id'       => $area->id,
+                ]
+            );
+
+            // Set area.funcloc_id jika belum terhubung
+            if ($node !== null && $area->funcloc_id === null) {
+                $area->update(['funcloc_id' => $node->id]);
+            }
+
+            $this->line("  [L2] {$fullCode} — {$area->name}");
+            $count++;
+        }
+
+        $this->info("  Selesai: {$count} area diproses.");
+    }
+
+    // =========================================================
+    // TAHAP 4 — L3: SubArea
+    // =========================================================
+
+    /**
+     * Buat node L3 untuk setiap sub_area dan set sub_area.funcloc_id.
+     *
+     * @return void
+     */
+    private function seedFromSubAreas(): void
+    {
+        $this->info('Tahap 4/6: Membuat node L3 (SubArea/Section)...');
+
+        $subAreas = SubArea::with('area.department.company')->get();
+        $count    = 0;
+
+        foreach ($subAreas as $subArea) {
+            $area        = $subArea->area;
+            $dept        = $area->department;
+            $company     = $dept->company;
+            $companyCode = strtoupper(trim($company->code));
+            $deptCode    = strtoupper(trim($dept->code));
+            $areaCode    = strtoupper(trim($area->code));
+            $subCode     = strtoupper(trim($subArea->code));
+            $fullCode    = "{$companyCode}-{$deptCode}-{$areaCode}-{$subCode}";
+            $parentCode  = "{$companyCode}-{$deptCode}-{$areaCode}";
+
+            $parentNode = $this->cache[$parentCode] ?? null;
+
+            $node = $this->firstOrCreateNode(
+                code: $fullCode,
+                segment: $subCode,
+                name: $subArea->name,
+                level: FunctionalLocation::LEVEL_SECTION,
+                parentId: $parentNode?->id,
+                extraAttributes: [
+                    'company_id'    => $company->id,
+                    'department_id' => $dept->id,
+                    'area_id'       => $area->id,
+                    'sub_area_id'   => $subArea->id,
+                ]
+            );
+
+            if ($node !== null && $subArea->funcloc_id === null) {
+                $subArea->update(['funcloc_id' => $node->id]);
+            }
+
+            $this->line("  [L3] {$fullCode} — {$subArea->name}");
+            $count++;
+        }
+
+        $this->info("  Selesai: {$count} sub_area diproses.");
+    }
+
+    // =========================================================
+    // TAHAP 5 — Orphan nodes dari kolom assets.functional_loc
+    // =========================================================
+
+    /**
+     * Scan kolom functional_loc di assets untuk menemukan node yang belum ada
+     * di tabel functional_locations — mis. EPE-PROD-BD02 yang tidak punya Area record.
+     * Buat node induk yang hilang secara rekursif.
+     *
+     * @return void
+     */
+    private function seedOrphanNodesFromAssets(): void
+    {
+        $this->info('Tahap 5/6: Membuat orphan nodes dari assets.functional_loc...');
+
+        $funcLocs = Asset::whereNotNull('functional_loc')
+            ->distinct()
+            ->pluck('functional_loc');
+
+        $created = 0;
+        $skipped = 0;
+
+        foreach ($funcLocs as $rawCode) {
+            $code = strtoupper(trim($rawCode));
+
+            if (empty($code)) {
+                continue;
+            }
+
+            // Jika sudah ada di cache berarti sudah dibuat di tahap sebelumnya
+            if (isset($this->cache[$code])) {
+                $skipped++;
+                continue;
+            }
+
+            $node = $this->ensureNodeExists($code);
+
+            if ($node !== null) {
+                $created++;
+            }
+        }
+
+        $this->info("  Selesai: {$created} node baru dibuat, {$skipped} sudah ada.");
+    }
+
+    // =========================================================
+    // TAHAP 6 — Link assets.funcloc_id
+    // =========================================================
+
+    /**
+     * Update assets.funcloc_id berdasarkan assets.functional_loc (string).
+     * Pada dry-run, hanya tampilkan ringkasan tanpa update.
+     *
+     * @param  bool  $isDryRun
+     * @return void
+     */
+    private function linkAssetsToFuncLoc(bool $isDryRun): void
+    {
+        $this->info('Tahap 6/6: Menghubungkan assets.funcloc_id dari string functional_loc...');
+
+        $assets = Asset::whereNotNull('functional_loc')
+            ->whereNull('funcloc_id')
+            ->get();
+
+        $linked  = 0;
+        $skipped = 0;
+        $missing = 0;
+
+        foreach ($assets as $asset) {
+            $code = strtoupper(trim($asset->functional_loc));
+
+            // Lewati asset yang functional_loc-nya kosong atau hanya whitespace
+            if ($code === '') {
+                $this->warn("  [DILEWATI] functional_loc kosong — asset ID {$asset->id}");
+                $skipped++;
+                continue;
+            }
+
+            $node = $this->cache[$code] ?? FunctionalLocation::where('code', $code)->first();
+
+            if ($node === null) {
+                $this->warn("  [TIDAK DITEMUKAN] {$code} — asset ID {$asset->id}");
+                $missing++;
+                continue;
+            }
+
+            // Pada dry-run transaksi tetap dijalankan tapi akan di-rollback,
+            // sehingga update ini aman untuk dieksekusi sebagai preview
+            if (!$isDryRun) {
+                $asset->update(['funcloc_id' => $node->id]);
+            }
+
+            $linked++;
+        }
+
+        $label = $isDryRun ? 'akan dihubungkan' : 'dihubungkan';
+        $this->info("  Selesai: {$linked} asset {$label}, {$skipped} dilewati (kosong), {$missing} kode tidak ditemukan.");
+    }
+
+    // =========================================================
+    // HELPER PRIVAT
+    // =========================================================
+
+    /**
+     * Ambil node dari cache atau buat jika belum ada.
+     * Selalu menyimpan ke database (dalam transaksi aktif).
+     * Rollback di handle() akan membatalkan jika ini adalah dry-run.
+     *
+     * @param  string    $code
+     * @param  string    $segment
+     * @param  string    $name
+     * @param  int       $level
+     * @param  int|null  $parentId
+     * @param  array     $extraAttributes
+     * @return FunctionalLocation
+     */
+    private function firstOrCreateNode(
+        string $code,
+        string $segment,
+        string $name,
+        int $level,
+        ?int $parentId,
+        array $extraAttributes
+    ): FunctionalLocation {
+        if (isset($this->cache[$code])) {
+            return $this->cache[$code];
+        }
+
+        $node = FunctionalLocation::firstOrCreate(
+            ['code' => $code],
+            array_merge([
+                'segment'   => $segment,
+                'name'      => $name,
+                'level'     => $level,
+                'parent_id' => $parentId,
+                'is_active' => true,
+            ], $extraAttributes)
+        );
+
+        $this->cache[$code] = $node;
+
+        return $node;
+    }
+
+    /**
+     * Pastikan node dengan kode tertentu sudah ada.
+     * Jika belum, buat node-nya beserta semua node induk yang hilang secara rekursif.
+     * Nama node yang dibuat dari sini diisi dengan kode itu sendiri karena tidak ada
+     * nama yang bisa diambil dari data lama — admin bisa mengupdate via halaman FuncLoc.
+     *
+     * @param  string  $code
+     * @return FunctionalLocation|null
+     */
+    private function ensureNodeExists(string $code): ?FunctionalLocation
+    {
+        if (isset($this->cache[$code])) {
+            return $this->cache[$code];
+        }
+
+        // Pecah kode untuk menentukan level dan segment
+        $segments = explode('-', $code);
+        $level    = count($segments) - 1;
+
+        if ($level < FunctionalLocation::LEVEL_SITE || $level > FunctionalLocation::LEVEL_SECTION) {
+            $this->warn("  [LEVEL TIDAK VALID] {$code} (segmen: " . count($segments) . ")");
+            return null;
+        }
+
+        // Pastikan induk sudah ada sebelum membuat node ini
+        $parentNode = null;
+
+        if ($level > FunctionalLocation::LEVEL_SITE) {
+            $parentCode = implode('-', array_slice($segments, 0, -1));
+            $parentNode = $this->ensureNodeExists($parentCode);
+        }
+
+        $segment = end($segments);
+
+        $node = $this->firstOrCreateNode(
+            code: $code,
+            segment: $segment,
+            name: $code,
+            level: $level,
+            parentId: $parentNode?->id,
+            extraAttributes: []
+        );
+
+        $this->line("  [ORPHAN L{$level}] {$code}");
+
+        return $node;
     }
 }
 
@@ -1489,6 +1959,10 @@ use App\Models\AiProvider;
 use App\Models\AiUsageLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class AiProviderController extends Controller
 {
@@ -1517,16 +1991,13 @@ class AiProviderController extends Controller
             'sisa_harian'       => $sisaHarian,
         ];
 
-        // Log terbaru 30 baris — tambah kolom request_type dan response_time_ms
         $recentLogs = AiUsageLog::with('provider')
             ->latest()
             ->take(30)
             ->get();
 
-        // Breakdown pemakaian per request_type dalam 24 jam
         $statsByType = AiUsageLog::statsByRequestType(24);
 
-        // Statistik per provider dalam 24 jam (untuk ditampilkan di provider card)
         $statsPerProvider = AiUsageLog::statsPerProvider24h();
 
         $pendingAliases = AiAlias::with(['asset', 'area', 'technician'])
@@ -1619,31 +2090,67 @@ class AiProviderController extends Controller
     }
 
     /**
-     * Test koneksi ke satu provider AI.
+     * Test koneksi ke satu provider AI dengan benar-benar memanggil API.
+     *
+     * Mengirim prompt minimal ke endpoint provider dan memverifikasi
+     * bahwa respons HTTP 200 diterima dan berisi konten yang valid.
+     * Status provider diperbarui berdasarkan hasil aktual dari API.
      *
      * @param AiProvider $aiProvider
      * @return \Illuminate\Http\JsonResponse
      */
     public function test(AiProvider $aiProvider)
     {
+        $startTime    = microtime(true);
+        $responseTime = 0;
+
         try {
-            $startTime = microtime(true);
-            // Placeholder — implementasi ping nyata ada di service layer
-            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $result       = $this->pingProvider($aiProvider);
+            $responseTime = $result['response_time_ms'];
+
+            if ($result['success']) {
+                $aiProvider->update([
+                    'last_health_check' => now(),
+                    'status'            => 'healthy',
+                ]);
+
+                // Catat ke usage log sebagai health_check
+                $this->logUsage($aiProvider, $responseTime, 'health_check', 'success');
+
+                return response()->json([
+                    'success' => true,
+                    'message' => "Koneksi berhasil. Response time: {$responseTime}ms",
+                ]);
+            }
+
+            // Tentukan status error berdasarkan HTTP code
+            $newStatus = $result['http_code'] === 429 ? 'exhausted' : 'error';
 
             $aiProvider->update([
                 'last_health_check' => now(),
-                'status'            => 'healthy',
+                'status'            => $newStatus,
             ]);
 
+            $this->logUsage($aiProvider, $responseTime, 'health_check', 'error', $result['error']);
+
             return response()->json([
-                'success' => true,
-                'message' => "Koneksi berhasil. Response time: {$responseTime}ms",
+                'success' => false,
+                'message' => 'Gagal: ' . $result['error'],
             ]);
+
         } catch (\Exception $e) {
+            $responseTime = (int) ((microtime(true) - $startTime) * 1000);
+
             $aiProvider->update([
                 'last_health_check' => now(),
                 'status'            => 'error',
+            ]);
+
+            $this->logUsage($aiProvider, $responseTime, 'health_check', 'error', $e->getMessage());
+
+            Log::error("AiProviderController::test() exception", [
+                'provider' => $aiProvider->name,
+                'error'    => $e->getMessage(),
             ]);
 
             return response()->json([
@@ -1654,7 +2161,7 @@ class AiProviderController extends Controller
     }
 
     /**
-     * Test koneksi ke semua provider AI sekaligus.
+     * Test koneksi ke semua provider AI sekaligus dengan memanggil API nyata.
      *
      * @return \Illuminate\Http\JsonResponse
      */
@@ -1665,21 +2172,49 @@ class AiProviderController extends Controller
 
         foreach ($providers as $provider) {
             try {
-                $startTime    = microtime(true);
-                $responseTime = round((microtime(true) - $startTime) * 1000);
+                $result       = $this->pingProvider($provider);
+                $responseTime = $result['response_time_ms'];
 
+                if ($result['success']) {
+                    $provider->update([
+                        'last_health_check' => now(),
+                        'status'            => 'healthy',
+                    ]);
+
+                    $this->logUsage($provider, $responseTime, 'health_check', 'success');
+
+                    $results[] = [
+                        'name'          => $provider->name,
+                        'success'       => true,
+                        'response_time' => $responseTime,
+                    ];
+                } else {
+                    $newStatus = $result['http_code'] === 429 ? 'exhausted' : 'error';
+
+                    $provider->update([
+                        'last_health_check' => now(),
+                        'status'            => $newStatus,
+                    ]);
+
+                    $this->logUsage($provider, $responseTime, 'health_check', 'error', $result['error']);
+
+                    $results[] = [
+                        'name'    => $provider->name,
+                        'success' => false,
+                        'error'   => $result['error'],
+                    ];
+                }
+
+            } catch (\Exception $e) {
                 $provider->update([
                     'last_health_check' => now(),
-                    'status'            => 'healthy',
+                    'status'            => 'error',
                 ]);
 
-                $results[] = [
-                    'name'          => $provider->name,
-                    'success'       => true,
-                    'response_time' => $responseTime,
-                ];
-            } catch (\Exception $e) {
-                $provider->update(['status' => 'error']);
+                Log::error("AiProviderController::testAll() exception", [
+                    'provider' => $provider->name,
+                    'error'    => $e->getMessage(),
+                ]);
 
                 $results[] = [
                     'name'    => $provider->name,
@@ -1739,6 +2274,213 @@ class AiProviderController extends Controller
 
         return redirect()->route('ai-providers.index')
             ->with('success', 'Alias "' . $alias->alias_text . '" berhasil ditolak.');
+    }
+
+    // =========================================================
+    // Private helpers
+    // =========================================================
+
+    /**
+     * Ping satu provider AI dengan mengirim prompt minimal ke API-nya.
+     *
+     * Mendukung provider_type: groq, openai (format OpenAI-compatible),
+     * dan ollama (endpoint berbeda, tidak perlu API key).
+     *
+     * @param  AiProvider $provider
+     * @return array{success: bool, response_time_ms: int, http_code: int|null, error: string|null}
+     */
+    private function pingProvider(AiProvider $provider): array
+    {
+        $startTime = microtime(true);
+
+        // Dekripsi API key menggunakan accessor yang sudah ada di model
+        $apiKey = $provider->api_key;
+
+        // Tentukan endpoint berdasarkan provider_type
+        $endpoint = $this->resolveEndpoint($provider);
+
+        // Prompt minimal untuk health check — tidak butuh respons panjang
+        $payload = $this->buildPingPayload($provider);
+
+        $httpCode = null;
+
+        try {
+            $headers = ['Content-Type' => 'application/json'];
+
+            // Ollama tidak pakai Authorization header
+            if ($provider->provider_type !== 'ollama') {
+                if (empty($apiKey)) {
+                    return [
+                        'success'         => false,
+                        'response_time_ms'=> 0,
+                        'http_code'       => null,
+                        'error'           => 'API key kosong. Isi API key provider terlebih dahulu.',
+                    ];
+                }
+                $headers['Authorization'] = 'Bearer ' . $apiKey;
+            }
+
+            $response = Http::timeout(15)
+                ->withHeaders($headers)
+                ->post($endpoint, $payload);
+
+            $responseTime = (int) ((microtime(true) - $startTime) * 1000);
+            $httpCode     = $response->status();
+
+            if ($response->successful()) {
+                // Pastikan respons benar-benar mengandung konten model
+                $content = $this->extractContent($provider, $response->json());
+
+                if ($content !== null) {
+                    return [
+                        'success'          => true,
+                        'response_time_ms' => $responseTime,
+                        'http_code'        => $httpCode,
+                        'error'            => null,
+                    ];
+                }
+
+                return [
+                    'success'          => false,
+                    'response_time_ms' => $responseTime,
+                    'http_code'        => $httpCode,
+                    'error'            => 'Respons API tidak mengandung konten yang valid.',
+                ];
+            }
+
+            // HTTP error — buat pesan yang informatif
+            $errorBody = substr($response->body(), 0, 200);
+            $errorMsg  = match ($httpCode) {
+                401     => 'API key tidak valid atau tidak diizinkan (401 Unauthorized).',
+                403     => 'Akses ditolak oleh provider (403 Forbidden).',
+                429     => 'Kuota API habis (429 Too Many Requests).',
+                500     => 'Server provider error (500 Internal Server Error).',
+                default => "HTTP {$httpCode}: {$errorBody}",
+            };
+
+            return [
+                'success'          => false,
+                'response_time_ms' => $responseTime,
+                'http_code'        => $httpCode,
+                'error'            => $errorMsg,
+            ];
+
+        } catch (\Exception $e) {
+            return [
+                'success'          => false,
+                'response_time_ms' => (int) ((microtime(true) - $startTime) * 1000),
+                'http_code'        => $httpCode,
+                'error'            => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Tentukan endpoint URL yang akan digunakan untuk ping.
+     *
+     * @param  AiProvider $provider
+     * @return string
+     */
+    private function resolveEndpoint(AiProvider $provider): string
+    {
+        if (!empty($provider->endpoint_url)) {
+            return $provider->endpoint_url;
+        }
+
+        return match ($provider->provider_type) {
+            'groq'   => 'https://api.groq.com/openai/v1/chat/completions',
+            'openai' => 'https://api.openai.com/v1/chat/completions',
+            'ollama' => 'http://localhost:11434/api/chat',
+            default  => 'https://api.groq.com/openai/v1/chat/completions',
+        };
+    }
+
+    /**
+     * Bangun payload minimal untuk health check.
+     * max_tokens=1 agar tidak membuang kuota untuk ping.
+     *
+     * @param  AiProvider $provider
+     * @return array
+     */
+    private function buildPingPayload(AiProvider $provider): array
+    {
+        $model = $provider->model ?? 'llama-3.3-70b-versatile';
+
+        // Ollama pakai format berbeda
+        if ($provider->provider_type === 'ollama') {
+            return [
+                'model'    => $model,
+                'messages' => [
+                    ['role' => 'user', 'content' => 'ping'],
+                ],
+                'stream'   => false,
+            ];
+        }
+
+        // Groq / OpenAI pakai format OpenAI-compatible
+        return [
+            'model'      => $model,
+            'messages'   => [
+                ['role' => 'user', 'content' => 'ping'],
+            ],
+            'max_tokens' => 1,
+        ];
+    }
+
+    /**
+     * Ekstrak konten dari respons API berdasarkan format provider.
+     *
+     * @param  AiProvider $provider
+     * @param  array|null $json
+     * @return string|null  Konten teks, atau null jika tidak valid
+     */
+    private function extractContent(AiProvider $provider, ?array $json): ?string
+    {
+        if (empty($json)) {
+            return null;
+        }
+
+        // Format Ollama
+        if ($provider->provider_type === 'ollama') {
+            return $json['message']['content'] ?? null;
+        }
+
+        // Format OpenAI-compatible (Groq & OpenAI)
+        return $json['choices'][0]['message']['content'] ?? null;
+    }
+
+    /**
+     * Simpan log penggunaan untuk health check ke tabel ai_usage_logs.
+     *
+     * @param  AiProvider  $provider
+     * @param  int         $responseTimeMs
+     * @param  string      $requestType
+     * @param  string      $status           'success'|'error'
+     * @param  string|null $errorMessage
+     * @return void
+     */
+    private function logUsage(
+        AiProvider $provider,
+        int $responseTimeMs,
+        string $requestType,
+        string $status,
+        ?string $errorMessage = null
+    ): void {
+        try {
+            AiUsageLog::create([
+                'provider_id'      => $provider->id,
+                'tokens_used'      => 0,   // Health check tidak mengkonsumsi token signifikan
+                'request_type'     => $requestType,
+                'response_time_ms' => $responseTimeMs,
+                'status'           => $status,
+                'error_message'    => $errorMessage,
+            ]);
+        } catch (\Exception $e) {
+            // Jangan biarkan kegagalan logging mengganggu respons utama
+            Log::warning("AiProviderController: gagal menyimpan usage log", [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
 
@@ -2436,6 +3178,272 @@ class DashboardController extends Controller
             'unknownAssets',
             'pendingRegistrations'
         ));
+    }
+}
+
+================ WARNAI DENGAN FILE: FunctionalLocationController.php =================
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\FunctionalLocation;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\View\View;
+
+class FunctionalLocationController extends Controller
+{
+    /**
+     * Tampilkan daftar Functional Location.
+     *
+     * Jika tidak ada filter yang aktif, data ditampilkan sebagai pohon hierarki
+     * (collapsible per level). Jika ada filter (level/parent/status), data
+     * ditampilkan sebagai daftar datar agar hasil filter mudah dibaca.
+     *
+     * @param  Request  $request
+     * @return View
+     */
+    public function index(Request $request): View
+    {
+        $filters = [
+            'level'     => $request->query('level'),
+            'parent_id' => $request->query('parent_id'),
+            'status'    => $request->query('status'),
+        ];
+
+        $hasFilter = collect($filters)->filter(fn ($value) => $value !== null && $value !== '')->isNotEmpty();
+
+        $tree  = null;
+        $items = null;
+
+        if ($hasFilter) {
+            $query = FunctionalLocation::withCount('assets');
+
+            if ($filters['level'] !== null && $filters['level'] !== '') {
+                $query->ofLevel((int) $filters['level']);
+            }
+
+            if ($filters['parent_id'] !== null && $filters['parent_id'] !== '') {
+                $query->underParent((int) $filters['parent_id']);
+            }
+
+            if ($filters['status'] !== null && $filters['status'] !== '') {
+                $query->where('is_active', $filters['status'] === 'active');
+            }
+
+            $items = $query->orderBy('code')->get();
+        } else {
+            $all  = FunctionalLocation::withCount('assets')->orderBy('code')->get();
+            $tree = $this->buildTree($all);
+        }
+
+        $parentOptions = FunctionalLocation::active()->orderBy('code')->get(['id', 'code', 'level']);
+
+        $stats = [
+            'total'         => FunctionalLocation::count(),
+            'active'        => FunctionalLocation::active()->count(),
+            'inactive'      => FunctionalLocation::where('is_active', false)->count(),
+            'without_asset' => FunctionalLocation::doesntHave('assets')->count(),
+        ];
+
+        return view('func-locs.index', [
+            'tree'          => $tree,
+            'items'         => $items,
+            'parentOptions' => $parentOptions,
+            'stats'         => $stats,
+            'filters'       => $filters,
+            'levelLabels'   => $this->levelLabels(),
+        ]);
+    }
+
+    /**
+     * Tampilkan form tambah node FuncLoc baru.
+     *
+     * @param  Request  $request
+     * @return View
+     */
+    public function create(Request $request): View
+    {
+        $parentOptions = FunctionalLocation::active()->orderBy('code')->get(['id', 'code', 'level']);
+        $selectedParentId = $request->query('parent_id');
+
+        return view('func-locs.create', [
+            'parentOptions'    => $parentOptions,
+            'selectedParentId' => $selectedParentId,
+            'levelLabels'      => $this->levelLabels(),
+        ]);
+    }
+
+    /**
+     * Simpan node FuncLoc baru.
+     *
+     * @param  Request  $request
+     * @return RedirectResponse
+     */
+    public function store(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'parent_id' => ['nullable', 'exists:functional_locations,id'],
+            'segment'   => ['required', 'string', 'max:50', 'regex:/^[A-Za-z0-9_-]+$/'],
+            'name'      => ['required', 'string', 'max:255'],
+        ]);
+
+        $parent = null;
+
+        if (! empty($validated['parent_id'])) {
+            $parent = FunctionalLocation::findOrFail($validated['parent_id']);
+        }
+
+        if ($parent !== null && $parent->level >= FunctionalLocation::LEVEL_SECTION) {
+            return back()
+                ->withInput()
+                ->withErrors(['parent_id' => 'Node Level Section (L3) tidak bisa memiliki anak.']);
+        }
+
+        $normalizedSegment = strtoupper(trim($validated['segment']));
+
+        $duplicateExists = FunctionalLocation::where('parent_id', $parent?->id)
+            ->where('segment', $normalizedSegment)
+            ->exists();
+
+        if ($duplicateExists) {
+            return back()
+                ->withInput()
+                ->withErrors(['segment' => 'Segment "' . $normalizedSegment . '" sudah dipakai oleh node lain di bawah parent yang sama.']);
+        }
+
+        $code = FunctionalLocation::buildCode($parent, $normalizedSegment);
+
+        FunctionalLocation::create([
+            'code'      => $code,
+            'segment'   => $normalizedSegment,
+            'name'      => $validated['name'],
+            'level'     => $parent !== null ? $parent->level + 1 : FunctionalLocation::LEVEL_SITE,
+            'parent_id' => $parent?->id,
+            'is_active' => true,
+        ]);
+
+        return redirect()
+            ->route('func-locs.index')
+            ->with('success', 'Functional Location "' . $code . '" berhasil dibuat.');
+    }
+
+    /**
+     * Tampilkan form edit node FuncLoc.
+     *
+     * @param  FunctionalLocation  $funcLoc
+     * @return View
+     */
+    public function edit(FunctionalLocation $funcLoc): View
+    {
+        return view('func-locs.edit', [
+            'funcLoc'     => $funcLoc,
+            'levelLabels' => $this->levelLabels(),
+        ]);
+    }
+
+    /**
+     * Perbarui name dan is_active dari node FuncLoc. Kode (full path) tidak
+     * dapat diubah karena bersifat immutable setelah dibuat.
+     *
+     * @param  Request  $request
+     * @param  FunctionalLocation  $funcLoc
+     * @return RedirectResponse
+     */
+    public function update(Request $request, FunctionalLocation $funcLoc): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name'      => ['required', 'string', 'max:255'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $wantsInactive = ! $request->boolean('is_active');
+
+        if ($wantsInactive && $this->hasActiveChildren($funcLoc)) {
+            return back()
+                ->withInput()
+                ->withErrors(['is_active' => 'Node ini masih punya child aktif. Nonaktifkan child terlebih dahulu.']);
+        }
+
+        $funcLoc->update([
+            'name'      => $validated['name'],
+            'is_active' => $request->boolean('is_active'),
+        ]);
+
+        return redirect()
+            ->route('func-locs.index')
+            ->with('success', 'Functional Location "' . $funcLoc->code . '" berhasil diperbarui.');
+    }
+
+    /**
+     * Nonaktifkan node FuncLoc (soft-deactivate). Data master ini tidak
+     * dihapus permanen karena masih dirujuk oleh asset/report/histori.
+     *
+     * @param  FunctionalLocation  $funcLoc
+     * @return RedirectResponse
+     */
+    public function destroy(FunctionalLocation $funcLoc): RedirectResponse
+    {
+        if ($this->hasActiveChildren($funcLoc)) {
+            return back()->with('error', 'Node ini masih punya child aktif. Nonaktifkan child terlebih dahulu.');
+        }
+
+        $funcLoc->update(['is_active' => false]);
+
+        return redirect()
+            ->route('func-locs.index')
+            ->with('success', 'Functional Location "' . $funcLoc->code . '" berhasil dinonaktifkan.');
+    }
+
+    /**
+     * Cek apakah node masih memiliki child yang berstatus aktif.
+     *
+     * @param  FunctionalLocation  $funcLoc
+     * @return bool
+     */
+    private function hasActiveChildren(FunctionalLocation $funcLoc): bool
+    {
+        return $funcLoc->children()->active()->exists();
+    }
+
+    /**
+     * Susun koleksi flat FunctionalLocation menjadi struktur pohon
+     * berdasarkan parent_id, tanpa query tambahan per node (hindari N+1).
+     *
+     * @param  Collection<int, FunctionalLocation>  $all
+     * @return Collection<int, FunctionalLocation>
+     */
+    private function buildTree(Collection $all): Collection
+    {
+        // Normalisasi key null menjadi string 'root', karena PHP mengubah
+        // array key null menjadi string kosong pada groupBy() bawaan Laravel.
+        $grouped = $all->groupBy(fn (FunctionalLocation $node) => $node->parent_id ?? 'root');
+
+        $attach = function ($parentKey) use (&$attach, $grouped) {
+            return ($grouped->get($parentKey) ?? collect())->map(function (FunctionalLocation $node) use ($attach) {
+                $node->setAttribute('child_nodes', $attach($node->id));
+
+                return $node;
+            })->values();
+        };
+
+        return $attach('root');
+    }
+
+    /**
+     * Label level dalam Bahasa Indonesia, dipakai untuk dropdown filter/form.
+     *
+     * @return array<int, string>
+     */
+    private function levelLabels(): array
+    {
+        return [
+            FunctionalLocation::LEVEL_SITE       => 'Site',
+            FunctionalLocation::LEVEL_DEPARTMENT => 'Departemen',
+            FunctionalLocation::LEVEL_AREA       => 'Area',
+            FunctionalLocation::LEVEL_SECTION    => 'Section',
+        ];
     }
 }
 
@@ -3688,7 +4696,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Area extends Model
 {
-    protected $fillable = ['department_id', 'code', 'name'];
+    protected $fillable = ['department_id', 'code', 'name', 'funcloc_id'];
 
     public function department(): BelongsTo
     {
@@ -3703,6 +4711,14 @@ class Area extends Model
     public function assets(): HasMany
     {
         return $this->hasMany(Asset::class);
+    }
+
+    /**
+     * FuncLoc L2 yang merepresentasikan area ini.
+     */
+    public function functionalLocation(): BelongsTo
+    {
+        return $this->belongsTo(FunctionalLocation::class, 'funcloc_id');
     }
 
     public function getFullNameAttribute(): string
@@ -3728,6 +4744,7 @@ class Asset extends Model
         'tech_ident_no',
         'object_type',
         'functional_loc',
+        'funcloc_id',
         'company_id',
         'department_id',
         'area_id',
@@ -3745,7 +4762,7 @@ class Asset extends Model
     {
         return [
             'has_equipment_no' => 'boolean',
-            'imported_at' => 'datetime',
+            'imported_at'      => 'datetime',
         ];
     }
 
@@ -3767,6 +4784,15 @@ class Asset extends Model
     public function subArea(): BelongsTo
     {
         return $this->belongsTo(SubArea::class);
+    }
+
+    /**
+     * FuncLoc yang menjadi sumber kebenaran lokasi asset ini.
+     * Menggantikan kolom functional_loc (string) secara bertahap.
+     */
+    public function functionalLocation(): BelongsTo
+    {
+        return $this->belongsTo(FunctionalLocation::class, 'funcloc_id');
     }
 
     public function technicians(): BelongsToMany
@@ -3938,6 +4964,226 @@ class Department extends Model
     }
 }
 
+================ WARNAI DENGAN FILE: FunctionalLocation.php =================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class FunctionalLocation extends Model
+{
+    // Konstanta level agar tidak ada angka ajaib tersebar di kode
+    public const LEVEL_SITE       = 0;
+    public const LEVEL_DEPARTMENT = 1;
+    public const LEVEL_AREA       = 2;
+    public const LEVEL_SECTION    = 3;
+
+    protected $fillable = [
+        'code',
+        'segment',
+        'name',
+        'level',
+        'parent_id',
+        'company_id',
+        'department_id',
+        'area_id',
+        'sub_area_id',
+        'is_active',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'level'     => 'integer',
+            'is_active' => 'boolean',
+        ];
+    }
+
+    // =========================================================
+    // RELASI — hierarki self-referential
+    // =========================================================
+
+    /**
+     * Node induk (satu level di atas).
+     */
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(FunctionalLocation::class, 'parent_id');
+    }
+
+    /**
+     * Node-node anak langsung (satu level di bawah).
+     */
+    public function children(): HasMany
+    {
+        return $this->hasMany(FunctionalLocation::class, 'parent_id');
+    }
+
+    /**
+     * Semua keturunan secara rekursif (eager-loadable via eager loading manual
+     * atau package staudenmeir/laravel-adjacency-list jika dibutuhkan).
+     */
+    public function allChildren(): HasMany
+    {
+        return $this->children()->with('allChildren');
+    }
+
+    // =========================================================
+    // RELASI — master data lama
+    // =========================================================
+
+    /**
+     * @return BelongsTo<Company, FunctionalLocation>
+     */
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    /**
+     * @return BelongsTo<Department, FunctionalLocation>
+     */
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
+    }
+
+    /**
+     * @return BelongsTo<Area, FunctionalLocation>
+     */
+    public function area(): BelongsTo
+    {
+        return $this->belongsTo(Area::class);
+    }
+
+    /**
+     * @return BelongsTo<SubArea, FunctionalLocation>
+     */
+    public function subArea(): BelongsTo
+    {
+        return $this->belongsTo(SubArea::class);
+    }
+
+    // =========================================================
+    // RELASI — entitas yang menggunakan FuncLoc ini
+    // =========================================================
+
+    /**
+     * @return HasMany<Asset>
+     */
+    public function assets(): HasMany
+    {
+        return $this->hasMany(Asset::class, 'funcloc_id');
+    }
+
+    /**
+     * @return HasMany<Report>
+     */
+    public function reports(): HasMany
+    {
+        return $this->hasMany(Report::class, 'funcloc_id');
+    }
+
+    // =========================================================
+    // SCOPES
+    // =========================================================
+
+    /**
+     * Hanya node yang aktif.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    /**
+     * Filter berdasarkan level hierarki.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @param  int  $level
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeOfLevel($query, int $level)
+    {
+        return $query->where('level', $level);
+    }
+
+    /**
+     * Hanya anak langsung dari parent tertentu.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @param  int  $parentId
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeUnderParent($query, int $parentId)
+    {
+        return $query->where('parent_id', $parentId);
+    }
+
+    // =========================================================
+    // HELPER
+    // =========================================================
+
+    /**
+     * Kembalikan label level dalam Bahasa Indonesia.
+     *
+     * @return string
+     */
+    public function getLevelLabelAttribute(): string
+    {
+        return match ($this->level) {
+            self::LEVEL_SITE       => 'Site',
+            self::LEVEL_DEPARTMENT => 'Departemen',
+            self::LEVEL_AREA       => 'Area',
+            self::LEVEL_SECTION    => 'Section',
+            default                => 'Tidak Diketahui',
+        };
+    }
+
+    /**
+     * Bangun kode penuh (full path) dari kode parent + segment baru.
+     * Dipakai saat membuat node baru dari form admin.
+     *
+     * @param  FunctionalLocation|null  $parent
+     * @param  string                   $segment
+     * @return string
+     */
+    public static function buildCode(?self $parent, string $segment): string
+    {
+        if ($parent === null) {
+            return strtoupper(trim($segment));
+        }
+
+        return $parent->code . '-' . strtoupper(trim($segment));
+    }
+
+    /**
+     * Ambil semua ancestor dari node ini, diurutkan dari root ke node saat ini.
+     * Berguna untuk menampilkan breadcrumb hierarki.
+     *
+     * @return Collection<int, FunctionalLocation>
+     */
+    public function getAncestors(): Collection
+    {
+        $ancestors = new Collection();
+        $current   = $this->parent;
+
+        while ($current !== null) {
+            $ancestors->prepend($current);
+            $current = $current->parent;
+        }
+
+        return $ancestors;
+    }
+}
+
 ================ WARNAI DENGAN FILE: Report.php =================
 <?php
 
@@ -3963,6 +5209,7 @@ class Report extends Model
         'wizard_started_at',
         'submitted_at',
         'area_id',
+        'funcloc_id',
         'asset_id',
         'report_type',
         'ai_analyzed',
@@ -3976,16 +5223,16 @@ class Report extends Model
     protected function casts(): array
     {
         return [
-            'report_date' => 'date',
-            'work_duration_minutes' => 'integer',
-            'photo_documentation' => 'array',
-            'photo_hygiene_clearance' => 'array',
-            'wizard_started_at' => 'datetime',
-            'submitted_at' => 'datetime',
-            'ai_analyzed' => 'boolean',
-            'ai_confidence' => 'float',
-            'ai_suggestion_json' => 'array',
-            'completed_at' => 'datetime',
+            'report_date'            => 'date',
+            'work_duration_minutes'  => 'integer',
+            'photo_documentation'    => 'array',
+            'photo_hygiene_clearance'=> 'array',
+            'wizard_started_at'      => 'datetime',
+            'submitted_at'           => 'datetime',
+            'ai_analyzed'            => 'boolean',
+            'ai_confidence'          => 'float',
+            'ai_suggestion_json'     => 'array',
+            'completed_at'           => 'datetime',
         ];
     }
 
@@ -3997,6 +5244,15 @@ class Report extends Model
     public function area(): BelongsTo
     {
         return $this->belongsTo(Area::class);
+    }
+
+    /**
+     * FuncLoc yang menjadi lokasi pekerjaan laporan ini.
+     * Bisa menunjuk ke level mana pun (L1–L3) sesuai pilihan teknisi.
+     */
+    public function functionalLocation(): BelongsTo
+    {
+        return $this->belongsTo(FunctionalLocation::class, 'funcloc_id');
     }
 
     public function asset(): BelongsTo
@@ -4016,8 +5272,7 @@ class Report extends Model
     /**
      * Accessor: array URL publik foto dokumentasi.
      * Disk diambil dari config('telegram.photo_disk') agar selalu sinkron
-     * dengan disk yang dipakai PhotoStorageService saat menyimpan foto
-     * (lihat config/telegram.php, dibuat di Sesi 1).
+     * dengan disk yang dipakai PhotoStorageService saat menyimpan foto.
      */
     public function getPhotoDocumentationUrlsAttribute(): array
     {
@@ -4053,7 +5308,7 @@ class Report extends Model
     }
 
     /**
-     * Hapus semua file foto dari Storage saat laporan dihapus, supaya tidak
+     * Hapus semua file foto dari Storage saat laporan dihapus supaya tidak
      * ada file orphan tertinggal di disk.
      */
     protected static function boot()
@@ -4163,7 +5418,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SubArea extends Model
 {
-    protected $fillable = ['area_id', 'code', 'name'];
+    protected $fillable = ['area_id', 'code', 'name', 'funcloc_id'];
 
     public function area(): BelongsTo
     {
@@ -4173,6 +5428,14 @@ class SubArea extends Model
     public function assets(): HasMany
     {
         return $this->hasMany(Asset::class);
+    }
+
+    /**
+     * FuncLoc L3 yang merepresentasikan sub-area ini.
+     */
+    public function functionalLocation(): BelongsTo
+    {
+        return $this->belongsTo(FunctionalLocation::class, 'funcloc_id');
     }
 }
 
@@ -4308,11 +5571,386 @@ class User extends Authenticatable
     }
 }
 
+================ WARNAI DENGAN FILE: ResolvesFuncLocHierarchy.php =================
+<?php
+
+namespace App\Observers\Concerns;
+
+use App\Models\Area;
+use App\Models\Company;
+use App\Models\Department;
+use App\Models\FunctionalLocation;
+
+trait ResolvesFuncLocHierarchy
+{
+    /**
+     * Ambil node FuncLoc L0 (site) milik Company tertentu. Buat node baru
+     * jika belum ada, dengan kode dari Company::code.
+     *
+     * @param  Company  $company
+     * @return FunctionalLocation
+     */
+    protected function findOrCreateSiteNode(Company $company): FunctionalLocation
+    {
+        $siteNode = FunctionalLocation::where('company_id', $company->id)
+            ->ofLevel(FunctionalLocation::LEVEL_SITE)
+            ->first();
+
+        if ($siteNode !== null) {
+            return $siteNode;
+        }
+
+        $code = FunctionalLocation::buildCode(null, $company->code);
+
+        $siteNode = FunctionalLocation::firstOrCreate(
+            ['code' => $code],
+            [
+                'segment'    => strtoupper(trim($company->code)),
+                'name'       => $company->name,
+                'level'      => FunctionalLocation::LEVEL_SITE,
+                'parent_id'  => null,
+                'company_id' => $company->id,
+                'is_active'  => true,
+            ]
+        );
+
+        if ($siteNode->company_id === null) {
+            $siteNode->company_id = $company->id;
+            $siteNode->saveQuietly();
+        }
+
+        return $siteNode;
+    }
+
+    /**
+     * Ambil node FuncLoc L1 (departemen) milik Department tertentu. Buat node
+     * ini beserta node L0 di atasnya jika belum ada.
+     *
+     * @param  Department  $department
+     * @return FunctionalLocation
+     */
+    protected function findOrCreateDepartmentNode(Department $department): FunctionalLocation
+    {
+        $deptNode = FunctionalLocation::where('department_id', $department->id)
+            ->ofLevel(FunctionalLocation::LEVEL_DEPARTMENT)
+            ->first();
+
+        if ($deptNode !== null) {
+            return $deptNode;
+        }
+
+        $siteNode = $this->findOrCreateSiteNode($department->company);
+        $code     = FunctionalLocation::buildCode($siteNode, $department->code);
+
+        $deptNode = FunctionalLocation::firstOrCreate(
+            ['code' => $code],
+            [
+                'segment'       => strtoupper(trim($department->code)),
+                'name'          => $department->name,
+                'level'         => FunctionalLocation::LEVEL_DEPARTMENT,
+                'parent_id'     => $siteNode->id,
+                'company_id'    => $siteNode->company_id,
+                'department_id' => $department->id,
+                'is_active'     => true,
+            ]
+        );
+
+        if ($deptNode->department_id === null) {
+            $deptNode->department_id = $department->id;
+            $deptNode->saveQuietly();
+        }
+
+        return $deptNode;
+    }
+
+    /**
+     * Ambil node FuncLoc L2 (area) milik Area tertentu. Buat node ini beserta
+     * node L1/L0 di atasnya jika belum ada. Jika Area sudah punya funcloc_id,
+     * langsung kembalikan node yang sudah terhubung tanpa query tambahan.
+     *
+     * @param  Area  $area
+     * @return FunctionalLocation
+     */
+    protected function findOrCreateAreaNode(Area $area): FunctionalLocation
+    {
+        if ($area->funcloc_id !== null) {
+            return $area->functionalLocation;
+        }
+
+        $deptNode = $this->findOrCreateDepartmentNode($area->department);
+        $code     = FunctionalLocation::buildCode($deptNode, $area->code);
+
+        $areaNode = FunctionalLocation::firstOrCreate(
+            ['code' => $code],
+            [
+                'segment'       => strtoupper(trim($area->code)),
+                'name'          => $area->name,
+                'level'         => FunctionalLocation::LEVEL_AREA,
+                'parent_id'     => $deptNode->id,
+                'company_id'    => $deptNode->company_id,
+                'department_id' => $deptNode->department_id,
+                'area_id'       => $area->id,
+                'is_active'     => true,
+            ]
+        );
+
+        if ($areaNode->area_id === null) {
+            $areaNode->area_id = $area->id;
+            $areaNode->saveQuietly();
+        }
+
+        if ($area->funcloc_id === null) {
+            $area->funcloc_id = $areaNode->id;
+            $area->saveQuietly();
+        }
+
+        return $areaNode;
+    }
+}
+
+================ WARNAI DENGAN FILE: AreaObserver.php =================
+<?php
+
+namespace App\Observers;
+
+use App\Models\Area;
+use App\Observers\Concerns\ResolvesFuncLocHierarchy;
+
+class AreaObserver
+{
+    use ResolvesFuncLocHierarchy;
+
+    /**
+     * Saat Area dibuat, kaitkan ke node FuncLoc L2 yang sesuai. Jika
+     * funcloc_id sudah terisi berarti Area ini dibuat oleh
+     * FunctionalLocationObserver (arah sebaliknya), sehingga tidak perlu
+     * diproses lagi di sini.
+     *
+     * @param  Area  $area
+     * @return void
+     */
+    public function created(Area $area): void
+    {
+        if ($area->funcloc_id !== null) {
+            return;
+        }
+
+        $area->loadMissing('department.company');
+        $this->findOrCreateAreaNode($area);
+    }
+
+    /**
+     * Sinkronkan perubahan name ke FuncLoc L2 yang terhubung.
+     *
+     * @param  Area  $area
+     * @return void
+     */
+    public function updated(Area $area): void
+    {
+        if (! $area->wasChanged('name') || $area->funcloc_id === null) {
+            return;
+        }
+
+        $area->functionalLocation?->updateQuietly(['name' => $area->name]);
+    }
+}
+
+================ WARNAI DENGAN FILE: FunctionalLocationObserver.php =================
+<?php
+
+namespace App\Observers;
+
+use App\Models\Area;
+use App\Models\FunctionalLocation;
+use App\Models\SubArea;
+
+class FunctionalLocationObserver
+{
+    /**
+     * Saat node FuncLoc L2 atau L3 baru dibuat dari halaman admin FuncLoc,
+     * buat otomatis record Area/SubArea yang berpadanan jika belum ada,
+     * supaya keduanya tetap tersinkronisasi dua arah.
+     *
+     * @param  FunctionalLocation  $funcLoc
+     * @return void
+     */
+    public function created(FunctionalLocation $funcLoc): void
+    {
+        if ($funcLoc->level === FunctionalLocation::LEVEL_AREA && $funcLoc->area_id === null) {
+            $this->createAreaFor($funcLoc);
+            return;
+        }
+
+        if ($funcLoc->level === FunctionalLocation::LEVEL_SECTION && $funcLoc->sub_area_id === null) {
+            $this->createSubAreaFor($funcLoc);
+        }
+    }
+
+    /**
+     * Sinkronkan perubahan name ke Area/SubArea yang terhubung. Kolom
+     * is_active tidak disinkronkan karena tabel areas/sub_areas tidak
+     * memiliki kolom tersebut.
+     *
+     * @param  FunctionalLocation  $funcLoc
+     * @return void
+     */
+    public function updated(FunctionalLocation $funcLoc): void
+    {
+        if (! $funcLoc->wasChanged('name')) {
+            return;
+        }
+
+        if ($funcLoc->area_id !== null) {
+            $funcLoc->area?->updateQuietly(['name' => $funcLoc->name]);
+        }
+
+        if ($funcLoc->sub_area_id !== null) {
+            $funcLoc->subArea?->updateQuietly(['name' => $funcLoc->name]);
+        }
+    }
+
+    /**
+     * Buat record Area baru dari FuncLoc L2, hanya jika parent (L1) sudah
+     * terhubung ke Department yang valid.
+     *
+     * @param  FunctionalLocation  $funcLoc
+     * @return void
+     */
+    private function createAreaFor(FunctionalLocation $funcLoc): void
+    {
+        $departmentId = $funcLoc->parent?->department_id;
+
+        if ($departmentId === null) {
+            // Parent (L1) belum terhubung ke Department manapun sehingga
+            // Area tidak bisa dibuat (department_id wajib diisi). Node
+            // tetap sah sebagai FuncLoc murni tanpa representasi Area.
+            return;
+        }
+
+        $area = Area::create([
+            'department_id' => $departmentId,
+            'code'          => $funcLoc->segment,
+            'name'          => $funcLoc->name,
+            'funcloc_id'    => $funcLoc->id,
+        ]);
+
+        $funcLoc->area_id = $area->id;
+        $funcLoc->saveQuietly();
+    }
+
+    /**
+     * Buat record SubArea baru dari FuncLoc L3, hanya jika parent (L2) sudah
+     * terhubung ke Area yang valid.
+     *
+     * @param  FunctionalLocation  $funcLoc
+     * @return void
+     */
+    private function createSubAreaFor(FunctionalLocation $funcLoc): void
+    {
+        $areaId = $funcLoc->parent?->area_id;
+
+        if ($areaId === null) {
+            // Parent (L2) belum terhubung ke Area manapun sehingga SubArea
+            // tidak bisa dibuat (area_id wajib diisi).
+            return;
+        }
+
+        $subArea = SubArea::create([
+            'area_id'    => $areaId,
+            'code'       => $funcLoc->segment,
+            'name'       => $funcLoc->name,
+            'funcloc_id' => $funcLoc->id,
+        ]);
+
+        $funcLoc->sub_area_id = $subArea->id;
+        $funcLoc->saveQuietly();
+    }
+}
+
+================ WARNAI DENGAN FILE: SubAreaObserver.php =================
+<?php
+
+namespace App\Observers;
+
+use App\Models\FunctionalLocation;
+use App\Models\SubArea;
+use App\Observers\Concerns\ResolvesFuncLocHierarchy;
+
+class SubAreaObserver
+{
+    use ResolvesFuncLocHierarchy;
+
+    /**
+     * Saat SubArea dibuat, buat node FuncLoc L3 yang sesuai beserta
+     * ancestor-nya (L2/L1/L0) jika belum ada. Jika funcloc_id sudah terisi
+     * berarti SubArea ini dibuat oleh FunctionalLocationObserver (arah
+     * sebaliknya), sehingga tidak perlu diproses lagi di sini.
+     *
+     * @param  SubArea  $subArea
+     * @return void
+     */
+    public function created(SubArea $subArea): void
+    {
+        if ($subArea->funcloc_id !== null) {
+            return;
+        }
+
+        $subArea->loadMissing('area.department.company');
+
+        $areaNode = $this->findOrCreateAreaNode($subArea->area);
+        $code     = FunctionalLocation::buildCode($areaNode, $subArea->code);
+
+        $subAreaNode = FunctionalLocation::firstOrCreate(
+            ['code' => $code],
+            [
+                'segment'       => strtoupper(trim($subArea->code)),
+                'name'          => $subArea->name,
+                'level'         => FunctionalLocation::LEVEL_SECTION,
+                'parent_id'     => $areaNode->id,
+                'company_id'    => $areaNode->company_id,
+                'department_id' => $areaNode->department_id,
+                'area_id'       => $areaNode->area_id,
+                'sub_area_id'   => $subArea->id,
+                'is_active'     => true,
+            ]
+        );
+
+        if ($subAreaNode->sub_area_id === null) {
+            $subAreaNode->sub_area_id = $subArea->id;
+            $subAreaNode->saveQuietly();
+        }
+
+        $subArea->funcloc_id = $subAreaNode->id;
+        $subArea->saveQuietly();
+    }
+
+    /**
+     * Sinkronkan perubahan name ke FuncLoc L3 yang terhubung.
+     *
+     * @param  SubArea  $subArea
+     * @return void
+     */
+    public function updated(SubArea $subArea): void
+    {
+        if (! $subArea->wasChanged('name') || $subArea->funcloc_id === null) {
+            return;
+        }
+
+        $subArea->functionalLocation?->updateQuietly(['name' => $subArea->name]);
+    }
+}
+
 ================ WARNAI DENGAN FILE: AppServiceProvider.php =================
 <?php
 
 namespace App\Providers;
 
+use App\Models\Area;
+use App\Models\FunctionalLocation;
+use App\Models\SubArea;
+use App\Observers\AreaObserver;
+use App\Observers\FunctionalLocationObserver;
+use App\Observers\SubAreaObserver;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -4330,7 +5968,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        FunctionalLocation::observe(FunctionalLocationObserver::class);
+        Area::observe(AreaObserver::class);
+        SubArea::observe(SubAreaObserver::class);
     }
 }
 
@@ -4953,6 +6593,8 @@ use Illuminate\Support\Facades\Log;
  *   - handleClarificationText()         : Tangani teks saat ClarificationService aktif
  *   - handleClarificationAutoSelect()   : Auto-select saat hanya ada 1 opsi di hierarki
  *   - finalizeClarificationSelection()  : Kunci hasil pilihan dari ClarificationService
+ *   - handleFuncLocPick()               : Proses pilihan node FuncLoc (dari WizardFuncLocPickerTrait)
+ *   - handleFuncLocConfirm()            : Konfirmasi FuncLoc tanpa turun lebih dalam (dari WizardFuncLocPickerTrait)
  *
  * Trait ini bergantung pada method berikut dari kelas pemakai:
  *   - errorResponse(string $message): array
@@ -4967,6 +6609,21 @@ use Illuminate\Support\Facades\Log;
  *   - buildConfirmationSummary(array $state): array
  *   - saveReport(string $chatId, array $state): array
  *   - $clarificationService: ClarificationService
+ *
+ * Method dari WizardFuncLocPickerTrait yang dipanggil oleh trait ini
+ * (tersedia di kelas pemakai karena keduanya di-use di ReportWizardService):
+ *
+ * @method array startFuncLocPicker(string $chatId, array $state)
+ * @method array handleFuncLocPick(string $chatId, string $callbackData, array $state)
+ * @method array handleFuncLocConfirm(string $chatId, string $callbackData, array $state)
+ *
+ * CATATAN — Callback foto (photo_doc_* / photo_hygiene_*):
+ * Semua callback_data foto yang tiba di handleConfirmationCallback() WAJIB
+ * dalam bentuk pendek (photo_doc_done/skip, photo_hygiene_done/skip).
+ * Pembentukan callback_data foto dilakukan di WizardStepHandlerTrait lewat
+ * helper photoCallbackKey() — jangan bangun callback_data foto secara manual
+ * di tempat lain agar tidak terjadi lagi mismatch seperti sebelumnya
+ * (photo_documentation_done tidak pernah dikenali switch-case ini).
  */
 trait WizardCallbackHandlerTrait
 {
@@ -5021,6 +6678,16 @@ trait WizardCallbackHandlerTrait
             return $this->handleHierarchyCancel($chatId, $state);
         }
 
+        // Callback pemilihan node FuncLoc dari FuncLoc picker (alur area/section)
+        if (str_starts_with($callbackData, 'funcloc_pick:')) {
+            return $this->handleFuncLocPick($chatId, $callbackData, $state);
+        }
+
+        // Konfirmasi FuncLoc tanpa turun ke level berikutnya
+        if (str_starts_with($callbackData, 'funcloc_confirm:')) {
+            return $this->handleFuncLocConfirm($chatId, $callbackData, $state);
+        }
+
         // Callback dari ClarificationService saat hierarki aktif
         if ($state['step'] === self::STEP_EQUIPMENT_CLARIFY && !empty($state['using_clarification_service'])) {
             return $this->handleClarificationCallback($chatId, $callbackData, $state);
@@ -5055,7 +6722,7 @@ trait WizardCallbackHandlerTrait
                 $state['work_duration_minutes'] = null;
                 $this->saveState($chatId, $state);
                 return [
-                    'message'  => "Ketik durasi pekerjaan:\n_(contoh: `2 jam`, `30 menit`, `1 jam 30 menit`)_",
+                    'message'  => "Ketik durasi pekerjaan:\n_(contoh: `2 jam`, `30 menit`, `1 jam 30 menit`, `1:30`)_",
                     'keyboard' => [],
                 ];
 
@@ -5072,15 +6739,6 @@ trait WizardCallbackHandlerTrait
                 return [
                     'message'  => "Ketik root cause (penyebab kerusakan/pekerjaan):",
                     'keyboard' => [],
-                ];
-
-            // Step 6 — foto dokumentasi: minta foto tambahan
-            case 'photo_doc_more':
-                return [
-                    'message'  => "Silakan kirim foto tambahan:",
-                    'keyboard' => [
-                        ['text' => 'Selesai', 'callback_data' => 'wizard:confirm:photo_doc_done'],
-                    ],
                 ];
 
             // Step 6 — foto dokumentasi selesai / skip
@@ -5256,10 +6914,9 @@ trait WizardCallbackHandlerTrait
         }
 
         if ($type === 'area') {
-            $state['is_area_work'] = true;
-            $this->saveState($chatId, $state);
-
-            return $this->startClarificationHierarchy($chatId, $state);
+            // Alur area menggunakan FuncLoc picker hierarki (L1 -> L2 -> L3).
+            // ClarificationService tidak dipakai untuk alur ini.
+            return $this->startFuncLocPicker($chatId, $state);
         }
 
         return $this->errorResponse('Pilihan tidak dikenali.');
@@ -5447,6 +7104,276 @@ trait WizardCallbackHandlerTrait
     }
 }
 
+================ WARNAI DENGAN FILE: WizardFuncLocPickerTrait.php =================
+<?php
+
+namespace App\Services\Telegram\Traits;
+
+use App\Models\FunctionalLocation;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * WizardFuncLocPickerTrait
+ *
+ * Menangani pemilihan Functional Location (FuncLoc) hierarki oleh teknisi
+ * saat jenis pekerjaan "area/section" dipilih di wizard laporan.
+ *
+ * Alur pemilihan:
+ *   1. Tampil keyboard L1 (Departemen) setelah work_type:area dipilih
+ *   2. Setelah L1 dipilih: tampil keyboard L2 (Area) + tombol "Konfirmasi di sini"
+ *   3. Setelah L2 dipilih: tampil keyboard L3 (Section) + tombol "Konfirmasi di sini"
+ *   4. Setelah L3 dipilih ATAU tombol konfirmasi ditekan:
+ *      state['funcloc_id'] dan state['funcloc_code'] dikunci, lanjut ke Step 4
+ *
+ * Callback data yang digunakan:
+ *   - funcloc_pick:{level}:{id}   : Teknisi memilih node pada level tertentu
+ *   - funcloc_confirm:{id}        : Teknisi mengonfirmasi node saat ini tanpa turun lebih dalam
+ *
+ * Trait ini bergantung pada method berikut dari kelas pemakai:
+ *   - saveState(string $chatId, array $state): void
+ *   - advanceToWorkDuration(string $chatId, array $state): array
+ *   - errorResponse(string $message): array
+ */
+trait WizardFuncLocPickerTrait
+{
+    // =========================================================
+    // ENTRY POINT — dipanggil dari handleWorkTypeCallback
+    // =========================================================
+
+    /**
+     * Tampilkan keyboard L1 (Departemen) sebagai titik masuk FuncLoc picker.
+     * Dipanggil setelah teknisi memilih work_type:area.
+     *
+     * @param  string $chatId Chat ID Telegram
+     * @param  array  $state  State wizard saat ini
+     * @return array  Respons dengan keyboard L1
+     */
+    protected function startFuncLocPicker(string $chatId, array $state): array
+    {
+        $state['is_area_work']         = true;
+        $state['funcloc_picker_active'] = true;
+        $this->saveState($chatId, $state);
+
+        $keyboard = $this->buildFuncLocLevelKeyboard(FunctionalLocation::LEVEL_DEPARTMENT, null);
+
+        if (empty($keyboard)) {
+            Log::warning("WizardFuncLocPicker: Tidak ada FuncLoc L1 aktif untuk chat {$chatId}");
+
+            return $this->errorResponse(
+                "Tidak ada data Departemen yang tersedia.\n" .
+                "Hubungi admin untuk menambahkan data Functional Location."
+            );
+        }
+
+        return [
+            'message'  => "*Step 2* — Pilih Departemen\n\nPilih departemen tempat pekerjaan dilakukan:",
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    // =========================================================
+    // HANDLER CALLBACK — pick & confirm
+    // =========================================================
+
+    /**
+     * Proses callback funcloc_pick:{level}:{id}.
+     * Setelah L1 atau L2 dipilih, tampilkan level berikutnya.
+     * Setelah L3 dipilih, langsung kunci FuncLoc dan maju ke Step 4.
+     *
+     * @param  string $chatId     Chat ID Telegram
+     * @param  string $callbackData Data callback penuh, mis. "funcloc_pick:1:5"
+     * @param  array  $state      State wizard saat ini
+     * @return array  Respons
+     */
+    protected function handleFuncLocPick(string $chatId, string $callbackData, array $state): array
+    {
+        // Format: funcloc_pick:{level}:{id}
+        $parts     = explode(':', $callbackData);
+        $level     = isset($parts[1]) ? (int) $parts[1] : null;
+        $funclocId = isset($parts[2]) ? (int) $parts[2] : null;
+
+        if ($level === null || !$funclocId) {
+            return $this->errorResponse('Format callback FuncLoc tidak valid.');
+        }
+
+        $node = FunctionalLocation::active()->find($funclocId);
+
+        if (!$node) {
+            return $this->errorResponse('Lokasi tidak ditemukan atau sudah tidak aktif.');
+        }
+
+        // L3 dipilih: kunci langsung tanpa perlu confirm
+        if ($level === FunctionalLocation::LEVEL_SECTION) {
+            return $this->lockFuncLocAndAdvance($chatId, $node, $state);
+        }
+
+        // L1 atau L2 dipilih: simpan pilihan sementara, tampilkan level berikutnya
+        $state['funcloc_pending_id']   = $node->id;
+        $state['funcloc_pending_code'] = $node->code;
+        $state['funcloc_pending_name'] = $node->name;
+        $this->saveState($chatId, $state);
+
+        $nextLevel = $level + 1;
+        $keyboard  = $this->buildFuncLocLevelKeyboard($nextLevel, $node->id);
+
+        // Siapkan label level berikutnya
+        $nextLevelLabel = $this->funcLocLevelLabel($nextLevel);
+        $currentLabel   = $this->funcLocLevelLabel($level);
+
+        // Tombol konfirmasi di level saat ini (skip turun lebih dalam)
+        $confirmButton = [
+            'text'          => "Konfirmasi: {$node->code}",
+            'callback_data' => "funcloc_confirm:{$node->id}",
+        ];
+
+        if (empty($keyboard)) {
+            // Tidak ada anak di level berikutnya: langsung konfirmasi
+            Log::info("WizardFuncLocPicker: Tidak ada anak L{$nextLevel} untuk node {$node->code}, langsung lock.", [
+                'chat_id'    => $chatId,
+                'funcloc_id' => $node->id,
+            ]);
+
+            return $this->lockFuncLocAndAdvance($chatId, $node, $state);
+        }
+
+        // Tambahkan tombol konfirmasi di level saat ini sebelum daftar level berikutnya
+        array_unshift($keyboard, $confirmButton);
+
+        return [
+            'message'  => "*{$currentLabel} dipilih:* {$node->code} — {$node->name}\n\n" .
+                          "Pilih {$nextLevelLabel} (opsional) atau konfirmasi sekarang:",
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Proses callback funcloc_confirm:{id}.
+     * Teknisi menekan tombol "Konfirmasi" tanpa turun ke level berikutnya.
+     *
+     * @param  string $chatId       Chat ID Telegram
+     * @param  string $callbackData Data callback penuh, mis. "funcloc_confirm:5"
+     * @param  array  $state        State wizard saat ini
+     * @return array  Respons
+     */
+    protected function handleFuncLocConfirm(string $chatId, string $callbackData, array $state): array
+    {
+        // Format: funcloc_confirm:{id}
+        $parts     = explode(':', $callbackData);
+        $funclocId = isset($parts[1]) ? (int) $parts[1] : null;
+
+        if (!$funclocId) {
+            return $this->errorResponse('ID Functional Location tidak valid.');
+        }
+
+        $node = FunctionalLocation::active()->find($funclocId);
+
+        if (!$node) {
+            return $this->errorResponse('Lokasi tidak ditemukan atau sudah tidak aktif.');
+        }
+
+        return $this->lockFuncLocAndAdvance($chatId, $node, $state);
+    }
+
+    // =========================================================
+    // HELPER INTERNAL
+    // =========================================================
+
+    /**
+     * Kunci FuncLoc yang dipilih ke state dan maju ke Step 4 (Waktu Pengerjaan).
+     * Membersihkan state sementara picker sebelum maju.
+     *
+     * @param  string              $chatId Chat ID Telegram
+     * @param  FunctionalLocation  $node   Node FuncLoc yang dikunci
+     * @param  array               $state  State wizard saat ini
+     * @return array               Respons dari advanceToWorkDuration()
+     */
+    protected function lockFuncLocAndAdvance(string $chatId, FunctionalLocation $node, array $state): array
+    {
+        // Bersihkan state sementara picker
+        unset(
+            $state['funcloc_pending_id'],
+            $state['funcloc_pending_code'],
+            $state['funcloc_pending_name'],
+            $state['funcloc_picker_active']
+        );
+
+        // Kunci FuncLoc yang dipilih
+        $state['funcloc_id']   = $node->id;
+        $state['funcloc_code'] = $node->code;
+        $state['funcloc_name'] = $node->name;
+
+        // Sinkronisasi area_id dari relasi FuncLoc jika ada
+        if ($node->area_id) {
+            $state['area_id'] = $node->area_id;
+        }
+
+        Log::info("WizardFuncLocPicker: FuncLoc dikunci untuk chat {$chatId}", [
+            'funcloc_id'   => $node->id,
+            'funcloc_code' => $node->code,
+            'level'        => $node->level,
+        ]);
+
+        return $this->advanceToWorkDuration($chatId, $state);
+    }
+
+    /**
+     * Bangun inline keyboard untuk satu level FuncLoc tertentu.
+     * Hanya node aktif yang dimuat. Diurutkan berdasarkan code secara ascending.
+     *
+     * @param  int      $level    Level FuncLoc (konstanta LEVEL_* dari FunctionalLocation)
+     * @param  int|null $parentId ID parent — null untuk L1 (root level Departemen)
+     * @return array    Array tombol inline keyboard Telegram
+     */
+    protected function buildFuncLocLevelKeyboard(int $level, ?int $parentId): array
+    {
+        $query = FunctionalLocation::active()
+            ->ofLevel($level)
+            ->orderBy('code');
+
+        if ($parentId !== null) {
+            $query->underParent($parentId);
+        }
+
+        $nodes = $query->get(['id', 'code', 'name', 'level']);
+
+        $keyboard = [];
+        foreach ($nodes as $node) {
+            // Label tombol: code — name, dipotong jika terlalu panjang
+            $label = $node->code;
+            if ($node->name) {
+                $label .= ' — ' . $node->name;
+            }
+            if (strlen($label) > 64) {
+                $label = substr($label, 0, 61) . '...';
+            }
+
+            $keyboard[] = [
+                'text'          => $label,
+                'callback_data' => "funcloc_pick:{$node->level}:{$node->id}",
+            ];
+        }
+
+        return $keyboard;
+    }
+
+    /**
+     * Kembalikan label level FuncLoc dalam Bahasa Indonesia.
+     *
+     * @param  int    $level Nilai level (0–3)
+     * @return string Label level
+     */
+    protected function funcLocLevelLabel(int $level): string
+    {
+        return match ($level) {
+            FunctionalLocation::LEVEL_SITE       => 'Site',
+            FunctionalLocation::LEVEL_DEPARTMENT => 'Departemen',
+            FunctionalLocation::LEVEL_AREA       => 'Area',
+            FunctionalLocation::LEVEL_SECTION    => 'Section',
+            default                              => 'Lokasi',
+        };
+    }
+}
+
 ================ WARNAI DENGAN FILE: WizardPhotoAddonTrait.php =================
 <?php
 
@@ -5547,9 +7474,20 @@ trait WizardPhotoAddonTrait
 
         $count = count($photos);
 
+        // Bangun pesan balasan yang informatif: sebutkan total foto setelah penambahan
+        // dan ingatkan format caption jika teknisi ingin menambah foto lagi.
+        $successMessage  = "Foto {$field} berhasil ditambahkan ke laporan `{$reportCode}`.\n";
+        $successMessage .= "Total foto {$field} sekarang: {$count}.\n\n";
+        $successMessage .= "_Untuk menambah foto lagi ke laporan ini, kirim foto dengan caption:_\n";
+
+        if ($type === 'hygiene') {
+            $successMessage .= "`{$reportCode} hygiene`";
+        } else {
+            $successMessage .= "`{$reportCode}`";
+        }
+
         return [
-            'message'  => "Foto {$field} berhasil ditambahkan ke laporan `{$reportCode}`.\n" .
-                "Total foto {$field}: {$count}.",
+            'message'  => $successMessage,
             'keyboard' => [],
         ];
     }
@@ -5575,6 +7513,7 @@ namespace App\Services\Telegram\Traits;
 
 use App\Models\Report;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * WizardReportSaverTrait
@@ -5589,6 +7528,7 @@ use Illuminate\Support\Facades\Log;
  * Trait ini bergantung pada method berikut dari kelas pemakai:
  *   - equipmentLabel(array $state): string
  *   - formatDuration(int $minutes): string
+ *   - formatIndonesianDate(string $dateString): string
  *   - destroyWizard(string $chatId): void
  *   - errorResponse(string $message): array
  */
@@ -5613,9 +7553,25 @@ trait WizardReportSaverTrait
         $photoDocCount  = count($state['photo_documentation'] ?? []);
         $photoHygCount  = count($state['photo_hygiene_clearance'] ?? []);
 
+        // Tanggal laporan: pakai hasil deteksi dari Step 1, fallback ke hari ini
+        $reportDate      = $state['report_date'] ?? now()->toDateString();
+        $formattedDate   = $this->formatIndonesianDate($reportDate);
+
         $msg  = "*Step 8/8* — Konfirmasi Laporan\n\n";
         $msg .= "Periksa ringkasan berikut sebelum disimpan:\n\n";
-        $msg .= "*Equipment* : {$equipmentLabel}\n";
+        $msg .= "*Tanggal*   : {$formattedDate}\n";
+
+        // Tampilkan FuncLoc jika laporan area, atau Equipment jika laporan alat
+        if (!empty($state['funcloc_code'])) {
+            $msg .= "*Lokasi*    : {$state['funcloc_code']}";
+            if (!empty($state['funcloc_name'])) {
+                $msg .= " — {$state['funcloc_name']}";
+            }
+            $msg .= "\n";
+        } else {
+            $msg .= "*Equipment* : {$equipmentLabel}\n";
+        }
+
         $msg .= "*Durasi*    : {$duration}\n";
         $msg .= "*Root Cause*: {$rootCause}\n";
         $msg .= "*Foto Dok*  : {$photoDocCount} foto\n";
@@ -5636,9 +7592,16 @@ trait WizardReportSaverTrait
      * Hanya dipanggil setelah teknisi mengonfirmasi di Step 8.
      * Foto yang bukan path lokal (belum diproses PhotoStorageService) dibuang.
      *
+     * Respons sukses membawa dua pesan terpisah agar tidak terjadi pesan ganda
+     * di Telegram:
+     *   - edit_message    : pesan pendek yang dipakai untuk menimpa pesan
+     *                       konfirmasi Step 8 (via editMessageText)
+     *   - success_message : pesan detail lengkap yang dikirim sebagai pesan
+     *                       baru (via sendMessage)
+     *
      * @param  string $chatId Chat ID Telegram
      * @param  array  $state  State wizard saat ini
-     * @return array  Respons sukses atau error
+     * @return array  Respons sukses (dengan edit_message & success_message) atau error
      */
     protected function saveReport(string $chatId, array $state): array
     {
@@ -5660,6 +7623,10 @@ trait WizardReportSaverTrait
 
             $reportCode = $this->generateReportCode();
 
+            // Tanggal laporan: pakai hasil deteksi parseDateFromText() dari Step 1,
+            // fallback ke hari ini jika tidak terdeteksi/tidak valid.
+            $reportDate = $state['report_date'] ?? now()->toDateString();
+
             // Filter foto: hanya path lokal hasil PhotoStorageService->store() yang masuk DB.
             // Path lokal selalu mengandung tanda "/" (format reports/YYYY/MM/DD/{chat_id}/{file}.jpg).
             // File ID Telegram mentah tanpa "/" dibuang dan dicatat ke log.
@@ -5669,10 +7636,11 @@ trait WizardReportSaverTrait
             $report = Report::create([
                 'report_code'             => $reportCode,
                 'technician_id'           => $technician->id,
-                'report_date'             => now()->toDateString(),
+                'report_date'             => $reportDate,
                 'work_description'        => $state['text'],
                 'asset_id'                => $state['equipment_id'] ?? null,
                 'area_id'                 => $state['area_id'] ?? null,
+                'funcloc_id'              => $state['funcloc_id'] ?? null,
                 'report_type'             => $reportType,
                 'ai_analyzed'             => !empty($state['ai_analysis']),
                 'ai_confidence'           => $state['ai_analysis']['confidence'] ?? null,
@@ -5690,25 +7658,67 @@ trait WizardReportSaverTrait
             Log::info("WizardService: Report saved for chat {$chatId}", [
                 'report_id'       => $report->id,
                 'report_code'     => $reportCode,
+                'report_date'     => $reportDate,
+                'funcloc_id'      => $state['funcloc_id'] ?? null,
+                'funcloc_code'    => $state['funcloc_code'] ?? null,
                 'photo_doc_count' => count($photoDocumentation),
                 'photo_hyg_count' => count($photoHygieneClearance),
             ]);
 
             $equipmentLabel = $this->equipmentLabel($state);
             $duration       = $this->formatDuration($state['work_duration_minutes'] ?? 0);
+            $formattedDate  = $this->formatIndonesianDate($reportDate);
+            $rootCauseShort = Str::limit($state['root_cause'] ?? '-', 80);
+            $submittedAt    = $report->submitted_at?->format('d/m/Y H:i') ?? now()->format('d/m/Y H:i');
+            $photoDocCount  = count($photoDocumentation);
+            $photoHygCount  = count($photoHygieneClearance);
 
-            $msg  = "*Laporan Berhasil Disimpan!*\n\n";
-            $msg .= "Kode Laporan: `{$reportCode}`\n";
-            $msg .= "Equipment: {$equipmentLabel}\n";
-            $msg .= "Durasi: {$duration}\n\n";
-            $msg .= "Gunakan kode di atas untuk menambah foto ke laporan ini di kemudian hari.";
+            // Pesan pendek untuk menimpa pesan konfirmasi Step 8 (edit in-place)
+            $editMsg  = "*Laporan Tersimpan*\n\n";
+            $editMsg .= "Kode: `{$reportCode}`\n";
+            $editMsg .= "Detail laporan dikirim di pesan berikutnya.";
+
+            // Pesan detail lengkap, dikirim sebagai pesan baru
+            $successMsg  = "*Laporan Berhasil Disimpan!*\n\n";
+            $successMsg .= "Kode Laporan : `{$reportCode}`\n";
+            $successMsg .= "Teknisi      : {$technician->name}\n";
+            $successMsg .= "Tanggal      : {$formattedDate}\n";
+
+            // Tampilkan Lokasi FuncLoc jika laporan area, atau Equipment jika laporan alat
+            if (!empty($state['funcloc_code'])) {
+                $funclocLabel = $state['funcloc_code'];
+                if (!empty($state['funcloc_name'])) {
+                    $funclocLabel .= ' — ' . $state['funcloc_name'];
+                }
+                $successMsg .= "Lokasi       : {$funclocLabel}\n";
+            } else {
+                $successMsg .= "Equipment    : {$equipmentLabel}\n";
+            }
+
+            $successMsg .= "Durasi       : {$duration}\n";
+            $successMsg .= "Foto Dok     : {$photoDocCount} foto\n";
+            $successMsg .= "Foto HC      : {$photoHygCount} foto\n";
+            $successMsg .= "Root Cause   : {$rootCauseShort}\n";
+            $successMsg .= "Waktu Submit : {$submittedAt}\n\n";
+
+            if ($photoHygCount === 0) {
+                // Foto HC belum ada — sertakan instruksi cara menambahkannya nanti.
+                // Sistem deteksi caption di detectPhotoTypeFromCaption() sudah mengenali
+                // kata "hygiene" untuk menentukan tipe foto yang ditambahkan.
+                $successMsg .= "_Foto HC belum ada. Untuk menambahkan foto Hygiene Clearance ";
+                $successMsg .= "nanti, kirim foto dengan caption:_\n";
+                $successMsg .= "`{$reportCode} hygiene`";
+            } else {
+                $successMsg .= "Gunakan kode di atas untuk menambah foto ke laporan ini di kemudian hari.";
+            }
 
             return [
-                'message'     => $msg,
-                'keyboard'    => [],
-                'report_code' => $reportCode,
-                'report_id'   => $report->id,
-                'saved'       => true,
+                'edit_message'    => $editMsg,
+                'success_message' => $successMsg,
+                'keyboard'        => [],
+                'report_code'     => $reportCode,
+                'report_id'       => $report->id,
+                'saved'           => true,
             ];
         } catch (\Throwable $e) {
             Log::error("WizardService: Failed to save report for chat {$chatId}", [
@@ -5815,6 +7825,8 @@ namespace App\Services\Telegram\Traits;
  *   - addPhotoToStep()            : Tambah file ID foto ke state wizard
  *   - advanceFromPhotoStep()      : Transisi keluar dari step foto
  *   - handleConfirmation()        : Proses teks konfirmasi di Step 8
+ *   - photoCallbackKey()          : Peta $photoStep ke kunci callback_data pendek
+ *   - photoDoneButtonLabel()      : Label tombol "selesai" yang sesuai step foto
  *
  * Trait ini bergantung pada method berikut dari kelas pemakai:
  *   - parseDurationToMinutes(string $text): ?int
@@ -5827,6 +7839,15 @@ namespace App\Services\Telegram\Traits;
  *   - buildPhotoHygienePrompt(array $state): array
  *   - buildConfirmationSummary(array $state): array
  *   - saveReport(string $chatId, array $state): array
+ *
+ * PENTING — Konsistensi callback_data foto:
+ * Semua callback_data untuk step foto WAJIB menggunakan format pendek:
+ *   wizard:confirm:photo_doc_done      wizard:confirm:photo_doc_skip
+ *   wizard:confirm:photo_hygiene_done  wizard:confirm:photo_hygiene_skip
+ * BUKAN 'photo_documentation_done' (bentuk panjang $photoStep). Switch-case
+ * di WizardCallbackHandlerTrait::handleConfirmationCallback() hanya mengenali
+ * bentuk pendek ini. Gunakan photoCallbackKey() setiap kali membangun
+ * callback_data foto agar tidak terulang lagi bug ini.
  */
 trait WizardStepHandlerTrait
 {
@@ -5878,7 +7899,9 @@ trait WizardStepHandlerTrait
         return [
             'message'  => "Equipment dikunci: *{$equipmentLabel}*\n\n" .
                 "*Step 4/8* — Berapa lama pekerjaan berlangsung?\n" .
-                "Ketik durasi (contoh: `2 jam`, `30 menit`, `1.5 jam`)",
+                "Ketik durasi, contoh:\n" .
+                "`2 jam`, `30 menit`, `1.5 jam`, `1:30`, `1h30m`\n" .
+                "Atau rentang waktu: `08:00 sampai 09:00`, `08:00-10:00`",
             'keyboard' => [],
         ];
     }
@@ -5898,7 +7921,8 @@ trait WizardStepHandlerTrait
         if ($minutes === null || $minutes <= 0) {
             return [
                 'message'  => "Durasi tidak dikenali. Coba format lain:\n" .
-                    "`2 jam`, `30 menit`, `1 jam 30 menit`, `90 menit`",
+                    "`2 jam`, `30 menit`, `1 jam 30 menit`, `1:30`, `1h30m`\n" .
+                    "Atau rentang waktu: `08:00 sampai 09:00`, `08:00-10:00`",
                 'keyboard' => [],
             ];
         }
@@ -5996,10 +8020,9 @@ trait WizardStepHandlerTrait
             return [
                 'message'  => "*Step 6/8* — Foto Dokumentasi\n\n" .
                     "Sudah ada 1 foto yang dikirim bersama laporan awal.\n" .
-                    "Tambah foto lagi, atau lanjutkan?",
+                    "Kirim foto tambahan jika ada, atau lanjutkan:",
                 'keyboard' => [
-                    ['text' => 'Cukup, Lanjutkan',  'callback_data' => 'wizard:confirm:photo_doc_done'],
-                    ['text' => 'Tambah Foto Lagi',   'callback_data' => 'wizard:confirm:photo_doc_more'],
+                    ['text' => 'Cukup, Lanjutkan', 'callback_data' => 'wizard:confirm:photo_doc_done'],
                     ['text' => 'Skip (Tanpa Foto)',   'callback_data' => 'wizard:confirm:photo_doc_skip'],
                 ],
             ];
@@ -6033,6 +8056,8 @@ trait WizardStepHandlerTrait
 
     /**
      * Bangun pesan prompt Step 7 (foto hygiene clearance).
+     * Ini adalah step foto terakhir — setelah selesai, wizard langsung
+     * masuk ke Step 8 (konfirmasi & kirim laporan), bukan step foto lain.
      *
      * @param  array $state State wizard
      * @return array Respons
@@ -6045,10 +8070,10 @@ trait WizardStepHandlerTrait
             return [
                 'message'  => "*Step 7/8* — Foto Hygiene Clearance\n\n" .
                     "{$currentPhotos} foto sudah diterima.\n" .
-                    "Kirim foto lagi, atau lanjutkan ke konfirmasi:",
+                    "Ini step foto terakhir. Kirim foto lagi, atau lanjutkan untuk kirim laporan:",
                 'keyboard' => [
-                    ['text' => 'Cukup, Lanjutkan', 'callback_data' => 'wizard:confirm:photo_hygiene_done'],
-                    ['text' => 'Skip Sisa',         'callback_data' => 'wizard:confirm:photo_hygiene_skip'],
+                    ['text' => $this->photoDoneButtonLabel('hygiene'), 'callback_data' => 'wizard:confirm:photo_hygiene_done'],
+                    ['text' => 'Skip Sisa',                            'callback_data' => 'wizard:confirm:photo_hygiene_skip'],
                 ],
             ];
         }
@@ -6056,7 +8081,7 @@ trait WizardStepHandlerTrait
         return [
             'message'  => "*Step 7/8* — Foto Hygiene Clearance\n\n" .
                 "Kirim foto hygiene clearance (opsional).\n" .
-                "Atau skip untuk langsung ke konfirmasi:",
+                "Ini step foto terakhir sebelum laporan dikirim:",
             'keyboard' => [
                 ['text' => 'Skip (Tanpa Foto)', 'callback_data' => 'wizard:confirm:photo_hygiene_skip'],
             ],
@@ -6066,6 +8091,33 @@ trait WizardStepHandlerTrait
     // =========================================================
     // HANDLER FOTO (STEP 6 & 7)
     // =========================================================
+
+    /**
+     * Peta $photoStep ('documentation'/'hygiene') ke kunci pendek yang dipakai
+     * di callback_data ('doc'/'hygiene'). Wajib dipakai setiap kali membangun
+     * callback_data foto agar konsisten dengan switch-case di
+     * WizardCallbackHandlerTrait::handleConfirmationCallback().
+     *
+     * @param  string $photoStep Tipe step: 'documentation' atau 'hygiene'
+     * @return string            Kunci pendek untuk callback_data
+     */
+    private function photoCallbackKey(string $photoStep): string
+    {
+        return $photoStep === 'documentation' ? 'doc' : 'hygiene';
+    }
+
+    /**
+     * Label tombol "selesai" yang sesuai dengan step foto.
+     * Step hygiene adalah step foto terakhir sebelum konfirmasi, sehingga
+     * labelnya menegaskan bahwa laporan akan langsung dikirim.
+     *
+     * @param  string $photoStep Tipe step: 'documentation' atau 'hygiene'
+     * @return string            Label tombol
+     */
+    private function photoDoneButtonLabel(string $photoStep): string
+    {
+        return $photoStep === 'hygiene' ? 'Selesai, Kirim Laporan' : 'Selesai, Lanjutkan';
+    }
 
     /**
      * Proses perintah teks di step foto ("selesai", "skip", dll).
@@ -6087,13 +8139,14 @@ trait WizardStepHandlerTrait
 
         $currentCount = count($state['photo_' . ($photoStep === 'documentation' ? 'documentation' : 'hygiene_clearance')] ?? []);
         $stepNum      = $photoStep === 'documentation' ? '6' : '7';
+        $callbackKey  = $this->photoCallbackKey($photoStep);
 
         return [
             'message'  => "*Step {$stepNum}/8* — {$currentCount} foto diterima.\n" .
                 "Kirim foto berikutnya, atau ketik *selesai* untuk lanjut.",
             'keyboard' => [
-                ['text' => 'Selesai, Lanjutkan', 'callback_data' => 'wizard:confirm:photo_' . $photoStep . '_done'],
-                ['text' => 'Skip',                'callback_data' => 'wizard:confirm:photo_' . $photoStep . '_skip'],
+                ['text' => $this->photoDoneButtonLabel($photoStep), 'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_done'],
+                ['text' => 'Skip',                                  'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_skip'],
             ],
         ];
     }
@@ -6122,12 +8175,14 @@ trait WizardStepHandlerTrait
         $count         = count($state[$key]);
         $this->saveState($chatId, $state);
 
+        $callbackKey = $this->photoCallbackKey($photoStep);
+
         return [
             'message'  => "Foto {$count} diterima.\n" .
                 "Kirim foto berikutnya, atau tekan *Selesai* untuk lanjut.",
             'keyboard' => [
-                ['text' => 'Selesai, Lanjutkan', 'callback_data' => 'wizard:confirm:photo_' . $photoStep . '_done'],
-                ['text' => 'Skip Sisa',           'callback_data' => 'wizard:confirm:photo_' . $photoStep . '_skip'],
+                ['text' => $this->photoDoneButtonLabel($photoStep), 'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_done'],
+                ['text' => 'Skip Sisa',                             'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_skip'],
             ],
         ];
     }
@@ -6205,12 +8260,17 @@ trait WizardStepHandlerTrait
 
 namespace App\Services\Telegram\Traits;
 
+use Illuminate\Support\Carbon;
+
 /**
  * WizardUtilityTrait
  *
  * Kumpulan utilitas umum yang dipakai di seluruh wizard:
  *   - parseDurationToMinutes() : Parse teks durasi ke integer menit
  *   - formatDuration()         : Format menit ke string ramah-pengguna
+ *   - parseDateFromText()      : Parse teks tanggal laporan, hasil berupa array
+ *                                ['date' => Y-m-d|null, 'status' => ...]
+ *   - formatIndonesianDate()   : Format tanggal Y-m-d ke string Bahasa Indonesia
  *   - equipmentLabel()         : Label ringkas equipment/area dari state
  *   - createInitialState()     : Buat state awal wizard baru
  *   - errorResponse()          : Bangun struktur respons error standar
@@ -6220,6 +8280,13 @@ namespace App\Services\Telegram\Traits;
  */
 trait WizardUtilityTrait
 {
+    /**
+     * Batas maksimal jumlah hari mundur yang diizinkan untuk tanggal laporan.
+     * Tanggal yang terdeteksi lebih lampau dari ini akan ditolak (status 'too_old').
+     * Nilai 7 hari untuk mengakomodasi teknisi shift dan libur akhir pekan.
+     */
+    public const REPORT_DATE_MAX_BACKDATE_DAYS = 7;
+
     // =========================================================
     // FORMAT & PARSING DURASI
     // =========================================================
@@ -6230,35 +8297,70 @@ trait WizardUtilityTrait
      *   - "2 jam 30 menit"
      *   - "2 jam" atau "1.5 jam" atau "1,5 jam"
      *   - "30 menit"
+     *   - Rentang waktu: "08:00 sampai 09:00", "8:00-9:00", "08.00 s/d 09.30", "08:00 sd 10:00"
+     *   - Jam:menit numerik: "1:30" (= 90 menit), "0:45" (= 45 menit)
+     *   - Format singkat: "1h30m", "1h 30m", "0h45m"
      *   - "90" (angka saja, dianggap menit)
+     * Hasil divalidasi: tidak boleh 0/negatif dan tidak boleh lebih dari 24 jam (1440 menit).
      *
      * @param  string   $text Input teks durasi dari teknisi
-     * @return int|null       Durasi dalam menit, null jika format tidak dikenali
+     * @return int|null       Durasi dalam menit, null jika format tidak dikenali/tidak valid
      */
     public function parseDurationToMinutes(string $text): ?int
     {
         $text = strtolower(trim($text));
 
+        // Format rentang waktu: "08:00 sampai 09:00", "8:00-9:00", "08.00 s/d 09.30", "08:00 sd 10:00"
+        // Dicek lebih dulu karena mengandung pola jam:menit yang bisa salah tertangkap pola lain
+        if (preg_match('/(\d{1,2})[:.](\d{2})\s*(?:sampai|s\/d|sd|hingga|\-)\s*(\d{1,2})[:.](\d{2})/', $text, $m)) {
+            $startMinutes = ((int) $m[1]) * 60 + (int) $m[2];
+            $endMinutes   = ((int) $m[3]) * 60 + (int) $m[4];
+            $diff         = $endMinutes - $startMinutes;
+
+            if ($diff <= 0) {
+                $diff += 1440; // Rentang melewati tengah malam
+            }
+
+            return $this->validateDurationRange($diff);
+        }
+
         // Format: "X jam Y menit"
         if (preg_match('/(\d+(?:[.,]\d+)?)\s*jam\s*(\d+)\s*menit/', $text, $m)) {
             $hours   = (float) str_replace(',', '.', $m[1]);
             $minutes = (int) $m[2];
-            return (int) round($hours * 60) + $minutes;
+
+            return $this->validateDurationRange((int) round($hours * 60) + $minutes);
         }
 
         // Format: "X jam"
         if (preg_match('/(\d+(?:[.,]\d+)?)\s*jam/', $text, $m)) {
-            return (int) round((float) str_replace(',', '.', $m[1]) * 60);
+            return $this->validateDurationRange((int) round((float) str_replace(',', '.', $m[1]) * 60));
         }
 
         // Format: "X menit"
         if (preg_match('/(\d+)\s*menit/', $text, $m)) {
-            return (int) $m[1];
+            return $this->validateDurationRange((int) $m[1]);
+        }
+
+        // Format singkat: "1h30m", "1h 30m", "0h45m"
+        if (preg_match('/\b(\d+)\s*h\s*(?:(\d+)\s*m)?\b/', $text, $m)) {
+            $hours   = (int) $m[1];
+            $minutes = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0;
+
+            return $this->validateDurationRange($hours * 60 + $minutes);
+        }
+
+        // Format jam:menit numerik: "1:30" (= 90 menit), "0:45" (= 45 menit)
+        if (preg_match('/\b(\d{1,2}):(\d{2})\b/', $text, $m)) {
+            $hours   = (int) $m[1];
+            $minutes = (int) $m[2];
+
+            return $this->validateDurationRange($hours * 60 + $minutes);
         }
 
         // Format: angka saja (anggap menit)
         if (preg_match('/^\d+$/', $text)) {
-            return (int) $text;
+            return $this->validateDurationRange((int) $text);
         }
 
         return null;
@@ -6289,6 +8391,206 @@ trait WizardUtilityTrait
         }
 
         return "{$minutes} menit";
+    }
+
+    /**
+     * Validasi hasil parsing durasi.
+     * Durasi tidak boleh 0/negatif dan tidak boleh lebih dari 24 jam (1440 menit).
+     *
+     * @param  int|null    $minutes Durasi mentah hasil parsing
+     * @return int|null             Durasi jika valid, null jika di luar rentang
+     */
+    private function validateDurationRange(?int $minutes): ?int
+    {
+        if ($minutes === null || $minutes <= 0 || $minutes > 1440) {
+            return null;
+        }
+
+        return $minutes;
+    }
+
+    // =========================================================
+    // PARSING & FORMAT TANGGAL LAPORAN
+    // =========================================================
+
+    /**
+     * Parse teks bebas dari teknisi untuk mendeteksi tanggal laporan.
+     * Format yang didukung:
+     *   - Kata kunci relatif: "kemarin", "hari ini"
+     *   - Numerik murni     : "1/7/2026", "01-07-2026"
+     *   - Tanggal + nama bulan: "1/Juli/2026", "01/juli/26", "1 Juli 2026"
+     *   - Nama bulan + tanggal: "Juli 1 2026"
+     * Nama bulan boleh lengkap atau singkatan, case-insensitive.
+     * Tahun 2-digit otomatis diterjemahkan ke tahun 20XX.
+     * Hasil divalidasi: tidak boleh tanggal masa depan dan tidak boleh
+     * lebih dari REPORT_DATE_MAX_BACKDATE_DAYS hari ke belakang dari hari ini.
+     *
+     * Berbeda dari versi sebelumnya, method ini SELALU mengembalikan array
+     * berisi tanggal (jika valid) dan status parsing, agar pemanggil bisa
+     * membedakan antara "tidak ada tanggal terdeteksi" dan "tanggal terdeteksi
+     * tapi ditolak karena di luar rentang yang diizinkan" — sehingga teknisi
+     * bisa diberi notifikasi yang jelas, bukan diam-diam fallback ke hari ini.
+     *
+     * @param  string $text Teks laporan awal dari teknisi
+     * @return array{date: string|null, status: string} Status salah satu dari:
+     *         'ok'              - tanggal terdeteksi dan valid, 'date' berisi Y-m-d
+     *         'future'          - tanggal terdeteksi tapi ada di masa depan
+     *         'too_old'         - tanggal terdeteksi tapi lebih dari batas hari mundur
+     *         'invalid_calendar'- pola tanggal cocok tapi bukan tanggal kalender valid
+     *         'not_detected'    - tidak ada pola tanggal yang cocok di teks
+     */
+    public function parseDateFromText(string $text): array
+    {
+        $text = mb_strtolower(trim($text));
+
+        // Kata kunci relatif
+        if (preg_match('/\bkemarin\b/u', $text)) {
+            return $this->resolveDateStatus(now()->subDay()->toDateString());
+        }
+
+        if (preg_match('/\bhari\s*ini\b/u', $text)) {
+            return $this->resolveDateStatus(now()->toDateString());
+        }
+
+        $bulanMap = $this->indonesianMonthMap();
+        $bulanPattern = implode('|', array_keys($bulanMap));
+
+        // Format numerik murni: d/m/y atau d-m-y
+        if (preg_match('/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/', $text, $m)) {
+            $day   = (int) $m[1];
+            $month = (int) $m[2];
+            $year  = $this->normalizeYearFragment($m[3]);
+
+            return $this->buildDateStatus($day, $month, $year);
+        }
+
+        // Format: tanggal - nama bulan - tahun (contoh: 1/juli/2026, 1 juli 2026)
+        if (preg_match('/\b(\d{1,2})[\/\-\s]+(' . $bulanPattern . ')[\/\-\s]+(\d{2,4})\b/u', $text, $m)) {
+            $day   = (int) $m[1];
+            $month = $bulanMap[$m[2]] ?? null;
+            $year  = $this->normalizeYearFragment($m[3]);
+
+            if ($month !== null) {
+                return $this->buildDateStatus($day, $month, $year);
+            }
+        }
+
+        // Format: nama bulan - tanggal - tahun (contoh: juli 1 2026)
+        if (preg_match('/\b(' . $bulanPattern . ')\s+(\d{1,2})\s+(\d{2,4})\b/u', $text, $m)) {
+            $month = $bulanMap[$m[1]] ?? null;
+            $day   = (int) $m[2];
+            $year  = $this->normalizeYearFragment($m[3]);
+
+            if ($month !== null) {
+                return $this->buildDateStatus($day, $month, $year);
+            }
+        }
+
+        return ['date' => null, 'status' => 'not_detected'];
+    }
+
+    /**
+     * Format tanggal Y-m-d ke string Bahasa Indonesia yang ramah-baca.
+     * Contoh: "2026-07-01" -> "1 Juli 2026".
+     *
+     * @param  string $dateString Tanggal dalam format Y-m-d
+     * @return string             Tanggal terformat Bahasa Indonesia
+     */
+    protected function formatIndonesianDate(string $dateString): string
+    {
+        $namaBulan = [
+            1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
+            5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
+            9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
+        ];
+
+        $date = Carbon::parse($dateString);
+
+        return $date->day . ' ' . $namaBulan[$date->month] . ' ' . $date->year;
+    }
+
+    /**
+     * Peta nama bulan Bahasa Indonesia (lengkap & singkatan) ke nomor bulan.
+     *
+     * @return array<string, int>
+     */
+    private function indonesianMonthMap(): array
+    {
+        return [
+            'januari' => 1, 'jan' => 1,
+            'februari' => 2, 'feb' => 2,
+            'maret' => 3, 'mar' => 3,
+            'april' => 4, 'apr' => 4,
+            'mei' => 5,
+            'juni' => 6, 'jun' => 6,
+            'juli' => 7, 'jul' => 7,
+            'agustus' => 8, 'agu' => 8, 'ags' => 8,
+            'september' => 9, 'sep' => 9, 'sept' => 9,
+            'oktober' => 10, 'okt' => 10,
+            'november' => 11, 'nov' => 11,
+            'desember' => 12, 'des' => 12,
+        ];
+    }
+
+    /**
+     * Normalisasi fragmen tahun hasil regex ke integer 4-digit.
+     * Tahun 2-digit dianggap tahun 20XX.
+     *
+     * @param  string $yearFragment Fragmen tahun mentah dari regex
+     * @return int                  Tahun 4-digit
+     */
+    private function normalizeYearFragment(string $yearFragment): int
+    {
+        if (strlen($yearFragment) === 2) {
+            return 2000 + (int) $yearFragment;
+        }
+
+        return (int) $yearFragment;
+    }
+
+    /**
+     * Bangun string tanggal Y-m-d dari komponen day/month/year, lalu validasi rentang.
+     * Mengembalikan status 'invalid_calendar' jika kombinasi tanggal tidak valid
+     * secara kalender (misal 31 Februari), sebelum sempat divalidasi rentang.
+     *
+     * @param  int   $day   Tanggal
+     * @param  int   $month Bulan
+     * @param  int   $year  Tahun 4-digit
+     * @return array{date: string|null, status: string} Lihat parseDateFromText() untuk daftar status
+     */
+    private function buildDateStatus(int $day, int $month, int $year): array
+    {
+        if (!checkdate($month, $day, $year)) {
+            return ['date' => null, 'status' => 'invalid_calendar'];
+        }
+
+        $date = Carbon::create($year, $month, $day);
+
+        return $this->resolveDateStatus($date->toDateString());
+    }
+
+    /**
+     * Validasi rentang tanggal hasil parsing.
+     * Tanggal tidak boleh berada di masa depan dan tidak boleh lebih dari
+     * REPORT_DATE_MAX_BACKDATE_DAYS hari ke belakang dari hari ini.
+     *
+     * @param  string $dateString Tanggal dalam format Y-m-d
+     * @return array{date: string|null, status: string} Lihat parseDateFromText() untuk daftar status
+     */
+    private function resolveDateStatus(string $dateString): array
+    {
+        $date  = Carbon::parse($dateString)->startOfDay();
+        $today = now()->startOfDay();
+
+        if ($date->greaterThan($today)) {
+            return ['date' => null, 'status' => 'future'];
+        }
+
+        if ($date->lessThan($today->copy()->subDays(self::REPORT_DATE_MAX_BACKDATE_DAYS))) {
+            return ['date' => null, 'status' => 'too_old'];
+        }
+
+        return ['date' => $date->toDateString(), 'status' => 'ok'];
     }
 
     // =========================================================
@@ -6347,6 +8649,8 @@ trait WizardUtilityTrait
             'using_clarification_service' => false,
             'work_duration_minutes'       => null,
             'root_cause'                  => null,
+            'report_date'                 => null,
+            'report_date_status'          => null,
             'initial_photo_file_id'       => null,
             'photo_documentation'         => [],
             'photo_hygiene_clearance'     => [],
@@ -7144,6 +9448,7 @@ use App\Models\Asset;
 use App\Services\AiService;
 use App\Services\TechIdentSearchService;
 use App\Services\Telegram\Traits\WizardCallbackHandlerTrait;
+use App\Services\Telegram\Traits\WizardFuncLocPickerTrait;
 use App\Services\Telegram\Traits\WizardPhotoAddonTrait;
 use App\Services\Telegram\Traits\WizardReportSaverTrait;
 use App\Services\Telegram\Traits\WizardStepHandlerTrait;
@@ -7159,7 +9464,7 @@ use Illuminate\Support\Facades\Log;
  * teknisi mengonfirmasi di Step 8. Semua state disimpan di Laravel Cache
  * per chat_id.
  *
- * Step 1: Terima Laporan Awal    -> jalankan TechIdentSearch 3-pass
+ * Step 1: Terima Laporan Awal    -> jalankan TechIdentSearch 3-pass, deteksi tanggal laporan
  * Step 2: Klarifikasi Equipment  -> keyboard kandidat / tulis ulang / hierarki
  * Step 3: Akselerasi FuncLoc     -> ditangani ClarificationService & FuncLocParser
  * Step 4: Waktu Pengerjaan       -> parse durasi atau tanya ke teknisi
@@ -7184,13 +9489,15 @@ use Illuminate\Support\Facades\Log;
  *   - WizardStepHandlerTrait    : handler per-step (4, 5, 6, 7, konfirmasi teks)
  *   - WizardCallbackHandlerTrait: handler semua callback inline keyboard
  *   - WizardReportSaverTrait    : simpan laporan ke DB, validasi foto, generate kode
- *   - WizardUtilityTrait        : format durasi, label equipment, state awal, error response
+ *   - WizardUtilityTrait        : format durasi/tanggal, label equipment, state awal, error response
  *   - WizardPhotoAddonTrait     : tambah foto ke laporan tersimpan via report_code
+ *   - WizardFuncLocPickerTrait  : keyboard hierarki FuncLoc untuk alur laporan area/section
  */
 class ReportWizardService
 {
     use WizardStepHandlerTrait;
     use WizardCallbackHandlerTrait;
+    use WizardFuncLocPickerTrait;
     use WizardReportSaverTrait;
     use WizardUtilityTrait;
     use WizardPhotoAddonTrait;
@@ -7237,9 +9544,15 @@ class ReportWizardService
      * Mulai wizard baru dari teks laporan awal teknisi.
      * Jika ada wizard aktif sebelumnya, wizard lama di-reset.
      *
+     * PENTING: Parameter $photoFileId harus berisi path lokal hasil
+     * PhotoStorageService::store() (contoh: "reports/2026/07/03/123456/photo_abc.jpg"),
+     * BUKAN raw file_id Telegram (contoh: "AgACAgIAAxkBAAI...").
+     * Download ke storage lokal wajib dilakukan sebelum memanggil method ini.
+     * Path yang tidak mengandung "/" akan diabaikan dan tidak disimpan ke state.
+     *
      * @param  string      $chatId      Chat ID Telegram
      * @param  string      $text        Teks laporan dari teknisi
-     * @param  string|null $photoFileId File ID foto yang disertakan di pesan awal (opsional)
+     * @param  string|null $photoFileId Path lokal foto awal (opsional)
      * @return array       Respons yang harus dikirim ke teknisi
      */
     public function startWizard(string $chatId, string $text, ?string $photoFileId = null): array
@@ -7249,13 +9562,31 @@ class ReportWizardService
         $state = $this->createInitialState($chatId, $text);
 
         if ($photoFileId) {
-            $state['initial_photo_file_id'] = $photoFileId;
+            // Guard: tolak raw file_id Telegram yang belum di-download.
+            // Path lokal selalu mengandung "/" sebagai pemisah direktori.
+            if (!str_contains($photoFileId, '/')) {
+                Log::warning("startWizard: photoFileId ditolak karena bukan path lokal.", [
+                    'chat_id'      => $chatId,
+                    'photo_file_id' => $photoFileId,
+                ]);
+            } else {
+                $state['initial_photo_file_id'] = $photoFileId;
+            }
         }
 
         // Analisa teks awal dengan AI untuk ekstrak area, equipment,
         // durasi, root cause — hasil digunakan di step-step berikutnya
         $analysis             = $this->aiService->analyzeReportText($text);
         $state['ai_analysis'] = $analysis;
+
+        // Deteksi tanggal laporan dari teks awal (mendukung "kemarin", format
+        // numerik, dan nama bulan Bahasa Indonesia). 'date' bernilai null jika
+        // tidak terdeteksi atau di luar rentang valid — saveReport() akan
+        // fallback ke hari ini. 'status' dipakai appendDateConfirmationNote()
+        // untuk menentukan notifikasi apa yang perlu ditampilkan ke teknisi.
+        $dateResult                  = $this->parseDateFromText($text);
+        $state['report_date']        = $dateResult['date'];
+        $state['report_date_status'] = $dateResult['status'];
 
         if (!empty($analysis['parsed_duration_minutes'])) {
             $state['work_duration_minutes'] = (int) $analysis['parsed_duration_minutes'];
@@ -7397,7 +9728,8 @@ class ReportWizardService
             $state['step']                      = self::STEP_EQUIPMENT_CLARIFY;
             $this->saveState($chatId, $state);
 
-            return $this->buildEquipmentConfirmKeyboard($exactMatch, $confidence);
+            $response = $this->buildEquipmentConfirmKeyboard($exactMatch, $confidence);
+            return $this->appendDateConfirmationNote($response, $state);
         }
 
         // Confidence 80-94%: ada kandidat ambigu -> tampilkan keyboard kandidat (Step 2)
@@ -7407,7 +9739,8 @@ class ReportWizardService
             $state['retype_attempts'] = 0;
             $this->saveState($chatId, $state);
 
-            return $this->buildCandidateKeyboard($candidates, $results);
+            $response = $this->buildCandidateKeyboard($candidates, $results);
+            return $this->appendDateConfirmationNote($response, $state);
         }
 
         // Tidak ada kandidat: tanya jenis pekerjaan terlebih dahulu
@@ -7418,7 +9751,7 @@ class ReportWizardService
         $state['awaiting_work_type'] = true;
         $this->saveState($chatId, $state);
 
-        return [
+        $response = [
             'message'  => "Tidak ditemukan kode equipment dari laporan Anda.\n\n" .
                           "Ini jenis pekerjaan apa?",
             'keyboard' => [
@@ -7427,6 +9760,50 @@ class ReportWizardService
                 ['text' => 'Batalkan Laporan',          'callback_data' => 'wizard:cancel_wizard'],
             ],
         ];
+
+        return $this->appendDateConfirmationNote($response, $state);
+    }
+
+    /**
+     * Tambahkan catatan singkat tentang tanggal laporan ke pesan respons Step 1.
+     * Tidak menambah step baru — hanya menyisipkan catatan di bawah pesan
+     * Step 1 (equipment search), dengan isi tergantung status parseDateFromText():
+     *   - 'ok'      : konfirmasi tanggal yang akan dipakai
+     *   - 'future'  : tanggal ditolak karena ada di masa depan
+     *   - 'too_old' : tanggal ditolak karena melewati batas hari mundur
+     *   - lainnya   : tidak ada tanggal terdeteksi di teks, tidak perlu catatan
+     *                 (laporan akan pakai tanggal hari ini seperti biasa)
+     *
+     * @param  array $response Respons yang akan dikirim (berisi key 'message')
+     * @param  array $state    State wizard saat ini
+     * @return array           Respons dengan catatan tanggal ditambahkan (jika ada)
+     */
+    protected function appendDateConfirmationNote(array $response, array $state): array
+    {
+        $status = $state['report_date_status'] ?? 'not_detected';
+
+        if ($status === 'ok' && !empty($state['report_date'])) {
+            $formattedDate = $this->formatIndonesianDate($state['report_date']);
+            $response['message'] .= "\n\n_Tanggal laporan terdeteksi: {$formattedDate}. " .
+                "Ini yang akan dipakai kecuali Anda ubah nanti._";
+            return $response;
+        }
+
+        if ($status === 'future') {
+            $response['message'] .= "\n\n_Catatan: tanggal yang Anda tulis ada di masa depan, " .
+                "jadi tidak bisa dipakai. Laporan akan memakai tanggal hari ini._";
+            return $response;
+        }
+
+        if ($status === 'too_old') {
+            $maxDays = self::REPORT_DATE_MAX_BACKDATE_DAYS;
+            $response['message'] .= "\n\n_Catatan: tanggal yang Anda tulis lebih dari {$maxDays} hari " .
+                "yang lalu, jadi tidak bisa dipakai (maksimal mundur {$maxDays} hari). " .
+                "Laporan akan memakai tanggal hari ini._";
+            return $response;
+        }
+
+        return $response;
     }
 
     /**
@@ -8025,16 +10402,36 @@ trait AiKeywordParserTrait
     /**
      * Coba ekstrak estimasi durasi pekerjaan (dalam menit) dari teks awal teknisi.
      *
-     * Pola yang dikenali: "2 jam", "1,5 jam", "90 menit", "2 jam 30 menit".
+     * Pola yang dikenali:
+     *   - "2 jam", "1,5 jam", "90 menit", "2 jam 30 menit"
+     *   - Rentang waktu: "08:00 sampai 09:00", "8:00-9:00", "08.00 s/d 09.30", "08:00 sd 10:00"
+     *   - Format singkat: "1h30m", "1h 30m", "0h45m"
+     *   - Jam:menit numerik: "1:30" (= 90 menit)
      * Hasil dipakai untuk pre-fill Step 4 (Waktu Pengerjaan) wizard agar teknisi
      * tidak perlu mengetik ulang jika durasi sudah disebut di pesan pertama.
+     * Hasil divalidasi: tidak boleh 0/negatif dan tidak boleh lebih dari 24 jam (1440 menit).
      *
      * @param string $text Teks laporan
      * @return int|null Total menit yang diekstrak, atau null jika tidak ditemukan pola durasi
      */
     protected function parseWorkDurationMinutes(string $text): ?int
     {
-        $textLower    = strtolower($text);
+        $textLower = strtolower($text);
+
+        // Format rentang waktu — dicek lebih dulu karena mengandung pola jam:menit
+        // yang bisa salah tertangkap oleh pola "jam:menit numerik" di bawah
+        if (preg_match('/(\d{1,2})[:.](\d{2})\s*(?:sampai|s\/d|sd|hingga|\-)\s*(\d{1,2})[:.](\d{2})/', $textLower, $m)) {
+            $startMinutes = ((int) $m[1]) * 60 + (int) $m[2];
+            $endMinutes   = ((int) $m[3]) * 60 + (int) $m[4];
+            $diff         = $endMinutes - $startMinutes;
+
+            if ($diff <= 0) {
+                $diff += 1440; // Rentang melewati tengah malam
+            }
+
+            return $this->validateWorkDurationMinutes($diff);
+        }
+
         $totalMinutes = 0;
         $found        = false;
 
@@ -8051,7 +10448,43 @@ trait AiKeywordParserTrait
             $found = true;
         }
 
-        return $found ? $totalMinutes : null;
+        if ($found) {
+            return $this->validateWorkDurationMinutes($totalMinutes);
+        }
+
+        // Format singkat: "1h30m", "1h 30m", "0h45m"
+        if (preg_match('/\b(\d+)\s*h\s*(?:(\d+)\s*m)?\b/', $textLower, $m)) {
+            $hours   = (int) $m[1];
+            $minutes = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0;
+
+            return $this->validateWorkDurationMinutes($hours * 60 + $minutes);
+        }
+
+        // Format jam:menit numerik: "1:30" (= 90 menit)
+        if (preg_match('/\b(\d{1,2}):(\d{2})\b/', $textLower, $m)) {
+            $hours   = (int) $m[1];
+            $minutes = (int) $m[2];
+
+            return $this->validateWorkDurationMinutes($hours * 60 + $minutes);
+        }
+
+        return null;
+    }
+
+    /**
+     * Validasi hasil parsing durasi pekerjaan.
+     * Durasi tidak boleh 0/negatif dan tidak boleh lebih dari 24 jam (1440 menit).
+     *
+     * @param  int|null    $minutes Durasi mentah hasil parsing
+     * @return int|null             Durasi jika valid, null jika di luar rentang
+     */
+    private function validateWorkDurationMinutes(?int $minutes): ?int
+    {
+        if ($minutes === null || $minutes <= 0 || $minutes > 1440) {
+            return null;
+        }
+
+        return $minutes;
     }
 
     /**
@@ -8932,6 +11365,7 @@ use App\Models\Asset;
 use App\Models\AssetImportLog;
 use App\Models\Company;
 use App\Models\Department;
+use App\Models\FunctionalLocation;
 use App\Models\SubArea;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -9021,6 +11455,12 @@ class ImportService
             }
         }
 
+        $results['funcloc_preview'] = $this->previewFuncLocs(array_merge(
+            array_column($results['clean'], 'functional_loc'),
+            array_column($results['duplicate'], 'functional_loc'),
+            array_column($results['no_equip'], 'functional_loc'),
+        ));
+
         return $results;
     }
 
@@ -9065,10 +11505,13 @@ class ImportService
             // Process clean rows
             foreach ($analysis['clean'] as $row) {
                 $location = $this->findOrCreateLocation($row['location']);
+                $funcLocNode = $row['functional_loc'] !== '' ? $this->syncFuncLocFromRow($row['functional_loc']) : null;
+
                 Asset::create(array_merge(
                     $this->mapToAsset($row),
                     $location,
                     [
+                        'funcloc_id' => $funcLocNode?->id,
                         'status' => 'active',
                         'has_equipment_no' => true,
                         'data_source' => 'import_excel',
@@ -9086,10 +11529,12 @@ class ImportService
 
                     if ($duplicateAction === 'replace') {
                         $location = $this->findOrCreateLocation($row['location']);
+                        $funcLocNode = $row['functional_loc'] !== '' ? $this->syncFuncLocFromRow($row['functional_loc']) : null;
+
                         $existing->update(array_merge(
                             $this->mapToAsset($row),
                             $location,
-                            ['imported_at' => now()]
+                            ['funcloc_id' => $funcLocNode?->id, 'imported_at' => now()]
                         ));
                         $successCount++;
                     } elseif ($duplicateAction === 'keep_flag') {
@@ -9102,17 +11547,19 @@ class ImportService
             // Process no equipment rows
             if ($noEquipAction === 'flag') {
                 foreach ($analysis['no_equip'] as $row) {
-                    $location = $this->findOrCreateLocation(
-                        $this->parseFunctionalLoc($row['functional_loc'] ?? '')
-                    );
+                    $funcLocString = $row['functional_loc'] ?? '';
+                    $location = $this->findOrCreateLocation($this->parseFunctionalLoc($funcLocString));
+                    $funcLocNode = $funcLocString !== '' ? $this->syncFuncLocFromRow($funcLocString) : null;
+
                     Asset::create(array_merge(
                         [
                             'equipment_no' => null,
                             'description' => $row['description'] ?? '',
-                            'functional_loc' => $row['functional_loc'] ?? '',
+                            'functional_loc' => $funcLocString,
                         ],
                         $location,
                         [
+                            'funcloc_id' => $funcLocNode?->id,
                             'status' => 'needs_review',
                             'has_equipment_no' => false,
                             'data_source' => 'import_excel',
@@ -9208,6 +11655,122 @@ class ImportService
             'model_number'   => $row['model_number'] ?? '',
             'construct_year' => $row['construct_year'] ?? '',
         ];
+    }
+
+    /**
+     * Susun preview FuncLoc dari kumpulan string "Functional Loc." mentah,
+     * tanpa membuat record apapun. Dipakai di halaman preview import agar
+     * admin bisa melihat node mana yang baru dan mana yang sudah ada
+     * sebelum menekan tombol import.
+     *
+     * @param  array<int, string>  $funcLocPaths
+     * @return array{nodes: array, new_count: int, existing_count: int}
+     */
+    public function previewFuncLocs(array $funcLocPaths): array
+    {
+        $codeLevels = collect();
+
+        foreach ($funcLocPaths as $path) {
+            $segments = $this->splitFuncLocSegments((string) $path);
+            $code = null;
+
+            foreach ($segments as $level => $segment) {
+                $code = $code !== null ? $code . '-' . $segment : $segment;
+                $codeLevels->put($code, $level);
+            }
+        }
+
+        if ($codeLevels->isEmpty()) {
+            return ['nodes' => [], 'new_count' => 0, 'existing_count' => 0];
+        }
+
+        $existingCodes = FunctionalLocation::whereIn('code', $codeLevels->keys())
+            ->pluck('code')
+            ->flip();
+
+        $nodes = $codeLevels
+            ->map(fn ($level, $code) => [
+                'code'   => $code,
+                'level'  => $level,
+                'exists' => $existingCodes->has($code),
+            ])
+            ->values()
+            ->sortBy('code')
+            ->values()
+            ->all();
+
+        return [
+            'nodes'          => $nodes,
+            'new_count'      => collect($nodes)->where('exists', false)->count(),
+            'existing_count' => collect($nodes)->where('exists', true)->count(),
+        ];
+    }
+
+    /**
+     * Buat semua node FuncLoc (termasuk parent) dari satu baris "Functional
+     * Loc." Excel jika belum ada, lalu kembalikan node paling dalam (yang
+     * cocok dengan path penuh) untuk di-assign sebagai funcloc_id asset.
+     *
+     * Nama node diisi sama dengan kode karena Excel ZPM tidak menyediakan
+     * deskripsi per level hierarki. Admin bisa memperbaiki nama tersebut
+     * belakangan lewat halaman admin Functional Location.
+     *
+     * @param  string  $funcLoc
+     * @return FunctionalLocation|null
+     */
+    public function syncFuncLocFromRow(string $funcLoc): ?FunctionalLocation
+    {
+        $segments = $this->splitFuncLocSegments($funcLoc);
+
+        if (empty($segments)) {
+            return null;
+        }
+
+        $parent = null;
+        $node = null;
+
+        foreach ($segments as $level => $segment) {
+            $code = $parent !== null ? $parent->code . '-' . $segment : $segment;
+
+            $node = FunctionalLocation::firstOrCreate(
+                ['code' => $code],
+                [
+                    'segment'   => $segment,
+                    'name'      => $code,
+                    'level'     => $level,
+                    'parent_id' => $parent?->id,
+                    'is_active' => true,
+                ]
+            );
+
+            $parent = $node;
+        }
+
+        return $node;
+    }
+
+    /**
+     * Pecah string "Functional Loc." mentah menjadi segment per level.
+     * Sengaja tidak melakukan uppercase supaya kode yang dihasilkan persis
+     * sama dengan kode Company/Department/Area/SubArea yang dibuat oleh
+     * findOrCreateLocation() dari string yang sama — mencegah node duplikat
+     * akibat perbedaan kapitalisasi.
+     *
+     * @param  string  $funcLoc
+     * @return array<int, string>
+     */
+    private function splitFuncLocSegments(string $funcLoc): array
+    {
+        $funcLoc = trim($funcLoc);
+
+        if ($funcLoc === '') {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map('trim', explode('-', $funcLoc)),
+            fn ($segment) => $segment !== ''
+        ));
     }
 }
 
@@ -9616,6 +12179,7 @@ use App\Http\Controllers\AiProviderController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\BotController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FunctionalLocationController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\ReportController;
@@ -9650,6 +12214,9 @@ Route::middleware('admin')->group(function () {
     Route::post('/assets/{asset}/technicians/broadcast', [AssetController::class, 'broadcastToTechnicians'])->name('assets.technicians.broadcast');
     Route::get('/assets/{asset}/technicians/list', [AssetController::class, 'listTechnicians'])->name('assets.technicians.list');
     Route::resource('assets', AssetController::class);
+
+    // Functional Location
+    Route::resource('func-locs', FunctionalLocationController::class)->except(['show']);
 
     // Technicians
     Route::resource('technicians', TechnicianController::class);
@@ -11537,6 +14104,103 @@ return new class extends Migration
     }
 };
 
+================ WARNAI DENGAN FILE: 0001_01_01_000010_create_functional_locations_table.php =================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('functional_locations', function (Blueprint $table) {
+            $table->id();
+
+            // Kode penuh hierarki SAP PM, mis. "EPE-PROD-BD01-6153" — tidak boleh diubah setelah dibuat
+            $table->string('code', 100)->unique();
+
+            // Segmen terakhir saja, mis. "BD01" atau "6153"
+            $table->string('segment', 50);
+
+            $table->string('name');
+
+            // 0=site | 1=dept | 2=area | 3=section
+            $table->unsignedTinyInteger('level');
+
+            // Referensi ke node induk (self-referential)
+            $table->foreignId('parent_id')
+                ->nullable()
+                ->constrained('functional_locations')
+                ->nullOnDelete();
+
+            // FK opsional ke master data lama — hanya diisi sesuai level
+            $table->foreignId('company_id')
+                ->nullable()
+                ->constrained()
+                ->nullOnDelete();
+
+            $table->foreignId('department_id')
+                ->nullable()
+                ->constrained()
+                ->nullOnDelete();
+
+            $table->foreignId('area_id')
+                ->nullable()
+                ->constrained()
+                ->nullOnDelete();
+
+            $table->foreignId('sub_area_id')
+                ->nullable()
+                ->constrained()
+                ->nullOnDelete();
+
+            $table->boolean('is_active')->default(true);
+
+            $table->timestamps();
+
+            // Level harus antara 0–3
+            $table->index('level');
+            $table->index('parent_id');
+            $table->index('is_active');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('functional_locations');
+    }
+};
+
+================ WARNAI DENGAN FILE: 0001_01_01_000011_add_funcloc_id_to_areas_table.php =================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('areas', function (Blueprint $table) {
+            $table->foreignId('funcloc_id')
+                ->nullable()
+                ->after('name')
+                ->constrained('functional_locations')
+                ->nullOnDelete();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('areas', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('funcloc_id');
+        });
+    }
+};
+
 ================ WARNAI DENGAN FILE: 0001_01_01_000011_create_bot_registrations_table.php =================
 <?php
 
@@ -11573,6 +14237,93 @@ return new class extends Migration
     {
         Schema::dropIfExists('bot_unknown_assets');
         Schema::dropIfExists('bot_registrations');
+    }
+};
+
+================ WARNAI DENGAN FILE: 0001_01_01_000012_add_funcloc_id_to_sub_areas_table.php =================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('sub_areas', function (Blueprint $table) {
+            $table->foreignId('funcloc_id')
+                ->nullable()
+                ->after('name')
+                ->constrained('functional_locations')
+                ->nullOnDelete();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('sub_areas', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('funcloc_id');
+        });
+    }
+};
+
+================ WARNAI DENGAN FILE: 0001_01_01_000013_add_funcloc_id_to_assets_table.php =================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('assets', function (Blueprint $table) {
+            // Kolom funcloc_id ditempatkan setelah kolom functional_loc (string lama)
+            // agar keduanya berdampingan dan mudah dibandingkan saat migrasi data
+            $table->foreignId('funcloc_id')
+                ->nullable()
+                ->after('functional_loc')
+                ->constrained('functional_locations')
+                ->nullOnDelete();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('assets', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('funcloc_id');
+        });
+    }
+};
+
+================ WARNAI DENGAN FILE: 0001_01_01_000014_add_funcloc_id_to_reports_table.php =================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('reports', function (Blueprint $table) {
+            // Ditempatkan setelah area_id agar kolom-kolom lokasi berkelompok
+            $table->foreignId('funcloc_id')
+                ->nullable()
+                ->after('area_id')
+                ->constrained('functional_locations')
+                ->nullOnDelete();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('reports', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('funcloc_id');
+        });
     }
 };
 
@@ -12833,6 +15584,35 @@ function deleteProvider(id) {
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
                         <p class="text-2xl font-bold text-slate-600" x-text="analysis.total_rows"></p>
                         <p class="text-xs text-slate-500 mt-1">Total Baris</p>
+                    </div>
+                </div>
+
+                <!-- FuncLoc Preview -->
+                <div class="bg-white rounded-xl border border-slate-200 p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-medium text-slate-900">Functional Location Terdeteksi</h3>
+                        <div class="flex items-center gap-2 text-xs">
+                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
+                                <span x-text="analysis.funcloc_preview.new_count"></span> FuncLoc Baru
+                            </span>
+                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
+                                <span x-text="analysis.funcloc_preview.existing_count"></span> Sudah Ada
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="max-h-72 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
+                        <template x-for="node in analysis.funcloc_preview.nodes" :key="node.code">
+                            <div class="flex items-center gap-3 px-4 py-2 text-sm" :style="{ paddingLeft: (16 + node.level * 20) + 'px' }">
+                                <span class="font-mono text-xs text-slate-700 flex-1 truncate" x-text="node.code"></span>
+                                <span class="text-xs text-slate-400 shrink-0" x-text="'L' + node.level"></span>
+                                <span x-show="!node.exists" class="inline-flex px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded shrink-0">FuncLoc Baru</span>
+                                <span x-show="node.exists" class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded shrink-0">Sudah Ada</span>
+                            </div>
+                        </template>
+                        <template x-if="analysis.funcloc_preview.nodes.length === 0">
+                            <div class="px-4 py-6 text-center text-sm text-slate-400">Tidak ada Functional Location terdeteksi di file ini.</div>
+                        </template>
                     </div>
                 </div>
 
@@ -14992,6 +17772,374 @@ function closeModal(name) {
     </div>
 @endsection
 
+================ WARNAI DENGAN FILE: _row-cells.blade.php =================
+@php
+    /** @var \App\Models\FunctionalLocation $item */
+@endphp
+<td class="px-5 py-3.5 font-mono text-xs text-slate-700">{{ $item->code }}</td>
+<td class="px-5 py-3.5 text-slate-900">{{ $item->name }}</td>
+<td class="px-5 py-3.5">
+    <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 rounded">{{ $item->level_label }}</span>
+</td>
+<td class="px-5 py-3.5 text-slate-600">{{ $item->assets_count }} asset</td>
+<td class="px-5 py-3.5">
+    <x-status-badge :status="$item->is_active ? 'active' : 'inactive'" :label="$item->is_active ? 'Aktif' : 'Nonaktif'" />
+</td>
+<td class="px-5 py-3.5">
+    <div class="flex items-center gap-3">
+        <a href="{{ route('func-locs.create', ['parent_id' => $item->id]) }}" class="text-blue-600 hover:text-blue-700 text-xs font-medium">
+            Tambah Anak
+        </a>
+        <a href="{{ route('func-locs.edit', $item) }}" class="text-slate-600 hover:text-slate-900 text-xs font-medium">
+            Edit
+        </a>
+        @if($item->is_active)
+            <form method="POST" action="{{ route('func-locs.destroy', $item) }}" class="inline"
+                  onsubmit="return confirm('Nonaktifkan node {{ $item->code }}?')">
+                @csrf
+                @method('DELETE')
+                <button type="submit" class="text-amber-600 hover:text-amber-700 text-xs font-medium">Nonaktifkan</button>
+            </form>
+        @endif
+    </div>
+</td>
+
+================ WARNAI DENGAN FILE: _tree-node.blade.php =================
+@php
+    /** @var \App\Models\FunctionalLocation $node */
+    $hasChildren = $node->child_nodes->isNotEmpty();
+    $indent = $node->level * 24;
+@endphp
+
+<div x-data="{ open: true }" class="border-b border-slate-50 last:border-b-0">
+    <div class="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors" style="padding-left: {{ 20 + $indent }}px">
+        <button type="button"
+                @click="open = !open"
+                class="w-5 h-5 flex items-center justify-center text-slate-400 shrink-0 {{ $hasChildren ? '' : 'invisible' }}">
+            <svg class="w-4 h-4 transition-transform" :class="open ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+        </button>
+
+        <div class="w-40 shrink-0">
+            <span class="font-mono text-xs text-slate-700">{{ $node->code }}</span>
+        </div>
+
+        <div class="flex-1 min-w-0">
+            <span class="text-sm text-slate-900 truncate block">{{ $node->name }}</span>
+        </div>
+
+        <div class="w-24 shrink-0">
+            <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 rounded">{{ $node->level_label }}</span>
+        </div>
+
+        <div class="w-20 shrink-0 text-sm text-slate-600">
+            {{ $node->assets_count }} asset
+        </div>
+
+        <div class="w-24 shrink-0">
+            <x-status-badge :status="$node->is_active ? 'active' : 'inactive'" :label="$node->is_active ? 'Aktif' : 'Nonaktif'" />
+        </div>
+
+        <div class="w-44 shrink-0 flex items-center gap-3 justify-end">
+            <a href="{{ route('func-locs.create', ['parent_id' => $node->id]) }}" class="text-blue-600 hover:text-blue-700 text-xs font-medium">
+                Tambah Anak
+            </a>
+            <a href="{{ route('func-locs.edit', $node) }}" class="text-slate-600 hover:text-slate-900 text-xs font-medium">
+                Edit
+            </a>
+            @if($node->is_active)
+                <form method="POST" action="{{ route('func-locs.destroy', $node) }}" class="inline"
+                      onsubmit="return confirm('Nonaktifkan node {{ $node->code }}?')">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="text-amber-600 hover:text-amber-700 text-xs font-medium">Nonaktifkan</button>
+                </form>
+            @endif
+        </div>
+    </div>
+
+    @if($hasChildren)
+        <div x-show="open" x-cloak>
+            @foreach($node->child_nodes as $child)
+                @include('func-locs.partials._tree-node', ['node' => $child])
+            @endforeach
+        </div>
+    @endif
+</div>
+
+================ WARNAI DENGAN FILE: create.blade.php =================
+@extends('layouts.app')
+
+@section('title', 'Tambah Functional Location')
+@section('breadcrumb')
+    <a href="{{ route('dashboard') }}" class="hover:text-slate-700">Dashboard</a>
+    <span class="text-slate-300">/</span>
+    <a href="{{ route('func-locs.index') }}" class="hover:text-slate-700">Functional Location</a>
+    <span class="text-slate-300">/</span>
+    <span class="text-slate-900 font-medium">Tambah</span>
+@endsection
+
+@section('content')
+    <div class="max-w-xl">
+        <div class="bg-white rounded-xl border border-slate-200 p-6">
+
+            @if ($errors->any())
+                <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+                    <ul class="list-disc list-inside space-y-1">
+                        @foreach ($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            <form method="POST" action="{{ route('func-locs.store') }}" x-data="funcLocForm()" x-init="updatePreview()">
+                @csrf
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Parent</label>
+                    <select name="parent_id" x-model="parentCode" @change="updatePreview($event)"
+                            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                        <option value="" data-code="" data-level="-1">Tidak ada (buat sebagai node Level 0 / Site)</option>
+                        @foreach($parentOptions as $parent)
+                            <option value="{{ $parent->id }}"
+                                    data-code="{{ $parent->code }}"
+                                    data-level="{{ $parent->level }}"
+                                    {{ (string) $selectedParentId === (string) $parent->id ? 'selected' : '' }}>
+                                {{ str_repeat('— ', $parent->level) }}{{ $parent->code }} (L{{ $parent->level }} - {{ $levelLabels[$parent->level] }})
+                            </option>
+                        @endforeach
+                    </select>
+                    <p class="text-xs text-slate-400 mt-1">Pilih parent untuk menentukan level dan prefix kode secara otomatis.</p>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Segment</label>
+                    <input type="text" name="segment" value="{{ old('segment') }}" x-model="segment" @input="updatePreview($event)"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="mis. BD01" required>
+                    <p class="text-xs text-slate-400 mt-1">Bagian terakhir kode. Otomatis diubah menjadi huruf besar.</p>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Nama</label>
+                    <input type="text" name="name" value="{{ old('name') }}"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="Deskripsi lokasi" required>
+                </div>
+
+                <div class="mb-6 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide mb-1">Preview Kode</p>
+                    <p class="font-mono text-sm text-slate-900" x-text="previewCode || '-'"></p>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+                        Simpan
+                    </button>
+                    <a href="{{ route('func-locs.index') }}" class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                        Batal
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+@endsection
+
+@push('scripts')
+<script>
+    function funcLocForm() {
+        return {
+            parentCode: '{{ $selectedParentId }}',
+            segment: '{{ old('segment') }}',
+            previewCode: '',
+            updatePreview(event) {
+                const select = document.querySelector('select[name="parent_id"]');
+                const selectedOption = select.options[select.selectedIndex];
+                const parentCode = selectedOption ? selectedOption.getAttribute('data-code') : '';
+                const segment = (this.segment || '').trim().toUpperCase();
+
+                this.previewCode = parentCode ? parentCode + '-' + segment : segment;
+            }
+        };
+    }
+</script>
+@endpush
+
+================ WARNAI DENGAN FILE: edit.blade.php =================
+@extends('layouts.app')
+
+@section('title', 'Edit Functional Location')
+@section('breadcrumb')
+    <a href="{{ route('dashboard') }}" class="hover:text-slate-700">Dashboard</a>
+    <span class="text-slate-300">/</span>
+    <a href="{{ route('func-locs.index') }}" class="hover:text-slate-700">Functional Location</a>
+    <span class="text-slate-300">/</span>
+    <span class="text-slate-900 font-medium">Edit</span>
+@endsection
+
+@section('content')
+    <div class="max-w-xl">
+        <div class="bg-white rounded-xl border border-slate-200 p-6">
+
+            @if ($errors->any())
+                <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+                    <ul class="list-disc list-inside space-y-1">
+                        @foreach ($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            <form method="POST" action="{{ route('func-locs.update', $funcLoc) }}">
+                @csrf
+                @method('PUT')
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Kode (full path)</label>
+                    <input type="text" value="{{ $funcLoc->code }}" disabled
+                           class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono bg-slate-50 text-slate-500">
+                    <p class="text-xs text-slate-400 mt-1">Kode bersifat permanen dan tidak bisa diubah setelah dibuat.</p>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Level</label>
+                    <input type="text" value="L{{ $funcLoc->level }} - {{ $levelLabels[$funcLoc->level] }}" disabled
+                           class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 text-slate-500">
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Nama</label>
+                    <input type="text" name="name" value="{{ old('name', $funcLoc->name) }}"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           required>
+                </div>
+
+                <div class="mb-6">
+                    <label class="flex items-center gap-2">
+                        <input type="hidden" name="is_active" value="0">
+                        <input type="checkbox" name="is_active" value="1" {{ old('is_active', $funcLoc->is_active) ? 'checked' : '' }}
+                               class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                        <span class="text-sm text-slate-700">Aktif</span>
+                    </label>
+                    <p class="text-xs text-slate-400 mt-1">Node nonaktif tidak akan muncul di keyboard pemilihan FuncLoc pada bot.</p>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+                        Simpan
+                    </button>
+                    <a href="{{ route('func-locs.index') }}" class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                        Batal
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+@endsection
+
+================ WARNAI DENGAN FILE: index.blade.php =================
+@extends('layouts.app')
+
+@section('title', 'Functional Location')
+@section('breadcrumb')
+    <a href="{{ route('dashboard') }}" class="hover:text-slate-700">Dashboard</a>
+    <span class="text-slate-300">/</span>
+    <span class="text-slate-900 font-medium">Functional Location</span>
+@endsection
+
+@section('header-actions')
+    <a href="{{ route('func-locs.create') }}"
+       class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        Tambah FuncLoc
+    </a>
+@endsection
+
+@section('content')
+    <!-- Stat Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <x-stat-card label="Total FuncLoc" :value="$stats['total']" icon="box" />
+        <x-stat-card label="Aktif" :value="$stats['active']" value-color="text-green-600" icon="box" />
+        <x-stat-card label="Nonaktif" :value="$stats['inactive']" value-color="text-slate-500" icon="box" />
+        <x-stat-card label="Tanpa Asset" :value="$stats['without_asset']" value-color="text-amber-600" icon="alert" />
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-xl border border-slate-200 p-4 mb-6">
+        <form method="GET" action="{{ route('func-locs.index') }}" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                <select name="level" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                    <option value="">Semua Level</option>
+                    @foreach($levelLabels as $value => $label)
+                        <option value="{{ $value }}" {{ (string) $filters['level'] === (string) $value ? 'selected' : '' }}>
+                            L{{ $value }} - {{ $label }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+            <div>
+                <select name="parent_id" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                    <option value="">Semua Parent</option>
+                    @foreach($parentOptions as $parent)
+                        <option value="{{ $parent->id }}" {{ (string) $filters['parent_id'] === (string) $parent->id ? 'selected' : '' }}>
+                            {{ $parent->code }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+            <div>
+                <select name="status" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                    <option value="">Semua Status</option>
+                    <option value="active" {{ $filters['status'] === 'active' ? 'selected' : '' }}>Aktif</option>
+                    <option value="inactive" {{ $filters['status'] === 'inactive' ? 'selected' : '' }}>Nonaktif</option>
+                </select>
+            </div>
+            <div class="flex gap-2">
+                <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">Filter</button>
+                <a href="{{ route('func-locs.index') }}" class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">Reset</a>
+            </div>
+        </form>
+    </div>
+
+    @if($tree !== null)
+        <!-- Tampilan Pohon Hierarki -->
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div class="flex items-center gap-3 px-5 py-3 bg-slate-50 border-b border-slate-100 text-xs font-medium text-slate-500 uppercase tracking-wide">
+                <div class="w-5 shrink-0"></div>
+                <div class="w-40 shrink-0">Code</div>
+                <div class="flex-1">Nama</div>
+                <div class="w-24 shrink-0">Level</div>
+                <div class="w-20 shrink-0">Asset</div>
+                <div class="w-24 shrink-0">Status</div>
+                <div class="w-44 shrink-0 text-right">Aksi</div>
+            </div>
+
+            @forelse($tree as $node)
+                @include('func-locs.partials._tree-node', ['node' => $node])
+            @empty
+                <div class="px-5 py-8 text-center text-sm text-slate-400">Belum ada Functional Location.</div>
+            @endforelse
+        </div>
+    @else
+        <!-- Tampilan Daftar Datar (hasil filter) -->
+        @php
+            $rows = $items->map(fn ($item) => view('func-locs.partials._row-cells', ['item' => $item])->render())->all();
+        @endphp
+
+        <x-data-table
+            :headers="['Code', 'Nama', 'Level', 'Asset', 'Status', 'Aksi']"
+            :rows="$rows"
+            :searchable="false"
+            empty-message="Tidak ada Functional Location yang cocok dengan filter."
+        />
+    @endif
+@endsection
+
 ================ WARNAI DENGAN FILE: app.blade.php =================
 <!DOCTYPE html>
 <html lang="id">
@@ -15039,6 +18187,16 @@ function closeModal(name) {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
                 </svg>
                 Asset Management
+            </a>
+
+            <a href="{{ route('func-locs.index') }}"
+               class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
+                      {{ request()->routeIs('func-locs.*') ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white' }}">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Functional Location
             </a>
 
             <a href="{{ route('technicians.index') }}"
@@ -26963,7 +30121,7 @@ function broadcastMessage() {
 
 
 ================ WARNAI DENGAN FILE: .env.example =================
-APP_NAME=Laravel
+APP_NAME="UGC Maker"
 APP_ENV=local
 APP_KEY=
 APP_DEBUG=true
@@ -26999,7 +30157,9 @@ SESSION_PATH=/
 SESSION_DOMAIN=null
 
 BROADCAST_CONNECTION=log
-FILESYSTEM_DISK=local
+# PENTING: harus "public" agar Storage::disk('public') berfungsi dengan benar.
+# Setelah setup jalankan: php artisan storage:link
+FILESYSTEM_DISK=public
 QUEUE_CONNECTION=database
 
 CACHE_STORE=database
@@ -27026,6 +30186,36 @@ AWS_SECRET_ACCESS_KEY=
 AWS_DEFAULT_REGION=us-east-1
 AWS_BUCKET=
 AWS_USE_PATH_STYLE_ENDPOINT=false
+
+# --- CREA AI ---
+# Digunakan oleh GenerateCharacterImageJob untuk membuat gambar karakter.
+CREA_AI_API_KEY=
+CREA_AI_BASE_URL=https://api.crea.ai/v1
+
+# --- FLOW ---
+# Digunakan oleh FlowService untuk orkestrasi pipeline lanjutan.
+FLOW_API_KEY=
+FLOW_BASE_URL=https://api.flow.ai/v1
+
+# --- FFMPEG ---
+# Jika sudah ada di PATH sistem cukup tulis: ffmpeg dan ffprobe
+# Contoh Linux : /usr/bin/ffmpeg | macOS : /opt/homebrew/bin/ffmpeg
+FFMPEG_PATH=ffmpeg
+FFPROBE_PATH=ffprobe
+
+# --- GEMINI (V2) ---
+GEMINI_API_KEY=
+GEMINI_DEFAULT_MODEL=gemini-2.0-flash
+
+# --- DEEPSEEK (V2) ---
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+DEEPSEEK_DEFAULT_MODEL=deepseek-chat
+
+# --- GROQ (V2) ---
+GROQ_API_KEY=
+GROQ_BASE_URL=https://api.groq.com/openai/v1
+GROQ_DEFAULT_MODEL=llama-3.3-70b-versatile
 
 VITE_APP_NAME="${APP_NAME}"
 

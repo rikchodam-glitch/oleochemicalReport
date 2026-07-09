@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SubArea extends Model
 {
-    protected $fillable = ['area_id', 'code', 'name'];
+    protected $fillable = ['area_id', 'code', 'name', 'funcloc_id'];
 
     public function area(): BelongsTo
     {
@@ -18,5 +18,13 @@ class SubArea extends Model
     public function assets(): HasMany
     {
         return $this->hasMany(Asset::class);
+    }
+
+    /**
+     * FuncLoc L3 yang merepresentasikan sub-area ini.
+     */
+    public function functionalLocation(): BelongsTo
+    {
+        return $this->belongsTo(FunctionalLocation::class, 'funcloc_id');
     }
 }

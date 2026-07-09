@@ -27,35 +27,42 @@ class Technician extends Model
     protected function casts(): array
     {
         return [
-            'area_ids' => 'array',
-            'approved_at' => 'datetime',
+            'area_ids'       => 'array',
+            'approved_at'    => 'datetime',
             'last_active_at' => 'datetime',
         ];
     }
 
     public const GROUPS = [
         'reguler' => 'Reguler',
-        'grub_a' => 'Grub A',
-        'grub_b' => 'Grub B',
-        'grub_c' => 'Grub C',
+        'grub_a'  => 'Grub A',
+        'grub_b'  => 'Grub B',
+        'grub_c'  => 'Grub C',
     ];
 
     public const SECTIONS = [
-        'mekanik' => 'Mekanik',
-        'electrical' => 'Electrical',
-        'it' => 'IT',
+        'mekanik'       => 'Mekanik',
+        'electrical'    => 'Electrical',
+        'it'            => 'IT',
         'instrumentasi' => 'Instrumentasi',
-        'sipil' => 'Sipil',
-        'welding' => 'Welding',
-        'general' => 'General',
-        'lainnya' => 'Lainnya',
+        'sipil'         => 'Sipil',
+        'welding'       => 'Welding',
+        'general'       => 'General',
+        'lainnya'       => 'Lainnya',
     ];
+
+    // =========================================================
+    // RELASI YANG SUDAH ADA
+    // =========================================================
 
     public function department(): BelongsTo
     {
         return $this->belongsTo(Department::class);
     }
 
+    /**
+     * Semua laporan milik teknisi ini (sebagai pemilik/penerima laporan).
+     */
     public function reports(): HasMany
     {
         return $this->hasMany(Report::class);
@@ -72,6 +79,26 @@ class Technician extends Model
     {
         return $this->belongsTo(User::class, 'approved_by');
     }
+
+    // =========================================================
+    // RELASI BARU — KOLABORASI
+    // =========================================================
+
+    /**
+     * Laporan-laporan yang dibuat oleh teknisi ini untuk rekan kolaborator.
+     * Ini adalah laporan di mana teknisi ini bertindak sebagai pengirim (creator),
+     * bukan sebagai pemilik laporan (technician_id).
+     *
+     * @return HasMany<Report>
+     */
+    public function createdReports(): HasMany
+    {
+        return $this->hasMany(Report::class, 'creator_id');
+    }
+
+    // =========================================================
+    // SCOPES
+    // =========================================================
 
     public function scopeActive($query)
     {

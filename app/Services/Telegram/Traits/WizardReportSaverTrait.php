@@ -3,6 +3,7 @@
 namespace App\Services\Telegram\Traits;
 
 use App\Models\Report;
+use App\Models\Technician;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -10,8 +11,9 @@ use Illuminate\Support\Str;
  * WizardReportSaverTrait
  *
  * Menangani penyimpanan laporan ke database dan helper terkait foto:
- *   - saveReport()                  : Simpan laporan ke DB setelah konfirmasi Step 8
- *   - buildConfirmationSummary()    : Bangun pesan ringkasan Step 8
+ *   - saveReport()                  : Simpan laporan ke DB setelah konfirmasi Step 8,
+ *                                     termasuk pembuatan laporan kolaborator secara bulk
+ *   - buildConfirmationSummary()    : Bangun pesan ringkasan Step 8 (termasuk daftar kolaborator)
  *   - generateReportCode()          : Generate kode RPT-YYYYMMDD-XXXX unik per hari
  *   - isValidLocalPhotoPath()       : Validasi apakah nilai adalah path lokal foto
  *   - filterValidLocalPhotoPaths()  : Filter array foto, buang yang bukan path lokal
@@ -31,7 +33,8 @@ trait WizardReportSaverTrait
 
     /**
      * Bangun pesan ringkasan konfirmasi untuk Step 8.
-     * Menampilkan semua data yang akan disimpan agar teknisi bisa verifikasi.
+     * Menampilkan semua data yang akan disimpan agar teknisi bisa verifikasi,
+     * termasuk daftar kolaborator jika ada.
      *
      * @param  array $state State wizard
      * @return array Respons dengan pesan ringkasan dan keyboard Ya/Batalkan
@@ -43,20 +46,41 @@ trait WizardReportSaverTrait
         $rootCause      = $state['root_cause'] ?? '-';
         $photoDocCount  = count($state['photo_documentation'] ?? []);
         $photoHygCount  = count($state['photo_hygiene_clearance'] ?? []);
+        $collabNiks     = $state['collaborator_niks'] ?? [];
 
         // Tanggal laporan: pakai hasil deteksi dari Step 1, fallback ke hari ini
-        $reportDate      = $state['report_date'] ?? now()->toDateString();
-        $formattedDate   = $this->formatIndonesianDate($reportDate);
+        $reportDate    = $state['report_date'] ?? now()->toDateString();
+        $formattedDate = $this->formatIndonesianDate($reportDate);
 
         $msg  = "*Step 8/8* — Konfirmasi Laporan\n\n";
         $msg .= "Periksa ringkasan berikut sebelum disimpan:\n\n";
         $msg .= "*Tanggal*   : {$formattedDate}\n";
-        $msg .= "*Equipment* : {$equipmentLabel}\n";
+
+        // Tampilkan FuncLoc jika laporan area, atau Equipment jika laporan alat
+        if (!empty($state['funcloc_code'])) {
+            $msg .= "*Lokasi*    : {$state['funcloc_code']}";
+            if (!empty($state['funcloc_name'])) {
+                $msg .= " — {$state['funcloc_name']}";
+            }
+            $msg .= "\n";
+        } else {
+            $msg .= "*Equipment* : {$equipmentLabel}\n";
+        }
+
         $msg .= "*Durasi*    : {$duration}\n";
         $msg .= "*Root Cause*: {$rootCause}\n";
         $msg .= "*Foto Dok*  : {$photoDocCount} foto\n";
-        $msg .= "*Foto HC*   : {$photoHygCount} foto\n\n";
-        $msg .= "Simpan laporan ini?";
+        $msg .= "*Foto HC*   : {$photoHygCount} foto\n";
+
+        // Tampilkan daftar kolaborator jika ada
+        if (!empty($collabNiks)) {
+            $nikList  = implode(', ', $collabNiks);
+            $jumlah   = count($collabNiks);
+            $msg .= "*Kolaborator*: {$nikList}\n";
+            $msg .= "\n_Laporan akan dibuat untuk {$jumlah} kolaborator secara otomatis._\n";
+        }
+
+        $msg .= "\nSimpan laporan ini?";
 
         return [
             'message'  => $msg,
@@ -72,6 +96,11 @@ trait WizardReportSaverTrait
      * Hanya dipanggil setelah teknisi mengonfirmasi di Step 8.
      * Foto yang bukan path lokal (belum diproses PhotoStorageService) dibuang.
      *
+     * Jika state mengandung collaborator_niks, laporan tambahan dibuat secara bulk
+     * untuk setiap kolaborator. Kolom creator_id di semua laporan diisi dengan ID
+     * teknisi pengirim, dan collaborator_of di laporan kolaborator menunjuk ke ID
+     * laporan utama.
+     *
      * Respons sukses membawa dua pesan terpisah agar tidak terjadi pesan ganda
      * di Telegram:
      *   - edit_message    : pesan pendek yang dipakai untuk menimpa pesan
@@ -86,7 +115,7 @@ trait WizardReportSaverTrait
     protected function saveReport(string $chatId, array $state): array
     {
         try {
-            $technician = \App\Models\Technician::where('telegram_id', $chatId)->first();
+            $technician = Technician::where('telegram_id', $chatId)->first();
             if (!$technician) {
                 return $this->errorResponse(
                     "Akun teknisi tidak ditemukan untuk chat ini.\n" .
@@ -113,13 +142,13 @@ trait WizardReportSaverTrait
             $photoDocumentation    = $this->filterValidLocalPhotoPaths($state['photo_documentation'] ?? []);
             $photoHygieneClearance = $this->filterValidLocalPhotoPaths($state['photo_hygiene_clearance'] ?? []);
 
-            $report = Report::create([
-                'report_code'             => $reportCode,
-                'technician_id'           => $technician->id,
+            // Data laporan yang dipakai bersama oleh laporan utama dan laporan kolaborator
+            $dataLaporan = [
                 'report_date'             => $reportDate,
                 'work_description'        => $state['text'],
                 'asset_id'                => $state['equipment_id'] ?? null,
                 'area_id'                 => $state['area_id'] ?? null,
+                'funcloc_id'              => $state['funcloc_id'] ?? null,
                 'report_type'             => $reportType,
                 'ai_analyzed'             => !empty($state['ai_analysis']),
                 'ai_confidence'           => $state['ai_analysis']['confidence'] ?? null,
@@ -130,16 +159,50 @@ trait WizardReportSaverTrait
                 'status'                  => 'draft',
                 'wizard_started_at'       => $state['created_at'] ?? null,
                 'submitted_at'            => now(),
-            ]);
+            ];
+
+            // Simpan laporan utama atas nama teknisi pengirim
+            $report = Report::create(array_merge($dataLaporan, [
+                'report_code'   => $reportCode,
+                'technician_id' => $technician->id,
+                'creator_id'    => $technician->id,
+            ]));
+
+            // Buat laporan kolaborator jika ada NIK yang terdaftar di state
+            $collabNiks        = $state['collaborator_niks'] ?? [];
+            $jumlahKolaborator = 0;
+
+            foreach ($collabNiks as $nik) {
+                $kolaborator = Technician::where('nik', $nik)->first();
+                if (!$kolaborator) {
+                    Log::warning("WizardService: NIK kolaborator tidak ditemukan saat saveReport", [
+                        'nik'       => $nik,
+                        'report_id' => $report->id,
+                    ]);
+                    continue;
+                }
+
+                Report::create(array_merge($dataLaporan, [
+                    'report_code'      => $this->generateReportCode(),
+                    'technician_id'    => $kolaborator->id,
+                    'creator_id'       => $technician->id,
+                    'collaborator_of'  => $report->id,
+                ]));
+
+                $jumlahKolaborator++;
+            }
 
             $this->destroyWizard($chatId);
 
             Log::info("WizardService: Report saved for chat {$chatId}", [
-                'report_id'       => $report->id,
-                'report_code'     => $reportCode,
-                'report_date'     => $reportDate,
-                'photo_doc_count' => count($photoDocumentation),
-                'photo_hyg_count' => count($photoHygieneClearance),
+                'report_id'              => $report->id,
+                'report_code'            => $reportCode,
+                'report_date'            => $reportDate,
+                'funcloc_id'             => $state['funcloc_id'] ?? null,
+                'funcloc_code'           => $state['funcloc_code'] ?? null,
+                'photo_doc_count'        => count($photoDocumentation),
+                'photo_hyg_count'        => count($photoHygieneClearance),
+                'jumlah_kolaborator'     => $jumlahKolaborator,
             ]);
 
             $equipmentLabel = $this->equipmentLabel($state);
@@ -150,9 +213,15 @@ trait WizardReportSaverTrait
             $photoDocCount  = count($photoDocumentation);
             $photoHygCount  = count($photoHygieneClearance);
 
+            // Total laporan yang berhasil dibuat (utama + kolaborator)
+            $totalLaporan = 1 + $jumlahKolaborator;
+
             // Pesan pendek untuk menimpa pesan konfirmasi Step 8 (edit in-place)
             $editMsg  = "*Laporan Tersimpan*\n\n";
             $editMsg .= "Kode: `{$reportCode}`\n";
+            if ($jumlahKolaborator > 0) {
+                $editMsg .= "Total laporan dibuat: {$totalLaporan} (termasuk {$jumlahKolaborator} kolaborator).\n";
+            }
             $editMsg .= "Detail laporan dikirim di pesan berikutnya.";
 
             // Pesan detail lengkap, dikirim sebagai pesan baru
@@ -160,12 +229,32 @@ trait WizardReportSaverTrait
             $successMsg .= "Kode Laporan : `{$reportCode}`\n";
             $successMsg .= "Teknisi      : {$technician->name}\n";
             $successMsg .= "Tanggal      : {$formattedDate}\n";
-            $successMsg .= "Equipment    : {$equipmentLabel}\n";
+
+            // Tampilkan Lokasi FuncLoc jika laporan area, atau Equipment jika laporan alat
+            if (!empty($state['funcloc_code'])) {
+                $funclocLabel = $state['funcloc_code'];
+                if (!empty($state['funcloc_name'])) {
+                    $funclocLabel .= ' — ' . $state['funcloc_name'];
+                }
+                $successMsg .= "Lokasi       : {$funclocLabel}\n";
+            } else {
+                $successMsg .= "Equipment    : {$equipmentLabel}\n";
+            }
+
             $successMsg .= "Durasi       : {$duration}\n";
             $successMsg .= "Foto Dok     : {$photoDocCount} foto\n";
             $successMsg .= "Foto HC      : {$photoHygCount} foto\n";
             $successMsg .= "Root Cause   : {$rootCauseShort}\n";
-            $successMsg .= "Waktu Submit : {$submittedAt}\n\n";
+            $successMsg .= "Waktu Submit : {$submittedAt}\n";
+
+            // Informasi kolaborator jika ada
+            if ($jumlahKolaborator > 0) {
+                $nikList     = implode(', ', $collabNiks);
+                $successMsg .= "\n*Kolaborator* : {$nikList}\n";
+                $successMsg .= "_Laporan terpisah sudah dibuat untuk {$jumlahKolaborator} kolaborator._\n";
+            }
+
+            $successMsg .= "\n";
 
             if ($photoHygCount === 0) {
                 // Foto HC belum ada — sertakan instruksi cara menambahkannya nanti.

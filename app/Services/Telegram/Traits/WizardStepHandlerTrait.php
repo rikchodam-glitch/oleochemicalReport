@@ -2,23 +2,27 @@
 
 namespace App\Services\Telegram\Traits;
 
+use App\Models\Technician;
+
 /**
  * WizardStepHandlerTrait
  *
  * Menangani logika handler untuk setiap step wizard laporan:
- *   - buildWorkDurationPrompt()   : Bangun prompt Step 4 (input durasi)
- *   - handleDurationInput()       : Proses teks durasi yang diketik teknisi
- *   - advanceToWorkDuration()     : Transisi ke Step 4 dari step sebelumnya
- *   - buildRootCausePrompt()      : Bangun prompt Step 5 (input root cause)
- *   - handleRootCauseInput()      : Proses teks root cause dari teknisi
- *   - buildPhotoDocumentationPrompt() : Bangun prompt Step 6 (foto dokumentasi)
- *   - buildPhotoHygienePrompt()   : Bangun prompt Step 7 (foto hygiene clearance)
- *   - handlePhotoCommand()        : Proses perintah teks di step foto
- *   - addPhotoToStep()            : Tambah file ID foto ke state wizard
- *   - advanceFromPhotoStep()      : Transisi keluar dari step foto
- *   - handleConfirmation()        : Proses teks konfirmasi di Step 8
- *   - photoCallbackKey()          : Peta $photoStep ke kunci callback_data pendek
- *   - photoDoneButtonLabel()      : Label tombol "selesai" yang sesuai step foto
+ *   - buildWorkDurationPrompt()     : Bangun prompt Step 4 (input durasi)
+ *   - handleDurationInput()         : Proses teks durasi yang diketik teknisi
+ *   - advanceToWorkDuration()       : Transisi ke Step 4 dari step sebelumnya
+ *   - buildRootCausePrompt()        : Bangun prompt Step 5 (input root cause)
+ *   - handleRootCauseInput()        : Proses teks root cause dari teknisi
+ *   - buildPhotoDocumentationPrompt(): Bangun prompt Step 6 (foto dokumentasi)
+ *   - buildPhotoHygienePrompt()     : Bangun prompt Step 7 (foto hygiene clearance)
+ *   - handlePhotoCommand()          : Proses perintah teks di step foto
+ *   - addPhotoToStep()              : Tambah file ID foto ke state wizard
+ *   - advanceFromPhotoStep()        : Transisi keluar dari step foto
+ *   - buildCollaboratorPrompt()     : Bangun prompt Step 8a (input NIK kolaborator)
+ *   - handleCollaboratorInput()     : Proses teks NIK kolaborator dari teknisi
+ *   - handleConfirmation()          : Proses teks konfirmasi di Step 8
+ *   - photoCallbackKey()            : Peta $photoStep ke kunci callback_data pendek
+ *   - photoDoneButtonLabel()        : Label tombol "selesai" yang sesuai step foto
  *
  * Trait ini bergantung pada method berikut dari kelas pemakai:
  *   - parseDurationToMinutes(string $text): ?int
@@ -29,6 +33,7 @@ namespace App\Services\Telegram\Traits;
  *   - buildRootCausePrompt(array $state): array  -- dipakai oleh handleDurationInput
  *   - buildPhotoDocumentationPrompt(array $state): array
  *   - buildPhotoHygienePrompt(array $state): array
+ *   - buildCollaboratorPrompt(array $state): array
  *   - buildConfirmationSummary(array $state): array
  *   - saveReport(string $chatId, array $state): array
  *
@@ -248,8 +253,8 @@ trait WizardStepHandlerTrait
 
     /**
      * Bangun pesan prompt Step 7 (foto hygiene clearance).
-     * Ini adalah step foto terakhir — setelah selesai, wizard langsung
-     * masuk ke Step 8 (konfirmasi & kirim laporan), bukan step foto lain.
+     * Setelah step ini selesai, wizard menuju Step 8a (Kolaborator) terlebih dahulu
+     * sebelum masuk ke Step 8 (konfirmasi & simpan).
      *
      * @param  array $state State wizard
      * @return array Respons
@@ -262,7 +267,7 @@ trait WizardStepHandlerTrait
             return [
                 'message'  => "*Step 7/8* — Foto Hygiene Clearance\n\n" .
                     "{$currentPhotos} foto sudah diterima.\n" .
-                    "Ini step foto terakhir. Kirim foto lagi, atau lanjutkan untuk kirim laporan:",
+                    "Kirim foto lagi, atau lanjutkan ke step berikutnya:",
                 'keyboard' => [
                     ['text' => $this->photoDoneButtonLabel('hygiene'), 'callback_data' => 'wizard:confirm:photo_hygiene_done'],
                     ['text' => 'Skip Sisa',                            'callback_data' => 'wizard:confirm:photo_hygiene_skip'],
@@ -273,7 +278,7 @@ trait WizardStepHandlerTrait
         return [
             'message'  => "*Step 7/8* — Foto Hygiene Clearance\n\n" .
                 "Kirim foto hygiene clearance (opsional).\n" .
-                "Ini step foto terakhir sebelum laporan dikirim:",
+                "Atau skip untuk lanjut ke step berikutnya:",
             'keyboard' => [
                 ['text' => 'Skip (Tanpa Foto)', 'callback_data' => 'wizard:confirm:photo_hygiene_skip'],
             ],
@@ -300,15 +305,15 @@ trait WizardStepHandlerTrait
 
     /**
      * Label tombol "selesai" yang sesuai dengan step foto.
-     * Step hygiene adalah step foto terakhir sebelum konfirmasi, sehingga
-     * labelnya menegaskan bahwa laporan akan langsung dikirim.
+     * Step hygiene sekarang menuju ke step kolaborator (bukan langsung konfirmasi),
+     * sehingga labelnya diperbarui menjadi "Lanjutkan".
      *
      * @param  string $photoStep Tipe step: 'documentation' atau 'hygiene'
      * @return string            Label tombol
      */
     private function photoDoneButtonLabel(string $photoStep): string
     {
-        return $photoStep === 'hygiene' ? 'Selesai, Kirim Laporan' : 'Selesai, Lanjutkan';
+        return $photoStep === 'hygiene' ? 'Selesai, Lanjutkan' : 'Selesai, Lanjutkan';
     }
 
     /**
@@ -382,7 +387,7 @@ trait WizardStepHandlerTrait
     /**
      * Transisi keluar dari step foto ke step berikutnya.
      * Dari Step 6 (dokumentasi) → Step 7 (hygiene).
-     * Dari Step 7 (hygiene)     → Step 8 (konfirmasi).
+     * Dari Step 7 (hygiene)     → Step 8a (kolaborator).
      * Jika ada foto awal dari Step 1, di-prepend ke photo_documentation.
      *
      * @param  string $chatId    Chat ID Telegram
@@ -408,10 +413,133 @@ trait WizardStepHandlerTrait
             return $this->buildPhotoHygienePrompt($state);
         }
 
-        // Dari hygiene → Step 8 konfirmasi
-        $state['step'] = self::STEP_CONFIRMATION;
+        // Dari hygiene → Step 8a kolaborator (opsional sebelum konfirmasi)
+        $state['step'] = self::STEP_COLLABORATOR;
         $this->saveState($chatId, $state);
-        return $this->buildConfirmationSummary($state);
+        return $this->buildCollaboratorPrompt($state);
+    }
+
+    // =========================================================
+    // STEP 8a — KOLABORATOR (opsional)
+    // =========================================================
+
+    /**
+     * Bangun pesan prompt Step 8a (input NIK kolaborator).
+     * Step ini opsional — teknisi bisa langsung skip ke konfirmasi.
+     * Daftar NIK yang sudah diinput ditampilkan jika ada.
+     *
+     * @param  array $state State wizard
+     * @return array Respons
+     */
+    protected function buildCollaboratorPrompt(array $state): array
+    {
+        $collabNiks = $state['collaborator_niks'] ?? [];
+
+        if (!empty($collabNiks)) {
+            $nikList = implode(', ', $collabNiks);
+            return [
+                'message'  => "*Step 8a/8* — Kolaborator\n\n" .
+                    "NIK kolaborator yang sudah ditambahkan: *{$nikList}*\n\n" .
+                    "Tambah NIK lain (ketik NIK), atau lanjut ke konfirmasi:",
+                'keyboard' => [
+                    ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
+                    ['text' => 'Lewati (Tanpa Kolaborator)',  'callback_data' => 'wizard:confirm:collab_skip'],
+                ],
+            ];
+        }
+
+        return [
+            'message'  => "*Step 8a/8* — Kolaborator (Opsional)\n\n" .
+                "Apakah ada rekan yang ikut mengerjakan pekerjaan ini?\n" .
+                "Ketik NIK rekan (bisa lebih dari satu, pisah dengan koma).\n\n" .
+                "Contoh: `12345, 67890`\n\n" .
+                "Atau lewati jika tidak ada kolaborator:",
+            'keyboard' => [
+                ['text' => 'Lewati (Tanpa Kolaborator)', 'callback_data' => 'wizard:confirm:collab_skip'],
+            ],
+        ];
+    }
+
+    /**
+     * Proses teks NIK kolaborator yang diketik teknisi di Step 8a.
+     * NIK dipisah dengan koma, titik koma, atau baris baru, lalu divalidasi
+     * ke tabel technicians. NIK yang tidak ditemukan dilaporkan ke teknisi.
+     *
+     * @param  string $chatId Chat ID Telegram
+     * @param  string $text   Input NIK dari teknisi
+     * @param  array  $state  State wizard saat ini
+     * @return array  Respons
+     */
+    protected function handleCollaboratorInput(string $chatId, string $text, array $state): array
+    {
+        // Pisah input berdasarkan koma, titik koma, atau baris baru
+        $rawNiks = preg_split('/[\s,;]+/', trim($text), -1, PREG_SPLIT_NO_EMPTY);
+
+        if (empty($rawNiks)) {
+            return $this->buildCollaboratorPrompt($state);
+        }
+
+        $ditemukan  = [];
+        $tidakAda   = [];
+        $nikSendiri = null;
+
+        // Ambil NIK teknisi pengirim untuk mencegah self-assign sebagai kolaborator
+        $teknisiPengirim = Technician::where('telegram_id', $chatId)->first();
+        if ($teknisiPengirim) {
+            $nikSendiri = $teknisiPengirim->nik;
+        }
+
+        foreach ($rawNiks as $nik) {
+            $nik = trim($nik);
+
+            // Abaikan NIK teknisi pengirim sendiri
+            if ($nikSendiri && $nik === $nikSendiri) {
+                continue;
+            }
+
+            $teknisi = Technician::where('nik', $nik)->first();
+            if ($teknisi) {
+                $ditemukan[] = $nik;
+            } else {
+                $tidakAda[] = $nik;
+            }
+        }
+
+        // Gabungkan dengan NIK kolaborator yang sudah ada di state (hindari duplikat)
+        $collabSebelumnya       = $state['collaborator_niks'] ?? [];
+        $state['collaborator_niks'] = array_values(array_unique(array_merge($collabSebelumnya, $ditemukan)));
+        $this->saveState($chatId, $state);
+
+        // Susun pesan umpan balik berdasarkan hasil validasi
+        $msg = '';
+
+        if (!empty($ditemukan)) {
+            $msg .= count($ditemukan) . ' kolaborator ditambahkan: *' . implode(', ', $ditemukan) . "*\n";
+        }
+
+        if (!empty($tidakAda)) {
+            $msg .= 'NIK tidak ditemukan: ' . implode(', ', $tidakAda) . "\n";
+        }
+
+        if (empty($state['collaborator_niks'])) {
+            // Semua NIK tidak valid dan tidak ada yang tersimpan
+            return [
+                'message'  => $msg . "\nTidak ada NIK valid yang ditemukan. Coba ketik ulang NIK, atau lewati:",
+                'keyboard' => [
+                    ['text' => 'Lewati (Tanpa Kolaborator)', 'callback_data' => 'wizard:confirm:collab_skip'],
+                ],
+            ];
+        }
+
+        $semuaNik = implode(', ', $state['collaborator_niks']);
+        return [
+            'message'  => $msg . "\nTotal kolaborator sekarang: *{$semuaNik}*\n\n" .
+                "Tambah NIK lain, atau lanjut ke konfirmasi:",
+            'keyboard' => [
+                ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
+                ['text' => 'Lewati (Tanpa Kolaborator)',  'callback_data' => 'wizard:confirm:collab_skip'],
+            ],
+        ];
     }
 
     // =========================================================

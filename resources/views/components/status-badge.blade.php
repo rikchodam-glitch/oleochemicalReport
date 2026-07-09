@@ -26,6 +26,8 @@
         'equipment_repair' => 'bg-blue-100 text-blue-700',
         'area_work' => 'bg-violet-100 text-violet-700',
         'general' => 'bg-slate-100 text-slate-600',
+        'collaboration' => 'bg-violet-100 text-violet-700',
+        'edited' => 'bg-amber-100 text-amber-700',
     ];
 
     $dotColors = [
@@ -47,6 +49,8 @@
         'keep_flag' => 'bg-amber-500',
         'skip' => 'bg-slate-400',
         'cancel' => 'bg-red-500',
+        'collaboration' => 'bg-violet-500',
+        'edited' => 'bg-amber-500',
     ];
 
     $displayLabel = $label ?? ucfirst($status);

@@ -21,6 +21,8 @@ use Illuminate\Support\Facades\Log;
  *   - handleClarificationText()         : Tangani teks saat ClarificationService aktif
  *   - handleClarificationAutoSelect()   : Auto-select saat hanya ada 1 opsi di hierarki
  *   - finalizeClarificationSelection()  : Kunci hasil pilihan dari ClarificationService
+ *   - handleFuncLocPick()               : Proses pilihan node FuncLoc (dari WizardFuncLocPickerTrait)
+ *   - handleFuncLocConfirm()            : Konfirmasi FuncLoc tanpa turun lebih dalam (dari WizardFuncLocPickerTrait)
  *
  * Trait ini bergantung pada method berikut dari kelas pemakai:
  *   - errorResponse(string $message): array
@@ -32,9 +34,17 @@ use Illuminate\Support\Facades\Log;
  *   - buildRootCausePrompt(array $state): array
  *   - buildPhotoDocumentationPrompt(array $state): array
  *   - advanceFromPhotoStep(string $chatId, array $state, string $photoStep): array
+ *   - buildCollaboratorPrompt(array $state): array
  *   - buildConfirmationSummary(array $state): array
  *   - saveReport(string $chatId, array $state): array
  *   - $clarificationService: ClarificationService
+ *
+ * Method dari WizardFuncLocPickerTrait yang dipanggil oleh trait ini
+ * (tersedia di kelas pemakai karena keduanya di-use di ReportWizardService):
+ *
+ * @method array startFuncLocPicker(string $chatId, array $state)
+ * @method array handleFuncLocPick(string $chatId, string $callbackData, array $state)
+ * @method array handleFuncLocConfirm(string $chatId, string $callbackData, array $state)
  *
  * CATATAN — Callback foto (photo_doc_* / photo_hygiene_*):
  * Semua callback_data foto yang tiba di handleConfirmationCallback() WAJIB
@@ -43,6 +53,11 @@ use Illuminate\Support\Facades\Log;
  * helper photoCallbackKey() — jangan bangun callback_data foto secara manual
  * di tempat lain agar tidak terjadi lagi mismatch seperti sebelumnya
  * (photo_documentation_done tidak pernah dikenali switch-case ini).
+ *
+ * CATATAN — Callback kolaborator (collab_*):
+ * Setelah Step 7 selesai, wizard masuk ke Step 8a (kolaborator).
+ * Dua callback tersedia: collab_skip (hapus collaborator_niks, maju ke konfirmasi)
+ * dan collab_done (pertahankan collaborator_niks, maju ke konfirmasi).
  */
 trait WizardCallbackHandlerTrait
 {
@@ -97,6 +112,16 @@ trait WizardCallbackHandlerTrait
             return $this->handleHierarchyCancel($chatId, $state);
         }
 
+        // Callback pemilihan node FuncLoc dari FuncLoc picker (alur area/section)
+        if (str_starts_with($callbackData, 'funcloc_pick:')) {
+            return $this->handleFuncLocPick($chatId, $callbackData, $state);
+        }
+
+        // Konfirmasi FuncLoc tanpa turun ke level berikutnya
+        if (str_starts_with($callbackData, 'funcloc_confirm:')) {
+            return $this->handleFuncLocConfirm($chatId, $callbackData, $state);
+        }
+
         // Callback dari ClarificationService saat hierarki aktif
         if ($state['step'] === self::STEP_EQUIPMENT_CLARIFY && !empty($state['using_clarification_service'])) {
             return $this->handleClarificationCallback($chatId, $callbackData, $state);
@@ -108,7 +133,7 @@ trait WizardCallbackHandlerTrait
     /**
      * Navigasi antar step melalui callback konfirmasi wizard:confirm:<action>.
      * Menangani transisi dari Step 4 (durasi), Step 5 (root cause),
-     * Step 6-7 (foto), hingga Step 8 (simpan/batalkan).
+     * Step 6-7 (foto), Step 8a (kolaborator), hingga Step 8 (simpan/batalkan).
      *
      * @param  string $chatId       Chat ID Telegram
      * @param  string $callbackData Data callback wizard:confirm:<action>
@@ -159,6 +184,21 @@ trait WizardCallbackHandlerTrait
             case 'photo_hygiene_done':
             case 'photo_hygiene_skip':
                 return $this->advanceFromPhotoStep($chatId, $state, 'hygiene');
+
+            // Step 8a — kolaborator dilewati: hapus NIK yang mungkin sudah terisi,
+            // lalu langsung ke Step 8 konfirmasi
+            case 'collab_skip':
+                unset($state['collaborator_niks']);
+                $state['step'] = self::STEP_CONFIRMATION;
+                $this->saveState($chatId, $state);
+                return $this->buildConfirmationSummary($state);
+
+            // Step 8a — kolaborator selesai: pertahankan NIK yang ada,
+            // lalu ke Step 8 konfirmasi
+            case 'collab_done':
+                $state['step'] = self::STEP_CONFIRMATION;
+                $this->saveState($chatId, $state);
+                return $this->buildConfirmationSummary($state);
 
             // Step 8 — simpan laporan
             case 'save_report':
@@ -323,10 +363,9 @@ trait WizardCallbackHandlerTrait
         }
 
         if ($type === 'area') {
-            $state['is_area_work'] = true;
-            $this->saveState($chatId, $state);
-
-            return $this->startClarificationHierarchy($chatId, $state);
+            // Alur area menggunakan FuncLoc picker hierarki (L1 -> L2 -> L3).
+            // ClarificationService tidak dipakai untuk alur ini.
+            return $this->startFuncLocPicker($chatId, $state);
         }
 
         return $this->errorResponse('Pilihan tidak dikenali.');

@@ -12,6 +12,9 @@ class Report extends Model
 {
     protected $fillable = [
         'technician_id',
+        'creator_id',
+        'collaborator_of',
+        'is_manually_edited',
         'report_date',
         'report_code',
         'work_description',
@@ -22,6 +25,7 @@ class Report extends Model
         'wizard_started_at',
         'submitted_at',
         'area_id',
+        'funcloc_id',
         'asset_id',
         'report_type',
         'ai_analyzed',
@@ -35,18 +39,23 @@ class Report extends Model
     protected function casts(): array
     {
         return [
-            'report_date' => 'date',
-            'work_duration_minutes' => 'integer',
-            'photo_documentation' => 'array',
+            'report_date'             => 'date',
+            'work_duration_minutes'   => 'integer',
+            'photo_documentation'     => 'array',
             'photo_hygiene_clearance' => 'array',
-            'wizard_started_at' => 'datetime',
-            'submitted_at' => 'datetime',
-            'ai_analyzed' => 'boolean',
-            'ai_confidence' => 'float',
-            'ai_suggestion_json' => 'array',
-            'completed_at' => 'datetime',
+            'wizard_started_at'       => 'datetime',
+            'submitted_at'            => 'datetime',
+            'ai_analyzed'             => 'boolean',
+            'ai_confidence'           => 'float',
+            'ai_suggestion_json'      => 'array',
+            'completed_at'            => 'datetime',
+            'is_manually_edited'      => 'boolean',
         ];
     }
+
+    // =========================================================
+    // RELASI YANG SUDAH ADA
+    // =========================================================
 
     public function technician(): BelongsTo
     {
@@ -56,6 +65,15 @@ class Report extends Model
     public function area(): BelongsTo
     {
         return $this->belongsTo(Area::class);
+    }
+
+    /**
+     * FuncLoc yang menjadi lokasi pekerjaan laporan ini.
+     * Bisa menunjuk ke level mana pun (L1–L3) sesuai pilihan teknisi.
+     */
+    public function functionalLocation(): BelongsTo
+    {
+        return $this->belongsTo(FunctionalLocation::class, 'funcloc_id');
     }
 
     public function asset(): BelongsTo
@@ -69,14 +87,50 @@ class Report extends Model
     }
 
     // =========================================================
-    // FOTO — ACCESSOR & CLEANUP (Sesi 2)
+    // RELASI BARU — KOLABORASI
+    // =========================================================
+
+    /**
+     * Teknisi yang menginput laporan ini melalui wizard bot.
+     * Berbeda dari technician() jika laporan ini adalah salinan untuk kolaborator.
+     *
+     * @return BelongsTo<Technician, Report>
+     */
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(Technician::class, 'creator_id');
+    }
+
+    /**
+     * Laporan induk dari laporan kolaborasi ini.
+     * Null jika laporan ini bukan salinan kolaborasi.
+     *
+     * @return BelongsTo<Report, Report>
+     */
+    public function parentReport(): BelongsTo
+    {
+        return $this->belongsTo(Report::class, 'collaborator_of');
+    }
+
+    /**
+     * Daftar laporan kolaborator yang dibuat dari laporan ini.
+     * Hanya terisi pada laporan induk (pengirim asli).
+     *
+     * @return HasMany<Report>
+     */
+    public function collaboratorReports(): HasMany
+    {
+        return $this->hasMany(Report::class, 'collaborator_of');
+    }
+
+    // =========================================================
+    // FOTO — ACCESSOR & CLEANUP
     // =========================================================
 
     /**
      * Accessor: array URL publik foto dokumentasi.
      * Disk diambil dari config('telegram.photo_disk') agar selalu sinkron
-     * dengan disk yang dipakai PhotoStorageService saat menyimpan foto
-     * (lihat config/telegram.php, dibuat di Sesi 1).
+     * dengan disk yang dipakai PhotoStorageService saat menyimpan foto.
      */
     public function getPhotoDocumentationUrlsAttribute(): array
     {
@@ -112,7 +166,7 @@ class Report extends Model
     }
 
     /**
-     * Hapus semua file foto dari Storage saat laporan dihapus, supaya tidak
+     * Hapus semua file foto dari Storage saat laporan dihapus supaya tidak
      * ada file orphan tertinggal di disk.
      */
     protected static function boot()
