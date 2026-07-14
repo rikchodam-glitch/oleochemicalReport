@@ -3,11 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Models\Area;
-use App\Models\Asset;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\FunctionalLocation;
 use App\Models\SubArea;
+use App\Services\FuncLocSyncService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -21,8 +21,12 @@ class SeedFuncLocFromAssets extends Command
     // Cache node yang sudah diproses untuk menghindari query berulang
     private array $cache = [];
 
-    public function handle(): int
+    private FuncLocSyncService $funcLocSyncService;
+
+    public function handle(FuncLocSyncService $funcLocSyncService): int
     {
+        $this->funcLocSyncService = $funcLocSyncService;
+
         $isDryRun = $this->option('dry-run');
 
         if ($isDryRun) {
@@ -250,9 +254,9 @@ class SeedFuncLocFromAssets extends Command
     // =========================================================
 
     /**
-     * Scan kolom functional_loc di assets untuk menemukan node yang belum ada
-     * di tabel functional_locations — mis. EPE-PROD-BD02 yang tidak punya Area record.
-     * Buat node induk yang hilang secara rekursif.
+     * Delegasikan pembuatan orphan node (mis. EPE-PROD-BD02 yang tidak
+     * punya Area record) ke FuncLocSyncService, lalu gabungkan hasilnya
+     * ke cache lokal command agar Tahap 6 bisa memakainya tanpa query ulang.
      *
      * @return void
      */
@@ -260,34 +264,19 @@ class SeedFuncLocFromAssets extends Command
     {
         $this->info('Tahap 5/6: Membuat orphan nodes dari assets.functional_loc...');
 
-        $funcLocs = Asset::whereNotNull('functional_loc')
-            ->distinct()
-            ->pluck('functional_loc');
+        $analysis = $this->funcLocSyncService->analyze();
+        $result   = $this->funcLocSyncService->createMissingNodes($analysis['nodes']);
 
-        $created = 0;
-        $skipped = 0;
-
-        foreach ($funcLocs as $rawCode) {
-            $code = strtoupper(trim($rawCode));
-
-            if (empty($code)) {
-                continue;
-            }
-
-            // Jika sudah ada di cache berarti sudah dibuat di tahap sebelumnya
-            if (isset($this->cache[$code])) {
-                $skipped++;
-                continue;
-            }
-
-            $node = $this->ensureNodeExists($code);
-
-            if ($node !== null) {
-                $created++;
-            }
+        foreach ($result['cache'] as $code => $node) {
+            $this->cache[$code] = $node;
         }
 
-        $this->info("  Selesai: {$created} node baru dibuat, {$skipped} sudah ada.");
+        $alreadyExisted = count($result['cache']) - $result['created'];
+        $this->info("  Selesai: {$result['created']} node baru dibuat, {$alreadyExisted} sudah ada.");
+
+        foreach ($analysis['invalid_codes'] as $invalid) {
+            $this->warn("  [LEVEL TIDAK VALID] {$invalid['code']}");
+        }
     }
 
     // =========================================================
@@ -295,8 +284,8 @@ class SeedFuncLocFromAssets extends Command
     // =========================================================
 
     /**
-     * Update assets.funcloc_id berdasarkan assets.functional_loc (string).
-     * Pada dry-run, hanya tampilkan ringkasan tanpa update.
+     * Delegasikan penautan assets.funcloc_id ke FuncLocSyncService,
+     * memakai cache node yang sudah terkumpul dari Tahap 1-5.
      *
      * @param  bool  $isDryRun
      * @return void
@@ -305,40 +294,7 @@ class SeedFuncLocFromAssets extends Command
     {
         $this->info('Tahap 6/6: Menghubungkan assets.funcloc_id dari string functional_loc...');
 
-        $assets = Asset::whereNotNull('functional_loc')
-            ->whereNull('funcloc_id')
-            ->get();
-
-        $linked  = 0;
-        $skipped = 0;
-        $missing = 0;
-
-        foreach ($assets as $asset) {
-            $code = strtoupper(trim($asset->functional_loc));
-
-            // Lewati asset yang functional_loc-nya kosong atau hanya whitespace
-            if ($code === '') {
-                $this->warn("  [DILEWATI] functional_loc kosong — asset ID {$asset->id}");
-                $skipped++;
-                continue;
-            }
-
-            $node = $this->cache[$code] ?? FunctionalLocation::where('code', $code)->first();
-
-            if ($node === null) {
-                $this->warn("  [TIDAK DITEMUKAN] {$code} — asset ID {$asset->id}");
-                $missing++;
-                continue;
-            }
-
-            // Pada dry-run transaksi tetap dijalankan tapi akan di-rollback,
-            // sehingga update ini aman untuk dieksekusi sebagai preview
-            if (!$isDryRun) {
-                $asset->update(['funcloc_id' => $node->id]);
-            }
-
-            $linked++;
-        }
+        [$linked, $skipped, $missing] = $this->funcLocSyncService->linkAssets($this->cache, $isDryRun);
 
         $label = $isDryRun ? 'akan dihubungkan' : 'dihubungkan';
         $this->info("  Selesai: {$linked} asset {$label}, {$skipped} dilewati (kosong), {$missing} kode tidak ditemukan.");
@@ -385,54 +341,6 @@ class SeedFuncLocFromAssets extends Command
         );
 
         $this->cache[$code] = $node;
-
-        return $node;
-    }
-
-    /**
-     * Pastikan node dengan kode tertentu sudah ada.
-     * Jika belum, buat node-nya beserta semua node induk yang hilang secara rekursif.
-     * Nama node yang dibuat dari sini diisi dengan kode itu sendiri karena tidak ada
-     * nama yang bisa diambil dari data lama — admin bisa mengupdate via halaman FuncLoc.
-     *
-     * @param  string  $code
-     * @return FunctionalLocation|null
-     */
-    private function ensureNodeExists(string $code): ?FunctionalLocation
-    {
-        if (isset($this->cache[$code])) {
-            return $this->cache[$code];
-        }
-
-        // Pecah kode untuk menentukan level dan segment
-        $segments = explode('-', $code);
-        $level    = count($segments) - 1;
-
-        if ($level < FunctionalLocation::LEVEL_SITE || $level > FunctionalLocation::LEVEL_SECTION) {
-            $this->warn("  [LEVEL TIDAK VALID] {$code} (segmen: " . count($segments) . ")");
-            return null;
-        }
-
-        // Pastikan induk sudah ada sebelum membuat node ini
-        $parentNode = null;
-
-        if ($level > FunctionalLocation::LEVEL_SITE) {
-            $parentCode = implode('-', array_slice($segments, 0, -1));
-            $parentNode = $this->ensureNodeExists($parentCode);
-        }
-
-        $segment = end($segments);
-
-        $node = $this->firstOrCreateNode(
-            code: $code,
-            segment: $segment,
-            name: $code,
-            level: $level,
-            parentId: $parentNode?->id,
-            extraAttributes: []
-        );
-
-        $this->line("  [ORPHAN L{$level}] {$code}");
 
         return $node;
     }

@@ -41,6 +41,8 @@ Route::middleware('admin')->group(function () {
     Route::resource('assets', AssetController::class);
 
     // Functional Location
+    Route::post('/func-locs/sync/preview', [FunctionalLocationController::class, 'previewSync'])->name('func-locs.sync.preview');
+    Route::post('/func-locs/sync/execute', [FunctionalLocationController::class, 'executeSync'])->name('func-locs.sync.execute');
     Route::resource('func-locs', FunctionalLocationController::class)->except(['show']);
 
     // Technicians

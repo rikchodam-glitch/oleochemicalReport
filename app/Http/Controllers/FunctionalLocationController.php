@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\FunctionalLocation;
+use App\Services\FuncLocSyncService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -10,6 +12,13 @@ use Illuminate\View\View;
 
 class FunctionalLocationController extends Controller
 {
+    protected FuncLocSyncService $funcLocSyncService;
+
+    public function __construct(FuncLocSyncService $funcLocSyncService)
+    {
+        $this->funcLocSyncService = $funcLocSyncService;
+    }
+
     /**
      * Tampilkan daftar Functional Location.
      *
@@ -210,6 +219,57 @@ class FunctionalLocationController extends Controller
         return redirect()
             ->route('func-locs.index')
             ->with('success', 'Functional Location "' . $funcLoc->code . '" berhasil dinonaktifkan.');
+    }
+
+    /**
+     * Analisis assets.functional_loc untuk preview sinkronisasi: node baru
+     * yang akan dibuat, asset yang akan ditautkan, dan kode yang tidak valid.
+     * Tidak ada perubahan yang disimpan ke database pada tahap ini.
+     *
+     * @return JsonResponse
+     */
+    public function previewSync(): JsonResponse
+    {
+        try {
+            $analysis = $this->funcLocSyncService->analyze();
+
+            return response()->json([
+                'success'  => true,
+                'analysis' => $analysis,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menganalisa data: ' . $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Eksekusi sinkronisasi berdasarkan hasil previewSync(): buat node
+     * FunctionalLocation yang belum ada dan tautkan funcloc_id pada asset.
+     *
+     * @param  Request  $request
+     * @return JsonResponse
+     */
+    public function executeSync(Request $request): JsonResponse
+    {
+        $request->validate([
+            'analysis' => ['required', 'array'],
+        ]);
+
+        try {
+            $result = $this->funcLocSyncService->execute($request->input('analysis'));
+
+            return response()->json(array_merge($result, [
+                'message' => "Sinkronisasi berhasil. {$result['node_created_count']} FuncLoc baru dibuat, {$result['asset_linked_count']} asset ditautkan.",
+            ]));
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Gagal sinkronisasi: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
