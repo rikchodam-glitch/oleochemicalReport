@@ -18,8 +18,9 @@ use App\Models\Technician;
  *   - handlePhotoCommand()          : Proses perintah teks di step foto
  *   - addPhotoToStep()              : Tambah file ID foto ke state wizard
  *   - advanceFromPhotoStep()        : Transisi keluar dari step foto
- *   - buildCollaboratorPrompt()     : Bangun prompt Step 8a (input NIK kolaborator)
- *   - handleCollaboratorInput()     : Proses teks NIK kolaborator dari teknisi
+ *   - buildCollaboratorPrompt()     : Bangun prompt Step 8a (input NIK/nama kolaborator)
+ *   - handleCollaboratorInput()     : Proses teks NIK/nama kolaborator dari teknisi
+ *   - buildCollabCandidateKeyboard(): Bangun keyboard pilihan kandidat hasil pencarian nama
  *   - handleConfirmation()          : Proses teks konfirmasi di Step 8
  *   - photoCallbackKey()            : Peta $photoStep ke kunci callback_data pendek
  *   - photoDoneButtonLabel()        : Label tombol "selesai" yang sesuai step foto
@@ -37,6 +38,10 @@ use App\Models\Technician;
  *   - buildConfirmationSummary(array $state): array
  *   - saveReport(string $chatId, array $state): array
  *
+ * Trait ini juga bergantung pada properti berikut dari kelas pemakai:
+ *   - $this->collaboratorSearch (App\Services\Telegram\CollaboratorSearchService)
+ *     dipakai oleh handleCollaboratorInput() untuk pencarian NIK/nama kolaborator.
+ *
  * PENTING — Konsistensi callback_data foto:
  * Semua callback_data untuk step foto WAJIB menggunakan format pendek:
  *   wizard:confirm:photo_doc_done      wizard:confirm:photo_doc_skip
@@ -48,6 +53,9 @@ use App\Models\Technician;
  */
 trait WizardStepHandlerTrait
 {
+    // Batas maksimum kolaborator per laporan
+    const MAX_COLLABORATORS = 5;
+
     // =========================================================
     // STEP 4 — WAKTU PENGERJAAN
     // =========================================================
@@ -96,9 +104,9 @@ trait WizardStepHandlerTrait
         return [
             'message'  => "Equipment dikunci: *{$equipmentLabel}*\n\n" .
                 "*Step 4/8* — Berapa lama pekerjaan berlangsung?\n" .
-                "Ketik durasi, contoh:\n" .
-                "`2 jam`, `30 menit`, `1.5 jam`, `1:30`, `1h30m`\n" .
-                "Atau rentang waktu: `08:00 sampai 09:00`, `08:00-10:00`",
+                "Ketik rentang waktu, contoh:\n" .
+                "`08:00 sampai 09:00`, `08:00-10:00`\n" .
+                "Atau rentang santai: `Jam 9 - Jam 10`, `pukul 09 sd 10.30`, `9 sampai 10`",
             'keyboard' => [],
         ];
     }
@@ -117,9 +125,9 @@ trait WizardStepHandlerTrait
 
         if ($minutes === null || $minutes <= 0) {
             return [
-                'message'  => "Durasi tidak dikenali. Coba format lain:\n" .
-                    "`2 jam`, `30 menit`, `1 jam 30 menit`, `1:30`, `1h30m`\n" .
-                    "Atau rentang waktu: `08:00 sampai 09:00`, `08:00-10:00`",
+                'message'  => "Rentang waktu tidak dikenali. Coba format lain:\n" .
+                    "`08:00 sampai 09:00`, `08:00-10:00`\n" .
+                    "Atau rentang santai: `Jam 9 - Jam 10`, `pukul 09 sd 10.30`, `9 sampai 10`",
                 'keyboard' => [],
             ];
         }
@@ -424,26 +432,36 @@ trait WizardStepHandlerTrait
     // =========================================================
 
     /**
-     * Bangun pesan prompt Step 8a (input NIK kolaborator).
+     * Bangun pesan prompt Step 8a (input NIK/nama kolaborator).
      * Step ini opsional — teknisi bisa langsung skip ke konfirmasi.
-     * Daftar NIK yang sudah diinput ditampilkan jika ada.
+     * Daftar kolaborator yang sudah diinput ditampilkan dengan nama jika tersedia.
      *
      * @param  array $state State wizard
      * @return array Respons
      */
     protected function buildCollaboratorPrompt(array $state): array
     {
-        $collabNiks = $state['collaborator_niks'] ?? [];
+        $collabNiks  = $state['collaborator_niks'] ?? [];
+        $collabNames = $state['collaborator_names'] ?? [];
 
         if (!empty($collabNiks)) {
-            $nikList = implode(', ', $collabNiks);
+            // Bangun label "Nama (NIK)" atau hanya "NIK" jika nama tidak tersedia
+            $labels = [];
+            foreach ($collabNiks as $index => $nik) {
+                $nama     = $collabNames[$index] ?? '';
+                $labels[] = $nama !== '' ? "{$nama} ({$nik})" : $nik;
+            }
+            $labelList = implode(', ', $labels);
+
             return [
                 'message'  => "*Step 8a/8* — Kolaborator\n\n" .
-                    "NIK kolaborator yang sudah ditambahkan: *{$nikList}*\n\n" .
-                    "Tambah NIK lain (ketik NIK), atau lanjut ke konfirmasi:",
+                    "Kolaborator yang sudah ditambahkan: *{$labelList}*\n\n" .
+                    "Tambah kolaborator lain (ketik NIK atau nama), atau lanjut ke konfirmasi:",
                 'keyboard' => [
-                    ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
-                    ['text' => 'Lewati (Tanpa Kolaborator)',  'callback_data' => 'wizard:confirm:collab_skip'],
+                    ['text' => 'Selesai, Lanjut Konfirmasi',       'callback_data' => 'wizard:confirm:collab_done'],
+                    ['text' => 'Lewati (Tanpa Kolaborator)',        'callback_data' => 'wizard:confirm:collab_skip'],
+                    ['text' => 'Pilih dari Hierarki Dept/Section',  'callback_data' => 'collab_hierarchy:dept'],
+                    ['text' => 'Batalkan Laporan',                  'callback_data' => 'wizard:cancel_wizard'],
                 ],
             ];
         }
@@ -451,35 +469,62 @@ trait WizardStepHandlerTrait
         return [
             'message'  => "*Step 8a/8* — Kolaborator (Opsional)\n\n" .
                 "Apakah ada rekan yang ikut mengerjakan pekerjaan ini?\n" .
-                "Ketik NIK rekan (bisa lebih dari satu, pisah dengan koma).\n\n" .
-                "Contoh: `12345, 67890`\n\n" .
+                "Ketik NIK atau nama rekan (bisa lebih dari satu, pisah dengan koma).\n\n" .
+                "Contoh: `12345, 67890` atau `Ahmad, Budi`\n\n" .
                 "Atau lewati jika tidak ada kolaborator:",
             'keyboard' => [
-                ['text' => 'Lewati (Tanpa Kolaborator)', 'callback_data' => 'wizard:confirm:collab_skip'],
+                ['text' => 'Lewati (Tanpa Kolaborator)',       'callback_data' => 'wizard:confirm:collab_skip'],
+                ['text' => 'Pilih dari Hierarki Dept/Section', 'callback_data' => 'collab_hierarchy:dept'],
+                ['text' => 'Batalkan Laporan',                 'callback_data' => 'wizard:cancel_wizard'],
             ],
         ];
     }
 
     /**
-     * Proses teks NIK kolaborator yang diketik teknisi di Step 8a.
-     * NIK dipisah dengan koma, titik koma, atau baris baru, lalu divalidasi
-     * ke tabel technicians. NIK yang tidak ditemukan dilaporkan ke teknisi.
+     * Proses teks NIK atau nama kolaborator yang diketik teknisi di Step 8a.
+     * Input dipisah dengan koma, titik koma, atau baris baru. Setiap token
+     * dicari via CollaboratorSearchService (NIK exact match dulu, lalu nama
+     * fuzzy match). Teknisi pengirim laporan sendiri otomatis dikecualikan.
+     *
+     * Guard maks 5 kolaborator: jika state sudah mencapai batas MAX_COLLABORATORS,
+     * input baru ditolak dan teknisi diminta lanjut ke konfirmasi.
+     *
+     * Jika sebuah token menghasilkan lebih dari satu kandidat nama, method
+     * ini berhenti memproses token berikutnya dan langsung menampilkan
+     * keyboard pilihan kandidat (Telegram hanya bisa menampilkan satu
+     * keyboard per respons). Token yang belum diproses bisa diketik ulang
+     * setelah teknisi menuntaskan pilihan kandidat yang sedang tampil.
      *
      * @param  string $chatId Chat ID Telegram
-     * @param  string $text   Input NIK dari teknisi
+     * @param  string $text   Input NIK/nama dari teknisi
      * @param  array  $state  State wizard saat ini
      * @return array  Respons
      */
     protected function handleCollaboratorInput(string $chatId, string $text, array $state): array
     {
-        // Pisah input berdasarkan koma, titik koma, atau baris baru
-        $rawNiks = preg_split('/[\s,;]+/', trim($text), -1, PREG_SPLIT_NO_EMPTY);
+        // Guard: tolak input baru jika sudah mencapai batas maksimum kolaborator
+        $collabSudahAda = $state['collaborator_niks'] ?? [];
+        if (count($collabSudahAda) >= self::MAX_COLLABORATORS) {
+            return [
+                'message'  => "Maksimum " . self::MAX_COLLABORATORS . " kolaborator per laporan sudah tercapai.\n\n" .
+                    "Kolaborator saat ini: *" . implode(', ', $collabSudahAda) . "*\n\n" .
+                    "Lanjut ke konfirmasi atau batalkan laporan:",
+                'keyboard' => [
+                    ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
+                    ['text' => 'Batalkan Laporan',           'callback_data' => 'wizard:cancel_wizard'],
+                ],
+            ];
+        }
 
-        if (empty($rawNiks)) {
+        // Pisah input berdasarkan koma, titik koma, atau baris baru
+        $rawQueries = preg_split('/[\s,;]+/', trim($text), -1, PREG_SPLIT_NO_EMPTY);
+
+        if (empty($rawQueries)) {
             return $this->buildCollaboratorPrompt($state);
         }
 
         $ditemukan  = [];
+        $namaDitemukan = [];
         $tidakAda   = [];
         $nikSendiri = null;
 
@@ -489,28 +534,81 @@ trait WizardStepHandlerTrait
             $nikSendiri = $teknisiPengirim->nik;
         }
 
-        foreach ($rawNiks as $nik) {
-            $nik = trim($nik);
+        // Hitung slot yang masih tersedia agar tidak melewati batas maksimum
+        $slotTersisa = self::MAX_COLLABORATORS - count($collabSudahAda);
 
-            // Abaikan NIK teknisi pengirim sendiri
-            if ($nikSendiri && $nik === $nikSendiri) {
+        foreach ($rawQueries as $query) {
+            // Hentikan loop jika slot sudah habis
+            if (count($ditemukan) >= $slotTersisa) {
+                break;
+            }
+
+            $query = trim($query);
+
+            // Abaikan NIK/nama yang sama persis dengan NIK pengirim sendiri
+            if ($nikSendiri && $query === $nikSendiri) {
                 continue;
             }
 
-            $teknisi = Technician::where('nik', $nik)->first();
-            if ($teknisi) {
-                $ditemukan[] = $nik;
-            } else {
-                $tidakAda[] = $nik;
+            $hasil = $this->collaboratorSearch->search($query, $nikSendiri);
+
+            if ($hasil['count'] === 1 && $hasil['exact']) {
+                $nik  = $hasil['exact']->nik;
+                $nama = $hasil['exact']->name;
+                if (!in_array($nik, $ditemukan, true)) {
+                    $ditemukan[]   = $nik;
+                    $namaDitemukan[] = $nama;
+                }
+                continue;
+            }
+
+            if ($hasil['count'] > 1) {
+                // Kandidat ambigu: simpan ke state, tampilkan keyboard pilihan.
+                // Kolaborator yang sudah ditemukan dari token sebelumnya tetap disimpan.
+                $collabSebelumnya             = $state['collaborator_niks'] ?? [];
+                $namaSebelumnya               = $state['collaborator_names'] ?? [];
+                $state['collaborator_niks']   = array_values(array_unique(array_merge($collabSebelumnya, $ditemukan)));
+                $state['collaborator_names']  = array_merge($namaSebelumnya, $namaDitemukan);
+
+                $state['collab_search_candidates'] = array_map(fn ($t) => [
+                    'id'   => $t->id,
+                    'nik'  => $t->nik,
+                    'name' => $t->name,
+                ], $hasil['candidates']);
+                $this->saveState($chatId, $state);
+
+                return $this->buildCollabCandidateKeyboard($query, $hasil['candidates']);
+            }
+
+            // Tidak ada kandidat sama sekali untuk token ini
+            $tidakAda[] = $query;
+        }
+
+        // Gabungkan dengan NIK dan nama kolaborator yang sudah ada di state (hindari duplikat NIK)
+        $collabSebelumnya   = $state['collaborator_niks'] ?? [];
+        $namaSebelumnya     = $state['collaborator_names'] ?? [];
+        $gabungan           = [];
+        $gabunganNama       = [];
+
+        // Pertahankan entri lama yang belum duplikat
+        foreach ($collabSebelumnya as $i => $nik) {
+            $gabungan[]     = $nik;
+            $gabunganNama[] = $namaSebelumnya[$i] ?? '';
+        }
+
+        // Tambahkan entri baru yang tidak duplikat
+        foreach ($ditemukan as $i => $nik) {
+            if (!in_array($nik, $gabungan, true)) {
+                $gabungan[]     = $nik;
+                $gabunganNama[] = $namaDitemukan[$i] ?? '';
             }
         }
 
-        // Gabungkan dengan NIK kolaborator yang sudah ada di state (hindari duplikat)
-        $collabSebelumnya       = $state['collaborator_niks'] ?? [];
-        $state['collaborator_niks'] = array_values(array_unique(array_merge($collabSebelumnya, $ditemukan)));
+        $state['collaborator_niks']  = array_values($gabungan);
+        $state['collaborator_names'] = array_values($gabunganNama);
         $this->saveState($chatId, $state);
 
-        // Susun pesan umpan balik berdasarkan hasil validasi
+        // Susun pesan umpan balik berdasarkan hasil pencarian
         $msg = '';
 
         if (!empty($ditemukan)) {
@@ -518,27 +616,75 @@ trait WizardStepHandlerTrait
         }
 
         if (!empty($tidakAda)) {
-            $msg .= 'NIK tidak ditemukan: ' . implode(', ', $tidakAda) . "\n";
+            $msg .= 'Tidak ditemukan: ' . implode(', ', $tidakAda) . "\n";
+        }
+
+        // Peringatan jika ada query yang terpotong karena slot penuh
+        $sisaQuery = count($rawQueries) - (count($ditemukan) + count($tidakAda));
+        if ($sisaQuery > 0 && count($state['collaborator_niks']) >= self::MAX_COLLABORATORS) {
+            $msg .= "_Batas " . self::MAX_COLLABORATORS . " kolaborator tercapai. Input berikutnya diabaikan._\n";
         }
 
         if (empty($state['collaborator_niks'])) {
-            // Semua NIK tidak valid dan tidak ada yang tersimpan
+            // Semua token tidak valid dan tidak ada yang tersimpan
             return [
-                'message'  => $msg . "\nTidak ada NIK valid yang ditemukan. Coba ketik ulang NIK, atau lewati:",
+                'message'  => $msg . "\nTidak ada kolaborator valid yang ditemukan. " .
+                    "Coba ketik ulang NIK/nama, pilih dari hierarki, atau lewati:",
                 'keyboard' => [
-                    ['text' => 'Lewati (Tanpa Kolaborator)', 'callback_data' => 'wizard:confirm:collab_skip'],
+                    ['text' => 'Lewati (Tanpa Kolaborator)',       'callback_data' => 'wizard:confirm:collab_skip'],
+                    ['text' => 'Pilih dari Hierarki Dept/Section', 'callback_data' => 'collab_hierarchy:dept'],
+                    ['text' => 'Batalkan Laporan',                 'callback_data' => 'wizard:cancel_wizard'],
                 ],
             ];
         }
 
-        $semuaNik = implode(', ', $state['collaborator_niks']);
+        // Bangun label "Nama (NIK)" untuk tampilan total kolaborator
+        $collabNiks  = $state['collaborator_niks'];
+        $collabNames = $state['collaborator_names'] ?? [];
+        $labels      = [];
+        foreach ($collabNiks as $i => $nik) {
+            $nama     = $collabNames[$i] ?? '';
+            $labels[] = $nama !== '' ? "{$nama} ({$nik})" : $nik;
+        }
+        $semuaLabel = implode(', ', $labels);
+
         return [
-            'message'  => $msg . "\nTotal kolaborator sekarang: *{$semuaNik}*\n\n" .
-                "Tambah NIK lain, atau lanjut ke konfirmasi:",
+            'message'  => $msg . "\nTotal kolaborator sekarang: *{$semuaLabel}*\n\n" .
+                "Tambah kolaborator lain, atau lanjut ke konfirmasi:",
             'keyboard' => [
                 ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
                 ['text' => 'Lewati (Tanpa Kolaborator)',  'callback_data' => 'wizard:confirm:collab_skip'],
             ],
+        ];
+    }
+
+    /**
+     * Bangun keyboard pilihan kandidat hasil pencarian nama kolaborator yang ambigu.
+     * Setiap tombol memakai callback_data 'collab_candidate:<technician_id>'.
+     *
+     * @param  string $query      Query nama yang diketik teknisi (ditampilkan di pesan)
+     * @param  array  $candidates Daftar objek Technician kandidat (maks CollaboratorSearchService::MAX_CANDIDATES)
+     * @return array  Respons dengan message dan keyboard pilihan kandidat
+     */
+    protected function buildCollabCandidateKeyboard(string $query, array $candidates): array
+    {
+        $keyboard = [];
+        foreach ($candidates as $candidate) {
+            $label = "{$candidate->name} ({$candidate->nik})";
+            if (strlen($label) > 64) {
+                $label = substr($label, 0, 61) . '...';
+            }
+            $keyboard[] = [
+                'text'          => $label,
+                'callback_data' => 'collab_candidate:' . $candidate->id,
+            ];
+        }
+
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'];
+
+        return [
+            'message'  => "Ditemukan beberapa teknisi dengan nama mirip *\"{$query}\"*. Pilih salah satu:",
+            'keyboard' => $keyboard,
         ];
     }
 

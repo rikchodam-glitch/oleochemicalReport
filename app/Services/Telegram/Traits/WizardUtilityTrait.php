@@ -34,75 +34,80 @@ trait WizardUtilityTrait
     // =========================================================
 
     /**
-     * Parse teks durasi menjadi menit.
-     * Format yang didukung:
-     *   - "2 jam 30 menit"
-     *   - "2 jam" atau "1.5 jam" atau "1,5 jam"
-     *   - "30 menit"
-     *   - Rentang waktu: "08:00 sampai 09:00", "8:00-9:00", "08.00 s/d 09.30", "08:00 sd 10:00"
-     *   - Jam:menit numerik: "1:30" (= 90 menit), "0:45" (= 45 menit)
-     *   - Format singkat: "1h30m", "1h 30m", "0h45m"
-     *   - "90" (angka saja, dianggap menit)
-     * Hasil divalidasi: tidak boleh 0/negatif dan tidak boleh lebih dari 24 jam (1440 menit).
+     * Parse teks rentang waktu menjadi durasi dalam menit.
      *
-     * @param  string   $text Input teks durasi dari teknisi
-     * @return int|null       Durasi dalam menit, null jika format tidak dikenali/tidak valid
+     * Hanya format rentang waktu yang diterima (jam awal - jam akhir).
+     * Format durasi langsung seperti "2 jam", "30 menit", atau angka saja
+     * tidak lagi didukung dan akan mengembalikan null.
+     *
+     * Format yang didukung:
+     *   Rentang dengan menit di kedua sisi:
+     *     "08:00 sampai 09:00", "08:00-09:00",
+     *     "08.00 s/d 09.30",    "08:00 sd 10:00"
+     *
+     *   Rentang fleksibel (prefiks jam/pukul opsional, menit opsional
+     *   di masing-masing sisi secara independen):
+     *     "Jam 9 sampai Jam 10", "jam 9 - jam 10",
+     *     "pukul 09 sd 10.30",   "09 sampai 10",
+     *     "9.30 sampai 10",      "9 sampai 10.30"
+     *
+     * Rentang yang melewati tengah malam (mis. 23:00-01:00) diterima dan
+     * dihitung sebagai rentang positif dengan menambahkan 1440 menit.
+     * Hasil divalidasi: tidak boleh 0/negatif dan tidak boleh lebih dari
+     * 24 jam (1440 menit).
+     *
+     * @param  string   $text Input teks dari teknisi
+     * @return int|null       Durasi dalam menit, null jika format tidak dikenali
      */
     public function parseDurationToMinutes(string $text): ?int
     {
         $text = strtolower(trim($text));
 
-        // Format rentang waktu: "08:00 sampai 09:00", "8:00-9:00", "08.00 s/d 09.30", "08:00 sd 10:00"
-        // Dicek lebih dulu karena mengandung pola jam:menit yang bisa salah tertangkap pola lain
-        if (preg_match('/(\d{1,2})[:.](\d{2})\s*(?:sampai|s\/d|sd|hingga|\-)\s*(\d{1,2})[:.](\d{2})/', $text, $m)) {
-            $startMinutes = ((int) $m[1]) * 60 + (int) $m[2];
-            $endMinutes   = ((int) $m[3]) * 60 + (int) $m[4];
-            $diff         = $endMinutes - $startMinutes;
-
-            if ($diff <= 0) {
-                $diff += 1440; // Rentang melewati tengah malam
-            }
+        // Rentang lengkap: menit eksplisit di kedua sisi, dipisah kata atau tanda "-".
+        // Contoh: "08:00 sampai 09:00", "8:00-9:00", "08.00 s/d 09.30", "08:00 sd 10:00".
+        // Blok ini diutamakan agar format dua titik dua tidak salah tertangkap blok berikutnya.
+        if (preg_match(
+            '/(\d{1,2})[:.](\d{2})\s*(?:sampai|s\/d|sd|hingga|-)\s*(\d{1,2})[:.](\d{2})/',
+            $text,
+            $m
+        )) {
+            $diff = $this->calcRangeDiff(
+                (int) $m[1] * 60 + (int) $m[2],
+                (int) $m[3] * 60 + (int) $m[4]
+            );
 
             return $this->validateDurationRange($diff);
         }
 
-        // Format: "X jam Y menit"
-        if (preg_match('/(\d+(?:[.,]\d+)?)\s*jam\s*(\d+)\s*menit/', $text, $m)) {
-            $hours   = (float) str_replace(',', '.', $m[1]);
-            $minutes = (int) $m[2];
+        // Rentang fleksibel (2a): pemisah berupa kata (sampai / s/d / sd / hingga).
+        // Prefiks "jam"/"pukul" opsional di masing-masing sisi.
+        // Menit opsional di masing-masing sisi secara independen.
+        // Contoh: "jam 9 sampai jam 10" (60 menit), "pukul 09 sd 10.30" (90 menit),
+        //         "09 sampai 10" (60 menit), "9.30 sampai 10" (30 menit).
+        if (preg_match(
+            '/(?:jam|pukul)?\s*(\d{1,2})(?:[.:](\d{2}))?\s*(?:sampai|s\/d|sd|hingga)\s*(?:jam|pukul)?\s*(\d{1,2})(?:[.:](\d{2}))?\b/',
+            $text,
+            $m
+        )) {
+            $startMinutes = (int) $m[1] * 60 + (isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0);
+            $endMinutes   = (int) $m[3] * 60 + (isset($m[4]) && $m[4] !== '' ? (int) $m[4] : 0);
 
-            return $this->validateDurationRange((int) round($hours * 60) + $minutes);
+            return $this->validateDurationRange($this->calcRangeDiff($startMinutes, $endMinutes));
         }
 
-        // Format: "X jam"
-        if (preg_match('/(\d+(?:[.,]\d+)?)\s*jam/', $text, $m)) {
-            return $this->validateDurationRange((int) round((float) str_replace(',', '.', $m[1]) * 60));
-        }
+        // Rentang fleksibel (2b): pemisah berupa tanda "-" yang diapit spasi.
+        // Spasi wajib di kedua sisi "-" agar kode equipment seperti "LSH-2-6600V2"
+        // atau "TCV-2-6166E2B-1" tidak salah dikenali sebagai rentang waktu.
+        // Contoh: "jam 9 - jam 10" (60 menit), "jam 9.30 - jam 10.30" (60 menit).
+        if (preg_match(
+            '/(?:jam|pukul)?\s*(\d{1,2})(?:[.:](\d{2}))?\s+-\s+(?:jam|pukul)?\s*(\d{1,2})(?:[.:](\d{2}))?\b/',
+            $text,
+            $m
+        )) {
+            $startMinutes = (int) $m[1] * 60 + (isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0);
+            $endMinutes   = (int) $m[3] * 60 + (isset($m[4]) && $m[4] !== '' ? (int) $m[4] : 0);
 
-        // Format: "X menit"
-        if (preg_match('/(\d+)\s*menit/', $text, $m)) {
-            return $this->validateDurationRange((int) $m[1]);
-        }
-
-        // Format singkat: "1h30m", "1h 30m", "0h45m"
-        if (preg_match('/\b(\d+)\s*h\s*(?:(\d+)\s*m)?\b/', $text, $m)) {
-            $hours   = (int) $m[1];
-            $minutes = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0;
-
-            return $this->validateDurationRange($hours * 60 + $minutes);
-        }
-
-        // Format jam:menit numerik: "1:30" (= 90 menit), "0:45" (= 45 menit)
-        if (preg_match('/\b(\d{1,2}):(\d{2})\b/', $text, $m)) {
-            $hours   = (int) $m[1];
-            $minutes = (int) $m[2];
-
-            return $this->validateDurationRange($hours * 60 + $minutes);
-        }
-
-        // Format: angka saja (anggap menit)
-        if (preg_match('/^\d+$/', $text)) {
-            return $this->validateDurationRange((int) $text);
+            return $this->validateDurationRange($this->calcRangeDiff($startMinutes, $endMinutes));
         }
 
         return null;
@@ -139,8 +144,8 @@ trait WizardUtilityTrait
      * Validasi hasil parsing durasi.
      * Durasi tidak boleh 0/negatif dan tidak boleh lebih dari 24 jam (1440 menit).
      *
-     * @param  int|null    $minutes Durasi mentah hasil parsing
-     * @return int|null             Durasi jika valid, null jika di luar rentang
+     * @param  int|null $minutes Durasi mentah hasil parsing
+     * @return int|null          Durasi jika valid, null jika di luar rentang
      */
     private function validateDurationRange(?int $minutes): ?int
     {
@@ -149,6 +154,26 @@ trait WizardUtilityTrait
         }
 
         return $minutes;
+    }
+
+    /**
+     * Hitung selisih menit antara waktu mulai dan waktu selesai.
+     * Jika selisih nol atau negatif, diasumsikan rentang melewati tengah malam
+     * sehingga ditambahkan 1440 menit (24 jam).
+     *
+     * @param  int $startMinutes Waktu mulai dalam menit sejak pukul 00:00
+     * @param  int $endMinutes   Waktu selesai dalam menit sejak pukul 00:00
+     * @return int               Selisih dalam menit (selalu positif)
+     */
+    private function calcRangeDiff(int $startMinutes, int $endMinutes): int
+    {
+        $diff = $endMinutes - $startMinutes;
+
+        if ($diff <= 0) {
+            $diff += 1440;
+        }
+
+        return $diff;
     }
 
     // =========================================================
@@ -396,6 +421,10 @@ trait WizardUtilityTrait
             'initial_photo_file_id'       => null,
             'photo_documentation'         => [],
             'photo_hygiene_clearance'     => [],
+            'collab_search_candidates'    => [],
+            'collab_using_hierarchy'      => false,
+            'collab_hierarchy_dept_id'    => null,
+            'collab_hierarchy_section'    => null,
             'created_at'                  => now()->toIso8601String(),
         ];
     }

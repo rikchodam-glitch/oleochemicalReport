@@ -6,6 +6,7 @@ use App\Models\Area;
 use App\Models\Asset;
 use App\Services\AiService;
 use App\Services\TechIdentSearchService;
+use App\Services\Telegram\CollaboratorSearchService;
 use App\Services\Telegram\Traits\WizardCallbackHandlerTrait;
 use App\Services\Telegram\Traits\WizardFuncLocPickerTrait;
 use App\Services\Telegram\Traits\WizardPhotoAddonTrait;
@@ -86,15 +87,18 @@ class ReportWizardService
     protected TechIdentSearchService $techIdentSearch;
     protected AiService $aiService;
     protected ClarificationService $clarificationService;
+    protected CollaboratorSearchService $collaboratorSearch;
 
     public function __construct(
         TechIdentSearchService $techIdentSearch,
         AiService $aiService,
-        ClarificationService $clarificationService
+        ClarificationService $clarificationService,
+        CollaboratorSearchService $collaboratorSearch
     ) {
         $this->techIdentSearch      = $techIdentSearch;
         $this->aiService            = $aiService;
         $this->clarificationService = $clarificationService;
+        $this->collaboratorSearch   = $collaboratorSearch;
     }
 
     // =========================================================

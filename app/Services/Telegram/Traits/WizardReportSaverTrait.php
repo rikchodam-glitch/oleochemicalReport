@@ -13,10 +13,11 @@ use Illuminate\Support\Str;
  * Menangani penyimpanan laporan ke database dan helper terkait foto:
  *   - saveReport()                  : Simpan laporan ke DB setelah konfirmasi Step 8,
  *                                     termasuk pembuatan laporan kolaborator secara bulk
- *   - buildConfirmationSummary()    : Bangun pesan ringkasan Step 8 (termasuk daftar kolaborator)
+ *   - buildConfirmationSummary()    : Bangun pesan ringkasan Step 8 (termasuk nama kolaborator)
  *   - generateReportCode()          : Generate kode RPT-YYYYMMDD-XXXX unik per hari
  *   - isValidLocalPhotoPath()       : Validasi apakah nilai adalah path lokal foto
  *   - filterValidLocalPhotoPaths()  : Filter array foto, buang yang bukan path lokal
+ *   - resolveCollaboratorNames()    : Ambil nama teknisi dari state collaborator_names atau fallback DB
  *
  * Trait ini bergantung pada method berikut dari kelas pemakai:
  *   - equipmentLabel(array $state): string
@@ -33,8 +34,9 @@ trait WizardReportSaverTrait
 
     /**
      * Bangun pesan ringkasan konfirmasi untuk Step 8.
-     * Menampilkan semua data yang akan disimpan agar teknisi bisa verifikasi,
-     * termasuk daftar kolaborator jika ada.
+     * Menampilkan semua data yang akan disimpan agar teknisi bisa verifikasi.
+     * Kolaborator ditampilkan dengan format "Nama (NIK)" jika nama tersedia
+     * di state collaborator_names, atau hanya NIK jika tidak.
      *
      * @param  array $state State wizard
      * @return array Respons dengan pesan ringkasan dan keyboard Ya/Batalkan
@@ -72,11 +74,12 @@ trait WizardReportSaverTrait
         $msg .= "*Foto Dok*  : {$photoDocCount} foto\n";
         $msg .= "*Foto HC*   : {$photoHygCount} foto\n";
 
-        // Tampilkan daftar kolaborator jika ada
+        // Tampilkan daftar kolaborator dengan nama jika tersedia
         if (!empty($collabNiks)) {
-            $nikList  = implode(', ', $collabNiks);
-            $jumlah   = count($collabNiks);
-            $msg .= "*Kolaborator*: {$nikList}\n";
+            $collabNames = $state['collaborator_names'] ?? [];
+            $labelList   = $this->buildCollaboratorLabelList($collabNiks, $collabNames);
+            $jumlah      = count($collabNiks);
+            $msg .= "*Kolaborator*: {$labelList}\n";
             $msg .= "\n_Laporan akan dibuat untuk {$jumlah} kolaborator secara otomatis._\n";
         }
 
@@ -97,9 +100,10 @@ trait WizardReportSaverTrait
      * Foto yang bukan path lokal (belum diproses PhotoStorageService) dibuang.
      *
      * Jika state mengandung collaborator_niks, laporan tambahan dibuat secara bulk
-     * untuk setiap kolaborator. Kolom creator_id di semua laporan diisi dengan ID
-     * teknisi pengirim, dan collaborator_of di laporan kolaborator menunjuk ke ID
-     * laporan utama.
+     * untuk setiap kolaborator. Jika NIK tidak ditemukan di DB namun nama tersedia
+     * di collaborator_names, dicoba fallback pencarian by nama (exact match pertama).
+     * Kolom creator_id di semua laporan diisi dengan ID teknisi pengirim, dan
+     * collaborator_of di laporan kolaborator menunjuk ke ID laporan utama.
      *
      * Respons sukses membawa dua pesan terpisah agar tidak terjadi pesan ganda
      * di Telegram:
@@ -170,39 +174,60 @@ trait WizardReportSaverTrait
 
             // Buat laporan kolaborator jika ada NIK yang terdaftar di state
             $collabNiks        = $state['collaborator_niks'] ?? [];
+            $collabNames       = $state['collaborator_names'] ?? [];
             $jumlahKolaborator = 0;
+            $kolaboratorBerhasil = [];
 
-            foreach ($collabNiks as $nik) {
+            foreach ($collabNiks as $index => $nik) {
+                // Coba cari teknisi by NIK terlebih dahulu
                 $kolaborator = Technician::where('nik', $nik)->first();
+
+                // Fallback: cari by nama jika NIK tidak ditemukan namun nama tersedia
+                if (!$kolaborator && isset($collabNames[$index]) && $collabNames[$index] !== '') {
+                    $namaFallback = $collabNames[$index];
+                    $kolaborator  = Technician::where('name', $namaFallback)->first();
+
+                    if ($kolaborator) {
+                        Log::info("WizardService: Kolaborator ditemukan via fallback nama", [
+                            'nik_asal'  => $nik,
+                            'nama'      => $namaFallback,
+                            'technician_id' => $kolaborator->id,
+                            'report_id' => $report->id,
+                        ]);
+                    }
+                }
+
                 if (!$kolaborator) {
                     Log::warning("WizardService: NIK kolaborator tidak ditemukan saat saveReport", [
-                        'nik'       => $nik,
-                        'report_id' => $report->id,
+                        'nik'        => $nik,
+                        'nama_index' => $collabNames[$index] ?? null,
+                        'report_id'  => $report->id,
                     ]);
                     continue;
                 }
 
                 Report::create(array_merge($dataLaporan, [
-                    'report_code'      => $this->generateReportCode(),
-                    'technician_id'    => $kolaborator->id,
-                    'creator_id'       => $technician->id,
-                    'collaborator_of'  => $report->id,
+                    'report_code'     => $this->generateReportCode(),
+                    'technician_id'   => $kolaborator->id,
+                    'creator_id'      => $technician->id,
+                    'collaborator_of' => $report->id,
                 ]));
 
                 $jumlahKolaborator++;
+                $kolaboratorBerhasil[] = $kolaborator->name . ' (' . $nik . ')';
             }
 
             $this->destroyWizard($chatId);
 
             Log::info("WizardService: Report saved for chat {$chatId}", [
-                'report_id'              => $report->id,
-                'report_code'            => $reportCode,
-                'report_date'            => $reportDate,
-                'funcloc_id'             => $state['funcloc_id'] ?? null,
-                'funcloc_code'           => $state['funcloc_code'] ?? null,
-                'photo_doc_count'        => count($photoDocumentation),
-                'photo_hyg_count'        => count($photoHygieneClearance),
-                'jumlah_kolaborator'     => $jumlahKolaborator,
+                'report_id'          => $report->id,
+                'report_code'        => $reportCode,
+                'report_date'        => $reportDate,
+                'funcloc_id'         => $state['funcloc_id'] ?? null,
+                'funcloc_code'       => $state['funcloc_code'] ?? null,
+                'photo_doc_count'    => count($photoDocumentation),
+                'photo_hyg_count'    => count($photoHygieneClearance),
+                'jumlah_kolaborator' => $jumlahKolaborator,
             ]);
 
             $equipmentLabel = $this->equipmentLabel($state);
@@ -247,10 +272,10 @@ trait WizardReportSaverTrait
             $successMsg .= "Root Cause   : {$rootCauseShort}\n";
             $successMsg .= "Waktu Submit : {$submittedAt}\n";
 
-            // Informasi kolaborator jika ada
+            // Informasi kolaborator dengan nama jika ada
             if ($jumlahKolaborator > 0) {
-                $nikList     = implode(', ', $collabNiks);
-                $successMsg .= "\n*Kolaborator* : {$nikList}\n";
+                $labelList   = implode(', ', $kolaboratorBerhasil);
+                $successMsg .= "\n*Kolaborator* : {$labelList}\n";
                 $successMsg .= "_Laporan terpisah sudah dibuat untuk {$jumlahKolaborator} kolaborator._\n";
             }
 
@@ -357,5 +382,34 @@ trait WizardReportSaverTrait
         }
 
         return $valid;
+    }
+
+    // =========================================================
+    // HELPER KOLABORATOR
+    // =========================================================
+
+    /**
+     * Bangun string label daftar kolaborator untuk pesan ringkasan.
+     * Format: "Nama (NIK), Nama (NIK)" jika nama tersedia,
+     * atau "NIK, NIK" jika collaborator_names tidak ada.
+     *
+     * @param  array $niks  Array NIK kolaborator
+     * @param  array $names Array nama kolaborator (indeks bersesuaian dengan $niks)
+     * @return string       String label kolaborator
+     */
+    private function buildCollaboratorLabelList(array $niks, array $names): string
+    {
+        $labels = [];
+
+        foreach ($niks as $index => $nik) {
+            $nama = $names[$index] ?? '';
+            if ($nama !== '') {
+                $labels[] = "{$nama} ({$nik})";
+            } else {
+                $labels[] = $nik;
+            }
+        }
+
+        return implode(', ', $labels);
     }
 }
