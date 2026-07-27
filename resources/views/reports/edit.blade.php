@@ -29,6 +29,22 @@
                 </div>
 
                 <div>
+                    <label for="work_classification" class="block text-sm font-medium text-slate-700 mb-1">Klasifikasi Pekerjaan</label>
+                    <select id="work_classification" name="work_classification"
+                            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">- Pilih Klasifikasi -</option>
+                        <option value="cm" {{ old('work_classification', $report->work_classification) === 'cm' ? 'selected' : '' }}>CM - Corrective Maintenance</option>
+                        <option value="pm" {{ old('work_classification', $report->work_classification) === 'pm' ? 'selected' : '' }}>PM - Preventif Maintenance</option>
+                        <option value="dcm" {{ old('work_classification', $report->work_classification) === 'dcm' ? 'selected' : '' }}>dCM - Deffered Corrective Maintenance</option>
+                        <option value="fabrikasi" {{ old('work_classification', $report->work_classification) === 'fabrikasi' ? 'selected' : '' }}>Fabrikasi</option>
+                        <option value="sipil" {{ old('work_classification', $report->work_classification) === 'sipil' ? 'selected' : '' }}>Sipil</option>
+                    </select>
+                    @error('work_classification')
+                        <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div>
                     <h3 class="text-sm font-medium text-slate-900 mb-3">Lokasi & Alat</h3>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>

@@ -8,6 +8,7 @@ use App\Models\Technician;
  * WizardStepHandlerTrait
  *
  * Menangani logika handler untuk setiap step wizard laporan:
+ *   - buildWorkClassificationPrompt(): Bangun prompt step paling awal (pilih klasifikasi pekerjaan)
  *   - buildWorkDurationPrompt()     : Bangun prompt Step 4 (input durasi)
  *   - handleDurationInput()         : Proses teks durasi yang diketik teknisi
  *   - advanceToWorkDuration()       : Transisi ke Step 4 dari step sebelumnya
@@ -20,7 +21,7 @@ use App\Models\Technician;
  *   - advanceFromPhotoStep()        : Transisi keluar dari step foto
  *   - buildCollaboratorPrompt()     : Bangun prompt Step 8a (input NIK/nama kolaborator)
  *   - handleCollaboratorInput()     : Proses teks NIK/nama kolaborator dari teknisi
- *   - buildCollabCandidateKeyboard(): Bangun keyboard pilihan kandidat hasil pencarian nama
+ *   - buildCollabCandidateKeyboard(): Bangun keyboard pilihan kandidat hasil pencarian nama (termasuk navigationButtons)
  *   - handleConfirmation()          : Proses teks konfirmasi di Step 8
  *   - photoCallbackKey()            : Peta $photoStep ke kunci callback_data pendek
  *   - photoDoneButtonLabel()        : Label tombol "selesai" yang sesuai step foto
@@ -37,10 +38,25 @@ use App\Models\Technician;
  *   - buildCollaboratorPrompt(array $state): array
  *   - buildConfirmationSummary(array $state): array
  *   - saveReport(string $chatId, array $state): array
+ *   - pushStepHistory(array $state, string $currentStep): array
+ *   - navigationButtons(array $state, bool $includeBack = true): array
  *
  * Trait ini juga bergantung pada properti berikut dari kelas pemakai:
  *   - $this->collaboratorSearch (App\Services\Telegram\CollaboratorSearchService)
  *     dipakai oleh handleCollaboratorInput() untuk pencarian NIK/nama kolaborator.
+ *
+ * CATATAN — Navigasi Kembali/Batal (Step 4, 5, 6, 7, 8a):
+ * pushStepHistory() WAJIB dipanggil dengan step YANG SEDANG DITINGGALKAN
+ * sesaat sebelum $state['step'] diubah ke step berikutnya (Step 4 -> 5,
+ * Step 5 -> 6, Step 6 -> 7, Step 7 -> 8a, Step 8a -> 8).
+ * Push Step 8a dilakukan di WizardCallbackHandlerTrait::handleConfirmationCallback()
+ * pada case collab_skip dan collab_done — bukan di sini — karena transisi ke
+ * STEP_CONFIRMATION hanya terjadi via callback, bukan via input teks.
+ * Hanya dipanggil saat wizard benar-benar MAJU ke step baru — bukan saat
+ * hanya menampilkan ulang prompt di step yang sama (mis. aksi "Ubah Durasi"/
+ * "Ubah" pada root cause, atau saat menerima foto tambahan di step yang sama).
+ * Setiap keyboard yang dibangun di Step 4-8a wajib memakai navigationButtons()
+ * agar tombol Kembali/Batal konsisten.
  *
  * PENTING — Konsistensi callback_data foto:
  * Semua callback_data untuk step foto WAJIB menggunakan format pendek:
@@ -50,11 +66,54 @@ use App\Models\Technician;
  * di WizardCallbackHandlerTrait::handleConfirmationCallback() hanya mengenali
  * bentuk pendek ini. Gunakan photoCallbackKey() setiap kali membangun
  * callback_data foto agar tidak terulang lagi bug ini.
+ *
+ * PERBAIKAN SESI 6 (uji menyeluruh & rapikan konsistensi):
+ * advanceToWorkDuration() sebelumnya TIDAK memanggil pushStepHistory()
+ * sebelum memindahkan $state['step'] ke STEP_WORK_DURATION, sehingga step
+ * equipment (Step 1/2/3) tidak pernah tercatat di riwayat dan tombol Kembali
+ * tidak pernah muncul di Step 4 saat teknisi pertama kali sampai di sana.
+ * Karena advanceToWorkDuration() adalah gerbang tunggal dari semua jalur
+ * penguncian equipment (lock langsung, finalisasi ClarificationService,
+ * FuncLoc picker), perbaikan push di method ini otomatis berlaku untuk
+ * seluruh jalur tersebut — lihat docblock advanceToWorkDuration() untuk detail.
  */
 trait WizardStepHandlerTrait
 {
     // Batas maksimum kolaborator per laporan
     const MAX_COLLABORATORS = 5;
+
+    // =========================================================
+    // STEP AWAL — KLASIFIKASI PEKERJAAN
+    // =========================================================
+
+    /**
+     * Bangun pesan prompt step paling awal wizard: pilih klasifikasi
+     * pekerjaan (CM/PM/dCM/Fabrikasi/Sipil) sebelum pencarian equipment
+     * dijalankan. Callback_data mengikuti pola 'classification:<kode>',
+     * ditangani WizardCallbackHandlerTrait::handleWorkClassificationCallback().
+     *
+     * @param  array $state State wizard saat ini
+     * @return array Respons dengan message dan keyboard 5 pilihan klasifikasi
+     */
+    protected function buildWorkClassificationPrompt(array $state): array
+    {
+        $keyboard = [
+            ['text' => 'CM - Corrective Maintenance',          'callback_data' => 'classification:cm'],
+            ['text' => 'PM - Preventif Maintenance',           'callback_data' => 'classification:pm'],
+            ['text' => 'dCM - Deffered Corrective Maintenance', 'callback_data' => 'classification:dcm'],
+            ['text' => 'Fabrikasi',                             'callback_data' => 'classification:fabrikasi'],
+            ['text' => 'Sipil',                                 'callback_data' => 'classification:sipil'],
+        ];
+
+        foreach ($this->navigationButtons($state) as $navButton) {
+            $keyboard[] = $navButton;
+        }
+
+        return [
+            'message'  => "Laporan diterima.\n\nSebelum mencari equipment, pilih klasifikasi pekerjaan untuk laporan ini:",
+            'keyboard' => $keyboard,
+        ];
+    }
 
     // =========================================================
     // STEP 4 — WAKTU PENGERJAAN
@@ -63,13 +122,23 @@ trait WizardStepHandlerTrait
     /**
      * Transisi ke Step 4 dan tampilkan prompt durasi.
      *
+     * PERBAIKAN SESI 6: sebelumnya method ini langsung mengubah $state['step']
+     * ke STEP_WORK_DURATION tanpa memanggil pushStepHistory() lebih dulu,
+     * sehingga step equipment (STEP_EQUIPMENT_SEARCH/STEP_EQUIPMENT_CLARIFY)
+     * tidak pernah tercatat di riwayat dan tombol Kembali tidak pernah muncul
+     * saat teknisi pertama kali sampai di Step 4 — padahal ini titik gerbang
+     * tunggal dari SEMUA jalur penguncian equipment (lock langsung,
+     * finalisasi hierarki ClarificationService, dan FuncLoc picker untuk
+     * pekerjaan area), jadi push di sini otomatis berlaku untuk semua jalur.
+     *
      * @param  string $chatId Chat ID Telegram
      * @param  array  $state  State wizard saat ini
      * @return array  Respons
      */
     protected function advanceToWorkDuration(string $chatId, array $state): array
     {
-        $state['step'] = self::STEP_WORK_DURATION;
+        $state          = $this->pushStepHistory($state, $state['step']);
+        $state['step']  = self::STEP_WORK_DURATION;
         $this->saveState($chatId, $state);
 
         return $this->buildWorkDurationPrompt($state, autoDetected: !empty($state['work_duration_minutes']));
@@ -89,10 +158,13 @@ trait WizardStepHandlerTrait
 
         if ($autoDetected && !empty($state['work_duration_minutes'])) {
             $formatted = $this->formatDuration($state['work_duration_minutes']);
-            $keyboard  = [
-                ['text' => "Ya, {$formatted}", 'callback_data' => 'wizard:confirm:duration_ok'],
-                ['text' => 'Ubah Durasi',      'callback_data' => 'wizard:confirm:duration_change'],
-            ];
+            $keyboard  = array_merge(
+                [
+                    ['text' => "Ya, {$formatted}", 'callback_data' => 'wizard:confirm:duration_ok'],
+                    ['text' => 'Ubah Durasi',      'callback_data' => 'wizard:confirm:duration_change'],
+                ],
+                $this->navigationButtons($state)
+            );
             return [
                 'message' => "Laporan untuk *{$equipmentLabel}* diterima.\n\n" .
                     "Durasi pekerjaan terdeteksi: *{$formatted}*\n" .
@@ -107,7 +179,7 @@ trait WizardStepHandlerTrait
                 "Ketik rentang waktu, contoh:\n" .
                 "`08:00 sampai 09:00`, `08:00-10:00`\n" .
                 "Atau rentang santai: `Jam 9 - Jam 10`, `pukul 09 sd 10.30`, `9 sampai 10`",
-            'keyboard' => [],
+            'keyboard' => $this->navigationButtons($state),
         ];
     }
 
@@ -128,10 +200,11 @@ trait WizardStepHandlerTrait
                 'message'  => "Rentang waktu tidak dikenali. Coba format lain:\n" .
                     "`08:00 sampai 09:00`, `08:00-10:00`\n" .
                     "Atau rentang santai: `Jam 9 - Jam 10`, `pukul 09 sd 10.30`, `9 sampai 10`",
-                'keyboard' => [],
+                'keyboard' => $this->navigationButtons($state),
             ];
         }
 
+        $state                          = $this->pushStepHistory($state, self::STEP_WORK_DURATION);
         $state['work_duration_minutes'] = $minutes;
         $state['step']                  = self::STEP_ROOT_CAUSE;
         $this->saveState($chatId, $state);
@@ -161,10 +234,13 @@ trait WizardStepHandlerTrait
                 'message'  => "*Step 5/8* — Root Cause\n\n" .
                     "Root cause yang terdeteksi dari laporan:\n_{$existing}_\n\n" .
                     "Gunakan root cause ini atau ketik yang baru:",
-                'keyboard' => [
-                    ['text' => 'Gunakan ini', 'callback_data' => 'wizard:confirm:rootcause_ok'],
-                    ['text' => 'Ubah',        'callback_data' => 'wizard:confirm:rootcause_change'],
-                ],
+                'keyboard' => array_merge(
+                    [
+                        ['text' => 'Gunakan ini', 'callback_data' => 'wizard:confirm:rootcause_ok'],
+                        ['text' => 'Ubah',        'callback_data' => 'wizard:confirm:rootcause_change'],
+                    ],
+                    $this->navigationButtons($state)
+                ),
             ];
         }
 
@@ -173,7 +249,7 @@ trait WizardStepHandlerTrait
                 "Equipment: *{$equipmentLabel}*\n" .
                 "Durasi: *{$duration}*\n\n" .
                 "Ketik *root cause* (penyebab kerusakan/pekerjaan):",
-            'keyboard' => [],
+            'keyboard' => $this->navigationButtons($state),
         ];
     }
 
@@ -193,12 +269,13 @@ trait WizardStepHandlerTrait
             return [
                 'message'  => "Root cause terlalu pendek (minimal " . self::ROOT_CAUSE_MIN_LENGTH . " karakter).\n" .
                     "Deskripsikan penyebab kerusakan/pekerjaan:",
-                'keyboard' => [],
+                'keyboard' => $this->navigationButtons($state),
             ];
         }
 
-        $state['root_cause'] = $trimmed;
-        $state['step']       = self::STEP_PHOTO_DOCUMENTATION;
+        $state                = $this->pushStepHistory($state, self::STEP_ROOT_CAUSE);
+        $state['root_cause']  = $trimmed;
+        $state['step']        = self::STEP_PHOTO_DOCUMENTATION;
         $this->saveState($chatId, $state);
 
         return $this->buildPhotoDocumentationPrompt($state);
@@ -209,6 +286,14 @@ trait WizardStepHandlerTrait
     // =========================================================
 
     /**
+     * CATATAN — Navigasi Kembali di step foto (Step 6 & 7):
+     * Tombol Kembali TIDAK menghapus foto yang sudah terupload ke
+     * 'photo_documentation'/'photo_hygiene_clearance'. buildPhotoDocumentationPrompt()
+     * dan buildPhotoHygienePrompt() hanya membaca ulang array foto yang ada di
+     * state saat dipanggil oleh WizardCallbackHandlerTrait::rebuildPromptForStep(),
+     * sehingga teknisi bisa mundur dan maju lagi tanpa kehilangan foto yang
+     * sudah dikirim. Hanya "Batalkan Laporan" yang mereset seluruh state.
+     *
      * Bangun pesan prompt Step 6 (foto dokumentasi).
      * Menyesuaikan pesan berdasarkan jumlah foto yang sudah masuk
      * dan apakah ada foto awal dari Step 1.
@@ -226,10 +311,13 @@ trait WizardStepHandlerTrait
                 'message'  => "*Step 6/8* — Foto Dokumentasi\n\n" .
                     "Sudah ada 1 foto yang dikirim bersama laporan awal.\n" .
                     "Kirim foto tambahan jika ada, atau lanjutkan:",
-                'keyboard' => [
-                    ['text' => 'Cukup, Lanjutkan', 'callback_data' => 'wizard:confirm:photo_doc_done'],
-                    ['text' => 'Skip (Tanpa Foto)',   'callback_data' => 'wizard:confirm:photo_doc_skip'],
-                ],
+                'keyboard' => array_merge(
+                    [
+                        ['text' => 'Cukup, Lanjutkan', 'callback_data' => 'wizard:confirm:photo_doc_done'],
+                        ['text' => 'Skip (Tanpa Foto)',   'callback_data' => 'wizard:confirm:photo_doc_skip'],
+                    ],
+                    $this->navigationButtons($state)
+                ),
             ];
         }
 
@@ -238,10 +326,13 @@ trait WizardStepHandlerTrait
                 'message'  => "*Step 6/8* — Foto Dokumentasi\n\n" .
                     "{$currentPhotos} foto sudah diterima.\n" .
                     "Kirim foto lagi, atau lanjutkan:",
-                'keyboard' => [
-                    ['text' => 'Cukup, Lanjutkan', 'callback_data' => 'wizard:confirm:photo_doc_done'],
-                    ['text' => 'Skip Sisa Foto',    'callback_data' => 'wizard:confirm:photo_doc_skip'],
-                ],
+                'keyboard' => array_merge(
+                    [
+                        ['text' => 'Cukup, Lanjutkan', 'callback_data' => 'wizard:confirm:photo_doc_done'],
+                        ['text' => 'Skip Sisa Foto',    'callback_data' => 'wizard:confirm:photo_doc_skip'],
+                    ],
+                    $this->navigationButtons($state)
+                ),
             ];
         }
 
@@ -249,9 +340,12 @@ trait WizardStepHandlerTrait
             'message'  => "*Step 6/8* — Foto Dokumentasi\n\n" .
                 "Kirim foto dokumentasi pekerjaan (opsional, bisa lebih dari 1).\n" .
                 "Atau skip jika tidak ada:",
-            'keyboard' => [
-                ['text' => 'Skip (Tanpa Foto)', 'callback_data' => 'wizard:confirm:photo_doc_skip'],
-            ],
+            'keyboard' => array_merge(
+                [
+                    ['text' => 'Skip (Tanpa Foto)', 'callback_data' => 'wizard:confirm:photo_doc_skip'],
+                ],
+                $this->navigationButtons($state)
+            ),
         ];
     }
 
@@ -276,10 +370,13 @@ trait WizardStepHandlerTrait
                 'message'  => "*Step 7/8* — Foto Hygiene Clearance\n\n" .
                     "{$currentPhotos} foto sudah diterima.\n" .
                     "Kirim foto lagi, atau lanjutkan ke step berikutnya:",
-                'keyboard' => [
-                    ['text' => $this->photoDoneButtonLabel('hygiene'), 'callback_data' => 'wizard:confirm:photo_hygiene_done'],
-                    ['text' => 'Skip Sisa',                            'callback_data' => 'wizard:confirm:photo_hygiene_skip'],
-                ],
+                'keyboard' => array_merge(
+                    [
+                        ['text' => $this->photoDoneButtonLabel('hygiene'), 'callback_data' => 'wizard:confirm:photo_hygiene_done'],
+                        ['text' => 'Skip Sisa',                            'callback_data' => 'wizard:confirm:photo_hygiene_skip'],
+                    ],
+                    $this->navigationButtons($state)
+                ),
             ];
         }
 
@@ -287,9 +384,12 @@ trait WizardStepHandlerTrait
             'message'  => "*Step 7/8* — Foto Hygiene Clearance\n\n" .
                 "Kirim foto hygiene clearance (opsional).\n" .
                 "Atau skip untuk lanjut ke step berikutnya:",
-            'keyboard' => [
-                ['text' => 'Skip (Tanpa Foto)', 'callback_data' => 'wizard:confirm:photo_hygiene_skip'],
-            ],
+            'keyboard' => array_merge(
+                [
+                    ['text' => 'Skip (Tanpa Foto)', 'callback_data' => 'wizard:confirm:photo_hygiene_skip'],
+                ],
+                $this->navigationButtons($state)
+            ),
         ];
     }
 
@@ -312,16 +412,21 @@ trait WizardStepHandlerTrait
     }
 
     /**
-     * Label tombol "selesai" yang sesuai dengan step foto.
-     * Step hygiene sekarang menuju ke step kolaborator (bukan langsung konfirmasi),
-     * sehingga labelnya diperbarui menjadi "Lanjutkan".
+     * Label tombol "selesai" untuk step foto (dokumentasi maupun hygiene).
+     * Parameter $photoStep dipertahankan (bukan dihapus) agar tanda tangan
+     * method tetap stabil untuk seluruh titik pemanggilan dan agar label
+     * bisa dibedakan lagi di kemudian hari tanpa perlu mengubah pemanggil.
+     *
+     * RAPIKAN SESI 6: sebelumnya method ini memakai ternary yang mengembalikan
+     * string sama persis di kedua cabang ('documentation' dan 'hygiene') —
+     * disederhanakan menjadi konstanta tunggal.
      *
      * @param  string $photoStep Tipe step: 'documentation' atau 'hygiene'
      * @return string            Label tombol
      */
     private function photoDoneButtonLabel(string $photoStep): string
     {
-        return $photoStep === 'hygiene' ? 'Selesai, Lanjutkan' : 'Selesai, Lanjutkan';
+        return 'Selesai, Lanjutkan';
     }
 
     /**
@@ -349,10 +454,13 @@ trait WizardStepHandlerTrait
         return [
             'message'  => "*Step {$stepNum}/8* — {$currentCount} foto diterima.\n" .
                 "Kirim foto berikutnya, atau ketik *selesai* untuk lanjut.",
-            'keyboard' => [
-                ['text' => $this->photoDoneButtonLabel($photoStep), 'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_done'],
-                ['text' => 'Skip',                                  'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_skip'],
-            ],
+            'keyboard' => array_merge(
+                [
+                    ['text' => $this->photoDoneButtonLabel($photoStep), 'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_done'],
+                    ['text' => 'Skip',                                  'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_skip'],
+                ],
+                $this->navigationButtons($state)
+            ),
         ];
     }
 
@@ -385,10 +493,13 @@ trait WizardStepHandlerTrait
         return [
             'message'  => "Foto {$count} diterima.\n" .
                 "Kirim foto berikutnya, atau tekan *Selesai* untuk lanjut.",
-            'keyboard' => [
-                ['text' => $this->photoDoneButtonLabel($photoStep), 'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_done'],
-                ['text' => 'Skip Sisa',                             'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_skip'],
-            ],
+            'keyboard' => array_merge(
+                [
+                    ['text' => $this->photoDoneButtonLabel($photoStep), 'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_done'],
+                    ['text' => 'Skip Sisa',                             'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_skip'],
+                ],
+                $this->navigationButtons($state)
+            ),
         ];
     }
 
@@ -416,13 +527,15 @@ trait WizardStepHandlerTrait
         }
 
         if ($photoStep === 'documentation') {
-            $state['step'] = self::STEP_PHOTO_HYGIENE;
+            $state          = $this->pushStepHistory($state, self::STEP_PHOTO_DOCUMENTATION);
+            $state['step']  = self::STEP_PHOTO_HYGIENE;
             $this->saveState($chatId, $state);
             return $this->buildPhotoHygienePrompt($state);
         }
 
         // Dari hygiene → Step 8a kolaborator (opsional sebelum konfirmasi)
-        $state['step'] = self::STEP_COLLABORATOR;
+        $state          = $this->pushStepHistory($state, self::STEP_PHOTO_HYGIENE);
+        $state['step']  = self::STEP_COLLABORATOR;
         $this->saveState($chatId, $state);
         return $this->buildCollaboratorPrompt($state);
     }
@@ -457,12 +570,14 @@ trait WizardStepHandlerTrait
                 'message'  => "*Step 8a/8* — Kolaborator\n\n" .
                     "Kolaborator yang sudah ditambahkan: *{$labelList}*\n\n" .
                     "Tambah kolaborator lain (ketik NIK atau nama), atau lanjut ke konfirmasi:",
-                'keyboard' => [
-                    ['text' => 'Selesai, Lanjut Konfirmasi',       'callback_data' => 'wizard:confirm:collab_done'],
-                    ['text' => 'Lewati (Tanpa Kolaborator)',        'callback_data' => 'wizard:confirm:collab_skip'],
-                    ['text' => 'Pilih dari Hierarki Dept/Section',  'callback_data' => 'collab_hierarchy:dept'],
-                    ['text' => 'Batalkan Laporan',                  'callback_data' => 'wizard:cancel_wizard'],
-                ],
+                'keyboard' => array_merge(
+                    [
+                        ['text' => 'Selesai, Lanjut Konfirmasi',      'callback_data' => 'wizard:confirm:collab_done'],
+                        ['text' => 'Lewati (Tanpa Kolaborator)',       'callback_data' => 'wizard:confirm:collab_skip'],
+                        ['text' => 'Pilih dari Hierarki Dept/Section', 'callback_data' => 'collab_hierarchy:dept'],
+                    ],
+                    $this->navigationButtons($state)
+                ),
             ];
         }
 
@@ -472,11 +587,13 @@ trait WizardStepHandlerTrait
                 "Ketik NIK atau nama rekan (bisa lebih dari satu, pisah dengan koma).\n\n" .
                 "Contoh: `12345, 67890` atau `Ahmad, Budi`\n\n" .
                 "Atau lewati jika tidak ada kolaborator:",
-            'keyboard' => [
-                ['text' => 'Lewati (Tanpa Kolaborator)',       'callback_data' => 'wizard:confirm:collab_skip'],
-                ['text' => 'Pilih dari Hierarki Dept/Section', 'callback_data' => 'collab_hierarchy:dept'],
-                ['text' => 'Batalkan Laporan',                 'callback_data' => 'wizard:cancel_wizard'],
-            ],
+            'keyboard' => array_merge(
+                [
+                    ['text' => 'Lewati (Tanpa Kolaborator)',       'callback_data' => 'wizard:confirm:collab_skip'],
+                    ['text' => 'Pilih dari Hierarki Dept/Section', 'callback_data' => 'collab_hierarchy:dept'],
+                ],
+                $this->navigationButtons($state)
+            ),
         ];
     }
 
@@ -509,10 +626,12 @@ trait WizardStepHandlerTrait
                 'message'  => "Maksimum " . self::MAX_COLLABORATORS . " kolaborator per laporan sudah tercapai.\n\n" .
                     "Kolaborator saat ini: *" . implode(', ', $collabSudahAda) . "*\n\n" .
                     "Lanjut ke konfirmasi atau batalkan laporan:",
-                'keyboard' => [
-                    ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
-                    ['text' => 'Batalkan Laporan',           'callback_data' => 'wizard:cancel_wizard'],
-                ],
+                'keyboard' => array_merge(
+                    [
+                        ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
+                    ],
+                    $this->navigationButtons($state)
+                ),
             ];
         }
 
@@ -577,7 +696,7 @@ trait WizardStepHandlerTrait
                 ], $hasil['candidates']);
                 $this->saveState($chatId, $state);
 
-                return $this->buildCollabCandidateKeyboard($query, $hasil['candidates']);
+                return $this->buildCollabCandidateKeyboard($query, $hasil['candidates'], $state);
             }
 
             // Tidak ada kandidat sama sekali untuk token ini
@@ -630,11 +749,13 @@ trait WizardStepHandlerTrait
             return [
                 'message'  => $msg . "\nTidak ada kolaborator valid yang ditemukan. " .
                     "Coba ketik ulang NIK/nama, pilih dari hierarki, atau lewati:",
-                'keyboard' => [
-                    ['text' => 'Lewati (Tanpa Kolaborator)',       'callback_data' => 'wizard:confirm:collab_skip'],
-                    ['text' => 'Pilih dari Hierarki Dept/Section', 'callback_data' => 'collab_hierarchy:dept'],
-                    ['text' => 'Batalkan Laporan',                 'callback_data' => 'wizard:cancel_wizard'],
-                ],
+                'keyboard' => array_merge(
+                    [
+                        ['text' => 'Lewati (Tanpa Kolaborator)',       'callback_data' => 'wizard:confirm:collab_skip'],
+                        ['text' => 'Pilih dari Hierarki Dept/Section', 'callback_data' => 'collab_hierarchy:dept'],
+                    ],
+                    $this->navigationButtons($state)
+                ),
             ];
         }
 
@@ -651,10 +772,13 @@ trait WizardStepHandlerTrait
         return [
             'message'  => $msg . "\nTotal kolaborator sekarang: *{$semuaLabel}*\n\n" .
                 "Tambah kolaborator lain, atau lanjut ke konfirmasi:",
-            'keyboard' => [
-                ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
-                ['text' => 'Lewati (Tanpa Kolaborator)',  'callback_data' => 'wizard:confirm:collab_skip'],
-            ],
+            'keyboard' => array_merge(
+                [
+                    ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
+                    ['text' => 'Lewati (Tanpa Kolaborator)',  'callback_data' => 'wizard:confirm:collab_skip'],
+                ],
+                $this->navigationButtons($state)
+            ),
         ];
     }
 
@@ -664,9 +788,10 @@ trait WizardStepHandlerTrait
      *
      * @param  string $query      Query nama yang diketik teknisi (ditampilkan di pesan)
      * @param  array  $candidates Daftar objek Technician kandidat (maks CollaboratorSearchService::MAX_CANDIDATES)
+     * @param  array  $state      State wizard saat ini (untuk navigationButtons)
      * @return array  Respons dengan message dan keyboard pilihan kandidat
      */
-    protected function buildCollabCandidateKeyboard(string $query, array $candidates): array
+    protected function buildCollabCandidateKeyboard(string $query, array $candidates, array $state): array
     {
         $keyboard = [];
         foreach ($candidates as $candidate) {
@@ -680,7 +805,10 @@ trait WizardStepHandlerTrait
             ];
         }
 
-        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'];
+        // Tombol navigasi: Kembali (jika ada riwayat) + Batalkan Laporan
+        foreach ($this->navigationButtons($state) as $navButton) {
+            $keyboard[] = $navButton;
+        }
 
         return [
             'message'  => "Ditemukan beberapa teknisi dengan nama mirip *\"{$query}\"*. Pilih salah satu:",

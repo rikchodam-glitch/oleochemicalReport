@@ -878,11 +878,11 @@ class PollTelegramUpdates extends Command
 namespace App\Console\Commands;
 
 use App\Models\Area;
-use App\Models\Asset;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\FunctionalLocation;
 use App\Models\SubArea;
+use App\Services\FuncLocSyncService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -896,8 +896,12 @@ class SeedFuncLocFromAssets extends Command
     // Cache node yang sudah diproses untuk menghindari query berulang
     private array $cache = [];
 
-    public function handle(): int
+    private FuncLocSyncService $funcLocSyncService;
+
+    public function handle(FuncLocSyncService $funcLocSyncService): int
     {
+        $this->funcLocSyncService = $funcLocSyncService;
+
         $isDryRun = $this->option('dry-run');
 
         if ($isDryRun) {
@@ -1125,9 +1129,9 @@ class SeedFuncLocFromAssets extends Command
     // =========================================================
 
     /**
-     * Scan kolom functional_loc di assets untuk menemukan node yang belum ada
-     * di tabel functional_locations — mis. EPE-PROD-BD02 yang tidak punya Area record.
-     * Buat node induk yang hilang secara rekursif.
+     * Delegasikan pembuatan orphan node (mis. EPE-PROD-BD02 yang tidak
+     * punya Area record) ke FuncLocSyncService, lalu gabungkan hasilnya
+     * ke cache lokal command agar Tahap 6 bisa memakainya tanpa query ulang.
      *
      * @return void
      */
@@ -1135,34 +1139,19 @@ class SeedFuncLocFromAssets extends Command
     {
         $this->info('Tahap 5/6: Membuat orphan nodes dari assets.functional_loc...');
 
-        $funcLocs = Asset::whereNotNull('functional_loc')
-            ->distinct()
-            ->pluck('functional_loc');
+        $analysis = $this->funcLocSyncService->analyze();
+        $result   = $this->funcLocSyncService->createMissingNodes($analysis['nodes']);
 
-        $created = 0;
-        $skipped = 0;
-
-        foreach ($funcLocs as $rawCode) {
-            $code = strtoupper(trim($rawCode));
-
-            if (empty($code)) {
-                continue;
-            }
-
-            // Jika sudah ada di cache berarti sudah dibuat di tahap sebelumnya
-            if (isset($this->cache[$code])) {
-                $skipped++;
-                continue;
-            }
-
-            $node = $this->ensureNodeExists($code);
-
-            if ($node !== null) {
-                $created++;
-            }
+        foreach ($result['cache'] as $code => $node) {
+            $this->cache[$code] = $node;
         }
 
-        $this->info("  Selesai: {$created} node baru dibuat, {$skipped} sudah ada.");
+        $alreadyExisted = count($result['cache']) - $result['created'];
+        $this->info("  Selesai: {$result['created']} node baru dibuat, {$alreadyExisted} sudah ada.");
+
+        foreach ($analysis['invalid_codes'] as $invalid) {
+            $this->warn("  [LEVEL TIDAK VALID] {$invalid['code']}");
+        }
     }
 
     // =========================================================
@@ -1170,8 +1159,8 @@ class SeedFuncLocFromAssets extends Command
     // =========================================================
 
     /**
-     * Update assets.funcloc_id berdasarkan assets.functional_loc (string).
-     * Pada dry-run, hanya tampilkan ringkasan tanpa update.
+     * Delegasikan penautan assets.funcloc_id ke FuncLocSyncService,
+     * memakai cache node yang sudah terkumpul dari Tahap 1-5.
      *
      * @param  bool  $isDryRun
      * @return void
@@ -1180,40 +1169,7 @@ class SeedFuncLocFromAssets extends Command
     {
         $this->info('Tahap 6/6: Menghubungkan assets.funcloc_id dari string functional_loc...');
 
-        $assets = Asset::whereNotNull('functional_loc')
-            ->whereNull('funcloc_id')
-            ->get();
-
-        $linked  = 0;
-        $skipped = 0;
-        $missing = 0;
-
-        foreach ($assets as $asset) {
-            $code = strtoupper(trim($asset->functional_loc));
-
-            // Lewati asset yang functional_loc-nya kosong atau hanya whitespace
-            if ($code === '') {
-                $this->warn("  [DILEWATI] functional_loc kosong — asset ID {$asset->id}");
-                $skipped++;
-                continue;
-            }
-
-            $node = $this->cache[$code] ?? FunctionalLocation::where('code', $code)->first();
-
-            if ($node === null) {
-                $this->warn("  [TIDAK DITEMUKAN] {$code} — asset ID {$asset->id}");
-                $missing++;
-                continue;
-            }
-
-            // Pada dry-run transaksi tetap dijalankan tapi akan di-rollback,
-            // sehingga update ini aman untuk dieksekusi sebagai preview
-            if (!$isDryRun) {
-                $asset->update(['funcloc_id' => $node->id]);
-            }
-
-            $linked++;
-        }
+        [$linked, $skipped, $missing] = $this->funcLocSyncService->linkAssets($this->cache, $isDryRun);
 
         $label = $isDryRun ? 'akan dihubungkan' : 'dihubungkan';
         $this->info("  Selesai: {$linked} asset {$label}, {$skipped} dilewati (kosong), {$missing} kode tidak ditemukan.");
@@ -1260,54 +1216,6 @@ class SeedFuncLocFromAssets extends Command
         );
 
         $this->cache[$code] = $node;
-
-        return $node;
-    }
-
-    /**
-     * Pastikan node dengan kode tertentu sudah ada.
-     * Jika belum, buat node-nya beserta semua node induk yang hilang secara rekursif.
-     * Nama node yang dibuat dari sini diisi dengan kode itu sendiri karena tidak ada
-     * nama yang bisa diambil dari data lama — admin bisa mengupdate via halaman FuncLoc.
-     *
-     * @param  string  $code
-     * @return FunctionalLocation|null
-     */
-    private function ensureNodeExists(string $code): ?FunctionalLocation
-    {
-        if (isset($this->cache[$code])) {
-            return $this->cache[$code];
-        }
-
-        // Pecah kode untuk menentukan level dan segment
-        $segments = explode('-', $code);
-        $level    = count($segments) - 1;
-
-        if ($level < FunctionalLocation::LEVEL_SITE || $level > FunctionalLocation::LEVEL_SECTION) {
-            $this->warn("  [LEVEL TIDAK VALID] {$code} (segmen: " . count($segments) . ")");
-            return null;
-        }
-
-        // Pastikan induk sudah ada sebelum membuat node ini
-        $parentNode = null;
-
-        if ($level > FunctionalLocation::LEVEL_SITE) {
-            $parentCode = implode('-', array_slice($segments, 0, -1));
-            $parentNode = $this->ensureNodeExists($parentCode);
-        }
-
-        $segment = end($segments);
-
-        $node = $this->firstOrCreateNode(
-            code: $code,
-            segment: $segment,
-            name: $code,
-            level: $level,
-            parentId: $parentNode?->id,
-            extraAttributes: []
-        );
-
-        $this->line("  [ORPHAN L{$level}] {$code}");
 
         return $node;
     }
@@ -3250,6 +3158,8 @@ class DashboardController extends Controller
 namespace App\Http\Controllers;
 
 use App\Models\FunctionalLocation;
+use App\Services\FuncLocSyncService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -3257,6 +3167,13 @@ use Illuminate\View\View;
 
 class FunctionalLocationController extends Controller
 {
+    protected FuncLocSyncService $funcLocSyncService;
+
+    public function __construct(FuncLocSyncService $funcLocSyncService)
+    {
+        $this->funcLocSyncService = $funcLocSyncService;
+    }
+
     /**
      * Tampilkan daftar Functional Location.
      *
@@ -3457,6 +3374,57 @@ class FunctionalLocationController extends Controller
         return redirect()
             ->route('func-locs.index')
             ->with('success', 'Functional Location "' . $funcLoc->code . '" berhasil dinonaktifkan.');
+    }
+
+    /**
+     * Analisis assets.functional_loc untuk preview sinkronisasi: node baru
+     * yang akan dibuat, asset yang akan ditautkan, dan kode yang tidak valid.
+     * Tidak ada perubahan yang disimpan ke database pada tahap ini.
+     *
+     * @return JsonResponse
+     */
+    public function previewSync(): JsonResponse
+    {
+        try {
+            $analysis = $this->funcLocSyncService->analyze();
+
+            return response()->json([
+                'success'  => true,
+                'analysis' => $analysis,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menganalisa data: ' . $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Eksekusi sinkronisasi berdasarkan hasil previewSync(): buat node
+     * FunctionalLocation yang belum ada dan tautkan funcloc_id pada asset.
+     *
+     * @param  Request  $request
+     * @return JsonResponse
+     */
+    public function executeSync(Request $request): JsonResponse
+    {
+        $request->validate([
+            'analysis' => ['required', 'array'],
+        ]);
+
+        try {
+            $result = $this->funcLocSyncService->execute($request->input('analysis'));
+
+            return response()->json(array_merge($result, [
+                'message' => "Sinkronisasi berhasil. {$result['node_created_count']} FuncLoc baru dibuat, {$result['asset_linked_count']} asset ditautkan.",
+            ]));
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Gagal sinkronisasi: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -5162,6 +5130,44 @@ class Department extends Model
     }
 }
 
+================ WARNAI DENGAN FILE: FuncLocSyncLog.php =================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class FuncLocSyncLog extends Model
+{
+    protected $fillable = [
+        'executed_by',
+        'total_scanned',
+        'node_created_count',
+        'asset_linked_count',
+        'asset_skipped_empty_count',
+        'asset_missing_node_count',
+        'detail_json',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'detail_json' => 'array',
+        ];
+    }
+
+    /**
+     * User yang menjalankan sinkronisasi ini.
+     *
+     * @return BelongsTo<User, FuncLocSyncLog>
+     */
+    public function executor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'executed_by');
+    }
+}
+
 ================ WARNAI DENGAN FILE: FunctionalLocation.php =================
 <?php
 
@@ -6846,6 +6852,8 @@ namespace App\Services\Telegram\Traits;
 
 use App\Models\Area;
 use App\Models\Asset;
+use App\Models\Department;
+use App\Models\Technician;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -6865,6 +6873,14 @@ use Illuminate\Support\Facades\Log;
  *   - finalizeClarificationSelection()  : Kunci hasil pilihan dari ClarificationService
  *   - handleFuncLocPick()               : Proses pilihan node FuncLoc (dari WizardFuncLocPickerTrait)
  *   - handleFuncLocConfirm()            : Konfirmasi FuncLoc tanpa turun lebih dalam (dari WizardFuncLocPickerTrait)
+ *   - handleCollabCandidateCallback()   : Proses pilihan kandidat nama kolaborator (Step 8a)
+ *   - handleCollabHierarchyCallback()   : Router alur hierarki Dept -> Section -> Pilih Teknisi (Step 8a)
+ *   - handleCollabHierarchyPick()       : Kunci teknisi terpilih dari hierarki sebagai kolaborator
+ *   - buildDeptKeyboard()               : Bangun keyboard daftar Department untuk hierarki kolaborator
+ *   - buildSectionKeyboard()            : Bangun keyboard daftar Section dalam Department terpilih
+ *   - buildCollabTechnicianKeyboard()   : Bangun keyboard daftar teknisi dalam Dept+Section terpilih
+ *   - resolveSenderNik()                : Ambil NIK teknisi pengirim dari chat_id (untuk exclude self)
+ *   - clearCollabHierarchyState()       : Bersihkan key state hierarki kolaborator
  *
  * Trait ini bergantung pada method berikut dari kelas pemakai:
  *   - errorResponse(string $message): array
@@ -6900,6 +6916,19 @@ use Illuminate\Support\Facades\Log;
  * Setelah Step 7 selesai, wizard masuk ke Step 8a (kolaborator).
  * Dua callback tersedia: collab_skip (hapus collaborator_niks, maju ke konfirmasi)
  * dan collab_done (pertahankan collaborator_niks, maju ke konfirmasi).
+ * Dua alur tambahan (Fitur A):
+ *   - collab_candidate:<technician_id>       -> pilih satu dari keyboard kandidat nama
+ *     yang ambigu (disimpan handleCollaboratorInput() ke collab_search_candidates)
+ *   - collab_hierarchy:dept                  -> tampilkan daftar Department
+ *   - collab_hierarchy:dept:<department_id>  -> Department dipilih, tampilkan daftar Section
+ *   - collab_hierarchy:section:<section_key> -> Section dipilih, tampilkan daftar Teknisi
+ *   - collab_hierarchy:pick:<technician_id>  -> Teknisi dipilih, tambahkan ke collaborator_niks
+ *
+ * CATATAN — Guard collab_hierarchy vs equipment:hierarchy:
+ * Prefix 'collab_hierarchy:' dan 'equipment:hierarchy' tidak tumpang tindih karena
+ * perbedaan karakter pemisah (titik dua vs garis bawah). Pemeriksaan
+ * str_starts_with($callbackData, 'collab_hierarchy:') dan $callbackData === 'equipment:hierarchy'
+ * dilakukan di routeCallback() dalam urutan yang tepat. Tidak ada risiko konflik.
  */
 trait WizardCallbackHandlerTrait
 {
@@ -6944,12 +6973,14 @@ trait WizardCallbackHandlerTrait
             return $this->handleWorkTypeCallback($chatId, $callbackData, $state);
         }
 
-        // Masuk ke hierarki ClarificationService (Sub-alur C)
+        // Masuk ke hierarki ClarificationService (Sub-alur C).
+        // Diperiksa sebelum collab_hierarchy agar tidak bentrok — prefix berbeda
+        // ('equipment:hierarchy' vs 'collab_hierarchy:'), aman.
         if ($callbackData === 'equipment:hierarchy') {
             return $this->startClarificationHierarchy($chatId, $state);
         }
 
-        // Tombol "Batal" dari dalam navigasi hierarki
+        // Tombol "Batal" dari dalam navigasi hierarki equipment
         if ($callbackData === 'hierarchy:cancel') {
             return $this->handleHierarchyCancel($chatId, $state);
         }
@@ -6962,6 +6993,27 @@ trait WizardCallbackHandlerTrait
         // Konfirmasi FuncLoc tanpa turun ke level berikutnya
         if (str_starts_with($callbackData, 'funcloc_confirm:')) {
             return $this->handleFuncLocConfirm($chatId, $callbackData, $state);
+        }
+
+        // Callback pemilihan kandidat nama kolaborator yang ambigu (Step 8a).
+        // Guard: hanya diproses saat step adalah STEP_COLLABORATOR agar tidak
+        // keliru masuk sini dari step lain yang kebetulan mengirim callback serupa.
+        if (str_starts_with($callbackData, 'collab_candidate:')) {
+            if ($state['step'] !== self::STEP_COLLABORATOR) {
+                return $this->errorResponse('Callback kolaborator tidak sesuai step aktif.');
+            }
+            return $this->handleCollabCandidateCallback($chatId, $callbackData, $state);
+        }
+
+        // Callback alur hierarki Dept -> Section -> Pilih Teknisi kolaborator (Step 8a).
+        // Prefix 'collab_hierarchy:' tidak tumpang tindih dengan 'equipment:hierarchy'
+        // karena prefix berbeda. Guard step STEP_COLLABORATOR ditambahkan sebagai
+        // lapisan keamanan ekstra agar tidak bisa dipanggil dari step lain.
+        if (str_starts_with($callbackData, 'collab_hierarchy:')) {
+            if ($state['step'] !== self::STEP_COLLABORATOR) {
+                return $this->errorResponse('Callback hierarki kolaborator tidak sesuai step aktif.');
+            }
+            return $this->handleCollabHierarchyCallback($chatId, $callbackData, $state);
         }
 
         // Callback dari ClarificationService saat hierarki aktif
@@ -7027,17 +7079,19 @@ trait WizardCallbackHandlerTrait
             case 'photo_hygiene_skip':
                 return $this->advanceFromPhotoStep($chatId, $state, 'hygiene');
 
-            // Step 8a — kolaborator dilewati: hapus NIK yang mungkin sudah terisi,
-            // lalu langsung ke Step 8 konfirmasi
+            // Step 8a — kolaborator dilewati: hapus semua data kolaborator termasuk
+            // state hierarki, lalu langsung ke Step 8 konfirmasi
             case 'collab_skip':
-                unset($state['collaborator_niks']);
+                unset($state['collaborator_niks'], $state['collaborator_names']);
+                $state = $this->clearCollabHierarchyState($state);
                 $state['step'] = self::STEP_CONFIRMATION;
                 $this->saveState($chatId, $state);
                 return $this->buildConfirmationSummary($state);
 
-            // Step 8a — kolaborator selesai: pertahankan NIK yang ada,
-            // lalu ke Step 8 konfirmasi
+            // Step 8a — kolaborator selesai: pertahankan NIK dan nama yang ada,
+            // bersihkan state hierarki, lalu ke Step 8 konfirmasi
             case 'collab_done':
+                $state = $this->clearCollabHierarchyState($state);
                 $state['step'] = self::STEP_CONFIRMATION;
                 $this->saveState($chatId, $state);
                 return $this->buildConfirmationSummary($state);
@@ -7392,6 +7446,333 @@ trait WizardCallbackHandlerTrait
         $this->clarificationService->destroySession($chatId);
 
         return $this->advanceToWorkDuration($chatId, $state);
+    }
+
+    // =========================================================
+    // STEP 8a — KOLABORATOR: KEYBOARD KANDIDAT NAMA
+    // =========================================================
+
+    /**
+     * Proses pemilihan satu kandidat dari keyboard kandidat nama kolaborator
+     * yang ambigu (disimpan sebelumnya oleh handleCollaboratorInput() ke
+     * state collab_search_candidates). NIK dan nama teknisi terpilih ditambahkan
+     * ke collaborator_niks dan collaborator_names, lalu prompt Step 8a ditampilkan ulang.
+     *
+     * @param  string $chatId       Chat ID Telegram
+     * @param  string $callbackData Data callback collab_candidate:<technician_id>
+     * @param  array  $state        State wizard saat ini
+     * @return array  Respons
+     */
+    protected function handleCollabCandidateCallback(string $chatId, string $callbackData, array $state): array
+    {
+        $id = explode(':', $callbackData)[1] ?? null;
+
+        if (!$id) {
+            return $this->errorResponse('Pilihan kandidat kolaborator tidak valid.');
+        }
+
+        $technician = Technician::find((int) $id);
+        if (!$technician) {
+            return $this->errorResponse('Teknisi tidak ditemukan. Silakan pilih ulang atau ketik ulang nama.');
+        }
+
+        // Guard maks kolaborator: tolak jika sudah penuh
+        $collabNiks = $state['collaborator_niks'] ?? [];
+        if (count($collabNiks) >= self::MAX_COLLABORATORS) {
+            $state['collab_search_candidates'] = [];
+            $this->saveState($chatId, $state);
+            return [
+                'message'  => "Maksimum " . self::MAX_COLLABORATORS . " kolaborator per laporan sudah tercapai. " .
+                    "Lanjut ke konfirmasi:",
+                'keyboard' => [
+                    ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
+                    ['text' => 'Batalkan Laporan',           'callback_data' => 'wizard:cancel_wizard'],
+                ],
+            ];
+        }
+
+        // Tambahkan NIK jika belum ada (hindari duplikat)
+        if (!in_array($technician->nik, $collabNiks, true)) {
+            $state['collaborator_niks'][]  = $technician->nik;
+            $state['collaborator_names'][] = $technician->name;
+        }
+
+        // Bersihkan kandidat pencarian setelah salah satu dipilih
+        $state['collab_search_candidates'] = [];
+        $this->saveState($chatId, $state);
+
+        return $this->buildCollaboratorPrompt($state);
+    }
+
+    // =========================================================
+    // STEP 8a — KOLABORATOR: HIERARKI DEPT -> SECTION -> TEKNISI
+    // =========================================================
+
+    /**
+     * Router alur hierarki kolaborator: collab_hierarchy:dept (daftar Department),
+     * collab_hierarchy:dept:<id> (Department dipilih -> daftar Section),
+     * collab_hierarchy:section:<key> (Section dipilih -> daftar Teknisi),
+     * collab_hierarchy:pick:<id> (Teknisi dipilih -> kunci sebagai kolaborator).
+     *
+     * @param  string $chatId       Chat ID Telegram
+     * @param  string $callbackData Data callback collab_hierarchy:<action>[:<value>]
+     * @param  array  $state        State wizard saat ini
+     * @return array  Respons
+     */
+    protected function handleCollabHierarchyCallback(string $chatId, string $callbackData, array $state): array
+    {
+        $parts  = explode(':', $callbackData);
+        $action = $parts[1] ?? null;
+        $value  = $parts[2] ?? null;
+
+        $state['collab_using_hierarchy'] = true;
+
+        // Langkah 1: tampilkan daftar Department
+        if ($action === 'dept' && $value === null) {
+            $this->saveState($chatId, $state);
+            return $this->buildDeptKeyboard();
+        }
+
+        // Langkah 2: Department dipilih, tampilkan daftar Section
+        if ($action === 'dept' && $value !== null) {
+            $state['collab_hierarchy_dept_id'] = (int) $value;
+            $state['collab_hierarchy_section'] = null;
+            $this->saveState($chatId, $state);
+            return $this->buildSectionKeyboard((int) $value);
+        }
+
+        // Langkah 3: Section dipilih, tampilkan daftar Teknisi
+        if ($action === 'section' && $value !== null) {
+            $deptId = $state['collab_hierarchy_dept_id'] ?? null;
+            if (!$deptId) {
+                return $this->errorResponse(
+                    'Sesi hierarki tidak valid. Silakan mulai ulang dari tombol "Pilih dari Hierarki Dept/Section".'
+                );
+            }
+
+            $state['collab_hierarchy_section'] = $value;
+            $this->saveState($chatId, $state);
+            return $this->buildCollabTechnicianKeyboard($chatId, (int) $deptId, $value);
+        }
+
+        // Langkah 4: Teknisi dipilih, kunci sebagai kolaborator
+        if ($action === 'pick' && $value !== null) {
+            return $this->handleCollabHierarchyPick($chatId, (int) $value, $state);
+        }
+
+        return $this->errorResponse('Pilihan hierarki kolaborator tidak dikenali.');
+    }
+
+    /**
+     * Kunci teknisi terpilih dari hierarki Dept/Section sebagai kolaborator.
+     * Menyimpan NIK dan nama ke state, membersihkan state hierarki setelah selesai,
+     * lalu menampilkan ulang prompt Step 8a.
+     *
+     * @param  string $chatId       Chat ID Telegram
+     * @param  int    $technicianId ID teknisi yang dipilih
+     * @param  array  $state        State wizard saat ini
+     * @return array  Respons
+     */
+    protected function handleCollabHierarchyPick(string $chatId, int $technicianId, array $state): array
+    {
+        $technician = Technician::find($technicianId);
+        if (!$technician) {
+            return $this->errorResponse('Teknisi tidak ditemukan. Silakan pilih ulang.');
+        }
+
+        // Guard maks kolaborator: tolak jika sudah penuh
+        $collabNiks = $state['collaborator_niks'] ?? [];
+        if (count($collabNiks) >= self::MAX_COLLABORATORS) {
+            $state = $this->clearCollabHierarchyState($state);
+            $this->saveState($chatId, $state);
+            return [
+                'message'  => "Maksimum " . self::MAX_COLLABORATORS . " kolaborator per laporan sudah tercapai. " .
+                    "Lanjut ke konfirmasi:",
+                'keyboard' => [
+                    ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
+                    ['text' => 'Batalkan Laporan',           'callback_data' => 'wizard:cancel_wizard'],
+                ],
+            ];
+        }
+
+        // Tambahkan NIK dan nama jika belum ada (hindari duplikat)
+        if (!in_array($technician->nik, $collabNiks, true)) {
+            $state['collaborator_niks'][]  = $technician->nik;
+            $state['collaborator_names'][] = $technician->name;
+        }
+
+        $state = $this->clearCollabHierarchyState($state);
+        $this->saveState($chatId, $state);
+
+        return $this->buildCollaboratorPrompt($state);
+    }
+
+    /**
+     * Bangun keyboard daftar Department yang punya minimal satu teknisi aktif.
+     * Hanya Department dengan teknisi aktif yang ditampilkan agar tidak ada
+     * jalan buntu di hierarki.
+     *
+     * @return array Respons dengan message dan keyboard daftar Department
+     */
+    private function buildDeptKeyboard(): array
+    {
+        $deptIds = Technician::active()->whereNotNull('department_id')->distinct()->pluck('department_id');
+
+        if ($deptIds->isEmpty()) {
+            return [
+                'message'  => "Tidak ada data departemen teknisi yang tersedia untuk hierarki kolaborator.",
+                'keyboard' => [
+                    ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'],
+                ],
+            ];
+        }
+
+        $depts = Department::whereIn('id', $deptIds)->orderBy('name')->get();
+
+        $keyboard = [];
+        foreach ($depts as $dept) {
+            $keyboard[] = [
+                'text'          => $dept->name,
+                'callback_data' => 'collab_hierarchy:dept:' . $dept->id,
+            ];
+        }
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'];
+
+        return [
+            'message'  => "*Pilih Departemen*\n\nDepartemen tempat rekan kolaborator bekerja:",
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Bangun keyboard daftar Section dalam Department terpilih.
+     * Hanya Section dengan minimal satu teknisi aktif di Department tersebut
+     * yang ditampilkan. Label section memakai Technician::SECTIONS jika tersedia.
+     *
+     * @param  int $deptId ID Department terpilih
+     * @return array Respons dengan message dan keyboard daftar Section
+     */
+    private function buildSectionKeyboard(int $deptId): array
+    {
+        $sectionKeys = Technician::active()
+            ->where('department_id', $deptId)
+            ->whereNotNull('section')
+            ->distinct()
+            ->pluck('section');
+
+        if ($sectionKeys->isEmpty()) {
+            return [
+                'message'  => "Tidak ada teknisi aktif di departemen ini.",
+                'keyboard' => [
+                    ['text' => 'Pilih Departemen Lain', 'callback_data' => 'collab_hierarchy:dept'],
+                    ['text' => 'Batalkan Laporan',        'callback_data' => 'wizard:cancel_wizard'],
+                ],
+            ];
+        }
+
+        $sectionLabels = Technician::SECTIONS;
+
+        $keyboard = [];
+        foreach ($sectionKeys as $key) {
+            $keyboard[] = [
+                'text'          => $sectionLabels[$key] ?? ucfirst($key),
+                'callback_data' => 'collab_hierarchy:section:' . $key,
+            ];
+        }
+        $keyboard[] = ['text' => 'Pilih Departemen Lain', 'callback_data' => 'collab_hierarchy:dept'];
+        $keyboard[] = ['text' => 'Batalkan Laporan',        'callback_data' => 'wizard:cancel_wizard'];
+
+        return [
+            'message'  => "*Pilih Section*\n\nSection tempat rekan kolaborator bekerja:",
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Bangun keyboard daftar teknisi aktif dalam Department + Section terpilih.
+     * Teknisi pengirim laporan dikecualikan agar tidak bisa memilih dirinya
+     * sendiri sebagai kolaborator.
+     *
+     * @param  string $chatId     Chat ID Telegram (untuk exclude pengirim)
+     * @param  int    $deptId     ID Department terpilih
+     * @param  string $sectionKey Kunci Section terpilih (lihat Technician::SECTIONS)
+     * @return array  Respons dengan message dan keyboard daftar teknisi
+     */
+    protected function buildCollabTechnicianKeyboard(string $chatId, int $deptId, string $sectionKey): array
+    {
+        $nikSendiri = $this->resolveSenderNik($chatId);
+
+        $technicians = Technician::active()
+            ->where('department_id', $deptId)
+            ->where('section', $sectionKey)
+            ->when($nikSendiri, fn ($q) => $q->where('nik', '!=', $nikSendiri))
+            ->orderBy('name')
+            ->get();
+
+        if ($technicians->isEmpty()) {
+            return [
+                'message'  => "Tidak ada teknisi lain di section ini.",
+                'keyboard' => [
+                    ['text' => 'Pilih Section Lain', 'callback_data' => 'collab_hierarchy:dept:' . $deptId],
+                    ['text' => 'Batalkan Laporan',    'callback_data' => 'wizard:cancel_wizard'],
+                ],
+            ];
+        }
+
+        $keyboard = [];
+        foreach ($technicians as $technician) {
+            $label = "{$technician->name} ({$technician->nik})";
+            if (strlen($label) > 64) {
+                $label = substr($label, 0, 61) . '...';
+            }
+            $keyboard[] = [
+                'text'          => $label,
+                'callback_data' => 'collab_hierarchy:pick:' . $technician->id,
+            ];
+        }
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'];
+
+        return [
+            'message'  => "*Pilih Teknisi*\n\nPilih rekan kolaborator:",
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Ambil NIK teknisi pengirim laporan berdasarkan chat_id Telegram.
+     * Dipakai untuk mengecualikan pengirim dari daftar kandidat kolaborator.
+     *
+     * @param  string $chatId Chat ID Telegram
+     * @return string|null    NIK pengirim, atau null jika tidak ditemukan
+     */
+    private function resolveSenderNik(string $chatId): ?string
+    {
+        $technician = Technician::where('telegram_id', $chatId)->first();
+
+        return $technician ? $technician->nik : null;
+    }
+
+    // =========================================================
+    // HELPER STATE KOLABORATOR
+    // =========================================================
+
+    /**
+     * Bersihkan key state yang terkait sesi hierarki kolaborator.
+     * Dipanggil saat alur hierarki selesai (pick berhasil) atau saat
+     * kolaborator dilewati (collab_skip / collab_done).
+     * Tidak menghapus collaborator_niks dan collaborator_names.
+     *
+     * @param  array $state State wizard saat ini
+     * @return array State wizard setelah key hierarki dibersihkan
+     */
+    private function clearCollabHierarchyState(array $state): array
+    {
+        $state['collab_using_hierarchy']   = false;
+        $state['collab_hierarchy_dept_id'] = null;
+        $state['collab_hierarchy_section'] = null;
+        $state['collab_search_candidates'] = [];
+
+        return $state;
     }
 }
 
@@ -7813,10 +8194,11 @@ use Illuminate\Support\Str;
  * Menangani penyimpanan laporan ke database dan helper terkait foto:
  *   - saveReport()                  : Simpan laporan ke DB setelah konfirmasi Step 8,
  *                                     termasuk pembuatan laporan kolaborator secara bulk
- *   - buildConfirmationSummary()    : Bangun pesan ringkasan Step 8 (termasuk daftar kolaborator)
+ *   - buildConfirmationSummary()    : Bangun pesan ringkasan Step 8 (termasuk nama kolaborator)
  *   - generateReportCode()          : Generate kode RPT-YYYYMMDD-XXXX unik per hari
  *   - isValidLocalPhotoPath()       : Validasi apakah nilai adalah path lokal foto
  *   - filterValidLocalPhotoPaths()  : Filter array foto, buang yang bukan path lokal
+ *   - resolveCollaboratorNames()    : Ambil nama teknisi dari state collaborator_names atau fallback DB
  *
  * Trait ini bergantung pada method berikut dari kelas pemakai:
  *   - equipmentLabel(array $state): string
@@ -7833,8 +8215,9 @@ trait WizardReportSaverTrait
 
     /**
      * Bangun pesan ringkasan konfirmasi untuk Step 8.
-     * Menampilkan semua data yang akan disimpan agar teknisi bisa verifikasi,
-     * termasuk daftar kolaborator jika ada.
+     * Menampilkan semua data yang akan disimpan agar teknisi bisa verifikasi.
+     * Kolaborator ditampilkan dengan format "Nama (NIK)" jika nama tersedia
+     * di state collaborator_names, atau hanya NIK jika tidak.
      *
      * @param  array $state State wizard
      * @return array Respons dengan pesan ringkasan dan keyboard Ya/Batalkan
@@ -7872,11 +8255,12 @@ trait WizardReportSaverTrait
         $msg .= "*Foto Dok*  : {$photoDocCount} foto\n";
         $msg .= "*Foto HC*   : {$photoHygCount} foto\n";
 
-        // Tampilkan daftar kolaborator jika ada
+        // Tampilkan daftar kolaborator dengan nama jika tersedia
         if (!empty($collabNiks)) {
-            $nikList  = implode(', ', $collabNiks);
-            $jumlah   = count($collabNiks);
-            $msg .= "*Kolaborator*: {$nikList}\n";
+            $collabNames = $state['collaborator_names'] ?? [];
+            $labelList   = $this->buildCollaboratorLabelList($collabNiks, $collabNames);
+            $jumlah      = count($collabNiks);
+            $msg .= "*Kolaborator*: {$labelList}\n";
             $msg .= "\n_Laporan akan dibuat untuk {$jumlah} kolaborator secara otomatis._\n";
         }
 
@@ -7897,9 +8281,10 @@ trait WizardReportSaverTrait
      * Foto yang bukan path lokal (belum diproses PhotoStorageService) dibuang.
      *
      * Jika state mengandung collaborator_niks, laporan tambahan dibuat secara bulk
-     * untuk setiap kolaborator. Kolom creator_id di semua laporan diisi dengan ID
-     * teknisi pengirim, dan collaborator_of di laporan kolaborator menunjuk ke ID
-     * laporan utama.
+     * untuk setiap kolaborator. Jika NIK tidak ditemukan di DB namun nama tersedia
+     * di collaborator_names, dicoba fallback pencarian by nama (exact match pertama).
+     * Kolom creator_id di semua laporan diisi dengan ID teknisi pengirim, dan
+     * collaborator_of di laporan kolaborator menunjuk ke ID laporan utama.
      *
      * Respons sukses membawa dua pesan terpisah agar tidak terjadi pesan ganda
      * di Telegram:
@@ -7970,39 +8355,60 @@ trait WizardReportSaverTrait
 
             // Buat laporan kolaborator jika ada NIK yang terdaftar di state
             $collabNiks        = $state['collaborator_niks'] ?? [];
+            $collabNames       = $state['collaborator_names'] ?? [];
             $jumlahKolaborator = 0;
+            $kolaboratorBerhasil = [];
 
-            foreach ($collabNiks as $nik) {
+            foreach ($collabNiks as $index => $nik) {
+                // Coba cari teknisi by NIK terlebih dahulu
                 $kolaborator = Technician::where('nik', $nik)->first();
+
+                // Fallback: cari by nama jika NIK tidak ditemukan namun nama tersedia
+                if (!$kolaborator && isset($collabNames[$index]) && $collabNames[$index] !== '') {
+                    $namaFallback = $collabNames[$index];
+                    $kolaborator  = Technician::where('name', $namaFallback)->first();
+
+                    if ($kolaborator) {
+                        Log::info("WizardService: Kolaborator ditemukan via fallback nama", [
+                            'nik_asal'  => $nik,
+                            'nama'      => $namaFallback,
+                            'technician_id' => $kolaborator->id,
+                            'report_id' => $report->id,
+                        ]);
+                    }
+                }
+
                 if (!$kolaborator) {
                     Log::warning("WizardService: NIK kolaborator tidak ditemukan saat saveReport", [
-                        'nik'       => $nik,
-                        'report_id' => $report->id,
+                        'nik'        => $nik,
+                        'nama_index' => $collabNames[$index] ?? null,
+                        'report_id'  => $report->id,
                     ]);
                     continue;
                 }
 
                 Report::create(array_merge($dataLaporan, [
-                    'report_code'      => $this->generateReportCode(),
-                    'technician_id'    => $kolaborator->id,
-                    'creator_id'       => $technician->id,
-                    'collaborator_of'  => $report->id,
+                    'report_code'     => $this->generateReportCode(),
+                    'technician_id'   => $kolaborator->id,
+                    'creator_id'      => $technician->id,
+                    'collaborator_of' => $report->id,
                 ]));
 
                 $jumlahKolaborator++;
+                $kolaboratorBerhasil[] = $kolaborator->name . ' (' . $nik . ')';
             }
 
             $this->destroyWizard($chatId);
 
             Log::info("WizardService: Report saved for chat {$chatId}", [
-                'report_id'              => $report->id,
-                'report_code'            => $reportCode,
-                'report_date'            => $reportDate,
-                'funcloc_id'             => $state['funcloc_id'] ?? null,
-                'funcloc_code'           => $state['funcloc_code'] ?? null,
-                'photo_doc_count'        => count($photoDocumentation),
-                'photo_hyg_count'        => count($photoHygieneClearance),
-                'jumlah_kolaborator'     => $jumlahKolaborator,
+                'report_id'          => $report->id,
+                'report_code'        => $reportCode,
+                'report_date'        => $reportDate,
+                'funcloc_id'         => $state['funcloc_id'] ?? null,
+                'funcloc_code'       => $state['funcloc_code'] ?? null,
+                'photo_doc_count'    => count($photoDocumentation),
+                'photo_hyg_count'    => count($photoHygieneClearance),
+                'jumlah_kolaborator' => $jumlahKolaborator,
             ]);
 
             $equipmentLabel = $this->equipmentLabel($state);
@@ -8047,10 +8453,10 @@ trait WizardReportSaverTrait
             $successMsg .= "Root Cause   : {$rootCauseShort}\n";
             $successMsg .= "Waktu Submit : {$submittedAt}\n";
 
-            // Informasi kolaborator jika ada
+            // Informasi kolaborator dengan nama jika ada
             if ($jumlahKolaborator > 0) {
-                $nikList     = implode(', ', $collabNiks);
-                $successMsg .= "\n*Kolaborator* : {$nikList}\n";
+                $labelList   = implode(', ', $kolaboratorBerhasil);
+                $successMsg .= "\n*Kolaborator* : {$labelList}\n";
                 $successMsg .= "_Laporan terpisah sudah dibuat untuk {$jumlahKolaborator} kolaborator._\n";
             }
 
@@ -8158,6 +8564,35 @@ trait WizardReportSaverTrait
 
         return $valid;
     }
+
+    // =========================================================
+    // HELPER KOLABORATOR
+    // =========================================================
+
+    /**
+     * Bangun string label daftar kolaborator untuk pesan ringkasan.
+     * Format: "Nama (NIK), Nama (NIK)" jika nama tersedia,
+     * atau "NIK, NIK" jika collaborator_names tidak ada.
+     *
+     * @param  array $niks  Array NIK kolaborator
+     * @param  array $names Array nama kolaborator (indeks bersesuaian dengan $niks)
+     * @return string       String label kolaborator
+     */
+    private function buildCollaboratorLabelList(array $niks, array $names): string
+    {
+        $labels = [];
+
+        foreach ($niks as $index => $nik) {
+            $nama = $names[$index] ?? '';
+            if ($nama !== '') {
+                $labels[] = "{$nama} ({$nik})";
+            } else {
+                $labels[] = $nik;
+            }
+        }
+
+        return implode(', ', $labels);
+    }
 }
 
 ================ WARNAI DENGAN FILE: WizardStepHandlerTrait.php =================
@@ -8181,8 +8616,9 @@ use App\Models\Technician;
  *   - handlePhotoCommand()          : Proses perintah teks di step foto
  *   - addPhotoToStep()              : Tambah file ID foto ke state wizard
  *   - advanceFromPhotoStep()        : Transisi keluar dari step foto
- *   - buildCollaboratorPrompt()     : Bangun prompt Step 8a (input NIK kolaborator)
- *   - handleCollaboratorInput()     : Proses teks NIK kolaborator dari teknisi
+ *   - buildCollaboratorPrompt()     : Bangun prompt Step 8a (input NIK/nama kolaborator)
+ *   - handleCollaboratorInput()     : Proses teks NIK/nama kolaborator dari teknisi
+ *   - buildCollabCandidateKeyboard(): Bangun keyboard pilihan kandidat hasil pencarian nama
  *   - handleConfirmation()          : Proses teks konfirmasi di Step 8
  *   - photoCallbackKey()            : Peta $photoStep ke kunci callback_data pendek
  *   - photoDoneButtonLabel()        : Label tombol "selesai" yang sesuai step foto
@@ -8200,6 +8636,10 @@ use App\Models\Technician;
  *   - buildConfirmationSummary(array $state): array
  *   - saveReport(string $chatId, array $state): array
  *
+ * Trait ini juga bergantung pada properti berikut dari kelas pemakai:
+ *   - $this->collaboratorSearch (App\Services\Telegram\CollaboratorSearchService)
+ *     dipakai oleh handleCollaboratorInput() untuk pencarian NIK/nama kolaborator.
+ *
  * PENTING — Konsistensi callback_data foto:
  * Semua callback_data untuk step foto WAJIB menggunakan format pendek:
  *   wizard:confirm:photo_doc_done      wizard:confirm:photo_doc_skip
@@ -8211,6 +8651,9 @@ use App\Models\Technician;
  */
 trait WizardStepHandlerTrait
 {
+    // Batas maksimum kolaborator per laporan
+    const MAX_COLLABORATORS = 5;
+
     // =========================================================
     // STEP 4 — WAKTU PENGERJAAN
     // =========================================================
@@ -8259,9 +8702,9 @@ trait WizardStepHandlerTrait
         return [
             'message'  => "Equipment dikunci: *{$equipmentLabel}*\n\n" .
                 "*Step 4/8* — Berapa lama pekerjaan berlangsung?\n" .
-                "Ketik durasi, contoh:\n" .
-                "`2 jam`, `30 menit`, `1.5 jam`, `1:30`, `1h30m`\n" .
-                "Atau rentang waktu: `08:00 sampai 09:00`, `08:00-10:00`",
+                "Ketik rentang waktu, contoh:\n" .
+                "`08:00 sampai 09:00`, `08:00-10:00`\n" .
+                "Atau rentang santai: `Jam 9 - Jam 10`, `pukul 09 sd 10.30`, `9 sampai 10`",
             'keyboard' => [],
         ];
     }
@@ -8280,9 +8723,9 @@ trait WizardStepHandlerTrait
 
         if ($minutes === null || $minutes <= 0) {
             return [
-                'message'  => "Durasi tidak dikenali. Coba format lain:\n" .
-                    "`2 jam`, `30 menit`, `1 jam 30 menit`, `1:30`, `1h30m`\n" .
-                    "Atau rentang waktu: `08:00 sampai 09:00`, `08:00-10:00`",
+                'message'  => "Rentang waktu tidak dikenali. Coba format lain:\n" .
+                    "`08:00 sampai 09:00`, `08:00-10:00`\n" .
+                    "Atau rentang santai: `Jam 9 - Jam 10`, `pukul 09 sd 10.30`, `9 sampai 10`",
                 'keyboard' => [],
             ];
         }
@@ -8587,26 +9030,36 @@ trait WizardStepHandlerTrait
     // =========================================================
 
     /**
-     * Bangun pesan prompt Step 8a (input NIK kolaborator).
+     * Bangun pesan prompt Step 8a (input NIK/nama kolaborator).
      * Step ini opsional — teknisi bisa langsung skip ke konfirmasi.
-     * Daftar NIK yang sudah diinput ditampilkan jika ada.
+     * Daftar kolaborator yang sudah diinput ditampilkan dengan nama jika tersedia.
      *
      * @param  array $state State wizard
      * @return array Respons
      */
     protected function buildCollaboratorPrompt(array $state): array
     {
-        $collabNiks = $state['collaborator_niks'] ?? [];
+        $collabNiks  = $state['collaborator_niks'] ?? [];
+        $collabNames = $state['collaborator_names'] ?? [];
 
         if (!empty($collabNiks)) {
-            $nikList = implode(', ', $collabNiks);
+            // Bangun label "Nama (NIK)" atau hanya "NIK" jika nama tidak tersedia
+            $labels = [];
+            foreach ($collabNiks as $index => $nik) {
+                $nama     = $collabNames[$index] ?? '';
+                $labels[] = $nama !== '' ? "{$nama} ({$nik})" : $nik;
+            }
+            $labelList = implode(', ', $labels);
+
             return [
                 'message'  => "*Step 8a/8* — Kolaborator\n\n" .
-                    "NIK kolaborator yang sudah ditambahkan: *{$nikList}*\n\n" .
-                    "Tambah NIK lain (ketik NIK), atau lanjut ke konfirmasi:",
+                    "Kolaborator yang sudah ditambahkan: *{$labelList}*\n\n" .
+                    "Tambah kolaborator lain (ketik NIK atau nama), atau lanjut ke konfirmasi:",
                 'keyboard' => [
-                    ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
-                    ['text' => 'Lewati (Tanpa Kolaborator)',  'callback_data' => 'wizard:confirm:collab_skip'],
+                    ['text' => 'Selesai, Lanjut Konfirmasi',       'callback_data' => 'wizard:confirm:collab_done'],
+                    ['text' => 'Lewati (Tanpa Kolaborator)',        'callback_data' => 'wizard:confirm:collab_skip'],
+                    ['text' => 'Pilih dari Hierarki Dept/Section',  'callback_data' => 'collab_hierarchy:dept'],
+                    ['text' => 'Batalkan Laporan',                  'callback_data' => 'wizard:cancel_wizard'],
                 ],
             ];
         }
@@ -8614,35 +9067,62 @@ trait WizardStepHandlerTrait
         return [
             'message'  => "*Step 8a/8* — Kolaborator (Opsional)\n\n" .
                 "Apakah ada rekan yang ikut mengerjakan pekerjaan ini?\n" .
-                "Ketik NIK rekan (bisa lebih dari satu, pisah dengan koma).\n\n" .
-                "Contoh: `12345, 67890`\n\n" .
+                "Ketik NIK atau nama rekan (bisa lebih dari satu, pisah dengan koma).\n\n" .
+                "Contoh: `12345, 67890` atau `Ahmad, Budi`\n\n" .
                 "Atau lewati jika tidak ada kolaborator:",
             'keyboard' => [
-                ['text' => 'Lewati (Tanpa Kolaborator)', 'callback_data' => 'wizard:confirm:collab_skip'],
+                ['text' => 'Lewati (Tanpa Kolaborator)',       'callback_data' => 'wizard:confirm:collab_skip'],
+                ['text' => 'Pilih dari Hierarki Dept/Section', 'callback_data' => 'collab_hierarchy:dept'],
+                ['text' => 'Batalkan Laporan',                 'callback_data' => 'wizard:cancel_wizard'],
             ],
         ];
     }
 
     /**
-     * Proses teks NIK kolaborator yang diketik teknisi di Step 8a.
-     * NIK dipisah dengan koma, titik koma, atau baris baru, lalu divalidasi
-     * ke tabel technicians. NIK yang tidak ditemukan dilaporkan ke teknisi.
+     * Proses teks NIK atau nama kolaborator yang diketik teknisi di Step 8a.
+     * Input dipisah dengan koma, titik koma, atau baris baru. Setiap token
+     * dicari via CollaboratorSearchService (NIK exact match dulu, lalu nama
+     * fuzzy match). Teknisi pengirim laporan sendiri otomatis dikecualikan.
+     *
+     * Guard maks 5 kolaborator: jika state sudah mencapai batas MAX_COLLABORATORS,
+     * input baru ditolak dan teknisi diminta lanjut ke konfirmasi.
+     *
+     * Jika sebuah token menghasilkan lebih dari satu kandidat nama, method
+     * ini berhenti memproses token berikutnya dan langsung menampilkan
+     * keyboard pilihan kandidat (Telegram hanya bisa menampilkan satu
+     * keyboard per respons). Token yang belum diproses bisa diketik ulang
+     * setelah teknisi menuntaskan pilihan kandidat yang sedang tampil.
      *
      * @param  string $chatId Chat ID Telegram
-     * @param  string $text   Input NIK dari teknisi
+     * @param  string $text   Input NIK/nama dari teknisi
      * @param  array  $state  State wizard saat ini
      * @return array  Respons
      */
     protected function handleCollaboratorInput(string $chatId, string $text, array $state): array
     {
-        // Pisah input berdasarkan koma, titik koma, atau baris baru
-        $rawNiks = preg_split('/[\s,;]+/', trim($text), -1, PREG_SPLIT_NO_EMPTY);
+        // Guard: tolak input baru jika sudah mencapai batas maksimum kolaborator
+        $collabSudahAda = $state['collaborator_niks'] ?? [];
+        if (count($collabSudahAda) >= self::MAX_COLLABORATORS) {
+            return [
+                'message'  => "Maksimum " . self::MAX_COLLABORATORS . " kolaborator per laporan sudah tercapai.\n\n" .
+                    "Kolaborator saat ini: *" . implode(', ', $collabSudahAda) . "*\n\n" .
+                    "Lanjut ke konfirmasi atau batalkan laporan:",
+                'keyboard' => [
+                    ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
+                    ['text' => 'Batalkan Laporan',           'callback_data' => 'wizard:cancel_wizard'],
+                ],
+            ];
+        }
 
-        if (empty($rawNiks)) {
+        // Pisah input berdasarkan koma, titik koma, atau baris baru
+        $rawQueries = preg_split('/[\s,;]+/', trim($text), -1, PREG_SPLIT_NO_EMPTY);
+
+        if (empty($rawQueries)) {
             return $this->buildCollaboratorPrompt($state);
         }
 
         $ditemukan  = [];
+        $namaDitemukan = [];
         $tidakAda   = [];
         $nikSendiri = null;
 
@@ -8652,28 +9132,81 @@ trait WizardStepHandlerTrait
             $nikSendiri = $teknisiPengirim->nik;
         }
 
-        foreach ($rawNiks as $nik) {
-            $nik = trim($nik);
+        // Hitung slot yang masih tersedia agar tidak melewati batas maksimum
+        $slotTersisa = self::MAX_COLLABORATORS - count($collabSudahAda);
 
-            // Abaikan NIK teknisi pengirim sendiri
-            if ($nikSendiri && $nik === $nikSendiri) {
+        foreach ($rawQueries as $query) {
+            // Hentikan loop jika slot sudah habis
+            if (count($ditemukan) >= $slotTersisa) {
+                break;
+            }
+
+            $query = trim($query);
+
+            // Abaikan NIK/nama yang sama persis dengan NIK pengirim sendiri
+            if ($nikSendiri && $query === $nikSendiri) {
                 continue;
             }
 
-            $teknisi = Technician::where('nik', $nik)->first();
-            if ($teknisi) {
-                $ditemukan[] = $nik;
-            } else {
-                $tidakAda[] = $nik;
+            $hasil = $this->collaboratorSearch->search($query, $nikSendiri);
+
+            if ($hasil['count'] === 1 && $hasil['exact']) {
+                $nik  = $hasil['exact']->nik;
+                $nama = $hasil['exact']->name;
+                if (!in_array($nik, $ditemukan, true)) {
+                    $ditemukan[]   = $nik;
+                    $namaDitemukan[] = $nama;
+                }
+                continue;
+            }
+
+            if ($hasil['count'] > 1) {
+                // Kandidat ambigu: simpan ke state, tampilkan keyboard pilihan.
+                // Kolaborator yang sudah ditemukan dari token sebelumnya tetap disimpan.
+                $collabSebelumnya             = $state['collaborator_niks'] ?? [];
+                $namaSebelumnya               = $state['collaborator_names'] ?? [];
+                $state['collaborator_niks']   = array_values(array_unique(array_merge($collabSebelumnya, $ditemukan)));
+                $state['collaborator_names']  = array_merge($namaSebelumnya, $namaDitemukan);
+
+                $state['collab_search_candidates'] = array_map(fn ($t) => [
+                    'id'   => $t->id,
+                    'nik'  => $t->nik,
+                    'name' => $t->name,
+                ], $hasil['candidates']);
+                $this->saveState($chatId, $state);
+
+                return $this->buildCollabCandidateKeyboard($query, $hasil['candidates']);
+            }
+
+            // Tidak ada kandidat sama sekali untuk token ini
+            $tidakAda[] = $query;
+        }
+
+        // Gabungkan dengan NIK dan nama kolaborator yang sudah ada di state (hindari duplikat NIK)
+        $collabSebelumnya   = $state['collaborator_niks'] ?? [];
+        $namaSebelumnya     = $state['collaborator_names'] ?? [];
+        $gabungan           = [];
+        $gabunganNama       = [];
+
+        // Pertahankan entri lama yang belum duplikat
+        foreach ($collabSebelumnya as $i => $nik) {
+            $gabungan[]     = $nik;
+            $gabunganNama[] = $namaSebelumnya[$i] ?? '';
+        }
+
+        // Tambahkan entri baru yang tidak duplikat
+        foreach ($ditemukan as $i => $nik) {
+            if (!in_array($nik, $gabungan, true)) {
+                $gabungan[]     = $nik;
+                $gabunganNama[] = $namaDitemukan[$i] ?? '';
             }
         }
 
-        // Gabungkan dengan NIK kolaborator yang sudah ada di state (hindari duplikat)
-        $collabSebelumnya       = $state['collaborator_niks'] ?? [];
-        $state['collaborator_niks'] = array_values(array_unique(array_merge($collabSebelumnya, $ditemukan)));
+        $state['collaborator_niks']  = array_values($gabungan);
+        $state['collaborator_names'] = array_values($gabunganNama);
         $this->saveState($chatId, $state);
 
-        // Susun pesan umpan balik berdasarkan hasil validasi
+        // Susun pesan umpan balik berdasarkan hasil pencarian
         $msg = '';
 
         if (!empty($ditemukan)) {
@@ -8681,27 +9214,75 @@ trait WizardStepHandlerTrait
         }
 
         if (!empty($tidakAda)) {
-            $msg .= 'NIK tidak ditemukan: ' . implode(', ', $tidakAda) . "\n";
+            $msg .= 'Tidak ditemukan: ' . implode(', ', $tidakAda) . "\n";
+        }
+
+        // Peringatan jika ada query yang terpotong karena slot penuh
+        $sisaQuery = count($rawQueries) - (count($ditemukan) + count($tidakAda));
+        if ($sisaQuery > 0 && count($state['collaborator_niks']) >= self::MAX_COLLABORATORS) {
+            $msg .= "_Batas " . self::MAX_COLLABORATORS . " kolaborator tercapai. Input berikutnya diabaikan._\n";
         }
 
         if (empty($state['collaborator_niks'])) {
-            // Semua NIK tidak valid dan tidak ada yang tersimpan
+            // Semua token tidak valid dan tidak ada yang tersimpan
             return [
-                'message'  => $msg . "\nTidak ada NIK valid yang ditemukan. Coba ketik ulang NIK, atau lewati:",
+                'message'  => $msg . "\nTidak ada kolaborator valid yang ditemukan. " .
+                    "Coba ketik ulang NIK/nama, pilih dari hierarki, atau lewati:",
                 'keyboard' => [
-                    ['text' => 'Lewati (Tanpa Kolaborator)', 'callback_data' => 'wizard:confirm:collab_skip'],
+                    ['text' => 'Lewati (Tanpa Kolaborator)',       'callback_data' => 'wizard:confirm:collab_skip'],
+                    ['text' => 'Pilih dari Hierarki Dept/Section', 'callback_data' => 'collab_hierarchy:dept'],
+                    ['text' => 'Batalkan Laporan',                 'callback_data' => 'wizard:cancel_wizard'],
                 ],
             ];
         }
 
-        $semuaNik = implode(', ', $state['collaborator_niks']);
+        // Bangun label "Nama (NIK)" untuk tampilan total kolaborator
+        $collabNiks  = $state['collaborator_niks'];
+        $collabNames = $state['collaborator_names'] ?? [];
+        $labels      = [];
+        foreach ($collabNiks as $i => $nik) {
+            $nama     = $collabNames[$i] ?? '';
+            $labels[] = $nama !== '' ? "{$nama} ({$nik})" : $nik;
+        }
+        $semuaLabel = implode(', ', $labels);
+
         return [
-            'message'  => $msg . "\nTotal kolaborator sekarang: *{$semuaNik}*\n\n" .
-                "Tambah NIK lain, atau lanjut ke konfirmasi:",
+            'message'  => $msg . "\nTotal kolaborator sekarang: *{$semuaLabel}*\n\n" .
+                "Tambah kolaborator lain, atau lanjut ke konfirmasi:",
             'keyboard' => [
                 ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
                 ['text' => 'Lewati (Tanpa Kolaborator)',  'callback_data' => 'wizard:confirm:collab_skip'],
             ],
+        ];
+    }
+
+    /**
+     * Bangun keyboard pilihan kandidat hasil pencarian nama kolaborator yang ambigu.
+     * Setiap tombol memakai callback_data 'collab_candidate:<technician_id>'.
+     *
+     * @param  string $query      Query nama yang diketik teknisi (ditampilkan di pesan)
+     * @param  array  $candidates Daftar objek Technician kandidat (maks CollaboratorSearchService::MAX_CANDIDATES)
+     * @return array  Respons dengan message dan keyboard pilihan kandidat
+     */
+    protected function buildCollabCandidateKeyboard(string $query, array $candidates): array
+    {
+        $keyboard = [];
+        foreach ($candidates as $candidate) {
+            $label = "{$candidate->name} ({$candidate->nik})";
+            if (strlen($label) > 64) {
+                $label = substr($label, 0, 61) . '...';
+            }
+            $keyboard[] = [
+                'text'          => $label,
+                'callback_data' => 'collab_candidate:' . $candidate->id,
+            ];
+        }
+
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'];
+
+        return [
+            'message'  => "Ditemukan beberapa teknisi dengan nama mirip *\"{$query}\"*. Pilih salah satu:",
+            'keyboard' => $keyboard,
         ];
     }
 
@@ -8775,75 +9356,80 @@ trait WizardUtilityTrait
     // =========================================================
 
     /**
-     * Parse teks durasi menjadi menit.
-     * Format yang didukung:
-     *   - "2 jam 30 menit"
-     *   - "2 jam" atau "1.5 jam" atau "1,5 jam"
-     *   - "30 menit"
-     *   - Rentang waktu: "08:00 sampai 09:00", "8:00-9:00", "08.00 s/d 09.30", "08:00 sd 10:00"
-     *   - Jam:menit numerik: "1:30" (= 90 menit), "0:45" (= 45 menit)
-     *   - Format singkat: "1h30m", "1h 30m", "0h45m"
-     *   - "90" (angka saja, dianggap menit)
-     * Hasil divalidasi: tidak boleh 0/negatif dan tidak boleh lebih dari 24 jam (1440 menit).
+     * Parse teks rentang waktu menjadi durasi dalam menit.
      *
-     * @param  string   $text Input teks durasi dari teknisi
-     * @return int|null       Durasi dalam menit, null jika format tidak dikenali/tidak valid
+     * Hanya format rentang waktu yang diterima (jam awal - jam akhir).
+     * Format durasi langsung seperti "2 jam", "30 menit", atau angka saja
+     * tidak lagi didukung dan akan mengembalikan null.
+     *
+     * Format yang didukung:
+     *   Rentang dengan menit di kedua sisi:
+     *     "08:00 sampai 09:00", "08:00-09:00",
+     *     "08.00 s/d 09.30",    "08:00 sd 10:00"
+     *
+     *   Rentang fleksibel (prefiks jam/pukul opsional, menit opsional
+     *   di masing-masing sisi secara independen):
+     *     "Jam 9 sampai Jam 10", "jam 9 - jam 10",
+     *     "pukul 09 sd 10.30",   "09 sampai 10",
+     *     "9.30 sampai 10",      "9 sampai 10.30"
+     *
+     * Rentang yang melewati tengah malam (mis. 23:00-01:00) diterima dan
+     * dihitung sebagai rentang positif dengan menambahkan 1440 menit.
+     * Hasil divalidasi: tidak boleh 0/negatif dan tidak boleh lebih dari
+     * 24 jam (1440 menit).
+     *
+     * @param  string   $text Input teks dari teknisi
+     * @return int|null       Durasi dalam menit, null jika format tidak dikenali
      */
     public function parseDurationToMinutes(string $text): ?int
     {
         $text = strtolower(trim($text));
 
-        // Format rentang waktu: "08:00 sampai 09:00", "8:00-9:00", "08.00 s/d 09.30", "08:00 sd 10:00"
-        // Dicek lebih dulu karena mengandung pola jam:menit yang bisa salah tertangkap pola lain
-        if (preg_match('/(\d{1,2})[:.](\d{2})\s*(?:sampai|s\/d|sd|hingga|\-)\s*(\d{1,2})[:.](\d{2})/', $text, $m)) {
-            $startMinutes = ((int) $m[1]) * 60 + (int) $m[2];
-            $endMinutes   = ((int) $m[3]) * 60 + (int) $m[4];
-            $diff         = $endMinutes - $startMinutes;
-
-            if ($diff <= 0) {
-                $diff += 1440; // Rentang melewati tengah malam
-            }
+        // Rentang lengkap: menit eksplisit di kedua sisi, dipisah kata atau tanda "-".
+        // Contoh: "08:00 sampai 09:00", "8:00-9:00", "08.00 s/d 09.30", "08:00 sd 10:00".
+        // Blok ini diutamakan agar format dua titik dua tidak salah tertangkap blok berikutnya.
+        if (preg_match(
+            '/(\d{1,2})[:.](\d{2})\s*(?:sampai|s\/d|sd|hingga|-)\s*(\d{1,2})[:.](\d{2})/',
+            $text,
+            $m
+        )) {
+            $diff = $this->calcRangeDiff(
+                (int) $m[1] * 60 + (int) $m[2],
+                (int) $m[3] * 60 + (int) $m[4]
+            );
 
             return $this->validateDurationRange($diff);
         }
 
-        // Format: "X jam Y menit"
-        if (preg_match('/(\d+(?:[.,]\d+)?)\s*jam\s*(\d+)\s*menit/', $text, $m)) {
-            $hours   = (float) str_replace(',', '.', $m[1]);
-            $minutes = (int) $m[2];
+        // Rentang fleksibel (2a): pemisah berupa kata (sampai / s/d / sd / hingga).
+        // Prefiks "jam"/"pukul" opsional di masing-masing sisi.
+        // Menit opsional di masing-masing sisi secara independen.
+        // Contoh: "jam 9 sampai jam 10" (60 menit), "pukul 09 sd 10.30" (90 menit),
+        //         "09 sampai 10" (60 menit), "9.30 sampai 10" (30 menit).
+        if (preg_match(
+            '/(?:jam|pukul)?\s*(\d{1,2})(?:[.:](\d{2}))?\s*(?:sampai|s\/d|sd|hingga)\s*(?:jam|pukul)?\s*(\d{1,2})(?:[.:](\d{2}))?\b/',
+            $text,
+            $m
+        )) {
+            $startMinutes = (int) $m[1] * 60 + (isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0);
+            $endMinutes   = (int) $m[3] * 60 + (isset($m[4]) && $m[4] !== '' ? (int) $m[4] : 0);
 
-            return $this->validateDurationRange((int) round($hours * 60) + $minutes);
+            return $this->validateDurationRange($this->calcRangeDiff($startMinutes, $endMinutes));
         }
 
-        // Format: "X jam"
-        if (preg_match('/(\d+(?:[.,]\d+)?)\s*jam/', $text, $m)) {
-            return $this->validateDurationRange((int) round((float) str_replace(',', '.', $m[1]) * 60));
-        }
+        // Rentang fleksibel (2b): pemisah berupa tanda "-" yang diapit spasi.
+        // Spasi wajib di kedua sisi "-" agar kode equipment seperti "LSH-2-6600V2"
+        // atau "TCV-2-6166E2B-1" tidak salah dikenali sebagai rentang waktu.
+        // Contoh: "jam 9 - jam 10" (60 menit), "jam 9.30 - jam 10.30" (60 menit).
+        if (preg_match(
+            '/(?:jam|pukul)?\s*(\d{1,2})(?:[.:](\d{2}))?\s+-\s+(?:jam|pukul)?\s*(\d{1,2})(?:[.:](\d{2}))?\b/',
+            $text,
+            $m
+        )) {
+            $startMinutes = (int) $m[1] * 60 + (isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0);
+            $endMinutes   = (int) $m[3] * 60 + (isset($m[4]) && $m[4] !== '' ? (int) $m[4] : 0);
 
-        // Format: "X menit"
-        if (preg_match('/(\d+)\s*menit/', $text, $m)) {
-            return $this->validateDurationRange((int) $m[1]);
-        }
-
-        // Format singkat: "1h30m", "1h 30m", "0h45m"
-        if (preg_match('/\b(\d+)\s*h\s*(?:(\d+)\s*m)?\b/', $text, $m)) {
-            $hours   = (int) $m[1];
-            $minutes = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0;
-
-            return $this->validateDurationRange($hours * 60 + $minutes);
-        }
-
-        // Format jam:menit numerik: "1:30" (= 90 menit), "0:45" (= 45 menit)
-        if (preg_match('/\b(\d{1,2}):(\d{2})\b/', $text, $m)) {
-            $hours   = (int) $m[1];
-            $minutes = (int) $m[2];
-
-            return $this->validateDurationRange($hours * 60 + $minutes);
-        }
-
-        // Format: angka saja (anggap menit)
-        if (preg_match('/^\d+$/', $text)) {
-            return $this->validateDurationRange((int) $text);
+            return $this->validateDurationRange($this->calcRangeDiff($startMinutes, $endMinutes));
         }
 
         return null;
@@ -8880,8 +9466,8 @@ trait WizardUtilityTrait
      * Validasi hasil parsing durasi.
      * Durasi tidak boleh 0/negatif dan tidak boleh lebih dari 24 jam (1440 menit).
      *
-     * @param  int|null    $minutes Durasi mentah hasil parsing
-     * @return int|null             Durasi jika valid, null jika di luar rentang
+     * @param  int|null $minutes Durasi mentah hasil parsing
+     * @return int|null          Durasi jika valid, null jika di luar rentang
      */
     private function validateDurationRange(?int $minutes): ?int
     {
@@ -8890,6 +9476,26 @@ trait WizardUtilityTrait
         }
 
         return $minutes;
+    }
+
+    /**
+     * Hitung selisih menit antara waktu mulai dan waktu selesai.
+     * Jika selisih nol atau negatif, diasumsikan rentang melewati tengah malam
+     * sehingga ditambahkan 1440 menit (24 jam).
+     *
+     * @param  int $startMinutes Waktu mulai dalam menit sejak pukul 00:00
+     * @param  int $endMinutes   Waktu selesai dalam menit sejak pukul 00:00
+     * @return int               Selisih dalam menit (selalu positif)
+     */
+    private function calcRangeDiff(int $startMinutes, int $endMinutes): int
+    {
+        $diff = $endMinutes - $startMinutes;
+
+        if ($diff <= 0) {
+            $diff += 1440;
+        }
+
+        return $diff;
     }
 
     // =========================================================
@@ -9137,6 +9743,10 @@ trait WizardUtilityTrait
             'initial_photo_file_id'       => null,
             'photo_documentation'         => [],
             'photo_hygiene_clearance'     => [],
+            'collab_search_candidates'    => [],
+            'collab_using_hierarchy'      => false,
+            'collab_hierarchy_dept_id'    => null,
+            'collab_hierarchy_section'    => null,
             'created_at'                  => now()->toIso8601String(),
         ];
     }
@@ -9600,6 +10210,140 @@ class ClarificationService
     }
 }
 
+================ WARNAI DENGAN FILE: CollaboratorSearchService.php =================
+<?php
+
+namespace App\Services\Telegram;
+
+use App\Models\Technician;
+use Illuminate\Support\Collection;
+
+/**
+ * CollaboratorSearchService
+ *
+ * Mencari kandidat teknisi kolaborator berdasarkan NIK (exact match) atau
+ * nama (fuzzy match LIKE). Hanya teknisi berstatus aktif yang disertakan,
+ * dan teknisi pengirim laporan bisa dikecualikan dari hasil agar tidak
+ * bisa menambahkan dirinya sendiri sebagai kolaborator.
+ *
+ * Pola service ini mengikuti TechIdentSearchService::search() — method
+ * search() mengembalikan struktur array standar (exact match jika ada,
+ * daftar kandidat, jumlah kandidat) sehingga pemanggil (WizardStepHandlerTrait)
+ * bisa memutuskan alur berikutnya: langsung tambahkan, tampilkan keyboard
+ * pilihan, atau tawarkan hierarki Dept/Section.
+ */
+class CollaboratorSearchService
+{
+    /**
+     * Batas maksimum kandidat nama yang dikembalikan, agar keyboard pilihan
+     * di Telegram tidak overflow di layar mobile.
+     */
+    const MAX_CANDIDATES = 4;
+
+    /**
+     * Panjang minimum query yang bisa diproses. Query yang terlalu pendek
+     * (1-2 karakter) menghasilkan terlalu banyak false positive sehingga
+     * tidak berguna sebagai pencarian nama.
+     */
+    const MIN_QUERY_LENGTH = 3;
+
+    /**
+     * Cari teknisi berdasarkan NIK (exact match) atau nama (fuzzy match).
+     * NIK dicoba lebih dulu karena presisi lebih tinggi. Jika tidak ada
+     * NIK yang cocok persis, baru dicoba pencarian nama dengan LIKE.
+     * Hanya teknisi berstatus aktif yang disertakan.
+     *
+     * Query dengan panjang di bawah MIN_QUERY_LENGTH hanya diproses sebagai
+     * NIK exact match, tidak sebagai pencarian nama, untuk menghindari
+     * false positive yang terlalu banyak.
+     *
+     * @param  string      $query      Teks pencarian dari teknisi (NIK atau nama)
+     * @param  string|null $excludeNik NIK yang dikecualikan dari hasil (biasanya NIK pengirim laporan)
+     * @return array{exact: Technician|null, candidates: array<int, Technician>, count: int}
+     */
+    public function search(string $query, ?string $excludeNik = null): array
+    {
+        $query = trim($query);
+
+        if ($query === '') {
+            return $this->emptyResult();
+        }
+
+        // Coba NIK exact match terlebih dahulu — berlaku untuk semua panjang query
+        $exactByNik = $this->baseQuery($excludeNik)
+            ->where('nik', $query)
+            ->first();
+
+        if ($exactByNik) {
+            return [
+                'exact'      => $exactByNik,
+                'candidates' => [$exactByNik],
+                'count'      => 1,
+            ];
+        }
+
+        // Pencarian nama hanya dilakukan jika query cukup panjang untuk
+        // menghindari hasil yang terlalu ambigu (misalnya query "A" atau "Ab")
+        if (mb_strlen($query) < self::MIN_QUERY_LENGTH) {
+            return $this->emptyResult();
+        }
+
+        $candidates = $this->baseQuery($excludeNik)
+            ->where('name', 'like', '%' . $query . '%')
+            ->orderBy('name')
+            ->limit(self::MAX_CANDIDATES)
+            ->get();
+
+        if ($candidates->isEmpty()) {
+            return $this->emptyResult();
+        }
+
+        // Hanya satu kandidat nama yang cocok: perlakukan seperti exact match,
+        // langsung bisa ditambahkan tanpa perlu keyboard pilihan.
+        if ($candidates->count() === 1) {
+            return [
+                'exact'      => $candidates->first(),
+                'candidates' => [$candidates->first()],
+                'count'      => 1,
+            ];
+        }
+
+        return [
+            'exact'      => null,
+            'candidates' => $candidates->all(),
+            'count'      => $candidates->count(),
+        ];
+    }
+
+    /**
+     * Bangun query dasar teknisi aktif, dengan pengecualian NIK opsional.
+     * Scope active() diasumsikan sudah tersedia di model Technician
+     * (mengembalikan hanya teknisi dengan status = 'active').
+     *
+     * @param  string|null $excludeNik NIK yang dikecualikan dari hasil
+     * @return \Illuminate\Database\Eloquent\Builder<Technician>
+     */
+    private function baseQuery(?string $excludeNik)
+    {
+        return Technician::active()
+            ->when($excludeNik, fn ($q) => $q->where('nik', '!=', $excludeNik));
+    }
+
+    /**
+     * Bangun struktur hasil kosong (tidak ada kandidat ditemukan sama sekali).
+     *
+     * @return array{exact: null, candidates: array, count: int}
+     */
+    private function emptyResult(): array
+    {
+        return [
+            'exact'      => null,
+            'candidates' => [],
+            'count'      => 0,
+        ];
+    }
+}
+
 ================ WARNAI DENGAN FILE: PhotoStorageService.php =================
 <?php
 
@@ -9930,6 +10674,7 @@ use App\Models\Area;
 use App\Models\Asset;
 use App\Services\AiService;
 use App\Services\TechIdentSearchService;
+use App\Services\Telegram\CollaboratorSearchService;
 use App\Services\Telegram\Traits\WizardCallbackHandlerTrait;
 use App\Services\Telegram\Traits\WizardFuncLocPickerTrait;
 use App\Services\Telegram\Traits\WizardPhotoAddonTrait;
@@ -10010,15 +10755,18 @@ class ReportWizardService
     protected TechIdentSearchService $techIdentSearch;
     protected AiService $aiService;
     protected ClarificationService $clarificationService;
+    protected CollaboratorSearchService $collaboratorSearch;
 
     public function __construct(
         TechIdentSearchService $techIdentSearch,
         AiService $aiService,
-        ClarificationService $clarificationService
+        ClarificationService $clarificationService,
+        CollaboratorSearchService $collaboratorSearch
     ) {
         $this->techIdentSearch      = $techIdentSearch;
         $this->aiService            = $aiService;
         $this->clarificationService = $clarificationService;
+        $this->collaboratorSearch   = $collaboratorSearch;
     }
 
     // =========================================================
@@ -11843,6 +12591,306 @@ class FuncLocParser
     }
 }
 
+================ WARNAI DENGAN FILE: FuncLocSyncService.php =================
+<?php
+
+namespace App\Services;
+
+use App\Models\Asset;
+use App\Models\FuncLocSyncLog;
+use App\Models\FunctionalLocation;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+
+class FuncLocSyncService
+{
+    /**
+     * Analisis seluruh assets.functional_loc untuk menemukan node
+     * FunctionalLocation yang belum ada dan asset yang belum tertaut
+     * funcloc_id, tanpa menyimpan perubahan apapun ke database.
+     *
+     * @return array{
+     *     nodes: array,
+     *     new_node_count: int,
+     *     existing_node_count: int,
+     *     assets_to_link: array,
+     *     assets_to_link_count: int,
+     *     invalid_codes: array,
+     *     invalid_code_count: int,
+     *     total_scanned: int
+     * }
+     */
+    public function analyze(): array
+    {
+        $rawCodes = Asset::whereNotNull('functional_loc')
+            ->where('functional_loc', '!=', '')
+            ->distinct()
+            ->pluck('functional_loc');
+
+        if ($rawCodes->isEmpty()) {
+            return $this->emptyAnalysis();
+        }
+
+        $assetCountsByRawCode = Asset::whereNotNull('functional_loc')
+            ->where('functional_loc', '!=', '')
+            ->whereNull('funcloc_id')
+            ->selectRaw('functional_loc, COUNT(*) as total')
+            ->groupBy('functional_loc')
+            ->pluck('total', 'functional_loc');
+
+        $nodeLevels = collect();
+        $invalidCodes = collect();
+        $assetsToLinkByCode = collect();
+
+        foreach ($rawCodes as $rawCode) {
+            $code = strtoupper(trim($rawCode));
+
+            if ($code === '') {
+                continue;
+            }
+
+            $segments = $this->splitSegments($code);
+            $level = count($segments) - 1;
+            $linkCount = (int) ($assetCountsByRawCode->get($rawCode) ?? 0);
+
+            if ($level < FunctionalLocation::LEVEL_SITE || $level > FunctionalLocation::LEVEL_SECTION) {
+                $invalidCodes->put($code, ($invalidCodes->get($code) ?? 0) + $linkCount);
+                continue;
+            }
+
+            $current = null;
+
+            foreach ($segments as $segmentLevel => $segment) {
+                $current = $current !== null ? $current . '-' . $segment : $segment;
+                $nodeLevels->put($current, $segmentLevel);
+            }
+
+            if ($linkCount > 0) {
+                $assetsToLinkByCode->put($code, ($assetsToLinkByCode->get($code) ?? 0) + $linkCount);
+            }
+        }
+
+        $existingCodes = FunctionalLocation::whereIn('code', $nodeLevels->keys())
+            ->pluck('code')
+            ->flip();
+
+        $nodes = $nodeLevels
+            ->map(fn ($level, $code) => [
+                'code'   => $code,
+                'level'  => $level,
+                'exists' => $existingCodes->has($code),
+            ])
+            ->values()
+            ->sortBy('level')
+            ->values()
+            ->all();
+
+        return [
+            'nodes'                => $nodes,
+            'new_node_count'       => collect($nodes)->where('exists', false)->count(),
+            'existing_node_count'  => collect($nodes)->where('exists', true)->count(),
+            'assets_to_link'       => $this->collectionToPairs($assetsToLinkByCode),
+            'assets_to_link_count' => $assetsToLinkByCode->sum(),
+            'invalid_codes'        => $this->collectionToPairs($invalidCodes),
+            'invalid_code_count'   => $invalidCodes->sum(),
+            'total_scanned'        => $rawCodes->count(),
+        ];
+    }
+
+    /**
+     * Eksekusi hasil analyze(): buat node FunctionalLocation yang belum ada,
+     * tautkan funcloc_id pada asset yang cocok, lalu catat hasilnya sebagai
+     * log. Seluruh proses berjalan dalam satu transaksi database.
+     *
+     * @param  array  $analysis  Hasil dari analyze()
+     * @param  bool   $dryRun    Jika true, node tetap dibuat di dalam transaksi
+     *                           namun asset.funcloc_id tidak diupdate dan log
+     *                           tidak disimpan (dipakai oleh command dry-run)
+     * @return array{
+     *     status: string,
+     *     node_created_count: int,
+     *     asset_linked_count: int,
+     *     asset_skipped_empty_count: int,
+     *     asset_missing_node_count: int
+     * }
+     */
+    public function execute(array $analysis, bool $dryRun = false): array
+    {
+        $nodeResult = ['cache' => [], 'created' => 0];
+        $linkResult = [0, 0, 0];
+
+        DB::transaction(function () use ($analysis, $dryRun, &$nodeResult, &$linkResult) {
+            $nodeResult = $this->createMissingNodes($analysis['nodes'] ?? []);
+            $linkResult = $this->linkAssets($nodeResult['cache'], $dryRun);
+
+            [$linkedCount, $skippedEmptyCount, $missingNodeCount] = $linkResult;
+
+            if (! $dryRun) {
+                FuncLocSyncLog::create([
+                    'executed_by'                => auth()->id(),
+                    'total_scanned'               => $analysis['total_scanned'] ?? 0,
+                    'node_created_count'          => $nodeResult['created'],
+                    'asset_linked_count'          => $linkedCount,
+                    'asset_skipped_empty_count'   => $skippedEmptyCount,
+                    'asset_missing_node_count'    => $missingNodeCount,
+                    'detail_json'                 => $analysis,
+                ]);
+            }
+        });
+
+        [$linkedCount, $skippedEmptyCount, $missingNodeCount] = $linkResult;
+
+        return [
+            'status'                    => 'success',
+            'node_created_count'        => $nodeResult['created'],
+            'asset_linked_count'        => $linkedCount,
+            'asset_skipped_empty_count' => $skippedEmptyCount,
+            'asset_missing_node_count'  => $missingNodeCount,
+        ];
+    }
+
+    /**
+     * Buat seluruh node FunctionalLocation yang belum ada berdasarkan daftar
+     * node hasil analyze(), diurutkan dari level teratas agar parent selalu
+     * tersedia sebelum child dibuat.
+     *
+     * @param  array<int, array{code: string, level: int, exists?: bool}>  $nodes
+     * @return array{cache: array<string, FunctionalLocation>, created: int}
+     */
+    public function createMissingNodes(array $nodes): array
+    {
+        $sorted = collect($nodes)->sortBy('level')->values();
+        $cache = [];
+        $created = 0;
+
+        foreach ($sorted as $nodeData) {
+            $code = $nodeData['code'];
+
+            $existing = $cache[$code] ?? FunctionalLocation::where('code', $code)->first();
+
+            if ($existing !== null) {
+                $cache[$code] = $existing;
+                continue;
+            }
+
+            $segments = $this->splitSegments($code);
+            $segment = end($segments);
+            $parentCode = count($segments) > 1 ? implode('-', array_slice($segments, 0, -1)) : null;
+            $parent = $parentCode !== null ? ($cache[$parentCode] ?? null) : null;
+
+            $node = FunctionalLocation::create([
+                'code'      => $code,
+                'segment'   => $segment,
+                'name'      => $code,
+                'level'     => $nodeData['level'],
+                'parent_id' => $parent?->id,
+                'is_active' => true,
+            ]);
+
+            $cache[$code] = $node;
+            $created++;
+        }
+
+        return ['cache' => $cache, 'created' => $created];
+    }
+
+    /**
+     * Tautkan assets.funcloc_id berdasarkan assets.functional_loc, memakai
+     * cache node yang sudah dibuat/diambil pada createMissingNodes().
+     *
+     * @param  array<string, FunctionalLocation>  $nodeCache
+     * @param  bool  $dryRun  Jika true, hitung saja tanpa menyimpan update
+     * @return array{0: int, 1: int, 2: int}  [linked, skippedEmpty, missingNode]
+     */
+    public function linkAssets(array $nodeCache, bool $dryRun = false): array
+    {
+        $assets = Asset::whereNotNull('functional_loc')
+            ->where('functional_loc', '!=', '')
+            ->whereNull('funcloc_id')
+            ->get();
+
+        $linked = 0;
+        $skippedEmpty = 0;
+        $missingNode = 0;
+
+        foreach ($assets as $asset) {
+            $code = strtoupper(trim($asset->functional_loc));
+
+            if ($code === '') {
+                $skippedEmpty++;
+                continue;
+            }
+
+            $node = $nodeCache[$code] ?? FunctionalLocation::where('code', $code)->first();
+
+            if ($node === null) {
+                $missingNode++;
+                continue;
+            }
+
+            if (! $dryRun) {
+                $asset->update(['funcloc_id' => $node->id]);
+            }
+
+            $linked++;
+        }
+
+        return [$linked, $skippedEmpty, $missingNode];
+    }
+
+    /**
+     * Pecah kode FuncLoc (dipisah tanda strip) menjadi array segment,
+     * membuang segment kosong akibat spasi berlebih.
+     *
+     * @param  string  $code
+     * @return array<int, string>
+     */
+    private function splitSegments(string $code): array
+    {
+        return array_values(array_filter(
+            array_map('trim', explode('-', $code)),
+            fn ($segment) => $segment !== ''
+        ));
+    }
+
+    /**
+     * Ubah Collection [code => count] menjadi array pasangan siap pakai
+     * untuk response JSON, terurut berdasarkan code.
+     *
+     * @param  Collection<string, int>  $collection
+     * @return array<int, array{code: string, count: int}>
+     */
+    private function collectionToPairs(Collection $collection): array
+    {
+        return $collection
+            ->map(fn ($count, $code) => ['code' => $code, 'count' => $count])
+            ->values()
+            ->sortBy('code')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Struktur hasil analyze() saat tidak ada data assets.functional_loc
+     * sama sekali.
+     *
+     * @return array
+     */
+    private function emptyAnalysis(): array
+    {
+        return [
+            'nodes'                => [],
+            'new_node_count'       => 0,
+            'existing_node_count'  => 0,
+            'assets_to_link'       => [],
+            'assets_to_link_count' => 0,
+            'invalid_codes'        => [],
+            'invalid_code_count'   => 0,
+            'total_scanned'        => 0,
+        ];
+    }
+}
+
 ================ WARNAI DENGAN FILE: ImportService.php =================
 <?php
 
@@ -12704,6 +13752,8 @@ Route::middleware('admin')->group(function () {
     Route::resource('assets', AssetController::class);
 
     // Functional Location
+    Route::post('/func-locs/sync/preview', [FunctionalLocationController::class, 'previewSync'])->name('func-locs.sync.preview');
+    Route::post('/func-locs/sync/execute', [FunctionalLocationController::class, 'executeSync'])->name('func-locs.sync.execute');
     Route::resource('func-locs', FunctionalLocationController::class)->except(['show']);
 
     // Technicians
@@ -14989,6 +16039,36 @@ return new class extends Migration
             $table->dropForeign(['collaborator_of']);
             $table->dropColumn(['creator_id', 'collaborator_of', 'is_manually_edited']);
         });
+    }
+};
+
+================ WARNAI DENGAN FILE: 2026_07_14_000001_create_func_loc_sync_logs_table.php =================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('func_loc_sync_logs', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('executed_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->integer('total_scanned')->default(0);
+            $table->integer('node_created_count')->default(0);
+            $table->integer('asset_linked_count')->default(0);
+            $table->integer('asset_skipped_empty_count')->default(0);
+            $table->integer('asset_missing_node_count')->default(0);
+            $table->json('detail_json')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('func_loc_sync_logs');
     }
 };
 
@@ -18613,6 +19693,15 @@ function closeModal(name) {
 @endsection
 
 @section('header-actions')
+    <button type="button"
+            onclick="openModal('funcloc-sync'); window.dispatchEvent(new CustomEvent('funcloc-sync-open'))"
+            class="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Sinkronisasi dari Asset
+    </button>
+
     <a href="{{ route('func-locs.create') }}"
        class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -18700,7 +19789,203 @@ function closeModal(name) {
             empty-message="Tidak ada Functional Location yang cocok dengan filter."
         />
     @endif
+
+    <!-- Modal Sinkronisasi FuncLoc dari Asset -->
+    <x-modal name="funcloc-sync" title="Sinkronisasi FuncLoc dari Asset" max-width="xl">
+        <div x-data="funcLocSyncManager()" x-on:funcloc-sync-open.window="loadPreview()" class="space-y-4">
+            <p class="text-sm text-slate-500">
+                Memindai kolom Functional Loc. pada data Asset yang belum tertaut ke Functional Location,
+                lalu membuat node yang belum ada dan menautkannya secara otomatis.
+            </p>
+
+            <!-- Loading -->
+            <div x-show="loading" class="flex items-center gap-2 text-sm text-slate-500 py-6 justify-center">
+                <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                Menganalisa data...
+            </div>
+
+            <!-- Error -->
+            <div x-show="error" x-cloak class="flex items-start gap-3 p-4 border rounded-lg text-sm bg-red-50 border-red-200 text-red-800">
+                <div>
+                    <p class="font-medium">Gagal Menganalisa</p>
+                    <p class="mt-0.5" x-text="error"></p>
+                </div>
+            </div>
+
+            <!-- Preview -->
+            <template x-if="analysis && !loading">
+                <div class="space-y-4">
+                    <!-- Summary -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div class="bg-slate-50 rounded-lg p-3 text-center">
+                            <p class="text-xl font-bold text-blue-600" x-text="analysis.new_node_count"></p>
+                            <p class="text-xs text-slate-500 mt-0.5">FuncLoc Baru</p>
+                        </div>
+                        <div class="bg-slate-50 rounded-lg p-3 text-center">
+                            <p class="text-xl font-bold text-slate-600" x-text="analysis.existing_node_count"></p>
+                            <p class="text-xs text-slate-500 mt-0.5">Sudah Ada</p>
+                        </div>
+                        <div class="bg-slate-50 rounded-lg p-3 text-center">
+                            <p class="text-xl font-bold text-green-600" x-text="analysis.assets_to_link_count"></p>
+                            <p class="text-xs text-slate-500 mt-0.5">Asset Akan Ditautkan</p>
+                        </div>
+                        <div class="bg-slate-50 rounded-lg p-3 text-center">
+                            <p class="text-xl font-bold text-red-600" x-text="analysis.invalid_code_count"></p>
+                            <p class="text-xs text-slate-500 mt-0.5">Kode Tidak Valid</p>
+                        </div>
+                    </div>
+
+                    <!-- Node Preview -->
+                    <div>
+                        <p class="text-sm font-medium text-slate-700 mb-2">Functional Location Terdeteksi</p>
+                        <div class="max-h-56 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
+                            <template x-for="node in analysis.nodes" :key="node.code">
+                                <div class="flex items-center gap-3 px-4 py-2 text-sm" :style="{ paddingLeft: (16 + node.level * 20) + 'px' }">
+                                    <span class="font-mono text-xs text-slate-700 flex-1 truncate" x-text="node.code"></span>
+                                    <span class="text-xs text-slate-400 shrink-0" x-text="'L' + node.level"></span>
+                                    <span x-show="!node.exists" class="inline-flex px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded shrink-0">FuncLoc Baru</span>
+                                    <span x-show="node.exists" class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded shrink-0">Sudah Ada</span>
+                                </div>
+                            </template>
+                            <template x-if="analysis.nodes.length === 0">
+                                <div class="px-4 py-6 text-center text-sm text-slate-400">Tidak ada Functional Location baru terdeteksi.</div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Invalid Codes -->
+                    <template x-if="analysis.invalid_codes.length > 0">
+                        <div>
+                            <p class="text-sm font-medium text-slate-700 mb-2">Kode Tidak Valid (dilewati)</p>
+                            <div class="max-h-32 overflow-y-auto border border-red-100 rounded-lg divide-y divide-red-50">
+                                <template x-for="invalid in analysis.invalid_codes" :key="invalid.code">
+                                    <div class="flex items-center gap-3 px-4 py-2 text-sm">
+                                        <span class="font-mono text-xs text-red-700 flex-1 truncate" x-text="invalid.code"></span>
+                                        <span class="text-xs text-slate-400 shrink-0" x-text="invalid.count + ' asset'"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Actions -->
+                    <div class="flex gap-3 pt-2">
+                        <button @click="executeSync"
+                                x-bind:disabled="executing || analysis.assets_to_link_count === 0"
+                                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors">
+                            <span x-show="!executing">Jalankan Sinkronisasi</span>
+                            <span x-show="executing" class="flex items-center gap-2">
+                                <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                </svg>
+                                Menyinkronkan...
+                            </span>
+                        </button>
+                        <button type="button" onclick="closeModal('funcloc-sync')"
+                                class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                            Tutup
+                        </button>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Result -->
+            <template x-if="result">
+                <div x-show="result.status === 'success'"
+                     class="flex items-start gap-3 p-4 border rounded-lg text-sm bg-green-50 border-green-200 text-green-800">
+                    <div>
+                        <p class="font-medium">Sinkronisasi Berhasil</p>
+                        <p class="mt-0.5" x-text="result.message"></p>
+                        <p class="mt-1 text-xs text-green-700">Halaman akan dimuat ulang...</p>
+                    </div>
+                </div>
+            </template>
+            <template x-if="result && result.status !== 'success'">
+                <div class="flex items-start gap-3 p-4 border rounded-lg text-sm bg-red-50 border-red-200 text-red-800">
+                    <div>
+                        <p class="font-medium">Sinkronisasi Gagal</p>
+                        <p class="mt-0.5" x-text="result.message"></p>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </x-modal>
 @endsection
+
+@push('scripts')
+<script>
+function funcLocSyncManager() {
+    return {
+        loading: false,
+        executing: false,
+        analysis: null,
+        error: null,
+        result: null,
+
+        loadPreview() {
+            this.loading = true;
+            this.error = null;
+            this.analysis = null;
+            this.result = null;
+
+            fetch('{{ route('func-locs.sync.preview') }}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json',
+                },
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    this.analysis = data.analysis;
+                } else {
+                    this.error = data.message || 'Gagal menganalisa data.';
+                }
+            })
+            .catch(() => {
+                this.error = 'Terjadi kesalahan saat menganalisa data.';
+            })
+            .finally(() => {
+                this.loading = false;
+            });
+        },
+
+        executeSync() {
+            this.executing = true;
+            this.result = null;
+
+            fetch('{{ route('func-locs.sync.execute') }}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ analysis: this.analysis }),
+            })
+            .then(res => res.json())
+            .then(data => {
+                this.result = data;
+                if (data.status === 'success') {
+                    this.analysis = null;
+                    setTimeout(() => window.location.reload(), 1200);
+                }
+            })
+            .catch(() => {
+                this.result = { status: 'error', message: 'Terjadi kesalahan saat sinkronisasi.' };
+            })
+            .finally(() => {
+                this.executing = false;
+            });
+        },
+    };
+}
+</script>
+@endpush
 
 ================ WARNAI DENGAN FILE: app.blade.php =================
 <!DOCTYPE html>

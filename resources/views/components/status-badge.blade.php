@@ -28,6 +28,12 @@
         'general' => 'bg-slate-100 text-slate-600',
         'collaboration' => 'bg-violet-100 text-violet-700',
         'edited' => 'bg-amber-100 text-amber-700',
+        // Klasifikasi pekerjaan (dipilih teknisi di step awal wizard)
+        'cm' => 'bg-red-100 text-red-700',
+        'pm' => 'bg-green-100 text-green-700',
+        'dcm' => 'bg-amber-100 text-amber-700',
+        'fabrikasi' => 'bg-blue-100 text-blue-700',
+        'sipil' => 'bg-violet-100 text-violet-700',
     ];
 
     $dotColors = [
@@ -51,6 +57,12 @@
         'cancel' => 'bg-red-500',
         'collaboration' => 'bg-violet-500',
         'edited' => 'bg-amber-500',
+        // Klasifikasi pekerjaan (dipilih teknisi di step awal wizard)
+        'cm' => 'bg-red-500',
+        'pm' => 'bg-green-500',
+        'dcm' => 'bg-amber-500',
+        'fabrikasi' => 'bg-blue-500',
+        'sipil' => 'bg-violet-500',
     ];
 
     $displayLabel = $label ?? ucfirst($status);

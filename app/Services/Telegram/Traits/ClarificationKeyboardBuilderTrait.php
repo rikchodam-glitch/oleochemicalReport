@@ -30,6 +30,16 @@ use Illuminate\Support\Collection;
  * Trait ini bergantung pada properti berikut dari kelas pemakai:
  *   - $this->funcLocParser: FuncLocParser
  *   - const MAX_KEYBOARD_OPTIONS: int
+ *
+ * CATATAN — Navigasi (diselaraskan Sesi 5):
+ * Label tombol naik satu level di setiap keyboard hierarki disamakan menjadi
+ * "Kembali" (sebelumnya "← Kembali") agar konsisten dengan gaya label step
+ * lain di wizard. Logic action==='back' di ClarificationService::processSelection()
+ * TIDAK diubah — hanya label tampilannya. Setiap keyboard yang punya opsi
+ * (bukan sinyal auto_select/skip) sekarang juga selalu menyertakan tombol
+ * "Batalkan Laporan" (callback_data 'hierarchy:cancel', ditangani
+ * WizardCallbackHandlerTrait::handleHierarchyCancel()) agar teknisi tidak
+ * pernah terjebak tanpa jalan keluar di tengah navigasi hierarki.
  */
 trait ClarificationKeyboardBuilderTrait
 {
@@ -50,7 +60,9 @@ trait ClarificationKeyboardBuilderTrait
         if ($companies->isEmpty()) {
             return [
                 'message'  => 'Tidak ada data perusahaan. Hubungi admin.',
-                'keyboard' => [],
+                'keyboard' => [
+                    ['text' => 'Batalkan Laporan', 'callback_data' => 'hierarchy:cancel'],
+                ],
             ];
         }
 
@@ -73,6 +85,7 @@ trait ClarificationKeyboardBuilderTrait
                 'callback_data' => "company:select:{$c->id}",
             ];
         }
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'hierarchy:cancel'];
 
         return [
             'message'  => 'Pilih Plant/Perusahaan:',
@@ -102,7 +115,10 @@ trait ClarificationKeyboardBuilderTrait
         if ($departments->isEmpty()) {
             return [
                 'message'  => 'Tidak ada departemen untuk perusahaan ini.',
-                'keyboard' => [],
+                'keyboard' => [
+                    ['text' => 'Kembali', 'callback_data' => 'company:back'],
+                    ['text' => 'Batalkan Laporan', 'callback_data' => 'hierarchy:cancel'],
+                ],
             ];
         }
 
@@ -125,7 +141,8 @@ trait ClarificationKeyboardBuilderTrait
                 'callback_data' => "department:select:{$d->id}",
             ];
         }
-        $keyboard[] = ['text' => '← Kembali', 'callback_data' => 'company:back'];
+        $keyboard[] = ['text' => 'Kembali', 'callback_data' => 'company:back'];
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'hierarchy:cancel'];
 
         return [
             'message'  => 'Pilih Departemen:',
@@ -174,7 +191,8 @@ trait ClarificationKeyboardBuilderTrait
                 'callback_data' => "area:select:{$a->id}",
             ];
         }
-        $keyboard[] = ['text' => '← Kembali', 'callback_data' => 'department:back'];
+        $keyboard[] = ['text' => 'Kembali', 'callback_data' => 'department:back'];
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'hierarchy:cancel'];
 
         return [
             'message'  => 'Pilih Area Kerja:',
@@ -221,7 +239,8 @@ trait ClarificationKeyboardBuilderTrait
             ];
         }
         $keyboard[] = ['text' => 'Lewati', 'callback_data' => 'subarea:skip'];
-        $keyboard[] = ['text' => '← Kembali', 'callback_data' => 'area:back'];
+        $keyboard[] = ['text' => 'Kembali', 'callback_data' => 'area:back'];
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'hierarchy:cancel'];
 
         return [
             'message'  => "Sub Area di {$areaCode}:\nPilih sub area (atau lewati):",
@@ -261,7 +280,8 @@ trait ClarificationKeyboardBuilderTrait
             ];
         }
         $keyboard[] = ['text' => 'Skip (Pekerjaan Area)', 'callback_data' => 'equipment:skip'];
-        $keyboard[] = ['text' => '← Kembali', 'callback_data' => 'section:back'];
+        $keyboard[] = ['text' => 'Kembali', 'callback_data' => 'section:back'];
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'hierarchy:cancel'];
 
         return [
             'message'  => "Equipment di area ini cukup banyak. Pilih Section dulu:",
@@ -303,7 +323,8 @@ trait ClarificationKeyboardBuilderTrait
             ];
         }
         $keyboard[] = ['text' => 'Skip (Pekerjaan Area)', 'callback_data' => 'equipment:skip'];
-        $keyboard[] = ['text' => '← Kembali', 'callback_data' => 'type:back'];
+        $keyboard[] = ['text' => 'Kembali', 'callback_data' => 'type:back'];
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'hierarchy:cancel'];
 
         return [
             'message'  => "Section {$sectionCode} — Pilih Tipe Alat:",
@@ -372,7 +393,8 @@ trait ClarificationKeyboardBuilderTrait
 
         // Tombol skip — anggap pekerjaan area
         $keyboard[] = ['text' => 'Skip (Pekerjaan Area)', 'callback_data' => 'equipment:skip'];
-        $keyboard[] = ['text' => '← Kembali', 'callback_data' => $sectionCode ? 'type:back' : 'equipment:back'];
+        $keyboard[] = ['text' => 'Kembali', 'callback_data' => $sectionCode ? 'type:back' : 'equipment:back'];
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'hierarchy:cancel'];
 
         if ($assets->isEmpty()) {
             return [

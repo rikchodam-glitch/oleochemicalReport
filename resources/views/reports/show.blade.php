@@ -91,6 +91,16 @@
                 <div class="flex items-center gap-1.5">
                     <x-status-badge :status="$report->report_type" />
                 </div>
+
+                {{-- Klasifikasi Pekerjaan: selalu tampil, tidak diedit dari sini (lihat edit.blade.php) --}}
+                <div class="flex items-center gap-1.5">
+                    @if($report->work_classification)
+                        <x-status-badge :status="$report->work_classification"
+                            :label="['cm' => 'CM', 'pm' => 'PM', 'dcm' => 'dCM', 'fabrikasi' => 'Fabrikasi', 'sipil' => 'Sipil'][$report->work_classification] ?? null" />
+                    @else
+                        <span class="text-xs text-slate-400">Klasifikasi: -</span>
+                    @endif
+                </div>
             </div>
         </div>
 

@@ -53,6 +53,43 @@ use Illuminate\Support\Facades\Log;
  *   - WizardUtilityTrait        : format durasi/tanggal, label equipment, state awal, error response
  *   - WizardPhotoAddonTrait     : tambah foto ke laporan tersimpan via report_code
  *   - WizardFuncLocPickerTrait  : keyboard hierarki FuncLoc untuk alur laporan area/section
+ *
+ * NAVIGASI KEMBALI/BATAL (step_history):
+ * State wizard (dibuat via WizardUtilityTrait::createInitialState()) menyimpan
+ * array 'step_history' berisi urutan step yang pernah dilalui. Setiap kali wizard
+ * maju ke step berikutnya, step yang ditinggalkan wajib di-push ke riwayat lewat
+ * WizardUtilityTrait::pushStepHistory() sebelum $state['step'] diubah. Tombol
+ * Kembali (callback_data 'wizard:back') ditangani WizardCallbackHandlerTrait::
+ * handleBackNavigation(), yang mem-pop riwayat dan membangun ulang prompt step
+ * tujuan lewat rebuildPromptForStep() — tanpa menghapus data yang sudah diisi
+ * teknisi. Tombol Batalkan Laporan (callback_data 'wizard:cancel_wizard') tetap
+ * ditangani terpisah di routeCallback() seperti sebelumnya. Kedua tombol ini
+ * wajib disertakan konsisten di setiap step lewat
+ * WizardUtilityTrait::navigationButtons().
+ *
+ * Step equipment (Step 1/2/3 — pencarian, klarifikasi, FuncLoc) diselaraskan
+ * di Sesi 5: buildCandidateKeyboard() dan buildEquipmentConfirmKeyboard() kini
+ * juga memakai navigationButtons(), ClarificationKeyboardBuilderTrait
+ * menyertakan tombol Batalkan Laporan konsisten di setiap level hierarki, dan
+ * WizardFuncLocPickerTrait mendapat kemampuan naik satu level (callback
+ * 'funcloc_back') selain tombol Batalkan Laporan di setiap level FuncLoc.
+ * Kembali dari Step 4 menuju step equipment (rebuildPromptForStep) menjalankan
+ * ulang pencarian dari teks laporan awal, bukan mereka-reka tampilan sementara
+ * yang datanya sudah dibersihkan saat equipment/area dikunci.
+ *
+ * PERBAIKAN SESI 6 (uji menyeluruh & rapikan konsistensi akhir):
+ * Ditemukan bug pada WizardStepHandlerTrait::advanceToWorkDuration() — gerbang
+ * tunggal dari step equipment menuju Step 4 — yang sebelumnya TIDAK memanggil
+ * pushStepHistory() sebelum mengubah $state['step'], sehingga step equipment
+ * tidak pernah tercatat di riwayat dan tombol Kembali tidak pernah tampil saat
+ * teknisi baru pertama kali sampai di Step 4 (baru muncul mulai Step 5 dan
+ * seterusnya). Sudah diperbaiki dengan menambahkan pushStepHistory($state,
+ * $state['step']) di awal method tersebut, sehingga otomatis berlaku untuk
+ * semua jalur penguncian equipment (lock langsung, hierarki klarifikasi,
+ * FuncLoc). Diverifikasi juga: tidak ada duplikasi foto pada back-lalu-maju
+ * berulang di Step 6/7 (dijaga oleh in_array pada prepend foto awal dan
+ * append murni pada addPhotoToStep), dan data kolaborator dari hierarki tetap
+ * terjaga saat back berulang (hanya wizard:cancel_wizard yang mereset state).
  */
 class ReportWizardService
 {
@@ -68,6 +105,7 @@ class ReportWizardService
 
     /** Step ID — digunakan sebagai konstanta agar tidak typo. */
     const STEP_INITIAL             = 'initial';
+    const STEP_WORK_CLASSIFICATION = 'work_classification';
     const STEP_EQUIPMENT_SEARCH    = 'equipment_search';
     const STEP_EQUIPMENT_CLARIFY   = 'equipment_clarify';
     const STEP_WORK_DURATION       = 'work_duration';
@@ -160,9 +198,15 @@ class ReportWizardService
             $state['root_cause'] = $analysis['parsed_root_cause'];
         }
 
+        // Step paling awal wizard: teknisi wajib memilih klasifikasi pekerjaan
+        // (CM/PM/dCM/Fabrikasi/Sipil) sebelum pencarian equipment dijalankan.
+        // Teks laporan ($state['text']) sudah tersimpan dan akan dipakai oleh
+        // processEquipmentSearch() setelah klasifikasi dipilih
+        // (lihat WizardCallbackHandlerTrait::handleWorkClassificationCallback()).
+        $state['step'] = self::STEP_WORK_CLASSIFICATION;
         $this->saveState($chatId, $state);
 
-        return $this->processEquipmentSearch($chatId, $state);
+        return $this->buildWorkClassificationPrompt($state);
     }
 
     /**
@@ -296,7 +340,7 @@ class ReportWizardService
             $state['step']                      = self::STEP_EQUIPMENT_CLARIFY;
             $this->saveState($chatId, $state);
 
-            $response = $this->buildEquipmentConfirmKeyboard($exactMatch, $confidence);
+            $response = $this->buildEquipmentConfirmKeyboard($exactMatch, $confidence, $state);
             return $this->appendDateConfirmationNote($response, $state);
         }
 
@@ -307,7 +351,7 @@ class ReportWizardService
             $state['retype_attempts'] = 0;
             $this->saveState($chatId, $state);
 
-            $response = $this->buildCandidateKeyboard($candidates, $results);
+            $response = $this->buildCandidateKeyboard($candidates, $results, $state);
             return $this->appendDateConfirmationNote($response, $state);
         }
 
@@ -322,11 +366,13 @@ class ReportWizardService
         $response = [
             'message'  => "Tidak ditemukan kode equipment dari laporan Anda.\n\n" .
                           "Ini jenis pekerjaan apa?",
-            'keyboard' => [
-                ['text' => 'Perbaikan alat tertentu', 'callback_data' => 'work_type:equipment'],
-                ['text' => 'Pekerjaan area/section',   'callback_data' => 'work_type:area'],
-                ['text' => 'Batalkan Laporan',          'callback_data' => 'wizard:cancel_wizard'],
-            ],
+            'keyboard' => array_merge(
+                [
+                    ['text' => 'Perbaikan alat tertentu', 'callback_data' => 'work_type:equipment'],
+                    ['text' => 'Pekerjaan area/section',   'callback_data' => 'work_type:area'],
+                ],
+                $this->navigationButtons($state)
+            ),
         ];
 
         return $this->appendDateConfirmationNote($response, $state);
@@ -379,9 +425,10 @@ class ReportWizardService
      *
      * @param  array $candidates Daftar kandidat dari TechIdentSearch
      * @param  array $results    Hasil lengkap TechIdentSearch (termasuk confidence)
+     * @param  array $state      State wizard saat ini (untuk navigationButtons)
      * @return array Respons dengan message dan keyboard pilihan kandidat
      */
-    protected function buildCandidateKeyboard(array $candidates, array $results): array
+    protected function buildCandidateKeyboard(array $candidates, array $results, array $state): array
     {
         $keyboard = [];
         foreach (array_slice($candidates, 0, 4) as $candidate) {
@@ -407,7 +454,10 @@ class ReportWizardService
 
         $keyboard[] = ['text' => 'Tulis Ulang Kode',    'callback_data' => 'equipment_candidate:retype'];
         $keyboard[] = ['text' => 'Pilih dari Hierarki', 'callback_data' => 'equipment:hierarchy'];
-        $keyboard[] = ['text' => 'Batalkan Laporan',    'callback_data' => 'wizard:cancel_wizard'];
+
+        foreach ($this->navigationButtons($state) as $navButton) {
+            $keyboard[] = $navButton;
+        }
 
         $confidenceNote = '';
         if (!empty($results['confidence'])) {
@@ -455,14 +505,14 @@ class ReportWizardService
             $state['search_confidence']         = $confidence;
             $this->saveState($chatId, $state);
 
-            return $this->buildEquipmentConfirmKeyboard($exactMatch, $confidence);
+            return $this->buildEquipmentConfirmKeyboard($exactMatch, $confidence, $state);
         }
 
         // Ada kandidat: tampilkan keyboard
         if (!empty($candidates)) {
             $state['search_results'] = $results;
             $this->saveState($chatId, $state);
-            return $this->buildCandidateKeyboard($candidates, $results);
+            return $this->buildCandidateKeyboard($candidates, $results, $state);
         }
 
         // Gagal dan sudah 2 kali: masuk hierarki (Sub-alur C)
@@ -479,9 +529,12 @@ class ReportWizardService
         return [
             'message'  => "Equipment masih tidak ditemukan. Coba ketik ulang lagi ({$remaining}x kesempatan tersisa):\n" .
                           "Atau pilih dari hierarki.",
-            'keyboard' => [
-                ['text' => 'Pilih dari Hierarki', 'callback_data' => 'equipment:hierarchy'],
-            ],
+            'keyboard' => array_merge(
+                [
+                    ['text' => 'Pilih dari Hierarki', 'callback_data' => 'equipment:hierarchy'],
+                ],
+                $this->navigationButtons($state)
+            ),
         ];
     }
 

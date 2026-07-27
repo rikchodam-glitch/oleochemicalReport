@@ -21,10 +21,14 @@ use Illuminate\Support\Str;
  *
  * Trait ini bergantung pada method berikut dari kelas pemakai:
  *   - equipmentLabel(array $state): string
+ *   - classificationLabel(array $state): string
+ *     (dari WizardUtilityTrait — label klasifikasi pekerjaan CM/PM/dCM/Fabrikasi/Sipil)
  *   - formatDuration(int $minutes): string
  *   - formatIndonesianDate(string $dateString): string
  *   - destroyWizard(string $chatId): void
  *   - errorResponse(string $message): array
+ *   - navigationButtons(array $state, bool $includeBack = true): array
+ *     (dari WizardUtilityTrait — dipakai buildConfirmationSummary untuk tombol Kembali di Step 8)
  */
 trait WizardReportSaverTrait
 {
@@ -57,6 +61,7 @@ trait WizardReportSaverTrait
         $msg  = "*Step 8/8* — Konfirmasi Laporan\n\n";
         $msg .= "Periksa ringkasan berikut sebelum disimpan:\n\n";
         $msg .= "*Tanggal*   : {$formattedDate}\n";
+        $msg .= "*Klasifikasi*: {$this->classificationLabel($state)}\n";
 
         // Tampilkan FuncLoc jika laporan area, atau Equipment jika laporan alat
         if (!empty($state['funcloc_code'])) {
@@ -87,10 +92,13 @@ trait WizardReportSaverTrait
 
         return [
             'message'  => $msg,
-            'keyboard' => [
-                ['text' => 'Ya, Simpan', 'callback_data' => 'wizard:confirm:save_report'],
-                ['text' => 'Batalkan',   'callback_data' => 'wizard:confirm:cancel_report'],
-            ],
+            'keyboard' => array_merge(
+                [
+                    ['text' => 'Ya, Simpan', 'callback_data' => 'wizard:confirm:save_report'],
+                    ['text' => 'Batalkan',   'callback_data' => 'wizard:confirm:cancel_report'],
+                ],
+                $this->navigationButtons($state)
+            ),
         ];
     }
 
@@ -154,6 +162,7 @@ trait WizardReportSaverTrait
                 'area_id'                 => $state['area_id'] ?? null,
                 'funcloc_id'              => $state['funcloc_id'] ?? null,
                 'report_type'             => $reportType,
+                'work_classification'     => $state['work_classification'] ?? null,
                 'ai_analyzed'             => !empty($state['ai_analysis']),
                 'ai_confidence'           => $state['ai_analysis']['confidence'] ?? null,
                 'work_duration_minutes'   => $state['work_duration_minutes'] ?? null,
@@ -254,6 +263,7 @@ trait WizardReportSaverTrait
             $successMsg .= "Kode Laporan : `{$reportCode}`\n";
             $successMsg .= "Teknisi      : {$technician->name}\n";
             $successMsg .= "Tanggal      : {$formattedDate}\n";
+            $successMsg .= "Klasifikasi  : {$this->classificationLabel($state)}\n";
 
             // Tampilkan Lokasi FuncLoc jika laporan area, atau Equipment jika laporan alat
             if (!empty($state['funcloc_code'])) {

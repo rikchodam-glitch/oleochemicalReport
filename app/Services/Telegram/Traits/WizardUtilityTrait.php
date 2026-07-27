@@ -2,6 +2,7 @@
 
 namespace App\Services\Telegram\Traits;
 
+use App\Enums\WorkClassification;
 use Illuminate\Support\Carbon;
 
 /**
@@ -14,11 +15,28 @@ use Illuminate\Support\Carbon;
  *                                ['date' => Y-m-d|null, 'status' => ...]
  *   - formatIndonesianDate()   : Format tanggal Y-m-d ke string Bahasa Indonesia
  *   - equipmentLabel()         : Label ringkas equipment/area dari state
+ *   - classificationLabel()    : Label ringkas klasifikasi pekerjaan (CM/PM/dCM/Fabrikasi/Sipil) dari state
  *   - createInitialState()     : Buat state awal wizard baru
  *   - errorResponse()          : Bangun struktur respons error standar
+ *   - pushStepHistory()        : Catat step saat ini ke riwayat sebelum wizard maju
+ *   - popStepHistory()         : Ambil dan hapus step terakhir dari riwayat
+ *   - navigationButtons()      : Bangun tombol Kembali + Batalkan Laporan yang konsisten
  *
  * Trait ini tidak bergantung pada method atau properti lain dari kelas pemakai
  * (self-contained), sehingga aman di-use di kelas manapun dalam wizard.
+ *
+ * CATATAN — Mekanisme navigasi Kembali (step_history):
+ * State wizard menyimpan array 'step_history' berisi urutan step yang pernah
+ * dilalui teknisi. Setiap kali wizard MAJU ke step berikutnya, step yang
+ * sedang ditinggalkan wajib di-push lebih dulu lewat pushStepHistory()
+ * sebelum $state['step'] diubah. Saat teknisi menekan tombol "Kembali"
+ * (callback_data 'wizard:back', ditangani WizardCallbackHandlerTrait),
+ * popStepHistory() dipanggil untuk mengambil step terakhir dari riwayat
+ * dan membangun ulang prompt step tersebut — nilai field yang sudah pernah
+ * diisi TIDAK dihapus, hanya ditampilkan ulang sebagai draft yang bisa
+ * ditimpa. Setiap method buildXxxPrompt() yang menyertakan navigasi wajib
+ * memakai navigationButtons() agar tombol Kembali otomatis hilang saat
+ * riwayat masih kosong (mis. di step paling awal alur linear).
  */
 trait WizardUtilityTrait
 {
@@ -387,6 +405,31 @@ trait WizardUtilityTrait
     }
 
     // =========================================================
+    // LABEL KLASIFIKASI PEKERJAAN
+    // =========================================================
+
+    /**
+     * Bangun label ringkas klasifikasi pekerjaan yang dipilih teknisi di
+     * step paling awal wizard. Dipakai di ringkasan konfirmasi (Step 8)
+     * dan pesan sukses setelah laporan tersimpan.
+     *
+     * @param  array  $state State wizard
+     * @return string Label klasifikasi pekerjaan, atau '-' jika belum dipilih
+     */
+    protected function classificationLabel(array $state): string
+    {
+        $value = $state['work_classification'] ?? null;
+
+        if (!$value) {
+            return '-';
+        }
+
+        $classification = WorkClassification::tryFrom($value);
+
+        return $classification ? $classification->label() : $value;
+    }
+
+    // =========================================================
     // STATE AWAL & RESPONS ERROR
     // =========================================================
 
@@ -404,6 +447,8 @@ trait WizardUtilityTrait
             'chat_id'                     => $chatId,
             'text'                        => $text,
             'step'                        => self::STEP_EQUIPMENT_SEARCH,
+            'step_history'                => [],
+            'work_classification'         => null,
             'ai_analysis'                 => [],
             'equipment_id'                => null,
             'equipment_ident'             => null,
@@ -444,5 +489,70 @@ trait WizardUtilityTrait
             'keyboard' => [],
             'error'    => true,
         ];
+    }
+
+    // =========================================================
+    // NAVIGASI STEP — RIWAYAT & TOMBOL KEMBALI/BATAL
+    // =========================================================
+
+    /**
+     * Catat step yang sedang ditinggalkan ke riwayat, dipanggil sesaat
+     * sebelum $state['step'] diubah ke step berikutnya. Riwayat dipakai
+     * popStepHistory() untuk menentukan tujuan saat teknisi menekan
+     * tombol Kembali.
+     *
+     * @param  array  $state       State wizard saat ini
+     * @param  string $currentStep Step yang sedang ditinggalkan (nilai $state['step'] sebelum diubah)
+     * @return array  State wizard dengan step_history yang sudah diperbarui
+     */
+    protected function pushStepHistory(array $state, string $currentStep): array
+    {
+        $state['step_history']   = $state['step_history'] ?? [];
+        $state['step_history'][] = $currentStep;
+
+        return $state;
+    }
+
+    /**
+     * Ambil step terakhir dari riwayat dan hapus dari state (pop stack).
+     * Dipanggil saat teknisi menekan tombol Kembali.
+     *
+     * @param  array $state State wizard saat ini
+     * @return array{step: string|null, state: array} 'step' berisi step tujuan,
+     *         null jika riwayat kosong (sudah di step paling awal).
+     *         'state' berisi state wizard setelah riwayat di-pop.
+     */
+    protected function popStepHistory(array $state): array
+    {
+        $state['step_history'] = $state['step_history'] ?? [];
+        $previousStep          = array_pop($state['step_history']);
+
+        return [
+            'step'  => $previousStep ?? null,
+            'state' => $state,
+        ];
+    }
+
+    /**
+     * Bangun tombol navigasi standar (Kembali + Batalkan Laporan) yang dipakai
+     * konsisten di seluruh step wizard. Tombol Kembali otomatis disembunyikan
+     * jika belum ada riwayat step (mis. di step paling awal alur linear).
+     *
+     * @param  array $state       State wizard saat ini
+     * @param  bool  $includeBack Set false untuk memaksa sembunyikan tombol Kembali
+     *                            meskipun riwayat tidak kosong (jarang dipakai)
+     * @return array Daftar tombol siap digabung ke keyboard step (array_merge)
+     */
+    protected function navigationButtons(array $state, bool $includeBack = true): array
+    {
+        $buttons = [];
+
+        if ($includeBack && !empty($state['step_history'])) {
+            $buttons[] = ['text' => 'Kembali', 'callback_data' => 'wizard:back'];
+        }
+
+        $buttons[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'];
+
+        return $buttons;
     }
 }

@@ -28,6 +28,7 @@ class Report extends Model
         'funcloc_id',
         'asset_id',
         'report_type',
+        'work_classification',
         'ai_analyzed',
         'ai_confidence',
         'ai_suggestion_json',

@@ -125,8 +125,20 @@
                     </div>
                 </div>
 
-                {{-- Baris 3: filter foto + tombol aksi --}}
+                {{-- Baris 3: klasifikasi, filter foto + tombol aksi --}}
                 <div class="flex flex-wrap items-end gap-3">
+                    <div class="w-52">
+                        <label class="block text-xs text-slate-500 mb-1">Klasifikasi</label>
+                        <select name="work_classification"
+                                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">Semua Klasifikasi</option>
+                            <option value="cm" {{ request('work_classification') === 'cm' ? 'selected' : '' }}>CM - Corrective Maintenance</option>
+                            <option value="pm" {{ request('work_classification') === 'pm' ? 'selected' : '' }}>PM - Preventif Maintenance</option>
+                            <option value="dcm" {{ request('work_classification') === 'dcm' ? 'selected' : '' }}>dCM - Deffered Corrective Maintenance</option>
+                            <option value="fabrikasi" {{ request('work_classification') === 'fabrikasi' ? 'selected' : '' }}>Fabrikasi</option>
+                            <option value="sipil" {{ request('work_classification') === 'sipil' ? 'selected' : '' }}>Sipil</option>
+                        </select>
+                    </div>
                     <div class="w-44">
                         <label class="block text-xs text-slate-500 mb-1">Foto</label>
                         <select name="has_photo"
@@ -197,8 +209,7 @@
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Deskripsi</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Lokasi / Alat</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Durasi & Foto</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Tipe & AI</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Status</th>
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Klasifikasi</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 sr-only">Aksi</th>
                     </tr>
                 </thead>
@@ -274,28 +285,14 @@
                                 </p>
                             </td>
 
-                            {{-- Tipe & AI: digabung --}}
-                            <td class="px-5 py-3.5">
-                                <x-status-badge :status="$report->report_type" />
-                                <div class="mt-1">
-                                    @if($report->is_manually_edited)
-                                        <x-status-badge status="edited" label="Edited" />
-                                    @elseif($report->ai_analyzed)
-                                        <span class="text-xs font-medium
-                                            {{ $report->ai_confidence >= 70
-                                                ? 'text-green-600'
-                                                : ($report->ai_confidence >= 40 ? 'text-amber-600' : 'text-red-600') }}">
-                                            AI {{ $report->ai_confidence }}%
-                                        </span>
-                                    @else
-                                        <span class="text-xs text-slate-400">-</span>
-                                    @endif
-                                </div>
-                            </td>
-
-                            {{-- Status --}}
-                            <td class="px-5 py-3.5">
-                                <x-status-badge :status="$report->status" />
+                            {{-- Klasifikasi Pekerjaan --}}
+                            <td class="px-5 py-3.5 whitespace-nowrap">
+                                @if($report->work_classification)
+                                    <x-status-badge :status="$report->work_classification"
+                                        :label="['cm' => 'CM', 'pm' => 'PM', 'dcm' => 'dCM', 'fabrikasi' => 'Fabrikasi', 'sipil' => 'Sipil'][$report->work_classification] ?? null" />
+                                @else
+                                    <span class="text-xs text-slate-400">-</span>
+                                @endif
                             </td>
 
                             {{-- Aksi: hanya ikon mata — klik tidak propagate ke baris --}}
@@ -314,7 +311,7 @@
                     @empty
                         {{-- Empty state dengan ilustrasi SVG sederhana --}}
                         <tr>
-                            <td colspan="9" class="px-5 py-16 text-center">
+                            <td colspan="7" class="px-5 py-16 text-center">
                                 <div class="flex flex-col items-center gap-3">
                                     <svg class="w-12 h-12 text-slate-200" fill="none" viewBox="0 0 48 48">
                                         <rect x="8" y="6" width="32" height="36" rx="4" fill="currentColor" opacity=".4"/>
@@ -329,7 +326,7 @@
                                         <p class="text-sm font-medium text-slate-500">Belum ada laporan ditemukan</p>
                                         <p class="text-xs text-slate-400 mt-1">Coba ubah atau reset filter pencarian</p>
                                     </div>
-                                    @if(request()->hasAny(['search','report_code','asset_code','date_from','date_to','area_id','status','report_type','has_photo']))
+                                    @if(request()->hasAny(['search','report_code','asset_code','date_from','date_to','area_id','status','report_type','work_classification','has_photo']))
                                         <a href="{{ route('reports.index') }}"
                                            class="mt-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 border border-blue-200 hover:bg-blue-50 rounded-lg transition-colors">
                                             Reset filter
@@ -386,6 +383,7 @@ function reportIndex() {
             request('area_id'),
             request('status'),
             request('report_type'),
+            request('work_classification'),
             request('has_photo'),
         ])->filter()->isNotEmpty() ? 'true' : 'false' }},
 
@@ -399,6 +397,7 @@ function reportIndex() {
             request('area_id'),
             request('status'),
             request('report_type'),
+            request('work_classification'),
             request('has_photo'),
         ])->filter()->count() }},
 
