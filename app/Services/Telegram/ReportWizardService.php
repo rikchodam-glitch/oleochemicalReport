@@ -4,6 +4,7 @@ namespace App\Services\Telegram;
 
 use App\Models\Area;
 use App\Models\Asset;
+use App\Models\FunctionalLocation;
 use App\Services\AiService;
 use App\Services\TechIdentSearchService;
 use App\Services\Telegram\CollaboratorSearchService;
@@ -90,6 +91,22 @@ use Illuminate\Support\Facades\Log;
  * berulang di Step 6/7 (dijaga oleh in_array pada prepend foto awal dan
  * append murni pada addPhotoToStep), dan data kolaborator dari hierarki tetap
  * terjaga saat back berulang (hanya wizard:cancel_wizard yang mereset state).
+ *
+ * KESADARAN LOKASI PADA PENCARIAN EQUIPMENT (Sesi 4 — perbaikan pencarian
+ * equipment berbasis lokasi):
+ * processEquipmentSearch() dan handleEquipmentRetype() kini mengirim area_id
+ * yang sudah diketahui di $state (jika ada, mis. hasil lockEquipmentAndAdvance()
+ * atau confirmAiLocationSuggestion() pada percakapan sebelumnya) ke
+ * TechIdentSearchService::search($text, $areaId) — parameter yang sudah lama
+ * tersedia di service tersebut tapi sebelumnya tidak pernah diisi. Jika
+ * area_id belum diketahui (paling umum: saat Step 1 pertama kali berjalan),
+ * $areaId bernilai null dan TechIdentSearchService sendiri yang mencoba
+ * mendeteksi area dari kode/nama lokasi yang disebut eksplisit di teks
+ * (lihat TechIdentSearchService::resolveAreaIdForRanking()). buildCandidateKeyboard()
+ * tidak perlu logika pengurutan tambahan di sini — urutan $candidates yang
+ * diterima dari TechIdentSearchService::search() sudah diprioritaskan
+ * berdasarkan lokasi sebelum dipotong ke 4 kandidat teratas, dan
+ * array_slice() di method ini mempertahankan urutan tersebut apa adanya.
  */
 class ReportWizardService
 {
@@ -121,6 +138,9 @@ class ReportWizardService
 
     /** Batas minimum karakter untuk field root_cause. */
     const ROOT_CAUSE_MIN_LENGTH = 3;
+
+    /** Confidence minimum AI untuk dianggap sebagai kandidat valid. */
+    const AI_CONFIDENCE_MIN = 60;
 
     protected TechIdentSearchService $techIdentSearch;
     protected AiService $aiService;
@@ -312,6 +332,13 @@ class ReportWizardService
      * Jalankan TechIdentSearch dan putuskan alur berikutnya berdasarkan
      * nilai confidence dan jumlah kandidat yang ditemukan.
      *
+     * Sinyal lokasi (Sesi 4): area_id yang sudah diketahui di $state (jika
+     * ada) dikirim ke TechIdentSearchService::search() sebagai parameter
+     * kedua, supaya kandidat di area tersebut diprioritaskan sebelum
+     * kandidat dipotong ke 4 teratas. Jika belum diketahui (umum terjadi
+     * di Step 1 pertama kali), nilainya null dan TechIdentSearchService
+     * akan mencoba mendeteksi sendiri dari teks laporan.
+     *
      * @param  string $chatId Chat ID Telegram
      * @param  array  $state  State wizard saat ini
      * @return array  Respons
@@ -319,7 +346,8 @@ class ReportWizardService
     protected function processEquipmentSearch(string $chatId, array $state): array
     {
         $text    = $state['text'];
-        $results = $this->techIdentSearch->search($text);
+        $areaId  = $state['area_id'] ?? null;
+        $results = $this->techIdentSearch->search($text, $areaId);
 
         Log::info("WizardService: TechIdentSearch result for chat {$chatId}", [
             'confidence'  => $results['confidence'] ?? 0,
@@ -355,26 +383,114 @@ class ReportWizardService
             return $this->appendDateConfirmationNote($response, $state);
         }
 
-        // Tidak ada kandidat: tanya jenis pekerjaan terlebih dahulu
-        // (bisa jadi pekerjaan area, bukan perbaikan alat tertentu)
+        // Regex no_match — coba AI sebagai lapis kedua sebelum tanya manual.
+        // AI mencari berdasarkan deskripsi alat (bukan hanya kode),
+        // dengan data yang sudah di-pre-filter agar hemat token.
+        $aiResult = $this->tryAiEquipmentSearch($chatId, $state, $text, $results);
+        if ($aiResult !== null) {
+            return $aiResult;
+        }
+
+        // AI equipment juga tidak menemukan — coba sebagai laporan lokasi/area
+        // (Sesi 3) sebelum jatuh ke opsi manual.
+        $aiLocationResult = $this->tryAiLocationSearch($chatId, $state, $text);
+        if ($aiLocationResult !== null) {
+            return $aiLocationResult;
+        }
+
+        // AI equipment maupun lokasi sama-sama tidak menemukan — tanya jenis
+        // pekerjaan secara manual seperti alur sebelumnya.
         $state['step']               = self::STEP_EQUIPMENT_CLARIFY;
         $state['search_results']     = $results;
         $state['retype_attempts']    = 0;
         $state['awaiting_work_type'] = true;
         $this->saveState($chatId, $state);
 
-        $response = [
-            'message'  => "Tidak ditemukan kode equipment dari laporan Anda.\n\n" .
-                          "Ini jenis pekerjaan apa?",
-            'keyboard' => array_merge(
-                [
-                    ['text' => 'Perbaikan alat tertentu', 'callback_data' => 'work_type:equipment'],
-                    ['text' => 'Pekerjaan area/section',   'callback_data' => 'work_type:area'],
-                ],
-                $this->navigationButtons($state)
-            ),
+        return $this->appendDateConfirmationNote($this->buildManualWorkTypePrompt($state), $state);
+    }
+
+    /**
+     * Coba cari equipment via AI (lapis kedua setelah regex no_match).
+     *
+     * Memanggil AiService::searchEquipment() yang sudah menggunakan
+     * pre-filter keyword-based dan prompt yang disetel untuk mencocokkan
+     * description (bukan hanya tech_ident_no).
+     *
+     * Jika AI menemukan kandidat dengan confidence memadai, state wizard
+     * akan diperbarui dan keyboard kandidat ditampilkan ke teknisi.
+     * Jika tidak, mengembalikan null agar pemanggil bisa lanjut ke
+     * fallback berikutnya.
+     *
+     * @param  string $chatId       Chat ID Telegram
+     * @param  array  $state        State wizard saat ini
+     * @param  string $text         Teks laporan dari teknisi
+     * @param  array  $regexResults Hasil pencarian regex sebelumnya
+     * @return array|null Respons (message + keyboard) atau null jika AI tidak menemukan
+     */
+    protected function tryAiEquipmentSearch(string $chatId, array $state, string $text, array $regexResults): ?array
+    {
+        $areaId = $state['area_id'] ?? null;
+        $aiResult = $this->aiService->searchEquipment($text, $areaId);
+
+        if ($aiResult === null) {
+            Log::info("WizardService: AI equipment search returned null for chat {$chatId}", [
+                'reason' => 'no_provider_or_low_confidence_or_empty_candidates',
+            ]);
+            return null;
+        }
+
+        $aiCandidates  = $aiResult['candidates'] ?? [];
+        $aiConfidence  = $aiResult['confidence'] ?? 0;
+        $aiStatus      = $aiResult['status'] ?? 'confirm';
+        $aiReasoning   = $aiResult['ai_message'] ?? $aiResult['reasoning'] ?? null;
+
+        if (empty($aiCandidates)) {
+            Log::info("WizardService: AI equipment search returned zero candidates for chat {$chatId}");
+            return null;
+        }
+
+        Log::info("WizardService: AI equipment search found candidates for chat {$chatId}", [
+            'ai_confidence'  => $aiConfidence,
+            'candidate_count' => count($aiCandidates),
+            'ai_status'       => $aiStatus,
+        ]);
+
+        $aiSearchResults = [
+            'status'     => $aiStatus,
+            'pass'       => $aiResult['pass'] ?? 'ai_description',
+            'confidence' => $aiConfidence,
+            'candidates' => $aiCandidates,
         ];
 
+        if ($aiStatus === 'auto_accept' && count($aiCandidates) === 1) {
+            $candidate = $aiCandidates[0];
+            $state['pending_equipment_id']      = $candidate['id'] ?? null;
+            $state['pending_equipment_ident']   = $candidate['tech_ident_no'] ?? null;
+            $state['pending_equipment_funcloc'] = $candidate['functional_loc'] ?? null;
+            $state['search_confidence']         = $aiConfidence;
+            $state['search_results']            = $aiSearchResults;
+            $state['ai_suggestion_source']      = true;
+            $state['ai_suggestion_type']        = 'equipment';
+            $state['ai_suggestion_reasoning']   = $aiReasoning;
+            $state['step']                      = self::STEP_EQUIPMENT_CLARIFY;
+            $this->saveState($chatId, $state);
+
+            $response = $this->buildEquipmentConfirmKeyboard($candidate, $aiConfidence, $state);
+            $response['message'] = "_AI menemukan kandidat berdasarkan deskripsi alat._\n\n" . $response['message'];
+            return $this->appendDateConfirmationNote($response, $state);
+        }
+
+        $state['step']                     = self::STEP_EQUIPMENT_CLARIFY;
+        $state['search_results']           = $aiSearchResults;
+        $state['retype_attempts']          = 0;
+        $state['ai_suggestion_source']      = true;
+        $state['ai_suggestion_type']        = 'equipment';
+        $state['ai_suggestion_reasoning']   = $aiReasoning;
+        $this->saveState($chatId, $state);
+
+        $response = $this->buildCandidateKeyboard($aiCandidates, $aiSearchResults, $state);
+        $note = $aiReasoning ?: 'AI mencari berdasarkan deskripsi alat.';
+        $response['message'] = "_AI menemukan kandidat: {$note}_\n\n" . $response['message'];
         return $this->appendDateConfirmationNote($response, $state);
     }
 
@@ -420,8 +536,160 @@ class ReportWizardService
         return $response;
     }
 
+    // =========================================================
+    // SESI 3 — PENCARIAN LOKASI VIA AI (functional_locations)
+    // Lapis ketiga, dijalankan setelah regex DAN AI equipment sama-sama
+    // tidak menemukan hasil.
+    // =========================================================
+
+    /**
+     * Coba cari lokasi/area kerja via AI (lapis ketiga — dijalankan setelah
+     * pencarian equipment via regex maupun AI sama-sama tidak menemukan hasil).
+     *
+     * Method ini khusus menangani laporan yang menyebut nama lokasi/pekerjaan
+     * area (mis. "penggantian lantai lab") tanpa merujuk ke alat tertentu.
+     * Berbeda dengan tryAiEquipmentSearch() yang bisa menampilkan beberapa
+     * kandidat sekaligus, di sini hanya kandidat teratas yang ditawarkan,
+     * karena lokasi tidak memiliki kode presisi seperti TechIdentNo untuk
+     * membedakan beberapa opsi.
+     *
+     * Sesuai kesepakatan: hasil AI TIDAK langsung dikunci — teknisi tetap
+     * harus konfirmasi Ya/Tidak lewat buildLocationConfirmKeyboard() sebelum
+     * report_type/area_id/funcloc_id disimpan ke state.
+     *
+     * CATATAN INTEGRASI (Sesi 4): callback 'ai_location:confirm' dan
+     * 'ai_location:reject' yang dipasang pada keyboard di sini belum
+     * dirutekan ke confirmAiLocationSuggestion()/rejectAiLocationSuggestion().
+     * Routing tersebut wajib ditambahkan di
+     * WizardCallbackHandlerTrait::routeCallback() pada Sesi 4, karena trait
+     * itu belum termasuk file yang disentuh di Sesi 3.
+     *
+     * @param  string $chatId Chat ID Telegram
+     * @param  array  $state  State wizard saat ini
+     * @param  string $text   Teks laporan dari teknisi
+     * @return array|null Respons (message + keyboard) atau null jika AI tidak menemukan lokasi
+     */
+    protected function tryAiLocationSearch(string $chatId, array $state, string $text): ?array
+    {
+        $areaId   = $state['area_id'] ?? null;
+        $aiResult = $this->aiService->searchLocation($text, $areaId);
+
+        if ($aiResult === null) {
+            Log::info("WizardService: AI location search returned null for chat {$chatId}", [
+                'reason' => 'no_provider_or_low_confidence_or_empty_candidates',
+            ]);
+            return null;
+        }
+
+        $aiCandidates = $aiResult['candidates'] ?? [];
+        $aiConfidence = $aiResult['confidence'] ?? 0;
+
+        if (empty($aiCandidates)) {
+            Log::info("WizardService: AI location search returned zero candidates for chat {$chatId}");
+            return null;
+        }
+
+        // Hanya kandidat teratas yang ditawarkan — lihat catatan di docblock.
+        $topCandidate = $aiCandidates[0];
+
+        Log::info("WizardService: AI location search found candidate for chat {$chatId}", [
+            'ai_confidence' => $aiConfidence,
+            'funcloc_id'    => $topCandidate['id'] ?? null,
+        ]);
+
+        $state['pending_location_funcloc_id']  = $topCandidate['id'] ?? null;
+        $state['pending_location_area_id']     = $topCandidate['area_id'] ?? null;
+        $state['pending_location_sub_area_id'] = $topCandidate['sub_area_id'] ?? null;
+        $state['pending_location_label']       = $topCandidate['name'] ?? ($topCandidate['code'] ?? 'Lokasi');
+        $state['search_confidence']            = $aiConfidence;
+        $state['ai_suggestion_source']         = true;
+        $state['ai_suggestion_type']           = 'area';
+        $state['ai_suggestion_reasoning']      = $aiResult['reasoning'] ?? $aiResult['ai_message'] ?? null;
+        $state['step']                         = self::STEP_EQUIPMENT_CLARIFY;
+        $this->saveState($chatId, $state);
+
+        $response = $this->buildLocationConfirmKeyboard($topCandidate, $aiConfidence, $state);
+        return $this->appendDateConfirmationNote($response, $state);
+    }
+
+    /**
+     * Bangun pesan konfirmasi Ya/Tidak untuk satu kandidat lokasi/area hasil AI.
+     *
+     * Berbeda dari buildCandidateKeyboard() (equipment, bisa menampilkan
+     * beberapa pilihan sekaligus), lokasi hanya menawarkan satu kandidat
+     * teratas karena tidak ada kode presisi untuk membedakan beberapa opsi.
+     *
+     * @param  array $candidate  Kandidat lokasi dari AiService::searchLocation()
+     * @param  int   $confidence Confidence AI (0-100)
+     * @param  array $state      State wizard saat ini (untuk navigationButtons)
+     * @return array Respons dengan message dan keyboard konfirmasi
+     */
+    protected function buildLocationConfirmKeyboard(array $candidate, int $confidence, array $state): array
+    {
+        $name       = $candidate['name'] ?? '-';
+        $code       = $candidate['code'] ?? '-';
+        $levelLabel = $candidate['level_label'] ?? 'Lokasi';
+        $areaCode   = $candidate['area_code'] ?? null;
+
+        $detailLine = "{$levelLabel}: {$name} ({$code})";
+        if ($areaCode) {
+            $detailLine .= " — Area {$areaCode}";
+        }
+
+        $keyboard = array_merge(
+            [
+                ['text' => 'Ya, ini lokasinya',      'callback_data' => 'ai_location:confirm'],
+                ['text' => 'Bukan, cari cara lain',  'callback_data' => 'ai_location:reject'],
+            ],
+            $this->navigationButtons($state)
+        );
+
+        return [
+            'message'  => "_AI mendeteksi laporan ini sebagai pekerjaan area/lokasi (bukan alat tertentu)._\n\n" .
+                          "{$detailLine}\n_(Kemiripan: {$confidence}%)_\n\n" .
+                          "Apakah ini lokasi yang dimaksud?",
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Bangun pesan default saat regex maupun AI (equipment & lokasi) sama-sama
+     * tidak menemukan hasil — tanya jenis pekerjaan secara manual ke teknisi.
+     *
+     * Diekstrak menjadi method terpisah (sebelumnya inline di
+     * processEquipmentSearch()) agar bisa dipakai ulang oleh
+     * rejectAiLocationSuggestion() ketika teknisi menolak saran lokasi AI.
+     *
+     * @param  array $state State wizard saat ini
+     * @return array Respons dengan message dan keyboard pilihan jenis pekerjaan
+     */
+    protected function buildManualWorkTypePrompt(array $state): array
+    {
+        return [
+            'message'  => "Tidak ditemukan kode equipment atau lokasi dari laporan Anda.\n\n" .
+                          "Ini jenis pekerjaan apa?",
+            'keyboard' => array_merge(
+                [
+                    ['text' => 'Perbaikan alat tertentu', 'callback_data' => 'work_type:equipment'],
+                    ['text' => 'Pekerjaan area/section',   'callback_data' => 'work_type:area'],
+                ],
+                $this->navigationButtons($state)
+            ),
+        ];
+    }
+
     /**
      * Bangun pesan keyboard dari kandidat hasil TechIdentSearch (confidence 80-94%).
+     *
+     * Tidak melakukan pengurutan ulang di sini (Sesi 4): urutan $candidates
+     * yang diterima sudah diprioritaskan berdasarkan lokasi oleh
+     * TechIdentSearchService::search() (segmen digit pembeda lokasi +
+     * area yang terdeteksi/diketahui) sebelum dipotong ke 4 kandidat
+     * teratas di sana. array_slice() di bawah ini hanya menjaga agar
+     * tidak menampilkan lebih dari 4 tombol, urutannya tetap dipertahankan.
+     * Label tombol selalu menyertakan functional_loc ($fl) agar teknisi
+     * bisa membedakan kandidat yang mirip tapi beda lokasi (mis. BD01 vs
+     * BD02) dan mengoreksi manual bila deteksi lokasi ternyata masih ambigu.
      *
      * @param  array $candidates Daftar kandidat dari TechIdentSearch
      * @param  array $results    Hasil lengkap TechIdentSearch (termasuk confidence)
@@ -478,6 +746,11 @@ class ReportWizardService
      * Teknisi mengetik ulang kode equipment (Sub-alur B, maks 2 kali).
      * Jika ClarificationService aktif, teks diteruskan ke sana.
      *
+     * Sinyal lokasi (Sesi 4): sama seperti processEquipmentSearch(),
+     * area_id yang sudah diketahui di $state (jika ada) dikirim ke
+     * TechIdentSearchService::search() supaya kandidat tulis-ulang juga
+     * diprioritaskan berdasarkan lokasi.
+     *
      * @param  string $chatId Chat ID Telegram
      * @param  string $text   Input teks dari teknisi
      * @param  array  $state  State wizard saat ini
@@ -492,7 +765,8 @@ class ReportWizardService
         $attempts                 = ($state['retype_attempts'] ?? 0) + 1;
         $state['retype_attempts'] = $attempts;
 
-        $results    = $this->techIdentSearch->search($text);
+        $areaId     = $state['area_id'] ?? null;
+        $results    = $this->techIdentSearch->search($text, $areaId);
         $confidence = $results['confidence'] ?? 0;
         $candidates = $results['candidates'] ?? [];
         $exactMatch = $results['exact_match'] ?? null;
@@ -515,7 +789,21 @@ class ReportWizardService
             return $this->buildCandidateKeyboard($candidates, $results, $state);
         }
 
-        // Gagal dan sudah 2 kali: masuk hierarki (Sub-alur C)
+        // Gagal regex — coba AI sebelum hierarki manual.
+        // AI berguna saat teknisi menulis ulang dengan deskripsi (bukan kode).
+        $aiResult = $this->tryAiEquipmentSearch($chatId, $state, $text, $results);
+        if ($aiResult !== null) {
+            return $aiResult;
+        }
+
+        // AI equipment juga gagal — coba sebagai laporan lokasi/area (Sesi 3)
+        // sebelum jatuh ke hierarki manual.
+        $aiLocationResult = $this->tryAiLocationSearch($chatId, $state, $text);
+        if ($aiLocationResult !== null) {
+            return $aiLocationResult;
+        }
+
+        // Gagal regex + AI (equipment & lokasi), dan sudah 2 kali: masuk hierarki (Sub-alur C)
         if ($attempts >= 2) {
             $state['retype_attempts'] = $attempts;
             $this->saveState($chatId, $state);
@@ -589,6 +877,107 @@ class ReportWizardService
         }
 
         return $this->advanceToWorkDuration($chatId, $state);
+    }
+
+    /**
+     * Teknisi mengonfirmasi (Ya) kandidat lokasi/area hasil AI (Sesi 3).
+     *
+     * Mengunci is_area_work=true beserta funcloc_id/funcloc_code/funcloc_name
+     * dan area_id/area_code dari kandidat yang tersimpan di state
+     * (equipment_id tetap kosong/NULL), lalu maju ke Step 4 (durasi kerja)
+     * seperti alur normal penguncian equipment.
+     *
+     * PERBAIKAN SESI 4: versi Sesi 3 sebelumnya mengisi $state['report_type'],
+     * padahal WizardReportSaverTrait::saveReport() menentukan report_type dari
+     * key 'is_area_work' (bukan 'report_type') -- akibatnya laporan hasil
+     * konfirmasi lokasi AI akan tersimpan sebagai 'general', bukan 'area_work'.
+     * funcloc_code/funcloc_name (dipakai buildConfirmationSummary() dan pesan
+     * sukses di saveReport()) juga belum pernah diisi sebelumnya. Kedua hal
+     * ini diperbaiki di sini dengan mengambil ulang model FunctionalLocation
+     * dari funcloc_id yang tersimpan, sama seperti lockEquipmentAndAdvance()
+     * mengambil ulang model Area.
+     *
+     * Sugesti AI dicatat lewat logAiSuggestionDecision() (WizardCallbackHandlerTrait)
+     * sebagai diterima (accepted) sebelum key sementaranya dibersihkan, untuk
+     * dipersis ke tabel report_ai_suggestions saat laporan disimpan.
+     *
+     * Dipanggil dari callback 'ai_location:confirm' (WizardCallbackHandlerTrait::routeCallback()).
+     *
+     * @param  string $chatId Chat ID Telegram
+     * @param  array  $state  State wizard saat ini
+     * @return array  Respons
+     */
+    protected function confirmAiLocationSuggestion(string $chatId, array $state): array
+    {
+        $funcLocId = $state['pending_location_funcloc_id'] ?? null;
+        $areaId    = $state['pending_location_area_id']    ?? null;
+
+        if (!$funcLocId) {
+            Log::warning("WizardService: confirmAiLocationSuggestion dipanggil tanpa pending_location_funcloc_id untuk chat {$chatId}");
+            return $this->errorResponse('Data lokasi tidak ditemukan. Silakan mulai ulang laporan.');
+        }
+
+        $funcLoc = FunctionalLocation::find($funcLocId);
+        if (!$funcLoc) {
+            Log::warning("WizardService: FunctionalLocation id {$funcLocId} tidak ditemukan saat confirmAiLocationSuggestion untuk chat {$chatId}");
+            return $this->errorResponse('Data lokasi tidak ditemukan. Silakan mulai ulang laporan.');
+        }
+
+        $state['is_area_work']    = true;
+        $state['equipment_id']    = null;
+        $state['equipment_ident'] = null;
+        $state['funcloc_id']      = $funcLoc->id;
+        $state['funcloc_code']    = $funcLoc->code;
+        $state['funcloc_name']    = $funcLoc->name;
+        $state['area_id']         = $areaId;
+
+        if ($areaId) {
+            $area                = Area::find($areaId);
+            $state['area_code']  = $area ? $area->code : null;
+        }
+
+        $state = $this->logAiSuggestionDecision($state, 'area', null, $areaId, true);
+
+        unset(
+            $state['pending_location_funcloc_id'],
+            $state['pending_location_area_id'],
+            $state['pending_location_sub_area_id'],
+            $state['pending_location_label']
+        );
+
+        return $this->advanceToWorkDuration($chatId, $state);
+    }
+
+    /**
+     * Teknisi menolak (Tidak) kandidat lokasi/area hasil AI (Sesi 3).
+     *
+     * Bersihkan data pending, catat sugesti AI sebagai ditolak lewat
+     * logAiSuggestionDecision(), lalu tampilkan opsi jenis pekerjaan manual
+     * seperti biasa (buildManualWorkTypePrompt()).
+     *
+     * Dipanggil dari callback 'ai_location:reject' (WizardCallbackHandlerTrait::routeCallback()).
+     *
+     * @param  string $chatId Chat ID Telegram
+     * @param  array  $state  State wizard saat ini
+     * @return array  Respons
+     */
+    protected function rejectAiLocationSuggestion(string $chatId, array $state): array
+    {
+        $areaId = $state['pending_location_area_id'] ?? null;
+        $state  = $this->logAiSuggestionDecision($state, 'area', null, $areaId, false);
+
+        unset(
+            $state['pending_location_funcloc_id'],
+            $state['pending_location_area_id'],
+            $state['pending_location_sub_area_id'],
+            $state['pending_location_label']
+        );
+
+        $state['step']               = self::STEP_EQUIPMENT_CLARIFY;
+        $state['awaiting_work_type'] = true;
+        $this->saveState($chatId, $state);
+
+        return $this->buildManualWorkTypePrompt($state);
     }
 
     // =========================================================

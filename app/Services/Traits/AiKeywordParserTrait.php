@@ -15,7 +15,7 @@ use App\Models\Asset;
  *
  * Method yang tersedia:
  *   - analyzeWithKeywords()         : Analisis teks laporan dengan keyword matching
- *   - detectArea()                  : Deteksi kode area dari teks
+ *   - detectArea()                  : Deteksi kode/nama area dari teks
  *   - detectAssetByTechIdent()      : Cari asset berdasarkan TechIdentNo (multi-pass)
  *   - firstMatch()                  : Helper query first-match dengan kondisi kolom
  *   - detectReportType()            : Tentukan tipe laporan dari kata kunci
@@ -107,12 +107,25 @@ trait AiKeywordParserTrait
     }
 
     /**
-     * Deteksi area dari teks — cari kode area yang disebut.
+     * Deteksi area dari teks — cari kode ATAU nama area yang disebut.
      *
-     * Mendukung format dengan/tanpa leading zero:
+     * Mendukung format kode dengan/tanpa leading zero:
      *   "BD01", "BD1", "RG1", "RG01", "EPE", "TF1", dll.
+     * Juga mendukung nama Area yang disebut eksplisit (mis. "Boiler Deaerator"),
+     * untuk kasus teknisi menulis nama lokasi alih-alih kode singkatnya.
      *
-     * Pencarian dilakukan dalam 3 pass dari paling spesifik ke paling longgar.
+     * Pencarian dilakukan dalam 4 pass dari paling spesifik ke paling longgar:
+     * 3 pass pertama berbasis kode (perilaku lama, tidak berubah), pass ke-4
+     * berbasis nama Area (word boundary, diurutkan dari nama terpanjang agar
+     * nama yang lebih spesifik menang lebih dulu).
+     *
+     * Catatan desain: method ini sengaja TIDAK mencocokkan SubArea. Struktur
+     * hasil ['id','code','name'] merepresentasikan Area, dan dipakai apa
+     * adanya sebagai detected_area/suggested_area oleh analyzeWithKeywords().
+     * Resolusi lokasi sampai level SubArea sudah tercakup lewat
+     * detectAssetByTechIdent(), yang mencari asset spesifik dan otomatis
+     * membawa sub_area_id-nya — menambah SubArea di sini hanya akan
+     * mengaburkan kontrak data tanpa kebutuhan nyata dari laporan bug ini.
      *
      * @param string $text Teks laporan
      * @return array|null Array berisi ['id', 'code', 'name'] atau null jika tidak ditemukan
@@ -168,6 +181,21 @@ trait AiKeywordParserTrait
             }
         }
 
+        // PASS 4: Cocokkan nama Area yang disebut eksplisit di teks (mis. "Boiler
+        // Deaerator"), untuk kasus teknisi menulis nama lokasi, bukan kode singkatnya.
+        // Diurutkan dari nama terpanjang agar nama yang lebih spesifik menang duluan
+        // (mis. "Boiler Deaerator 2" tidak keburu cocok ke nama "Boiler" yang lebih umum).
+        $sortedByName = $areas->filter(fn($a) => !empty(trim((string) $a->name)))
+            ->sortByDesc(fn($a) => strlen($a->name));
+
+        foreach ($sortedByName as $area) {
+            $name = trim(strtoupper($area->name));
+
+            if (preg_match('/\b' . preg_quote($name, '/') . '\b/', $textUpper)) {
+                return ['id' => $area->id, 'code' => $area->code, 'name' => $area->name];
+            }
+        }
+
         return null;
     }
 
@@ -200,15 +228,28 @@ trait AiKeywordParserTrait
         // Urutkan: yang lebih panjang/kompleks lebih diprioritaskan
         usort($candidates, fn($a, $b) => strlen($b) <=> strlen($a));
 
-        // Singkirkan kode area dari kandidat — jangan jadikan area code sebagai equipment
-        $areaCodes      = Area::pluck('code')->map(fn($c) => strtoupper($c))->toArray();
+        // Singkirkan kode DAN nama area dari kandidat — jangan jadikan area
+        // code/name sebagai equipment. Nama area disertakan di sini agar
+        // konsisten dengan perluasan detectArea() (PASS 4) di atas: nama
+        // lokasi yang kini ikut dikenali tidak boleh malah lolos jadi
+        // token pencarian equipment (mis. jika nama Area kebetulan berupa
+        // satu kata tanpa spasi yang mirip kode). Nama beberapa kata tidak
+        // akan pernah cocok di sini karena regex ekstraksi kandidat di atas
+        // tidak menangkap spasi — perbandingan tetap aman dilakukan.
+        $areaRows       = Area::get(['code', 'name']);
+        $areaCodes      = $areaRows->map(fn($a) => strtoupper($a->code))->toArray();
+        $areaNames      = $areaRows->pluck('name')
+            ->filter(fn($n) => trim((string) $n) !== '')
+            ->map(fn($n) => strtoupper(trim($n)))
+            ->values()
+            ->toArray();
         $shortAreaCodes = [];
         foreach ($areaCodes as $ac) {
             if (preg_match('/^([A-Z]+)0(\d)$/', $ac, $m)) {
                 $shortAreaCodes[] = $m[1] . $m[2]; // "BD1" dari "BD01"
             }
         }
-        $allAreaVariants = array_merge($areaCodes, $shortAreaCodes);
+        $allAreaVariants = array_merge($areaCodes, $shortAreaCodes, $areaNames);
 
         $candidates = array_values(array_filter($candidates, function ($w) use ($allAreaVariants) {
             return !in_array($w, $allAreaVariants);

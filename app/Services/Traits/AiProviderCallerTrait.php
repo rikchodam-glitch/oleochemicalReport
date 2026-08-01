@@ -6,6 +6,7 @@ use App\Models\AiProvider;
 use App\Models\AiUsageLog;
 use App\Models\Area;
 use App\Models\Asset;
+use App\Models\FunctionalLocation;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -17,19 +18,37 @@ use Illuminate\Support\Facades\Log;
  * dan pembersihan respons dari format markdown.
  *
  * Method yang tersedia:
- *   - analyzeWithAi()    : Analisis teks laporan via AI provider yang dipilih
- *   - callGroq()         : Kirim request ke Groq API dan catat penggunaan token
- *   - stripJsonFence()   : Hapus markdown code fence dari respons Groq
- *   - getBestProvider()  : Pilih provider AI terbaik yang tersedia (healthy + ada kuota)
+ *   - analyzeWithAi()              : Analisis teks laporan via AI provider yang dipilih
+ *   - searchEquipmentWithAi()      : Pencarian equipment via AI (lapis kedua setelah regex no_match)
+ *   - prefilterAssetCandidates()   : Pre-filter kandidat asset dari teks sebelum dikirim ke AI
+ *   - searchLocationWithAi()       : Pencarian lokasi/area (functional_locations) via AI
+ *                                    (lapis ketiga, setelah pencarian equipment AI juga gagal)
+ *   - prefilterLocationCandidates(): Pre-filter kandidat functional_location dari teks
+ *   - callGroq()                   : Kirim request ke Groq API dan catat penggunaan token
+ *   - stripJsonFence()             : Hapus markdown code fence dari respons Groq
+ *   - getBestProvider()            : Pilih provider AI terbaik yang tersedia (healthy + ada kuota)
  */
 trait AiProviderCallerTrait
 {
     /**
+     * Jumlah maksimum kandidat asset yang dikirim ke prompt AI.
+     * Pre-filter keyword-based akan memangkas ribuan asset menjadi maksimum
+     * sebanyak ini, sehingga token yang dikirim tetap hemat.
+     */
+    const MAX_ASSET_CANDIDATES_FOR_AI = 80;
+
+    /**
+     * Jumlah maksimum kandidat functional_location yang dikirim ke prompt AI,
+     * dengan alasan yang sama seperti MAX_ASSET_CANDIDATES_FOR_AI.
+     */
+    const MAX_LOCATION_CANDIDATES_FOR_AI = 60;
+
+    /**
      * Analisis teks laporan menggunakan provider AI (Groq/LLM).
      *
      * Membangun prompt dengan daftar area dan equipment dari database,
-     * lalu meneruskannya ke Groq. Mengembalikan null jika tidak ada provider
-     * yang tersedia atau respons tidak dapat diparse.
+     * lalu meneruskannya ke Groq. Equipment dikirim dalam bentuk pre-filtered
+     * (keyword-based), bukan dump seluruh tabel, untuk menghemat token.
      *
      * Catatan bug yang sudah diperbaiki:
      *   BUG 1 — relasi $a->area dan $a->subArea bisa null, menyebabkan
@@ -55,18 +74,21 @@ trait AiProviderCallerTrait
                 ->values()
                 ->implode('; ');
 
-            // BUG 1 FIX — gunakan null-safe operator (?->) dan nilai default
-            // agar tidak crash ketika asset tidak memiliki relasi area / subArea.
-            $equipments = Asset::with(['area', 'subArea'])
-                ->whereNotNull('tech_ident_no')
-                ->limit(300)
-                ->get()
+            // Pre-filter kandidat equipment berdasarkan keyword dari teks,
+            // bukan dump seluruh tabel (sebelumnya limit(300) tanpa filter)
+            $candidates = $this->prefilterAssetCandidates($text);
+            $equipments = collect($candidates)
                 ->map(function ($a) {
-                    $areaCode    = $a->area?->code    ?? '-';
-                    $subAreaName = $a->subArea?->name ?? '-';
-                    return "ID:{$a->id} | TechIdentNo:{$a->tech_ident_no} | FuncLoc:{$a->functional_loc} | Desc:{$a->description} | Area:{$areaCode} | SubArea:{$subAreaName}";
+                    $areaCode    = $a['area_code']    ?? '-';
+                    $subAreaName = $a['sub_area_name'] ?? '-';
+                    return "ID:{$a['id']} | TechIdentNo:{$a['tech_ident_no']} | FuncLoc:{$a['functional_loc']} | Desc:{$a['description']} | Area:{$areaCode} | SubArea:{$subAreaName}";
                 })
                 ->implode("\n");
+
+            Log::info('AI Service: Pre-filtered candidates sent to AI', [
+                'total_assets_in_db' => Asset::count(),
+                'prefiltered_count'  => count($candidates),
+            ]);
 
             $prompt = <<<PROMPT
 Kamu adalah asisten analis laporan maintenance pabrik oleochemical.
@@ -76,21 +98,28 @@ Teks laporan: "{$text}"
 DAFTAR AREA (kode dan nama):
 {$areas}
 
-DAFTAR EQUIPMENT (TechIdentNo adalah KUNCI UTAMA untuk identifikasi alat):
+DAFTAR EQUIPMENT (TechIdentNo dan Description adalah DUA SUMBER PENTING untuk identifikasi alat):
 {$equipments}
 
 ATURAN PENTING:
-1. Teknisi selalu menyebut TechIdentNo alat, BUKAN equipment_no atau description.
+1. Teknisi bisa menyebut TechIdentNo alat ATAU mendeskripsikan alat dengan kata-kata bebas.
 2. TechIdentNo bisa berupa: "6163V7", "2-6153P1", "AC-TF-1-1", "V7", "6153P1", dll.
-3. Jika teks mengandung angka/huruf yang mirip bagian dari TechIdentNo (misal "V7", "6163"), cari partial match di daftar equipment.
-4. Jika kata "V7" disebut, cari TechIdentNo yang mengandung "V7" di tabel equipment.
+3. Jika teks mengandung angka/huruf yang mirip bagian dari TechIdentNo, cari partial match di daftar equipment.
+4. JIKA TIDAK ADA TechIdentNo yang cocok, coba cocokkan kata-kata di teks laporan dengan kolom Description.
+   Contoh: teks "motor bleaching 1" harus cocok dengan Description yang mengandung kata "MOTOR" dan "Bleaching".
+5. Deskripsi alat seringkali berisi nama umum komponen (Motor, Pompa, Valve, Sensor, dll.) yang bisa
+   dicocokkan meskipun TechIdentNo tidak disebut sama sekali.
 
 TUGAS:
-1. Cari AREA kerja: cocokkan teks dengan kode area (BD1, BD01, RG1, RG01, EPE, TF1, MD1, EN1, UT1, dll). Jika ada yang cocok, isi detected_area dengan kode areanya. Jika tidak ada, null.
-2. Cari EQUIPMENT: cocokkan teks dengan TechIdentNo (prioritas utama) atau FunctionalLoc. Cari partial match jika user menyebut kode parsial seperti "V7", "6163", "P1". Jika user menyebut "6163V7", cari yang cocok dengan TechIdentNo yang mengandung "6163V7".
+1. Cari AREA kerja: cocokkan teks dengan kode area (BD1, BD01, RG1, RG01, EPE, TF1, MD1, EN1, UT1, dll).
+   Jika ada yang cocok, isi detected_area dengan kode areanya. Jika tidak, null.
+2. Cari EQUIPMENT: cocokkan teks dengan TechIdentNo (prioritas utama) ATAU dengan Description
+   (jika TechIdentNo tidak disebut). Cari partial match jika user menyebut kode parsial atau nama komponen.
 3. Jika equipment ditemukan, isi detected_equipment_id dengan ID numeric dari equipment tersebut.
-4. Tentukan jenis laporan: equipment_repair (jika ada equipment disebut), area_work (jika hanya area/pekerjaan bangunan), atau general.
-5. confidence: 0-100. Beri tinggi (80-100) jika equipment cocok exact / jelas. Rendah (<40) jika hanya partial match area.
+4. Tentukan jenis laporan: equipment_repair (jika ada equipment disebut),
+   area_work (jika hanya area/pekerjaan bangunan), atau general.
+5. confidence: 0-100. Beri tinggi (80-100) jika equipment cocok exact/jelas.
+   Rendah (<40) jika hanya partial match atau tidak yakin.
 6. Jika informasi cukup jelas (confidence >= 60), set needs_clarification=false.
 7. Jika sama sekali tidak jelas, set needs_clarification=true.
 
@@ -130,6 +159,565 @@ PROMPT;
         }
 
         return null;
+    }
+
+    /**
+     * Pencarian equipment via AI — lapis kedua setelah regex (TechIdentSearchService)
+     * mengembalikan no_match. Method ini khusus mencari equipment berdasarkan
+     * deskripsi alat yang disebut teknisi dalam bahasa alami.
+     *
+     * Berbeda dengan analyzeWithAi() yang mencari area+equipment+tipe laporan sekaligus,
+     * method ini fokus hanya pada pencocokan equipment. Data yang dikirim ke AI
+     * sudah di-pre-filter berdasarkan keyword dari teks.
+     *
+     * Mengembalikan hasil dengan format yang konsisten dengan TechIdentSearchService
+     * agar bisa langsung digunakan oleh buildCandidateKeyboard() dan flow konfirmasi.
+     *
+     * @param  string   $text   Teks laporan dari teknisi
+     * @param  int|null $areaId Batasi pencarian ke area tertentu jika diketahui
+     * @return array|null Hasil pencarian (format: status, candidates, confidence) atau null jika gagal
+     */
+    protected function searchEquipmentWithAi(string $text, ?int $areaId = null): ?array
+    {
+        $provider = $this->getBestProvider();
+        if (!$provider) {
+            Log::info('AI Service: No provider available for equipment search');
+            return null;
+        }
+
+        try {
+            // Pre-filter kandidat berdasarkan keyword dari teks
+            $candidates = $this->prefilterAssetCandidates($text, $areaId);
+
+            if (empty($candidates)) {
+                Log::info('AI Service: Pre-filter returned zero candidates, skip AI call');
+                return null;
+            }
+
+            $equipments = collect($candidates)
+                ->map(function ($a) {
+                    $areaCode    = $a['area_code']    ?? '-';
+                    $subAreaName = $a['sub_area_name'] ?? '-';
+                    return "ID:{$a['id']} | TechIdentNo:{$a['tech_ident_no']} | FuncLoc:{$a['functional_loc']} | Desc:{$a['description']} | Area:{$areaCode} | SubArea:{$subAreaName}";
+                })
+                ->implode("\n");
+
+            Log::info('AI Service: Equipment search pre-filtered candidates', [
+                'total_assets_in_db' => Asset::count(),
+                'prefiltered_count'  => count($candidates),
+                'area_id'            => $areaId,
+            ]);
+
+            $prompt = <<<PROMPT
+Kamu adalah asisten pencarian equipment di pabrik oleochemical.
+
+Teks laporan teknisi: "{$text}"
+
+DAFTAR KANDIDAT EQUIPMENT:
+{$equipments}
+
+TUGAS KAMU:
+1. Baca teks laporan baik-baik. Teknisi mungkin menyebut:
+   - TechIdentNo (kode alat) seperti "6163V7", "V7", "2-6153P1"
+   - Nama/deskripsi alat seperti "motor bleaching 1", "pompa transfer", "AC ruang panel"
+   - Kombinasi keduanya
+2. Cocokkan dengan daftar kandidat di atas. Prioritas pencocokan:
+   a. TechIdentNo exact atau partial match (jika teknisi menyebut kode)
+   b. Description mengandung kata-kata yang disebut teknisi (jika teknisi mendeskripsikan alat)
+3. Jika TIDAK YAKIN (confidence < 60), lebih baik mengembalikan candidates kosong daripada menebak.
+4. Jika YAKIN (confidence >= 60), isi candidates dengan daftar ID equipment yang paling cocok (maks 4 kandidat).
+
+ATURAN OUTPUT:
+- candidates: array of objects dengan field "id" (numeric), "tech_ident_no", "description",
+  "functional_loc", "confidence" (0-100 individual)
+- message: penjelasan singkat dalam Bahasa Indonesia kenapa kandidat tersebut dipilih
+
+Balas HANYA JSON (tanpa markdown, tanpa tag):
+{
+  "status": "auto_accept|confirm|no_match",
+  "confidence": 0-100,
+  "candidates": [
+    {"id": 123, "tech_ident_no": "xxx", "description": "xxx", "functional_loc": "xxx", "confidence": 90}
+  ],
+  "message": "penjelasan singkat dalam Bahasa Indonesia"
+}
+PROMPT;
+
+            $response = $this->callGroq($provider, $prompt);
+            if ($response) {
+                $cleaned = $this->stripJsonFence($response);
+                $parsed  = json_decode($cleaned, true);
+
+                if ($parsed && isset($parsed['status'])) {
+                    // Hanya kembalikan hasil jika AI cukup yakin (confidence >= 60)
+                    if (($parsed['confidence'] ?? 0) >= 60 && !empty($parsed['candidates'])) {
+                        Log::info('AI Service: Equipment search found candidates', [
+                            'confidence'      => $parsed['confidence'],
+                            'candidate_count' => count($parsed['candidates']),
+                        ]);
+
+                        // Format hasil agar konsisten dengan TechIdentSearchService
+                        return [
+                            'status'     => $parsed['status'] === 'auto_accept' ? 'auto_accept' : 'confirm',
+                            'pass'       => 'ai_description',
+                            'confidence' => $parsed['confidence'] ?? 70,
+                            'candidates' => array_map(function ($c) {
+                                return [
+                                    'id'             => $c['id'] ?? null,
+                                    'tech_ident_no'  => $c['tech_ident_no'] ?? '',
+                                    'description'    => $c['description'] ?? '',
+                                    'functional_loc' => $c['functional_loc'] ?? '',
+                                ];
+                            }, $parsed['candidates'] ?? []),
+                            'ai_message' => $parsed['message'] ?? '',
+                        ];
+                    }
+
+                    Log::info('AI Service: Equipment search low confidence or empty candidates', [
+                        'confidence'      => $parsed['confidence'] ?? 0,
+                        'candidate_count' => count($parsed['candidates'] ?? []),
+                    ]);
+                } else {
+                    Log::warning('AI Service: Failed to parse equipment search JSON', [
+                        'raw'     => substr($response, 0, 200),
+                        'cleaned' => substr($cleaned, 0, 200),
+                    ]);
+                }
+            }
+        } catch (\Exception $e) {
+            Log::warning("AI Service equipment search error: " . $e->getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * Ekstrak kata kunci pencarian dari teks laporan bebas.
+     *
+     * Dipakai bersama oleh prefilterAssetCandidates() (pencarian equipment)
+     * dan prefilterLocationCandidates() (pencarian lokasi/area), agar logika
+     * tokenisasi dan daftar stop word tidak terduplikasi.
+     *
+     * Langkah: ekstrak token alfanumerik minimal 2 karakter, buang stop word
+     * umum Bahasa Indonesia/Inggris, buang kata di $extraExclusions (mis. kode
+     * area saat dipakai untuk pencarian equipment), lalu urutkan dari yang
+     * paling panjang (lebih spesifik) dan batasi maksimal 15 kata kunci.
+     *
+     * @param  string   $text            Teks laporan dari teknisi
+     * @param  string[] $extraExclusions Kata tambahan yang harus dibuang dari hasil (opsional)
+     * @return string[] Daftar kata kunci, terurut dari yang paling panjang
+     */
+    private function extractSearchKeywords(string $text, array $extraExclusions = []): array
+    {
+        $textUpper = strtoupper(trim($text));
+
+        // Ekstrak semua kata dengan minimal 2 karakter (alfanumerik, minus, slash)
+        preg_match_all('/[A-Z0-9][A-Z0-9\.\-\/]+[A-Z0-9]|[A-Z0-9]{2,}/iu', $textUpper, $matches);
+        $words = array_unique($matches[0] ?? []);
+
+        // Stop words Bahasa Indonesia/Inggris yang umum di teks laporan
+        $stopWords = [
+            'DI', 'KE', 'DARI', 'PADA', 'DENGAN', 'DAN', 'ATAU', 'INI', 'ITU',
+            'YANG', 'ADA', 'SUDAH', 'AKAN', 'TIDAK', 'BUKAN', 'SAYA', 'KAMI',
+            'THE', 'AND', 'FOR', 'HAS', 'WAS', 'NOT', 'BUT', 'ARE', 'ALL',
+            'JAM', 'SAMPAI', 'PUKUL', 'SD', 'SELESAI', 'MULAI', 'LAPORAN',
+            'MOHON', 'TOLONG', 'MENGALAMI', 'TERJADI', 'KARENA', 'AKIBAT',
+            'PERBAIKAN', 'PENGGANTIAN', 'MAINTENANCE', 'PEKERJAAN',
+            'DIPERBAIKI', 'DIGANTI', 'DICEK', 'DILAKUKAN', 'HARI', 'TANGGAL',
+            'KEMARIN', 'HARIINI', 'SEKARANG', 'LAGI', 'SUPPLY', 'TEGANGAN',
+            'SEHINGGA', 'DAPAT', 'DALAM', 'UNTUK', 'BARU', 'SETELAH',
+        ];
+
+        $extraExclusionsUpper = array_map(fn($w) => strtoupper($w), $extraExclusions);
+
+        // Filter kata: buang stop word, pengecualian tambahan, dan kata terlalu pendek (1 karakter)
+        $keywords = array_filter($words, function ($w) use ($stopWords, $extraExclusionsUpper) {
+            $wUpper = strtoupper($w);
+            if (strlen($wUpper) <= 1) {
+                return false;
+            }
+            if (in_array($wUpper, $stopWords, true)) {
+                return false;
+            }
+            if (in_array($wUpper, $extraExclusionsUpper, true)) {
+                return false;
+            }
+            return true;
+        });
+
+        // Urutkan berdasarkan panjang (descending) — kata lebih panjang lebih spesifik
+        usort($keywords, fn($a, $b) => strlen($b) <=> strlen($a));
+
+        // Batasi jumlah keyword agar query LIKE tidak terlalu berat
+        return array_slice(array_values($keywords), 0, 15);
+    }
+
+    /**
+     * Pre-filter kandidat asset dari teks laporan sebelum dikirim ke prompt AI.
+     *
+     * Mengekstrak kata kunci dari teks (minimal 2 karakter, bukan stop word,
+     * bukan kode area) via extractSearchKeywords(), lalu mencari asset yang
+     * mengandung kata kunci tersebut di kolom tech_ident_no ATAU description.
+     * Hasil dibatasi maksimal MAX_ASSET_CANDIDATES_FOR_AI (80), jauh lebih
+     * hemat token dibanding pendekatan limit(300) tanpa filter sebelumnya.
+     *
+     * @param  string   $text   Teks laporan dari teknisi
+     * @param  int|null $areaId Batasi pencarian ke area tertentu (opsional)
+     * @return array    Array asosiatif kandidat asset dengan kunci: id, tech_ident_no, description, functional_loc, area_code, sub_area_name
+     */
+    protected function prefilterAssetCandidates(string $text, ?int $areaId = null): array
+    {
+        // Ambil daftar kode area (dan varian pendeknya) untuk dikecualikan dari kandidat
+        // keyword pencarian equipment (kode area bukan bagian dari tech_ident_no/description)
+        $areaCodes      = Area::pluck('code')->map(fn($c) => strtoupper($c))->toArray();
+        $shortAreaCodes = [];
+        foreach ($areaCodes as $ac) {
+            if (preg_match('/^([A-Z]+)0(\d)$/', $ac, $m)) {
+                $shortAreaCodes[] = $m[1] . $m[2];
+            }
+        }
+        $allAreaVariants = array_merge($areaCodes, $shortAreaCodes);
+
+        $keywords = $this->extractSearchKeywords($text, $allAreaVariants);
+
+        if (empty($keywords)) {
+            // Fallback: tidak ada keyword valid, kembalikan 80 asset pertama
+            // yang punya tech_ident_no (mirip behavior lama tapi tetap dibatasi)
+            $query = Asset::whereNotNull('tech_ident_no');
+            if ($areaId) {
+                $query->where('area_id', $areaId);
+            }
+            return $query->limit(self::MAX_ASSET_CANDIDATES_FOR_AI)
+                ->get(['id', 'tech_ident_no', 'description', 'functional_loc', 'area_id', 'sub_area_id'])
+                ->map(function ($a) {
+                    return [
+                        'id'             => $a->id,
+                        'tech_ident_no'  => $a->tech_ident_no ?? '',
+                        'description'    => $a->description ?? '',
+                        'functional_loc' => $a->functional_loc ?? '',
+                        'area_code'      => $a->area->code ?? null,
+                        'sub_area_name'  => $a->subArea->name ?? null,
+                    ];
+                })
+                ->toArray();
+        }
+
+        // Bangun query dengan OR WHERE LIKE untuk setiap keyword
+        // Cari di tech_ident_no DAN description
+        $baseQuery = Asset::whereNotNull('tech_ident_no');
+        if ($areaId) {
+            $baseQuery->where('area_id', $areaId);
+        }
+
+        $baseQuery->where(function ($q) use ($keywords) {
+            foreach ($keywords as $keyword) {
+                $pattern = '%' . $keyword . '%';
+                $q->orWhere('tech_ident_no', 'LIKE', $pattern)
+                  ->orWhere('description', 'LIKE', $pattern);
+            }
+        });
+
+        $results = $baseQuery
+            ->limit(self::MAX_ASSET_CANDIDATES_FOR_AI)
+            ->get(['id', 'tech_ident_no', 'description', 'functional_loc', 'area_id', 'sub_area_id']);
+
+        // Jika hasil terlalu sedikit (< 5), perluas pencarian dengan keyword lebih pendek
+        if ($results->count() < 5 && count($keywords) > 0) {
+            $extraQuery = Asset::whereNotNull('tech_ident_no');
+            if ($areaId) {
+                $extraQuery->where('area_id', $areaId);
+            }
+
+            // Gunakan 3 kata kunci pertama yang paling panjang sebagai perluasan
+            $topKeywords = array_slice($keywords, 0, 3);
+            $extraQuery->where(function ($q) use ($topKeywords) {
+                foreach ($topKeywords as $keyword) {
+                    $pattern = '%' . $keyword . '%';
+                    $q->orWhere('tech_ident_no', 'LIKE', $pattern)
+                      ->orWhere('description', 'LIKE', $pattern);
+                }
+            });
+
+            $extraResults = $extraQuery
+                ->limit(self::MAX_ASSET_CANDIDATES_FOR_AI - $results->count())
+                ->get(['id', 'tech_ident_no', 'description', 'functional_loc', 'area_id', 'sub_area_id']);
+
+            // Gabung hasil, hilangkan duplikat berdasarkan ID
+            $existingIds   = $results->pluck('id')->toArray();
+            $mergedResults = $results->merge(
+                $extraResults->filter(fn($a) => !in_array($a->id, $existingIds, true))
+            );
+        } else {
+            $mergedResults = $results;
+        }
+
+        return $mergedResults
+            ->map(function ($a) {
+                return [
+                    'id'             => $a->id,
+                    'tech_ident_no'  => $a->tech_ident_no ?? '',
+                    'description'    => $a->description ?? '',
+                    'functional_loc' => $a->functional_loc ?? '',
+                    'area_code'      => $a->area->code ?? null,
+                    'sub_area_name'  => $a->subArea->name ?? null,
+                ];
+            })
+            ->toArray();
+    }
+
+    /**
+     * Pencarian lokasi/area kerja via AI — lapis ketiga, dijalankan setelah
+     * regex (TechIdentSearchService) DAN pencarian equipment via AI
+     * (searchEquipmentWithAi()) sama-sama tidak menemukan hasil.
+     *
+     * Method ini khusus untuk laporan yang menyebut nama lokasi/pekerjaan
+     * area (mis. "penggantian lantai lab") tanpa merujuk ke alat tertentu.
+     * Kandidat functional_locations dikirim dalam bentuk pre-filtered
+     * (bukan dump seluruh tabel), hanya mencakup level Area dan Section
+     * karena level Site/Departemen terlalu umum untuk jadi lokasi laporan.
+     *
+     * Mengembalikan hasil dengan format konsisten dengan searchEquipmentWithAi()
+     * (status, pass, confidence, candidates) agar mudah ditangani secara
+     * seragam oleh ReportWizardService.
+     *
+     * @param  string   $text   Teks laporan dari teknisi
+     * @param  int|null $areaId Batasi pencarian ke area tertentu jika sudah diketahui
+     * @return array|null Hasil pencarian (status, candidates, confidence) atau null jika gagal
+     */
+    protected function searchLocationWithAi(string $text, ?int $areaId = null): ?array
+    {
+        $provider = $this->getBestProvider();
+        if (!$provider) {
+            Log::info('AI Service: No provider available for location search');
+            return null;
+        }
+
+        try {
+            // Pre-filter kandidat lokasi berdasarkan keyword dari teks
+            $candidates = $this->prefilterLocationCandidates($text, $areaId);
+
+            if (empty($candidates)) {
+                Log::info('AI Service: Location pre-filter returned zero candidates, skip AI call');
+                return null;
+            }
+
+            $locations = collect($candidates)
+                ->map(function ($l) {
+                    $areaCode    = $l['area_code']     ?? '-';
+                    $subAreaName = $l['sub_area_name'] ?? '-';
+                    return "ID:{$l['id']} | Kode:{$l['code']} | Nama:{$l['name']} | Level:{$l['level_label']} | Area:{$areaCode} | SubArea:{$subAreaName}";
+                })
+                ->implode("\n");
+
+            Log::info('AI Service: Location search pre-filtered candidates', [
+                'total_funclocs_in_db' => FunctionalLocation::count(),
+                'prefiltered_count'    => count($candidates),
+                'area_id'              => $areaId,
+            ]);
+
+            $prompt = <<<PROMPT
+Kamu adalah asisten pencarian lokasi/area kerja di pabrik oleochemical.
+
+Teks laporan teknisi: "{$text}"
+
+DAFTAR KANDIDAT LOKASI (functional location):
+{$locations}
+
+KONTEKS:
+Teks ini sudah dicoba dicocokkan sebagai kode/deskripsi ALAT (equipment) dan TIDAK ditemukan.
+Sekarang cek apakah teks ini sebenarnya melaporkan pekerjaan AREA/LOKASI, bukan alat tertentu.
+Contoh laporan area/lokasi: "penggantian lantai lab", "pengecatan dinding gudang",
+"perbaikan atap workshop", "pembersihan area parkir".
+
+TUGAS KAMU:
+1. Baca teks laporan baik-baik, cari nama lokasi/ruangan/area yang disebut.
+2. Cocokkan dengan Kode atau Nama pada daftar kandidat di atas.
+3. Jika TIDAK YAKIN (confidence < 60), lebih baik mengembalikan candidates kosong daripada menebak.
+4. Jika YAKIN (confidence >= 60), isi candidates dengan maksimal 3 kandidat paling cocok,
+   diurutkan dari yang paling yakin.
+
+ATURAN OUTPUT:
+- candidates: array of objects dengan field "id" (numeric, ID functional_location),
+  "code", "name", "confidence" (0-100 individual)
+- message: penjelasan singkat dalam Bahasa Indonesia kenapa kandidat tersebut dipilih
+
+Balas HANYA JSON (tanpa markdown, tanpa tag):
+{
+  "status": "auto_accept|confirm|no_match",
+  "confidence": 0-100,
+  "candidates": [
+    {"id": 123, "code": "xxx", "name": "xxx", "confidence": 90}
+  ],
+  "message": "penjelasan singkat dalam Bahasa Indonesia"
+}
+PROMPT;
+
+            $response = $this->callGroq($provider, $prompt);
+            if ($response) {
+                $cleaned = $this->stripJsonFence($response);
+                $parsed  = json_decode($cleaned, true);
+
+                if ($parsed && isset($parsed['status'])) {
+                    // Hanya kembalikan hasil jika AI cukup yakin (confidence >= 60)
+                    if (($parsed['confidence'] ?? 0) >= 60 && !empty($parsed['candidates'])) {
+                        Log::info('AI Service: Location search found candidates', [
+                            'confidence'      => $parsed['confidence'],
+                            'candidate_count' => count($parsed['candidates']),
+                        ]);
+
+                        // Gabungkan hasil AI (id/code/name/confidence) dengan data
+                        // lengkap dari kandidat pre-filter (area_id, sub_area_id, dst.)
+                        // agar ReportWizardService punya semua data yang dibutuhkan
+                        // untuk mengisi area_id/funcloc_id tanpa query ulang.
+                        $candidatesById = collect($candidates)->keyBy('id');
+
+                        $mergedCandidates = collect($parsed['candidates'])
+                            ->map(function ($c) use ($candidatesById) {
+                                $full = $candidatesById->get($c['id'] ?? null);
+                                if (!$full) {
+                                    return null;
+                                }
+                                return [
+                                    'id'            => $full['id'],
+                                    'code'          => $full['code'],
+                                    'name'          => $full['name'],
+                                    'level'         => $full['level'],
+                                    'level_label'   => $full['level_label'],
+                                    'area_id'       => $full['area_id'],
+                                    'sub_area_id'   => $full['sub_area_id'],
+                                    'area_code'     => $full['area_code'],
+                                    'sub_area_name' => $full['sub_area_name'],
+                                ];
+                            })
+                            ->filter()
+                            ->values()
+                            ->toArray();
+
+                        if (empty($mergedCandidates)) {
+                            Log::warning('AI Service: Location search candidates did not match any pre-filtered ID');
+                            return null;
+                        }
+
+                        return [
+                            'status'     => $parsed['status'] === 'auto_accept' ? 'auto_accept' : 'confirm',
+                            'pass'       => 'ai_location',
+                            'confidence' => $parsed['confidence'] ?? 70,
+                            'candidates' => $mergedCandidates,
+                            'ai_message' => $parsed['message'] ?? '',
+                        ];
+                    }
+
+                    Log::info('AI Service: Location search low confidence or empty candidates', [
+                        'confidence'      => $parsed['confidence'] ?? 0,
+                        'candidate_count' => count($parsed['candidates'] ?? []),
+                    ]);
+                } else {
+                    Log::warning('AI Service: Failed to parse location search JSON', [
+                        'raw'     => substr($response, 0, 200),
+                        'cleaned' => substr($cleaned, 0, 200),
+                    ]);
+                }
+            }
+        } catch (\Exception $e) {
+            Log::warning("AI Service location search error: " . $e->getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * Pre-filter kandidat functional_location dari teks laporan sebelum
+     * dikirim ke prompt AI.
+     *
+     * Hanya mengambil node level Area dan Section (LEVEL_AREA, LEVEL_SECTION)
+     * karena level Site/Departemen terlalu umum untuk jadi lokasi laporan
+     * spesifik. Mencari kata kunci dari teks (via extractSearchKeywords())
+     * di kolom code ATAU name. Hasil dibatasi maksimal
+     * MAX_LOCATION_CANDIDATES_FOR_AI (60).
+     *
+     * @param  string   $text   Teks laporan dari teknisi
+     * @param  int|null $areaId Batasi pencarian ke area tertentu (opsional)
+     * @return array    Array asosiatif kandidat lokasi dengan kunci: id, code, name, level, level_label, area_id, sub_area_id, area_code, sub_area_name
+     */
+    protected function prefilterLocationCandidates(string $text, ?int $areaId = null): array
+    {
+        $keywords = $this->extractSearchKeywords($text);
+
+        $relevantLevels = [FunctionalLocation::LEVEL_AREA, FunctionalLocation::LEVEL_SECTION];
+
+        $mapResults = function ($collection) {
+            return $collection->map(function (FunctionalLocation $fl) {
+                return [
+                    'id'            => $fl->id,
+                    'code'          => $fl->code ?? '',
+                    'name'          => $fl->name ?? '',
+                    'level'         => $fl->level,
+                    'level_label'   => $fl->level_label,
+                    'area_id'       => $fl->area_id,
+                    'sub_area_id'   => $fl->sub_area_id,
+                    'area_code'     => $fl->area->code ?? null,
+                    'sub_area_name' => $fl->subArea->name ?? null,
+                ];
+            })->toArray();
+        };
+
+        if (empty($keywords)) {
+            // Fallback: tidak ada keyword valid, kembalikan node level Area/Section
+            // pertama yang aktif, tetap dibatasi jumlahnya.
+            $query = FunctionalLocation::active()->whereIn('level', $relevantLevels);
+            if ($areaId) {
+                $query->where('area_id', $areaId);
+            }
+
+            return $mapResults(
+                $query->limit(self::MAX_LOCATION_CANDIDATES_FOR_AI)->get()
+            );
+        }
+
+        $baseQuery = FunctionalLocation::active()->whereIn('level', $relevantLevels);
+        if ($areaId) {
+            $baseQuery->where('area_id', $areaId);
+        }
+
+        $baseQuery->where(function ($q) use ($keywords) {
+            foreach ($keywords as $keyword) {
+                $pattern = '%' . $keyword . '%';
+                $q->orWhere('code', 'LIKE', $pattern)
+                  ->orWhere('name', 'LIKE', $pattern);
+            }
+        });
+
+        $results = $baseQuery->limit(self::MAX_LOCATION_CANDIDATES_FOR_AI)->get();
+
+        // Jika hasil terlalu sedikit (< 5), perluas pencarian dengan keyword lebih pendek
+        if ($results->count() < 5 && count($keywords) > 0) {
+            $extraQuery = FunctionalLocation::active()->whereIn('level', $relevantLevels);
+            if ($areaId) {
+                $extraQuery->where('area_id', $areaId);
+            }
+
+            $topKeywords = array_slice($keywords, 0, 3);
+            $extraQuery->where(function ($q) use ($topKeywords) {
+                foreach ($topKeywords as $keyword) {
+                    $pattern = '%' . $keyword . '%';
+                    $q->orWhere('code', 'LIKE', $pattern)
+                      ->orWhere('name', 'LIKE', $pattern);
+                }
+            });
+
+            $extraResults = $extraQuery
+                ->limit(self::MAX_LOCATION_CANDIDATES_FOR_AI - $results->count())
+                ->get();
+
+            $existingIds   = $results->pluck('id')->toArray();
+            $mergedResults = $results->merge(
+                $extraResults->filter(fn($fl) => !in_array($fl->id, $existingIds, true))
+            );
+        } else {
+            $mergedResults = $results;
+        }
+
+        return $mapResults($mergedResults);
     }
 
     /**

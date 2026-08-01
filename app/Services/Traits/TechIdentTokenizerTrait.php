@@ -13,10 +13,14 @@ namespace App\Services\Traits;
  *   - normalize()                  : Normalisasi TechIdentNo/token ke bentuk baku
  *   - extractSectionCode()         : Ambil kode section 4-digit pertama dari teks
  *   - extractTypeSuffixAndSequence(): Ekstrak suffix tipe alat dan sequence number
+ *   - extractLocationSegment()     : Ekstrak segmen digit pembeda lokasi di depan section code
+ *   - detectLocationHint()         : Deteksi kode/nama Area yang disebut eksplisit di teks bebas
  *   - detectInstrumentPrefixes()   : Deteksi prefix instrumen dari kata kunci eksplisit
  *
  * Dikelompokkan bersama karena semuanya bertugas menguraikan teks mentah
  * menjadi komponen pencarian yang terstruktur, tanpa menyentuh database.
+ * Khusus detectLocationHint(), daftar kandidat Area/SubArea tetap harus
+ * disediakan oleh pemanggil (bukan trait ini yang melakukan query).
  */
 trait TechIdentTokenizerTrait
 {
@@ -203,6 +207,145 @@ trait TechIdentTokenizerTrait
         }
 
         return ['suffix' => null, 'sequence' => null];
+    }
+
+    /**
+     * Ekstrak segmen digit pembeda lokasi yang mendahului section code
+     * langsung sebelum tanda '-' (contoh: "2-6166C1" -> segmen lokasi "2",
+     * section "6166"). Segmen ini dipakai untuk membedakan equipment yang
+     * section+suffix-nya sama tapi berada di lokasi/train berbeda (mis.
+     * FCV-2-6166C1-1 di BD02 vs FCV-6166C1-1 di BD01).
+     *
+     * Method ini melengkapi extractTypeSuffixAndSequence(), yang hanya
+     * menangkap sequence number di BELAKANG section+suffix (-N di akhir),
+     * bukan digit pembeda yang berada di DEPAN section code.
+     *
+     * Contoh:
+     *   "Control Valve Glycerine 2-6166C1 BD 2" => "2"
+     *   "FCV-2-6166C1-1"                        => "2"
+     *   "FT-6166C1-2"                           => null (tidak ada digit di depan section)
+     *   "6163E3A"                               => null
+     *
+     * @param  string      $text Teks bebas dari teknisi
+     * @return string|null       Segmen digit pembeda lokasi jika ditemukan, null jika tidak
+     */
+    protected function extractLocationSegment(string $text): ?string
+    {
+        // Cari 1-2 digit yang langsung diikuti tanda '-' lalu section code
+        // 4-digit (pola yang sama dengan extractSectionCode()/
+        // extractTypeSuffixAndSequence() untuk section code itu sendiri).
+        if (preg_match('/\b(\d{1,2})-\d{4}(?=[A-Za-z]|\b)/', $text, $m)) {
+            return $m[1];
+        }
+
+        return null;
+    }
+
+    /**
+     * Deteksi kode Area yang disebut secara eksplisit di teks bebas teknisi,
+     * baik lewat kode (mis. "BD 2", "BD02", tanpa leading zero pun tetap cocok)
+     * maupun lewat nama Area (mis. "Boiler Deaerator" jika itu nama Area-nya).
+     *
+     * Method ini TIDAK menyentuh database — daftar kandidat Area/SubArea
+     * harus disediakan oleh pemanggil (biasanya hasil query Area::all()
+     * atau cache serupa), agar trait ini tetap murni mengurai teks.
+     *
+     * Prioritas hasil: kandidat dengan kecocokan paling spesifik (nama/kode
+     * terpanjang yang cocok) yang dikembalikan, agar kode/nama yang lebih
+     * umum tidak menutupi kecocokan yang lebih tepat.
+     *
+     * Contoh:
+     *   "Control Valve Glycerine 2-6166C1 BD 2", area code "BD02" => "BD02"
+     *   "cek area Boiler Deaerator", area code "BD02" nama "Boiler Deaerator" => "BD02"
+     *   "laporan pompa 6163P4" (tidak ada sinyal lokasi)          => null
+     *
+     * @param  string                                        $text  Teks bebas dari teknisi
+     * @param  iterable<object{code:string,name:?string}|array{code:string,name?:?string}> $areas Daftar kandidat Area (code & name)
+     * @return string|null Kode Area (Area->code) yang paling cocok, atau null jika tidak ada
+     */
+    protected function detectLocationHint(string $text, iterable $areas): ?string
+    {
+        $textUpper = strtoupper($text);
+        $candidates = [];
+
+        foreach ($areas as $area) {
+            $code = is_array($area) ? ($area['code'] ?? null) : ($area->code ?? null);
+            $name = is_array($area) ? ($area['name'] ?? null) : ($area->name ?? null);
+
+            if ($code === null || $code === '') {
+                continue;
+            }
+
+            if ($this->areaCodeMatchesText($textUpper, $code)) {
+                $candidates[] = ['code' => $code, 'specificity' => strlen($code)];
+                continue;
+            }
+
+            if ($name !== null && $name !== '' && $this->areaNameMatchesText($textUpper, $name)) {
+                $candidates[] = ['code' => $code, 'specificity' => strlen($name)];
+            }
+        }
+
+        if (empty($candidates)) {
+            return null;
+        }
+
+        // Urutkan berdasarkan kecocokan paling spesifik (kode/nama terpanjang) dulu
+        usort($candidates, fn ($a, $b) => $b['specificity'] <=> $a['specificity']);
+
+        return $candidates[0]['code'];
+    }
+
+    /**
+     * Cocokkan kode Area terhadap teks bebas, mendukung penulisan tanpa
+     * leading zero (mis. kode "BD02" tetap cocok dengan teks "BD 2" atau "BD-2").
+     *
+     * @param  string $textUpper Teks bebas yang sudah di-uppercase
+     * @param  string $code      Kode Area, mis. "BD02"
+     * @return bool              True jika kode Area disebut di teks
+     */
+    protected function areaCodeMatchesText(string $textUpper, string $code): bool
+    {
+        $codeUpper = strtoupper($code);
+
+        if (str_contains($textUpper, $codeUpper)) {
+            return true;
+        }
+
+        // Pisahkan prefix huruf dan digit numerik agar leading zero bisa diabaikan
+        // (mis. "BD02" -> huruf "BD", digit "02" -> numerik 2), lalu izinkan
+        // spasi/tanda '-' opsional di antara huruf dan digitnya di teks.
+        if (!preg_match('/^([A-Z]+)(\d+)$/', $codeUpper, $m)) {
+            return false;
+        }
+
+        [, $letters, $digits] = $m;
+        $numeric = (int) $digits;
+
+        $pattern = '/\b' . preg_quote($letters, '/') . '[\s\-]*0*' . $numeric . '(?!\d)/';
+
+        return (bool) preg_match($pattern, $textUpper);
+    }
+
+    /**
+     * Cocokkan nama Area terhadap teks bebas (word boundary, case-insensitive
+     * karena kedua sisi sudah di-uppercase-kan oleh pemanggil).
+     *
+     * @param  string $textUpper Teks bebas yang sudah di-uppercase
+     * @param  string $name      Nama Area, mis. "Boiler Deaerator"
+     * @return bool              True jika nama Area disebut di teks
+     */
+    protected function areaNameMatchesText(string $textUpper, string $name): bool
+    {
+        $nameUpper = trim(strtoupper($name));
+
+        if ($nameUpper === '') {
+            return false;
+        }
+
+        $pattern = '/\b' . preg_quote($nameUpper, '/') . '\b/';
+
+        return (bool) preg_match($pattern, $textUpper);
     }
 
     /**

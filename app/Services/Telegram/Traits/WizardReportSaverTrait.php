@@ -3,6 +3,7 @@
 namespace App\Services\Telegram\Traits;
 
 use App\Models\Report;
+use App\Models\ReportAiSuggestion;
 use App\Models\Technician;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -18,6 +19,8 @@ use Illuminate\Support\Str;
  *   - isValidLocalPhotoPath()       : Validasi apakah nilai adalah path lokal foto
  *   - filterValidLocalPhotoPaths()  : Filter array foto, buang yang bukan path lokal
  *   - resolveCollaboratorNames()    : Ambil nama teknisi dari state collaborator_names atau fallback DB
+ *   - persistAiSuggestions()        : Simpan antrean state ai_suggestions_log (Sesi 4) ke tabel
+ *                                     report_ai_suggestions setelah laporan utama berhasil dibuat
  *
  * Trait ini bergantung pada method berikut dari kelas pemakai:
  *   - equipmentLabel(array $state): string
@@ -181,6 +184,10 @@ trait WizardReportSaverTrait
                 'creator_id'    => $technician->id,
             ]));
 
+            // Simpan sugesti AI (equipment/area) yang tercatat sepanjang wizard
+            // ke report_ai_suggestions, sekarang setelah report_id tersedia.
+            $this->persistAiSuggestions($report->id, $state);
+
             // Buat laporan kolaborator jika ada NIK yang terdaftar di state
             $collabNiks        = $state['collaborator_niks'] ?? [];
             $collabNames       = $state['collaborator_names'] ?? [];
@@ -237,6 +244,7 @@ trait WizardReportSaverTrait
                 'photo_doc_count'    => count($photoDocumentation),
                 'photo_hyg_count'    => count($photoHygieneClearance),
                 'jumlah_kolaborator' => $jumlahKolaborator,
+                'ai_suggestions_logged' => count($state['ai_suggestions_log'] ?? []),
             ]);
 
             $equipmentLabel = $this->equipmentLabel($state);
@@ -319,6 +327,52 @@ trait WizardReportSaverTrait
                 "Terjadi kesalahan saat menyimpan laporan. Silakan coba lagi atau hubungi admin.\n" .
                 "Error: " . $e->getMessage()
             );
+        }
+    }
+
+    // =========================================================
+    // SESI 4 — PENCATATAN SUGESTI AI
+    // =========================================================
+
+    /**
+     * Simpan seluruh sugesti AI (equipment maupun area) yang tercatat di
+     * state['ai_suggestions_log'] selama wizard berjalan, ke tabel
+     * report_ai_suggestions, setelah laporan utama berhasil dibuat.
+     *
+     * Antrean ini diisi oleh WizardCallbackHandlerTrait::logAiSuggestionDecision(),
+     * dipanggil setiap kali teknisi merespons (Ya/Tidak) sebuah sugesti AI —
+     * baik yang akhirnya diterima maupun ditolak. Penyimpanan ke DB baru
+     * dilakukan di sini (bukan langsung saat teknisi merespons) karena pada
+     * titik itu laporan belum ada (pendekatan "Create at End" — lihat
+     * saveReport()); report_id baru tersedia setelah laporan utama dibuat.
+     *
+     * Jika wizard dibatalkan sebelum Step 8, antrean ini hilang bersama state
+     * (Cache::forget di destroyWizard()) dan tidak pernah tercatat ke DB —
+     * ini sudah sesuai tujuan (audit/pembelajaran AI), karena tidak ada
+     * laporan yang dihasilkan untuk dikaitkan.
+     *
+     * @param  int   $reportId ID laporan utama yang baru dibuat
+     * @param  array $state    State wizard saat ini
+     * @return void
+     */
+    protected function persistAiSuggestions(int $reportId, array $state): void
+    {
+        $suggestions = $state['ai_suggestions_log'] ?? [];
+
+        if (empty($suggestions)) {
+            return;
+        }
+
+        foreach ($suggestions as $suggestion) {
+            ReportAiSuggestion::create([
+                'report_id'          => $reportId,
+                'suggestion_type'    => $suggestion['suggestion_type'] ?? null,
+                'suggested_asset_id' => $suggestion['suggested_asset_id'] ?? null,
+                'suggested_area_id'  => $suggestion['suggested_area_id'] ?? null,
+                'confidence'         => $suggestion['confidence'] ?? null,
+                'reasoning'          => $suggestion['reasoning'] ?? null,
+                'accepted'           => $suggestion['accepted'] ?? false,
+            ]);
         }
     }
 

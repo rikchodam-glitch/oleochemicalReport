@@ -18,7 +18,9 @@ use App\Services\Traits\AiProviderCallerTrait;
  *
  * Logika detail tersimpan di trait:
  *   - AiKeywordParserTrait  : analisis keyword, deteksi area/asset, parsing teks
- *   - AiProviderCallerTrait : pemilihan provider, pemanggilan Groq API, logging
+ *   - AiProviderCallerTrait : pemilihan provider, pemanggilan Groq API, logging,
+ *                              pre-filter asset/lokasi, searchEquipmentWithAi(),
+ *                              dan searchLocationWithAi()
  */
 class AiService
 {
@@ -81,5 +83,54 @@ class AiService
         // 2. Fallback: keyword matching
         $kwResult = $this->analyzeWithKeywords($text);
         return array_merge($result, $kwResult);
+    }
+
+    /**
+     * Pencarian equipment via AI — lapis kedua setelah regex (TechIdentSearchService)
+     * mengembalikan no_match. Method ini adalah public API yang akan dipanggil
+     * oleh ReportWizardService dari processEquipmentSearch() dan handleEquipmentRetype().
+     *
+     * Mendelegasikan ke searchEquipmentWithAi() di AiProviderCallerTrait.
+     * Mengirim data equipment yang sudah di-pre-filter berdasarkan keyword dari teks,
+     * sehingga token yang terpakai jauh lebih hemat dibanding dump seluruh tabel.
+     *
+     * Format hasil konsisten dengan TechIdentSearchService agar bisa langsung
+     * digunakan oleh buildCandidateKeyboard() dan flow konfirmasi.
+     *
+     * @param  string   $text   Teks laporan dari teknisi
+     * @param  int|null $areaId Batasi pencarian ke area tertentu jika sudah diketahui
+     * @return array|null Hasil pencarian (status, pass, confidence, candidates) atau null
+     *                    jika AI tidak tersedia, pre-filter tidak menghasilkan kandidat,
+     *                    atau confidence AI terlalu rendah (< 60).
+     */
+    public function searchEquipment(string $text, ?int $areaId = null): ?array
+    {
+        return $this->searchEquipmentWithAi($text, $areaId);
+    }
+
+    /**
+     * Pencarian lokasi/area kerja via AI — lapis ketiga setelah regex
+     * (TechIdentSearchService) DAN pencarian equipment via AI (searchEquipment())
+     * sama-sama tidak menemukan hasil. Method ini adalah public API yang akan
+     * dipanggil oleh ReportWizardService dari processEquipmentSearch() dan
+     * handleEquipmentRetype(), setelah tryAiEquipmentSearch() gagal.
+     *
+     * Mendelegasikan ke searchLocationWithAi() di AiProviderCallerTrait.
+     * Mengirim data functional_locations yang sudah di-pre-filter berdasarkan
+     * keyword dari teks (hanya level Area dan Section), sehingga token yang
+     * terpakai tetap hemat.
+     *
+     * Dipakai untuk mendeteksi laporan pekerjaan area/lokasi (mis. "penggantian
+     * lantai lab") yang tidak merujuk ke alat tertentu.
+     *
+     * @param  string   $text   Teks laporan dari teknisi
+     * @param  int|null $areaId Batasi pencarian ke area tertentu jika sudah diketahui
+     * @return array|null Hasil pencarian (status, pass, confidence, candidates) atau null
+     *                    jika AI tidak tersedia, pre-filter tidak menghasilkan kandidat,
+     *                    atau confidence AI terlalu rendah (< 60).
+     */
+    public function searchLocation(string $text, ?int $areaId = null): ?array
+    {
+        return $this->searchLocationWithAi($text, $areaId);
     }
 }

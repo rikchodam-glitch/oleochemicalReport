@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\Log;
  *   - buildEquipmentConfirmKeyboard()   : Bangun keyboard konfirmasi equipment terdeteksi
  *   - handleEquipmentConfirmCallback()  : Proses jawaban Ya/Tidak untuk equipment
  *   - handleWorkTypeCallback()          : Proses pilihan jenis pekerjaan (equipment/area)
+ *   - logAiSuggestionDecision()         : Catat keputusan Ya/Tidak teknisi atas sugesti AI
+ *                                         (equipment/area) ke antrean state ai_suggestions_log
  *   - handleEquipmentCandidateCallback(): Proses pilihan kandidat dari keyboard
  *   - handleClarificationCallback()     : Teruskan callback ke ClarificationService
  *   - handleClarificationText()         : Tangani teks saat ClarificationService aktif
@@ -45,6 +47,8 @@ use Illuminate\Support\Facades\Log;
  *   - saveState(string $chatId, array $state): void
  *   - destroyWizard(string $chatId): void
  *   - lockEquipmentAndAdvance(string $chatId, Asset $asset, array $state): array
+ *   - confirmAiLocationSuggestion(string $chatId, array $state): array
+ *   - rejectAiLocationSuggestion(string $chatId, array $state): array
  *   - startClarificationHierarchy(string $chatId, array $state): array
  *   - buildWorkClassificationPrompt(array $state): array
  *   - advanceToWorkDuration(string $chatId, array $state): array
@@ -121,6 +125,19 @@ use Illuminate\Support\Facades\Log;
  * str_starts_with($callbackData, 'collab_hierarchy:') dan $callbackData === 'equipment:hierarchy'
  * dilakukan di routeCallback() dalam urutan yang tepat. Tidak ada risiko konflik.
  *
+ * CATATAN — Callback lokasi AI (ai_location:confirm / ai_location:reject) dan
+ * pencatatan sugesti (Sesi 4):
+ * Kedua callback ini dirutekan langsung ke confirmAiLocationSuggestion()/
+ * rejectAiLocationSuggestion() di ReportWizardService (dipasang oleh
+ * tryAiLocationSearch() pada Sesi 3). Keputusan Ya/Tidak teknisi terhadap
+ * sugesti AI — baik equipment (equipment_confirm:yes/no, equipment_candidate:<id>)
+ * maupun lokasi (ai_location:confirm/reject) — dicatat lewat
+ * logAiSuggestionDecision() ke state['ai_suggestions_log'], lalu dipersis ke
+ * tabel report_ai_suggestions oleh WizardReportSaverTrait::saveReport() setelah
+ * report_id tersedia. Kandidat yang berasal dari regex TechIdentSearch murni
+ * (bukan AI) tidak dicatat, karena logAiSuggestionDecision() hanya dipanggil
+ * saat flag state['ai_suggestion_source'] bernilai true.
+ *
  * CATATAN — Perbaikan Sesi 6 (uji menyeluruh & rapikan konsistensi):
  * Teks contoh format durasi di case 'duration_change' (handleConfirmationCallback)
  * sebelumnya usang (menyebut format durasi langsung seperti "2 jam" yang sudah
@@ -188,6 +205,23 @@ trait WizardCallbackHandlerTrait
         // Callback pilihan jenis pekerjaan saat no_match
         if (str_starts_with($callbackData, 'work_type:')) {
             return $this->handleWorkTypeCallback($chatId, $callbackData, $state);
+        }
+
+        // Callback konfirmasi kandidat lokasi/area hasil AI (Sesi 3, tryAiLocationSearch()).
+        // 'confirm' mengunci funcloc/area terpilih dan maju ke Step 4; 'reject'
+        // membersihkan data pending dan jatuh ke opsi jenis pekerjaan manual.
+        if (str_starts_with($callbackData, 'ai_location:')) {
+            $aiLocationAction = explode(':', $callbackData)[1] ?? null;
+
+            if ($aiLocationAction === 'confirm') {
+                return $this->confirmAiLocationSuggestion($chatId, $state);
+            }
+
+            if ($aiLocationAction === 'reject') {
+                return $this->rejectAiLocationSuggestion($chatId, $state);
+            }
+
+            return $this->errorResponse('Pilihan lokasi AI tidak dikenali.');
         }
 
         // Masuk ke hierarki ClarificationService (Sub-alur C).
@@ -461,6 +495,14 @@ trait WizardCallbackHandlerTrait
                 return $this->errorResponse('Equipment tidak ditemukan. Silakan cari ulang.');
             }
 
+            // Catat sugesti AI sebagai diterima sebelum key sementaranya dibersihkan.
+            // Hanya berlaku jika kandidat ini memang berasal dari AI (ai_suggestion_source),
+            // bukan hasil regex TechIdentSearch — kandidat regex tidak perlu dicatat
+            // ke report_ai_suggestions.
+            if (!empty($state['ai_suggestion_source'])) {
+                $state = $this->logAiSuggestionDecision($state, 'equipment', $asset->id, null, true);
+            }
+
             // Bersihkan pending state sebelum mengunci
             unset(
                 $state['pending_equipment_id'],
@@ -473,6 +515,13 @@ trait WizardCallbackHandlerTrait
         }
 
         if ($action === 'no') {
+            // Catat sugesti AI sebagai ditolak sebelum key sementaranya dibersihkan
+            // (lihat catatan di cabang 'yes' di atas).
+            if (!empty($state['ai_suggestion_source'])) {
+                $rejectedAssetId = $state['pending_equipment_id'] ?? null;
+                $state           = $this->logAiSuggestionDecision($state, 'equipment', $rejectedAssetId, null, false);
+            }
+
             // Hapus pending dan kembalikan ke mode pencarian ulang
             unset(
                 $state['pending_equipment_id'],
@@ -495,6 +544,54 @@ trait WizardCallbackHandlerTrait
         }
 
         return $this->errorResponse('Pilihan tidak dikenali.');
+    }
+
+    /**
+     * Catat keputusan teknisi (terima/tolak) terhadap satu sugesti AI ke
+     * antrean state 'ai_suggestions_log', untuk dipersis ke tabel
+     * report_ai_suggestions setelah laporan berhasil dibuat
+     * (WizardReportSaverTrait::saveReport()).
+     *
+     * Belum dipersis langsung ke DB pada titik keputusan diambil karena
+     * laporan belum ada di titik ini (pendekatan "Create at End") — report_id
+     * baru tersedia setelah teknisi menyimpan laporan di Step 8.
+     *
+     * Membaca 'search_confidence' dan 'ai_suggestion_reasoning' dari state
+     * (diisi oleh tryAiEquipmentSearch()/tryAiLocationSearch() di
+     * ReportWizardService), lalu membersihkan ketiga flag sugesti sementara
+     * (ai_suggestion_source, ai_suggestion_type, ai_suggestion_reasoning)
+     * agar tidak ikut terbawa ke sugesti berikutnya yang tidak berkaitan.
+     *
+     * @param  array    $state    State wizard saat ini
+     * @param  string   $type     Tipe sugesti: 'equipment' atau 'area'
+     * @param  int|null $assetId  ID asset yang disugestikan (khusus tipe equipment)
+     * @param  int|null $areaId   ID area yang disugestikan (khusus tipe area)
+     * @param  bool     $accepted True jika teknisi menerima sugesti, false jika menolak
+     * @return array    State wizard dengan ai_suggestions_log terbaru
+     */
+    protected function logAiSuggestionDecision(
+        array $state,
+        string $type,
+        ?int $assetId,
+        ?int $areaId,
+        bool $accepted
+    ): array {
+        $state['ai_suggestions_log'][] = [
+            'suggestion_type'    => $type,
+            'suggested_asset_id' => $assetId,
+            'suggested_area_id'  => $areaId,
+            'confidence'         => $state['search_confidence'] ?? null,
+            'reasoning'          => $state['ai_suggestion_reasoning'] ?? null,
+            'accepted'           => $accepted,
+        ];
+
+        unset(
+            $state['ai_suggestion_source'],
+            $state['ai_suggestion_type'],
+            $state['ai_suggestion_reasoning']
+        );
+
+        return $state;
     }
 
     /**
@@ -570,6 +667,13 @@ trait WizardCallbackHandlerTrait
         $asset = Asset::find((int) $id);
         if (!$asset) {
             return $this->errorResponse('Equipment tidak ditemukan. Silakan pilih ulang.');
+        }
+
+        // Kandidat ini berasal dari keyboard multi-kandidat AI (tryAiEquipmentSearch())
+        // jika ai_suggestion_source true. Kandidat regex TechIdentSearch (confidence
+        // 80-94%) tidak menyalakan flag ini, sehingga tidak dicatat.
+        if (!empty($state['ai_suggestion_source'])) {
+            $state = $this->logAiSuggestionDecision($state, 'equipment', $asset->id, null, true);
         }
 
         return $this->lockEquipmentAndAdvance($chatId, $asset, $state);
