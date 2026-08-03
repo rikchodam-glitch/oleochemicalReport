@@ -6,6 +6,44 @@
     <title>@yield('title', 'Dashboard') — Oleochemical Pro</title>
     @vite('resources/css/app.css')
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer>
+        /**
+         * Komponen Alpine.js untuk widget jam server real-time di header.
+         * Selisih (offset) antara waktu server dan waktu browser dihitung
+         * sekali saat halaman dimuat, lalu jam berjalan mengikuti clock
+         * browser + offset tersebut agar tetap akurat tanpa polling ulang
+         * ke server setiap detik. Dipakai admin untuk mengecek apakah
+         * waktu server sudah sinkron dengan waktu sebenarnya.
+         *
+         * @param  string serverIso  Waktu server dalam format ISO 8601
+         * @return object            Data dan method komponen Alpine
+         */
+        function serverClock(serverIso) {
+            return {
+                offset: 0,
+                display: '',
+                startClock() {
+                    const serverTime = new Date(serverIso);
+                    this.offset = serverTime.getTime() - Date.now();
+                    this.tick();
+                    setInterval(() => this.tick(), 1000);
+                },
+                tick() {
+                    const now = new Date(Date.now() + this.offset);
+                    const hari = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+                    const bulan = [
+                        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+                        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+                    ];
+                    const pad = (value) => String(value).padStart(2, '0');
+
+                    this.display = hari[now.getDay()] + ', ' + pad(now.getDate()) + ' '
+                        + bulan[now.getMonth()] + ' ' + now.getFullYear() + ' - '
+                        + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+                },
+            };
+        }
+    </script>
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
         .sidebar-scroll { scrollbar-width: thin; scrollbar-color: #475569 transparent; }
@@ -129,6 +167,15 @@
                     <h1 class="text-xl font-semibold text-slate-900 mt-1">@yield('title')</h1>
                 </div>
                 <div class="flex items-center gap-3">
+                    <div x-data="serverClock('{{ now()->toIso8601String() }}')" x-init="startClock()"
+                         class="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600"
+                         title="Waktu server — cek kesesuaian dengan waktu sebenarnya">
+                        <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span x-text="display"></span>
+                    </div>
+
                     @yield('header-actions')
                 </div>
             </div>

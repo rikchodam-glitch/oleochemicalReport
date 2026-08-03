@@ -9,7 +9,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class FunctionalLocation extends Model
 {
-    // Konstanta level agar tidak ada angka ajaib tersebar di kode
+    // Konstanta level agar tidak ada angka ajaib tersebar di kode.
+    // Nama konstanta LEVEL_SITE tetap dipertahankan agar tidak breaking
+    // change pada kode/migration lain yang sudah memakainya — hanya label
+    // tampilannya yang diubah menjadi "PT" (lihat getLevelLabelAttribute()).
     public const LEVEL_SITE       = 0;
     public const LEVEL_DEPARTMENT = 1;
     public const LEVEL_AREA       = 2;
@@ -172,7 +175,7 @@ class FunctionalLocation extends Model
     public function getLevelLabelAttribute(): string
     {
         return match ($this->level) {
-            self::LEVEL_SITE       => 'Site',
+            self::LEVEL_SITE       => 'PT',
             self::LEVEL_DEPARTMENT => 'Departemen',
             self::LEVEL_AREA       => 'Area',
             self::LEVEL_SECTION    => 'Section',

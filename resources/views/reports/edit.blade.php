@@ -33,11 +33,11 @@
                     <select id="work_classification" name="work_classification"
                             class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                         <option value="">- Pilih Klasifikasi -</option>
-                        <option value="cm" {{ old('work_classification', $report->work_classification) === 'cm' ? 'selected' : '' }}>CM - Corrective Maintenance</option>
-                        <option value="pm" {{ old('work_classification', $report->work_classification) === 'pm' ? 'selected' : '' }}>PM - Preventif Maintenance</option>
-                        <option value="dcm" {{ old('work_classification', $report->work_classification) === 'dcm' ? 'selected' : '' }}>dCM - Deffered Corrective Maintenance</option>
-                        <option value="fabrikasi" {{ old('work_classification', $report->work_classification) === 'fabrikasi' ? 'selected' : '' }}>Fabrikasi</option>
-                        <option value="sipil" {{ old('work_classification', $report->work_classification) === 'sipil' ? 'selected' : '' }}>Sipil</option>
+                        <option value="zpm1" {{ old('work_classification', $report->work_classification) === 'zpm1' ? 'selected' : '' }}>ZPM 1 - Corrective Maintenance</option>
+                        <option value="zpm3" {{ old('work_classification', $report->work_classification) === 'zpm3' ? 'selected' : '' }}>ZPM 3 - Preventive Maintenance</option>
+                        <option value="zpm6" {{ old('work_classification', $report->work_classification) === 'zpm6' ? 'selected' : '' }}>ZPM 6 - Planned Maintenance</option>
+                        <option value="zpm5" {{ old('work_classification', $report->work_classification) === 'zpm5' ? 'selected' : '' }}>ZPM 5 - Fabrikasi</option>
+                        <option value="zpm7" {{ old('work_classification', $report->work_classification) === 'zpm7' ? 'selected' : '' }}>ZPM 7 - Sipil</option>
                     </select>
                     @error('work_classification')
                         <p class="text-xs text-red-600 mt-1">{{ $message }}</p>

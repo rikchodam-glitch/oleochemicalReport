@@ -315,7 +315,7 @@ class FunctionalLocationController extends Controller
     private function levelLabels(): array
     {
         return [
-            FunctionalLocation::LEVEL_SITE       => 'Site',
+            FunctionalLocation::LEVEL_SITE       => 'PT',
             FunctionalLocation::LEVEL_DEPARTMENT => 'Departemen',
             FunctionalLocation::LEVEL_AREA       => 'Area',
             FunctionalLocation::LEVEL_SECTION    => 'Section',

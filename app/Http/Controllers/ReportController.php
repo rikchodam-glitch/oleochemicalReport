@@ -38,8 +38,8 @@ class ReportController extends Controller
             $query->where('report_type', $request->report_type);
         }
 
-        // Filter by work classification (CM/PM/dCM/Fabrikasi/Sipil, dipilih
-        // teknisi di step awal wizard — berbeda dari report_type)
+        // Filter by work classification (ZPM 1/3/6/5/7, dipilih teknisi
+        // di step awal wizard — berbeda dari report_type)
         if ($request->filled('work_classification')) {
             $query->where('work_classification', $request->work_classification);
         }
@@ -183,7 +183,7 @@ class ReportController extends Controller
             'area_id'                 => 'nullable|exists:areas,id',
             'funcloc_id'              => 'nullable|exists:functional_locations,id',
             'asset_id'                => 'nullable|exists:assets,id',
-            'work_classification'     => 'nullable|in:cm,pm,dcm,fabrikasi,sipil',
+            'work_classification'     => 'nullable|in:zpm1,zpm3,zpm6,zpm5,zpm7',
         ]);
 
         $validated['is_manually_edited'] = true;

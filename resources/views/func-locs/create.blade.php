@@ -30,7 +30,7 @@
                     <label class="block text-sm font-medium text-slate-700 mb-1">Parent</label>
                     <select name="parent_id" x-model="parentCode" @change="updatePreview($event)"
                             class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                        <option value="" data-code="" data-level="-1">Tidak ada (buat sebagai node Level 0 / Site)</option>
+                        <option value="" data-code="" data-level="-1">Tidak ada (buat sebagai node Level 0 / PT)</option>
                         @foreach($parentOptions as $parent)
                             <option value="{{ $parent->id }}"
                                     data-code="{{ $parent->code }}"
@@ -41,6 +41,7 @@
                         @endforeach
                     </select>
                     <p class="text-xs text-slate-400 mt-1">Pilih parent untuk menentukan level dan prefix kode secara otomatis.</p>
+                    <p class="text-xs text-slate-400 mt-1">Node PT, Departemen, Area, dan Section otomatis tersinkron sebagai Company, Department, Area, dan SubArea di Asset Management.</p>
                 </div>
 
                 <div class="mb-4">

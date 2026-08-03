@@ -294,7 +294,7 @@ trait WizardCallbackHandlerTrait
     protected function handleWorkClassificationCallback(string $chatId, string $callbackData, array $state): array
     {
         $classification = str_replace('classification:', '', $callbackData);
-        $allowed        = ['cm', 'pm', 'dcm', 'fabrikasi', 'sipil'];
+        $allowed        = ['zpm1', 'zpm3', 'zpm6', 'zpm5', 'zpm7'];
 
         if (!in_array($classification, $allowed, true)) {
             return $this->errorResponse('Klasifikasi pekerjaan tidak dikenali.');
