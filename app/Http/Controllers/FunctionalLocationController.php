@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class FunctionalLocationController extends Controller
@@ -101,7 +102,10 @@ class FunctionalLocationController extends Controller
     }
 
     /**
-     * Simpan node FuncLoc baru.
+     * Simpan satu atau beberapa node FuncLoc baru sekaligus di bawah parent
+     * yang sama. Seluruh baris disimpan dalam satu transaksi database
+     * (all-or-nothing) sehingga tidak ada node yang tersimpan setengah jalan
+     * jika salah satu baris gagal.
      *
      * @param  Request  $request
      * @return RedirectResponse
@@ -109,9 +113,10 @@ class FunctionalLocationController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'parent_id' => ['nullable', 'exists:functional_locations,id'],
-            'segment'   => ['required', 'string', 'max:50', 'regex:/^[A-Za-z0-9_-]+$/'],
-            'name'      => ['required', 'string', 'max:255'],
+            'parent_id'           => ['nullable', 'exists:functional_locations,id'],
+            'children'            => ['required', 'array', 'min:1'],
+            'children.*.segment'  => ['required', 'string', 'max:50', 'regex:/^[A-Za-z0-9_-]+$/'],
+            'children.*.name'     => ['required', 'string', 'max:255'],
         ]);
 
         $parent = null;
@@ -126,32 +131,47 @@ class FunctionalLocationController extends Controller
                 ->withErrors(['parent_id' => 'Node Level Section (L3) tidak bisa memiliki anak.']);
         }
 
-        $normalizedSegment = strtoupper(trim($validated['segment']));
+        // Normalisasi segment tiap baris (uppercase + trim) sebelum dicek duplikat,
+        // supaya konsisten dengan format yang dipakai saat menyimpan.
+        $rows = collect($validated['children'])->map(fn (array $row) => [
+            'segment' => strtoupper(trim($row['segment'])),
+            'name'    => $row['name'],
+        ])->values();
 
-        $duplicateExists = FunctionalLocation::where('parent_id', $parent?->id)
-            ->where('segment', $normalizedSegment)
-            ->exists();
+        $errors = $this->validateChildRows($rows, $parent);
 
-        if ($duplicateExists) {
+        if ($errors->isNotEmpty()) {
             return back()
                 ->withInput()
-                ->withErrors(['segment' => 'Segment "' . $normalizedSegment . '" sudah dipakai oleh node lain di bawah parent yang sama.']);
+                ->withErrors($errors->toArray());
         }
 
-        $code = FunctionalLocation::buildCode($parent, $normalizedSegment);
+        $createdCodes = DB::transaction(function () use ($rows, $parent) {
+            return $rows->map(function (array $row) use ($parent) {
+                $code = FunctionalLocation::buildCode($parent, $row['segment']);
 
-        FunctionalLocation::create([
-            'code'      => $code,
-            'segment'   => $normalizedSegment,
-            'name'      => $validated['name'],
-            'level'     => $parent !== null ? $parent->level + 1 : FunctionalLocation::LEVEL_SITE,
-            'parent_id' => $parent?->id,
-            'is_active' => true,
-        ]);
+                FunctionalLocation::create([
+                    'code'      => $code,
+                    'segment'   => $row['segment'],
+                    'name'      => $row['name'],
+                    'level'     => $parent !== null ? $parent->level + 1 : FunctionalLocation::LEVEL_SITE,
+                    'parent_id' => $parent?->id,
+                    'is_active' => true,
+                ]);
+
+                return $code;
+            });
+        });
+
+        $count = $createdCodes->count();
+
+        $message = $count > 1
+            ? "{$count} Functional Location berhasil dibuat."
+            : 'Functional Location "' . $createdCodes->first() . '" berhasil dibuat.';
 
         return redirect()
             ->route('func-locs.index')
-            ->with('success', 'Functional Location "' . $code . '" berhasil dibuat.');
+            ->with('success', $message);
     }
 
     /**
@@ -281,6 +301,62 @@ class FunctionalLocationController extends Controller
     private function hasActiveChildren(FunctionalLocation $funcLoc): bool
     {
         return $funcLoc->children()->active()->exists();
+    }
+
+    /**
+     * Validasi duplikat segment untuk kumpulan baris children pada satu
+     * submit: dicek dua arah, yaitu antar baris yang dikirim bersamaan dan
+     * terhadap segment yang sudah ada di database di bawah parent yang sama.
+     * Pesan error dikembalikan dengan key per baris (children.{index}.segment)
+     * agar frontend bisa menunjukkan baris mana yang bermasalah.
+     *
+     * @param  Collection<int, array{segment: string, name: string}>  $rows
+     * @param  FunctionalLocation|null  $parent
+     * @return Collection<string, string>
+     */
+    private function validateChildRows(Collection $rows, ?FunctionalLocation $parent): Collection
+    {
+        $errors = collect();
+        $seenInSubmit = [];
+
+        // Cek duplikat antar baris yang dikirim dalam satu submit.
+        foreach ($rows as $index => $row) {
+            $segment = $row['segment'];
+
+            if (isset($seenInSubmit[$segment])) {
+                $errors->put(
+                    "children.{$index}.segment",
+                    'Segment "' . $segment . '" duplikat dengan baris lain pada submit ini.'
+                );
+
+                continue;
+            }
+
+            $seenInSubmit[$segment] = true;
+        }
+
+        // Cek duplikat terhadap segment yang sudah ada di database di bawah parent yang sama.
+        $existingSegments = FunctionalLocation::where('parent_id', $parent?->id)
+            ->whereIn('segment', $rows->pluck('segment')->unique()->values())
+            ->pluck('segment')
+            ->flip();
+
+        foreach ($rows as $index => $row) {
+            $key = "children.{$index}.segment";
+
+            if ($errors->has($key)) {
+                continue;
+            }
+
+            if ($existingSegments->has($row['segment'])) {
+                $errors->put(
+                    $key,
+                    'Segment "' . $row['segment'] . '" sudah dipakai oleh node lain di bawah parent yang sama.'
+                );
+            }
+        }
+
+        return $errors;
     }
 
     /**

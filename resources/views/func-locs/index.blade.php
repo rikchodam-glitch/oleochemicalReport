@@ -73,8 +73,45 @@
     </div>
 
     @if($tree !== null)
+        @php
+            /**
+             * Mengumpulkan id seluruh node beserta keturunannya secara rekursif.
+             * Dipakai agar tombol Buka Semua/Tutup Semua dapat mengubah status
+             * collapse semua node sekaligus, termasuk node yang saat ini
+             * tersembunyi karena parent-nya tertutup.
+             *
+             * @param  \Illuminate\Support\Collection $nodes
+             * @return array
+             */
+            $collectNodeIds = function ($nodes) use (&$collectNodeIds) {
+                $ids = [];
+                foreach ($nodes as $node) {
+                    $ids[] = $node->id;
+                    if ($node->child_nodes->isNotEmpty()) {
+                        $ids = array_merge($ids, $collectNodeIds($node->child_nodes));
+                    }
+                }
+                return $ids;
+            };
+            $allNodeIds = $collectNodeIds($tree);
+        @endphp
+
         <!-- Tampilan Pohon Hierarki -->
-        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div x-data="{ allNodeIds: @json($allNodeIds) }" class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div class="flex items-center justify-end gap-3 px-5 py-2 bg-slate-50 border-b border-slate-100">
+                <button type="button"
+                        @click="$store.funcLocTree.expandAll(allNodeIds)"
+                        class="text-xs font-medium text-blue-600 hover:text-blue-700">
+                    Buka Semua
+                </button>
+                <span class="text-slate-300">|</span>
+                <button type="button"
+                        @click="$store.funcLocTree.collapseAll(allNodeIds)"
+                        class="text-xs font-medium text-slate-600 hover:text-slate-900">
+                    Tutup Semua
+                </button>
+            </div>
+
             <div class="flex items-center gap-3 px-5 py-3 bg-slate-50 border-b border-slate-100 text-xs font-medium text-slate-500 uppercase tracking-wide">
                 <div class="w-5 shrink-0"></div>
                 <div class="w-40 shrink-0">Code</div>

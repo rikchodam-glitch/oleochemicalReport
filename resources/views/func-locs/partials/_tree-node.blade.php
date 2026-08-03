@@ -4,12 +4,12 @@
     $indent = $node->level * 24;
 @endphp
 
-<div x-data="{ open: true }" class="border-b border-slate-50 last:border-b-0">
+<div x-data="{}" class="border-b border-slate-50 last:border-b-0">
     <div class="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors" style="padding-left: {{ 20 + $indent }}px">
         <button type="button"
-                @click="open = !open"
+                @click="$store.funcLocTree.toggle({{ $node->id }})"
                 class="w-5 h-5 flex items-center justify-center text-slate-400 shrink-0 {{ $hasChildren ? '' : 'invisible' }}">
-            <svg class="w-4 h-4 transition-transform" :class="open ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 transition-transform" :class="$store.funcLocTree.isOpen({{ $node->id }}) ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
             </svg>
         </button>
@@ -53,7 +53,14 @@
     </div>
 
     @if($hasChildren)
-        <div x-show="open" x-cloak>
+        <div x-show="$store.funcLocTree.isOpen({{ $node->id }})"
+             x-transition:enter="transition ease-out duration-150"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-100"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             x-cloak>
             @foreach($node->child_nodes as $child)
                 @include('func-locs.partials._tree-node', ['node' => $child])
             @endforeach

@@ -44,6 +44,99 @@
             };
         }
     </script>
+    <script defer>
+        /**
+         * Registrasi store global Alpine.js untuk menyimpan status buka/tutup
+         * (collapse) setiap node pada tree Functional Location. State disimpan
+         * di localStorage browser agar tetap konsisten walau halaman di-refresh.
+         * Node yang belum pernah tersimpan statusnya dianggap tertutup secara
+         * default, termasuk saat halaman pertama kali diakses.
+         */
+        document.addEventListener('alpine:init', () => {
+            Alpine.store('funcLocTree', {
+                storageKey: 'funcloc-tree-state',
+                state: {},
+
+                init() {
+                    this.state = this.readFromStorage();
+                },
+
+                /**
+                 * Membaca state collapse tersimpan dari localStorage.
+                 *
+                 * @return object Peta nodeId => boolean (true berarti terbuka)
+                 */
+                readFromStorage() {
+                    try {
+                        const raw = localStorage.getItem(this.storageKey);
+                        return raw ? JSON.parse(raw) : {};
+                    } catch (e) {
+                        return {};
+                    }
+                },
+
+                /**
+                 * Menulis ulang state collapse saat ini ke localStorage.
+                 *
+                 * @return void
+                 */
+                persist() {
+                    try {
+                        localStorage.setItem(this.storageKey, JSON.stringify(this.state));
+                    } catch (e) {
+                        // localStorage tidak tersedia (misal mode privat), abaikan
+                    }
+                },
+
+                /**
+                 * Mengecek apakah sebuah node dalam kondisi terbuka.
+                 *
+                 * @param  number nodeId
+                 * @return bool
+                 */
+                isOpen(nodeId) {
+                    return this.state[nodeId] === true;
+                },
+
+                /**
+                 * Membalik status buka/tutup sebuah node lalu menyimpannya.
+                 *
+                 * @param  number nodeId
+                 * @return void
+                 */
+                toggle(nodeId) {
+                    this.state[nodeId] = !this.isOpen(nodeId);
+                    this.persist();
+                },
+
+                /**
+                 * Membuka seluruh node pada daftar id yang diberikan sekaligus.
+                 *
+                 * @param  number[] nodeIds
+                 * @return void
+                 */
+                expandAll(nodeIds) {
+                    nodeIds.forEach((nodeId) => {
+                        this.state[nodeId] = true;
+                    });
+                    this.persist();
+                },
+
+                /**
+                 * Menutup seluruh node pada daftar id yang diberikan sekaligus.
+                 *
+                 * @param  number[] nodeIds
+                 * @return void
+                 */
+                collapseAll(nodeIds) {
+                    nodeIds.forEach((nodeId) => {
+                        this.state[nodeId] = false;
+                    });
+                    this.persist();
+                },
+            });
+        });
+    </script>
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
         .sidebar-scroll { scrollbar-width: thin; scrollbar-color: #475569 transparent; }
