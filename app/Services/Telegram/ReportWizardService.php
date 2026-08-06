@@ -244,6 +244,16 @@ class ReportWizardService
             return $this->errorResponse('Tidak ada sesi laporan aktif. Silakan mulai dengan mengirim laporan Anda.');
         }
 
+        // FuncLoc picker aktif (Step 2 alur area/section): teks diperlakukan
+        // sebagai kata kunci pencarian lokasi, pelengkap navigasi tombol
+        // PT/Departemen/Area/Sub Area yang sudah tampil. Dicek lebih dulu
+        // sebelum switch step karena 'step' masih bernilai
+        // STEP_WORK_CLASSIFICATION selama picker aktif (lihat
+        // WizardFuncLocPickerTrait::startFuncLocPicker()).
+        if (!empty($state['funcloc_picker_active'])) {
+            return $this->handleFuncLocTextSearch($chatId, $text, $state);
+        }
+
         switch ($state['step']) {
             case self::STEP_EQUIPMENT_CLARIFY:
                 return $this->handleEquipmentRetype($chatId, $text, $state);

@@ -163,6 +163,30 @@ class FunctionalLocation extends Model
         return $query->where('parent_id', $parentId);
     }
 
+    /**
+     * Cari node berdasarkan kode atau nama. Kata kunci untuk kode
+     * dinormalisasi ke huruf besar agar konsisten dengan format
+     * penyimpanan kolom code, sedangkan nama dicocokkan apa adanya.
+     * Jika kata kunci kosong, query dikembalikan tanpa filter tambahan.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @param  string  $term
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeSearch($query, string $term)
+    {
+        $term = trim($term);
+
+        if ($term === '') {
+            return $query;
+        }
+
+        return $query->where(function ($inner) use ($term) {
+            $inner->where('code', 'like', '%' . strtoupper($term) . '%')
+                ->orWhere('name', 'like', '%' . $term . '%');
+        });
+    }
+
     // =========================================================
     // HELPER
     // =========================================================
@@ -217,5 +241,47 @@ class FunctionalLocation extends Model
         }
 
         return $ancestors;
+    }
+
+    /**
+     * Ambil id seluruh keturunan (descendant) dari node ini secara rekursif,
+     * tanpa menyertakan id node itu sendiri. Dipakai untuk mencegah cycle saat
+     * memindahkan node dan untuk mengumpulkan subtree yang akan dihapus.
+     *
+     * @return array<int, int>
+     */
+    public function getDescendantIds(): array
+    {
+        $ids    = [];
+        $queue  = [$this->id];
+        $seen   = [];
+
+        while ($queue !== []) {
+            $parentId = array_shift($queue);
+
+            $childIds = FunctionalLocation::where('parent_id', $parentId)->pluck('id');
+
+            foreach ($childIds as $childId) {
+                if (isset($seen[$childId])) {
+                    continue;
+                }
+
+                $seen[$childId] = true;
+                $ids[] = (int) $childId;
+                $queue[] = $childId;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Ambil id seluruh subtree node ini, termasuk id node itu sendiri.
+     *
+     * @return array<int, int>
+     */
+    public function getSubtreeIds(): array
+    {
+        return array_merge([$this->id], $this->getDescendantIds());
     }
 }

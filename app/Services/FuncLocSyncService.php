@@ -106,7 +106,8 @@ class FuncLocSyncService
     /**
      * Eksekusi hasil analyze(): buat node FunctionalLocation yang belum ada,
      * tautkan funcloc_id pada asset yang cocok, lalu catat hasilnya sebagai
-     * log. Seluruh proses berjalan dalam satu transaksi database.
+     * log bertipe auto_sync. Seluruh proses berjalan dalam satu transaksi
+     * database.
      *
      * @param  array  $analysis  Hasil dari analyze()
      * @param  bool   $dryRun    Jika true, node tetap dibuat di dalam transaksi
@@ -134,6 +135,7 @@ class FuncLocSyncService
             if (! $dryRun) {
                 FuncLocSyncLog::create([
                     'executed_by'                => auth()->id(),
+                    'type'                       => FuncLocSyncLog::TYPE_AUTO_SYNC,
                     'total_scanned'               => $analysis['total_scanned'] ?? 0,
                     'node_created_count'          => $nodeResult['created'],
                     'asset_linked_count'          => $linkedCount,
@@ -242,6 +244,30 @@ class FuncLocSyncService
         }
 
         return [$linked, $skippedEmpty, $missingNode];
+    }
+
+    /**
+     * Ambil query builder untuk asset yang belum tertaut ke node FuncLoc
+     * manapun (funcloc_id masih NULL). Dipakai oleh halaman rekonsiliasi
+     * manual sebagai sumber data, agar definisi "belum tertaut" konsisten
+     * di seluruh aplikasi (tidak didefinisikan ulang di controller).
+     *
+     * @return \Illuminate\Database\Eloquent\Builder<Asset>
+     */
+    public function unlinkedAssetsQuery()
+    {
+        return Asset::whereNull('funcloc_id');
+    }
+
+    /**
+     * Hitung jumlah asset yang belum tertaut funcloc_id. Dipakai untuk
+     * badge notifikasi pada halaman daftar asset.
+     *
+     * @return int
+     */
+    public function unlinkedAssetsCount(): int
+    {
+        return $this->unlinkedAssetsQuery()->count();
     }
 
     /**

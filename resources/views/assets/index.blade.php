@@ -18,6 +18,17 @@
             <span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-blue-500 rounded-full">{{ collect([request('search'), request('status'), request('company_id'), request('department_id'), request('area_id'), request('sub_area_id'), request('object_type')])->filter()->count() }}</span>
         @endif
     </button>
+    <a href="{{ route('assets.unlinked-funcloc') }}"
+       class="inline-flex items-center gap-2 px-4 py-2 border border-amber-300 hover:bg-amber-50 text-amber-700 text-sm font-medium rounded-lg transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        Belum Punya Lokasi
+        @if($unlinkedFuncLocCount > 0)
+            <span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-amber-500 rounded-full">{{ $unlinkedFuncLocCount }}</span>
+        @endif
+    </a>
     <a href="{{ route('assets.export-excel', request()->query()) }}"
        class="inline-flex items-center gap-2 px-4 py-2 border border-green-300 hover:bg-green-50 text-green-700 text-sm font-medium rounded-lg transition-colors">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

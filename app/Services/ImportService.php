@@ -39,6 +39,15 @@ class ImportService
         'model_number'   => 114,
     ];
 
+    /**
+     * Analisa file Excel dan kelompokkan tiap baris ke salah satu bucket:
+     * clean (siap import), duplicate (equipment_no sudah ada), no_equip
+     * (tanpa Equipment No.), atau bad_funcloc (Equipment No. ada tapi
+     * Functional Loc. kosong sehingga tidak bisa ditautkan ke FuncLoc).
+     *
+     * @param  UploadedFile  $file
+     * @return array
+     */
     public function analyzeFile(UploadedFile $file): array
     {
         ini_set('memory_limit', '512M');
@@ -63,19 +72,32 @@ class ImportService
 
         foreach (array_slice($rows, 1) as $index => $row) {
             $equipNo = trim($row[$colMap['equipment']] ?? '');
+            $funcLoc = trim($row[$colMap['functional_loc']] ?? '');
 
             if (empty($equipNo)) {
                 $results['no_equip'][] = [
                     'row' => $index + 2,
                     'description' => $row[$colMap['description']] ?? '',
-                    'functional_loc' => $row[$colMap['functional_loc']] ?? '',
+                    'functional_loc' => $funcLoc,
+                ];
+                continue;
+            }
+
+            // funcloc_id wajib diisi (kolom assets.funcloc_id NOT NULL),
+            // jadi baris dengan Functional Loc. kosong tidak bisa langsung
+            // diimport. Baris ini harus ditambahkan manual lewat form
+            // Create Asset setelah file diimport, atau file Excel-nya
+            // dilengkapi dulu lalu diimport ulang.
+            if (empty($funcLoc)) {
+                $results['bad_funcloc'][] = [
+                    'row' => $index + 2,
+                    'equipment_no' => $equipNo,
+                    'description' => $row[$colMap['description']] ?? '',
                 ];
                 continue;
             }
 
             $isDuplicate = Asset::where('equipment_no', $equipNo)->exists();
-
-            $funcLoc = trim($row[$colMap['functional_loc']] ?? '');
             $location = $this->parseFunctionalLoc($funcLoc);
 
             $rowData = [
@@ -100,12 +122,20 @@ class ImportService
         $results['funcloc_preview'] = $this->previewFuncLocs(array_merge(
             array_column($results['clean'], 'functional_loc'),
             array_column($results['duplicate'], 'functional_loc'),
-            array_column($results['no_equip'], 'functional_loc'),
         ));
 
         return $results;
     }
 
+    /**
+     * Pecah string "Functional Loc." mentah dari SAP menjadi kode
+     * Company/Department/Area/SubArea lama, dipakai untuk kolom
+     * company_id/department_id/area_id/sub_area_id yang masih dipertahankan
+     * untuk kompatibilitas filter index.
+     *
+     * @param  string  $funcLoc
+     * @return array
+     */
     public function parseFunctionalLoc(string $funcLoc): array
     {
         if (empty($funcLoc)) {
@@ -121,16 +151,29 @@ class ImportService
         ];
     }
 
+    /**
+     * Eksekusi import berdasarkan hasil analyzeFile() dan pilihan aksi
+     * admin. Setiap baris yang akan disimpan wajib berhasil ditautkan ke
+     * node FuncLoc (funcloc_id) — baris yang gagal ditautkan dilewati dan
+     * dihitung sebagai error, tidak pernah disimpan dengan funcloc_id
+     * kosong, karena kolom tersebut NOT NULL di level database.
+     *
+     * @param  array  $analysis
+     * @param  array  $choices
+     * @return array
+     */
     public function executeImport(array $analysis, array $choices): array
     {
         $duplicateAction = $choices['duplicate_action'] ?? 'skip';
         $noEquipAction = $choices['no_equip_action'] ?? 'skip';
+        $badFuncLocAction = $choices['bad_funcloc_action'] ?? 'skip';
 
-        if ($noEquipAction === 'cancel') {
+        if ($noEquipAction === 'cancel' || $badFuncLocAction === 'cancel') {
             return ['status' => 'cancelled', 'message' => 'Import dibatalkan.', 'success_count' => 0];
         }
 
         $successCount = 0;
+        $errorCount = 0;
         $importLogData = [
             'filename' => $choices['filename'] ?? 'unknown.xlsx',
             'imported_by' => auth()->id(),
@@ -143,17 +186,23 @@ class ImportService
             'detail_json' => $analysis,
         ];
 
-        DB::transaction(function () use ($analysis, $duplicateAction, $noEquipAction, &$successCount, $importLogData) {
-            // Process clean rows
+        DB::transaction(function () use ($analysis, $duplicateAction, $noEquipAction, &$successCount, &$errorCount, $importLogData) {
+            // Proses baris bersih
             foreach ($analysis['clean'] as $row) {
+                $funcLocNode = $this->syncFuncLocFromRow($row['functional_loc']);
+
+                if (!$funcLocNode) {
+                    $errorCount++;
+                    continue;
+                }
+
                 $location = $this->findOrCreateLocation($row['location']);
-                $funcLocNode = $row['functional_loc'] !== '' ? $this->syncFuncLocFromRow($row['functional_loc']) : null;
 
                 Asset::create(array_merge(
                     $this->mapToAsset($row),
                     $location,
                     [
-                        'funcloc_id' => $funcLocNode?->id,
+                        'funcloc_id' => $funcLocNode->id,
                         'status' => 'active',
                         'has_equipment_no' => true,
                         'data_source' => 'import_excel',
@@ -163,20 +212,26 @@ class ImportService
                 $successCount++;
             }
 
-            // Process duplicates
+            // Proses duplikat
             if ($duplicateAction !== 'skip') {
                 foreach ($analysis['duplicate'] as $row) {
                     $existing = Asset::where('equipment_no', $row['equipment_no'])->first();
                     if (!$existing) continue;
 
                     if ($duplicateAction === 'replace') {
+                        $funcLocNode = $this->syncFuncLocFromRow($row['functional_loc']);
+
+                        if (!$funcLocNode) {
+                            $errorCount++;
+                            continue;
+                        }
+
                         $location = $this->findOrCreateLocation($row['location']);
-                        $funcLocNode = $row['functional_loc'] !== '' ? $this->syncFuncLocFromRow($row['functional_loc']) : null;
 
                         $existing->update(array_merge(
                             $this->mapToAsset($row),
                             $location,
-                            ['funcloc_id' => $funcLocNode?->id, 'imported_at' => now()]
+                            ['funcloc_id' => $funcLocNode->id, 'imported_at' => now()]
                         ));
                         $successCount++;
                     } elseif ($duplicateAction === 'keep_flag') {
@@ -186,12 +241,20 @@ class ImportService
                 }
             }
 
-            // Process no equipment rows
+            // Proses baris tanpa Equipment No.
             if ($noEquipAction === 'flag') {
                 foreach ($analysis['no_equip'] as $row) {
                     $funcLocString = $row['functional_loc'] ?? '';
-                    $location = $this->findOrCreateLocation($this->parseFunctionalLoc($funcLocString));
                     $funcLocNode = $funcLocString !== '' ? $this->syncFuncLocFromRow($funcLocString) : null;
+
+                    // Baris tanpa Equipment No. sekaligus tanpa Functional Loc.
+                    // tidak bisa dibuat karena funcloc_id wajib diisi
+                    if (!$funcLocNode) {
+                        $errorCount++;
+                        continue;
+                    }
+
+                    $location = $this->findOrCreateLocation($this->parseFunctionalLoc($funcLocString));
 
                     Asset::create(array_merge(
                         [
@@ -201,7 +264,7 @@ class ImportService
                         ],
                         $location,
                         [
-                            'funcloc_id' => $funcLocNode?->id,
+                            'funcloc_id' => $funcLocNode->id,
                             'status' => 'needs_review',
                             'has_equipment_no' => false,
                             'data_source' => 'import_excel',
@@ -212,15 +275,28 @@ class ImportService
                 }
             }
 
-            // Save import log
+            // Baris di bucket bad_funcloc (Equipment No. ada, Functional Loc.
+            // kosong) sengaja tidak pernah dibuat menjadi Asset lewat jalur
+            // import. Dihitung sebagai error agar tercatat di log, admin
+            // menambahkannya manual lewat form Create Asset setelahnya.
+            $errorCount += count($analysis['bad_funcloc']);
+
+            // Simpan log import
             $importLogData['success_count'] = $successCount;
+            $importLogData['error_count'] = $errorCount;
             AssetImportLog::create($importLogData);
         });
 
+        $message = "Import berhasil. {$successCount} asset diproses.";
+        if ($errorCount > 0) {
+            $message .= " {$errorCount} baris dilewati karena tidak memiliki Functional Location yang valid.";
+        }
+
         return [
             'status' => 'success',
-            'message' => "Import berhasil. {$successCount} asset diproses.",
+            'message' => $message,
             'success_count' => $successCount,
+            'error_count' => $errorCount,
         ];
     }
 

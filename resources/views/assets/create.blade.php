@@ -42,12 +42,13 @@
                                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                                placeholder="ZPM-PU1">
                     </div>
-                    <div class="space-y-1.5">
-                        <label class="block text-sm font-medium text-slate-700">Functional Loc</label>
-                        <input type="text" name="functional_loc" value="{{ old('functional_loc') }}"
-                               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                               placeholder="EPE-PROD-BD02-6153">
-                    </div>
+                    <x-funcloc-picker
+                        name="funcloc_id"
+                        label="Lokasi (Functional Location)"
+                        :selected-id="$selectedFuncLocId"
+                        :selected-label="$selectedFuncLocLabel"
+                        placeholder="Cari kode atau nama lokasi..."
+                    />
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">

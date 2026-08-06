@@ -59,7 +59,7 @@
         <template x-if="analysis">
             <div class="space-y-6">
                 <!-- Summary -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
                         <p class="text-2xl font-bold text-green-600" x-text="analysis.clean.length"></p>
                         <p class="text-xs text-slate-500 mt-1">Baru & Siap Import</p>
@@ -71,6 +71,10 @@
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
                         <p class="text-2xl font-bold text-red-600" x-text="analysis.no_equip.length"></p>
                         <p class="text-xs text-slate-500 mt-1">Tanpa Equipment No</p>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
+                        <p class="text-2xl font-bold text-orange-600" x-text="analysis.bad_funcloc.length"></p>
+                        <p class="text-xs text-slate-500 mt-1">Tanpa Functional Loc.</p>
                     </div>
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
                         <p class="text-2xl font-bold text-slate-600" x-text="analysis.total_rows"></p>
@@ -107,6 +111,27 @@
                     </div>
                 </div>
 
+                <!-- Bad FuncLoc List -->
+                <template x-if="analysis.bad_funcloc.length > 0">
+                    <div class="bg-white rounded-xl border border-slate-200 p-6">
+                        <h3 class="font-medium text-slate-900 mb-1">Baris Tanpa Functional Location</h3>
+                        <p class="text-sm text-slate-500 mb-4">
+                            Baris berikut punya Equipment No. tapi kolom Functional Loc. kosong, sehingga
+                            tidak bisa ditautkan ke lokasi mana pun. Baris ini akan dilewati saat import
+                            dan perlu ditambahkan manual lewat form Tambah Asset setelahnya.
+                        </p>
+                        <div class="max-h-56 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
+                            <template x-for="row in analysis.bad_funcloc" :key="row.row">
+                                <div class="flex items-center gap-3 px-4 py-2 text-sm">
+                                    <span class="text-xs text-slate-400 shrink-0" x-text="'Baris ' + row.row"></span>
+                                    <span class="font-mono text-xs text-slate-700 shrink-0" x-text="row.equipment_no"></span>
+                                    <span class="text-slate-600 truncate" x-text="row.description"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
                 <!-- Actions -->
                 <div class="bg-white rounded-xl border border-slate-200 p-6">
                     <h3 class="font-medium text-slate-900 mb-4">Pilihan Aksi Import</h3>
@@ -126,6 +151,17 @@
                                 <option value="skip">Abaikan baris tersebut</option>
                                 <option value="cancel">Batalkan seluruh import</option>
                             </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Aksi untuk Tanpa Functional Loc.</label>
+                            <select x-model="badFuncLocAction" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                                <option value="skip">Abaikan baris tersebut</option>
+                                <option value="cancel">Batalkan seluruh import</option>
+                            </select>
+                            <p class="text-xs text-slate-400 mt-1">
+                                Setiap asset wajib punya Functional Location, jadi baris ini tidak bisa
+                                langsung dimasukkan tanpa lokasi.
+                            </p>
                         </div>
                     </div>
                     <div class="mt-4 flex gap-3">
@@ -179,6 +215,7 @@ function importManager() {
         result: null,
         duplicateAction: 'skip',
         noEquipAction: 'flag',
+        badFuncLocAction: 'skip',
 
         uploadFile() {
             const fileInput = this.$refs.fileInput;
@@ -252,6 +289,7 @@ function importManager() {
                     analysis: this.analysis,
                     duplicate_action: this.duplicateAction,
                     no_equip_action: this.noEquipAction,
+                    bad_funcloc_action: this.badFuncLocAction,
                     filename: this.$refs.fileInput?.files[0]?.name || 'unknown.xlsx',
                 }),
             })

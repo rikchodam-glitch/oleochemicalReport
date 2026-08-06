@@ -15,6 +15,9 @@
         <a href="{{ route('func-locs.create', ['parent_id' => $item->id]) }}" class="text-blue-600 hover:text-blue-700 text-xs font-medium">
             Tambah Anak
         </a>
+        <a href="{{ route('func-locs.move', $item) }}" class="text-indigo-600 hover:text-indigo-700 text-xs font-medium">
+            Pindah
+        </a>
         <a href="{{ route('func-locs.edit', $item) }}" class="text-slate-600 hover:text-slate-900 text-xs font-medium">
             Edit
         </a>
@@ -24,6 +27,13 @@
                 @csrf
                 @method('DELETE')
                 <button type="submit" class="text-amber-600 hover:text-amber-700 text-xs font-medium">Nonaktifkan</button>
+            </form>
+        @else
+            <form method="POST" action="{{ route('func-locs.force-destroy', $item) }}" class="inline"
+                  onsubmit="return confirm('Hapus PERMANEN node {{ $item->code }} beserta seluruh subtree-nya? Tindakan ini tidak dapat dibatalkan.')">
+                @csrf
+                @method('DELETE')
+                <button type="submit" class="text-red-600 hover:text-red-700 text-xs font-medium">Hapus</button>
             </form>
         @endif
     </div>

@@ -58,7 +58,7 @@
                                     data-code="{{ $parent->code }}"
                                     data-level="{{ $parent->level }}"
                                     {{ (string) $selectedParentId === (string) $parent->id ? 'selected' : '' }}>
-                                {{ str_repeat('— ', $parent->level) }}{{ $parent->code }} (L{{ $parent->level }} - {{ $levelLabels[$parent->level] }})
+                                {{ str_repeat('— ', $parent->level) }}{{ $parent->code }} (L{{ $parent->level }} - {{ $levelLabels[$parent->level] ?? 'Tidak Diketahui' }})
                             </option>
                         @endforeach
                     </select>

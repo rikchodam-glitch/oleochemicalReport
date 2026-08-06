@@ -34,11 +34,14 @@
             <x-status-badge :status="$node->is_active ? 'active' : 'inactive'" :label="$node->is_active ? 'Aktif' : 'Nonaktif'" />
         </div>
 
-        <div class="w-44 shrink-0 flex items-center gap-3 justify-end">
-            <a href="{{ route('func-locs.create', ['parent_id' => $node->id]) }}" class="text-blue-600 hover:text-blue-700 text-xs font-medium">
+        <div class="flex items-center gap-3 justify-end">
+            <a href="{{ route('func-locs.create', ['parent_id' => $node->id]) }}" class="text-blue-600 hover:text-blue-700 text-xs font-medium whitespace-nowrap">
                 Tambah Anak
             </a>
-            <a href="{{ route('func-locs.edit', $node) }}" class="text-slate-600 hover:text-slate-900 text-xs font-medium">
+            <a href="{{ route('func-locs.move', $node) }}" class="text-indigo-600 hover:text-indigo-700 text-xs font-medium whitespace-nowrap">
+                Pindah
+            </a>
+            <a href="{{ route('func-locs.edit', $node) }}" class="text-slate-600 hover:text-slate-900 text-xs font-medium whitespace-nowrap">
                 Edit
             </a>
             @if($node->is_active)
@@ -46,7 +49,14 @@
                       onsubmit="return confirm('Nonaktifkan node {{ $node->code }}?')">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" class="text-amber-600 hover:text-amber-700 text-xs font-medium">Nonaktifkan</button>
+                    <button type="submit" class="text-amber-600 hover:text-amber-700 text-xs font-medium whitespace-nowrap">Nonaktifkan</button>
+                </form>
+            @else
+                <form method="POST" action="{{ route('func-locs.force-destroy', $node) }}" class="inline"
+                      onsubmit="return confirm('Hapus PERMANEN node {{ $node->code }} beserta seluruh subtree-nya? Tindakan ini tidak dapat dibatalkan.')">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="text-red-600 hover:text-red-700 text-xs font-medium whitespace-nowrap">Hapus</button>
                 </form>
             @endif
         </div>

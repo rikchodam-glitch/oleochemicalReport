@@ -64,7 +64,7 @@
 
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-slate-700 mb-1">Level</label>
-                    <input type="text" value="L{{ $funcLoc->level }} - {{ $levelLabels[$funcLoc->level] }}" disabled
+                    <input type="text" value="L{{ $funcLoc->level }} - {{ $levelLabels[$funcLoc->level] ?? 'Tidak Diketahui' }}" disabled
                            class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 text-slate-500">
                 </div>
 

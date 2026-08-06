@@ -9,9 +9,12 @@ use App\Models\Area;
 use App\Models\Asset;
 use App\Models\Company;
 use App\Models\Department;
+use App\Models\FuncLocSyncLog;
+use App\Models\FunctionalLocation;
 use App\Models\Report;
 use App\Models\SubArea;
 use App\Models\Technician;
+use App\Services\FuncLocSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -25,9 +28,10 @@ class AssetController extends Controller
      * Tampilkan daftar asset dengan filter dan paginasi.
      *
      * @param  Request  $request
+     * @param  FuncLocSyncService  $syncService
      * @return \Illuminate\View\View
      */
-    public function index(Request $request)
+    public function index(Request $request, FuncLocSyncService $syncService)
     {
         $query = Asset::with(['company', 'department', 'area', 'subArea']);
 
@@ -82,7 +86,14 @@ class AssetController extends Controller
             $subAreas = SubArea::where('area_id', $request->area_id)->orderBy('code')->get();
         }
 
-        return view('assets.index', compact('assets', 'companies', 'objectTypes', 'departments', 'areas', 'subAreas'));
+        // Jumlah asset yang belum tertaut funcloc_id — untuk badge tautan
+        // menuju halaman rekonsiliasi manual.
+        $unlinkedFuncLocCount = $syncService->unlinkedAssetsCount();
+
+        return view('assets.index', compact(
+            'assets', 'companies', 'objectTypes', 'departments', 'areas', 'subAreas',
+            'unlinkedFuncLocCount'
+        ));
     }
 
     /**
@@ -168,16 +179,31 @@ class AssetController extends Controller
     /**
      * Tampilkan form tambah asset baru.
      *
+     * Lokasi dipilih lewat komponen <x-funcloc-picker> (bukan lagi input
+     * teks bebas), sehingga tidak perlu lagi mengirim data Company/Department
+     * ke view ini. Jika sebelumnya submit gagal validasi, funcloc_id yang
+     * sempat dipilih (old input) ditampilkan ulang lewat label hasil lookup.
+     *
      * @return \Illuminate\View\View
      */
     public function create()
     {
-        $companies = Company::all();
-        return view('assets.create', compact('companies'));
+        $oldFuncLocId = old('funcloc_id');
+        $oldFuncLoc   = $oldFuncLocId ? FunctionalLocation::find($oldFuncLocId) : null;
+
+        return view('assets.create', [
+            'selectedFuncLocId'    => $oldFuncLoc?->id,
+            'selectedFuncLocLabel' => $this->funcLocLabel($oldFuncLoc),
+        ]);
     }
 
     /**
      * Simpan asset baru ke database.
+     *
+     * FuncLoc kini wajib dipilih dari node yang sudah ada. Kolom lama
+     * (functional_loc string, company_id/department_id/area_id/sub_area_id)
+     * tetap diisi otomatis dari FuncLoc terpilih agar filter dan laporan
+     * lama yang masih memakainya tetap konsisten.
      *
      * @param  Request  $request
      * @return \Illuminate\Http\RedirectResponse
@@ -185,25 +211,24 @@ class AssetController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'equipment_no'  => 'nullable|unique:assets',
-            'description'   => 'nullable|string',
-            'tech_ident_no' => 'nullable|string',
-            'object_type'   => 'nullable|string',
-            'functional_loc'=> 'nullable|string',
-            'company_id'    => 'nullable|exists:companies,id',
-            'department_id' => 'nullable|exists:departments,id',
-            'area_id'       => 'nullable|exists:areas,id',
-            'sub_area_id'   => 'nullable|exists:sub_areas,id',
-            'manufacturer'  => 'nullable|string',
-            'model_number'  => 'nullable|string',
-            'construct_year'=> 'nullable|string',
-            'status'        => 'required|in:active,inactive,needs_review',
+            'equipment_no'   => 'nullable|unique:assets',
+            'description'    => 'nullable|string',
+            'tech_ident_no'  => 'nullable|string',
+            'object_type'    => 'nullable|string',
+            'funcloc_id'     => 'required|exists:functional_locations,id',
+            'manufacturer'   => 'nullable|string',
+            'model_number'   => 'nullable|string',
+            'construct_year' => 'nullable|string',
+            'status'         => 'required|in:active,inactive,needs_review',
         ]);
 
-        $validated['has_equipment_no'] = !empty($validated['equipment_no']);
-        $validated['data_source']      = 'manual';
+        $funcLoc = FunctionalLocation::findOrFail($validated['funcloc_id']);
 
-        Asset::create($validated);
+        $data = array_merge($validated, $this->locationFieldsFromFuncLoc($funcLoc));
+        $data['has_equipment_no'] = !empty($validated['equipment_no']);
+        $data['data_source']      = 'manual';
+
+        Asset::create($data);
 
         return redirect()->route('assets.index')
             ->with('success', 'Asset berhasil ditambahkan.');
@@ -217,10 +242,15 @@ class AssetController extends Controller
      */
     public function edit(Asset $asset)
     {
-        $companies   = Company::all();
-        $departments = Department::where('company_id', $asset->company_id)->get();
-        $areas       = Area::where('department_id', $asset->department_id)->get();
-        return view('assets.edit', compact('asset', 'companies', 'departments', 'areas'));
+        $oldFuncLocId = old('funcloc_id');
+        $oldFuncLoc   = $oldFuncLocId ? FunctionalLocation::find($oldFuncLocId) : null;
+        $currentFuncLoc = $oldFuncLoc ?? $asset->functionalLocation;
+
+        return view('assets.edit', [
+            'asset'                => $asset,
+            'selectedFuncLocId'    => $currentFuncLoc?->id,
+            'selectedFuncLocLabel' => $this->funcLocLabel($currentFuncLoc),
+        ]);
     }
 
     /**
@@ -233,23 +263,23 @@ class AssetController extends Controller
     public function update(Request $request, Asset $asset)
     {
         $validated = $request->validate([
-            'equipment_no'  => 'nullable|unique:assets,equipment_no,' . $asset->id,
-            'description'   => 'nullable|string',
-            'tech_ident_no' => 'nullable|string',
-            'object_type'   => 'nullable|string',
-            'functional_loc'=> 'nullable|string',
-            'company_id'    => 'nullable|exists:companies,id',
-            'department_id' => 'nullable|exists:departments,id',
-            'area_id'       => 'nullable|exists:areas,id',
-            'sub_area_id'   => 'nullable|exists:sub_areas,id',
-            'manufacturer'  => 'nullable|string',
-            'model_number'  => 'nullable|string',
-            'construct_year'=> 'nullable|string',
-            'status'        => 'required|in:active,inactive,needs_review',
+            'equipment_no'   => 'nullable|unique:assets,equipment_no,' . $asset->id,
+            'description'    => 'nullable|string',
+            'tech_ident_no'  => 'nullable|string',
+            'object_type'    => 'nullable|string',
+            'funcloc_id'     => 'required|exists:functional_locations,id',
+            'manufacturer'   => 'nullable|string',
+            'model_number'   => 'nullable|string',
+            'construct_year' => 'nullable|string',
+            'status'         => 'required|in:active,inactive,needs_review',
         ]);
 
-        $validated['has_equipment_no'] = !empty($validated['equipment_no']);
-        $asset->update($validated);
+        $funcLoc = FunctionalLocation::findOrFail($validated['funcloc_id']);
+
+        $data = array_merge($validated, $this->locationFieldsFromFuncLoc($funcLoc));
+        $data['has_equipment_no'] = !empty($validated['equipment_no']);
+
+        $asset->update($data);
 
         return redirect()->route('assets.index')
             ->with('success', 'Asset berhasil diperbarui.');
@@ -266,5 +296,186 @@ class AssetController extends Controller
         $asset->delete();
         return redirect()->route('assets.index')
             ->with('success', 'Asset berhasil dihapus.');
+    }
+
+    /**
+     * Tampilkan halaman rekonsiliasi manual: daftar asset yang funcloc_id-nya
+     * masih NULL setelah sinkronisasi otomatis (kosong, typo, atau format
+     * functional_loc lama tidak sesuai hierarki 4-level SAP).
+     *
+     * @param  Request  $request
+     * @param  FuncLocSyncService  $syncService
+     * @return \Illuminate\View\View
+     */
+    public function unlinked(Request $request, FuncLocSyncService $syncService)
+    {
+        $query = $syncService->unlinkedAssetsQuery();
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('equipment_no', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%")
+                  ->orWhere('tech_ident_no', 'like', "%{$search}%")
+                  ->orWhere('functional_loc', 'like', "%{$search}%");
+            });
+        }
+
+        $assets = $query->latest()->paginate(20)->withQueryString();
+
+        return view('assets.unlinked', compact('assets'));
+    }
+
+    /**
+     * Jalankan ulang FuncLocSyncService::execute() dari halaman rekonsiliasi,
+     * sebagai langkah pertama sebelum penautan manual. Asset yang
+     * functional_loc lamanya cocok dengan kode FuncLoc akan langsung
+     * tertaut; sisanya tetap muncul di daftar manual. Log auto_sync dicatat
+     * langsung oleh FuncLocSyncService::execute().
+     *
+     * @param  FuncLocSyncService  $syncService
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function runAutoSync(FuncLocSyncService $syncService)
+    {
+        $analysis = $syncService->analyze();
+        $result   = $syncService->execute($analysis);
+
+        return redirect()->route('assets.unlinked-funcloc')->with(
+            'success',
+            "Sync otomatis selesai: {$result['asset_linked_count']} asset tertaut, " .
+            "{$result['node_created_count']} node FuncLoc baru dibuat."
+        );
+    }
+
+    /**
+     * Tautkan satu asset ke FuncLoc yang dipilih secara manual dari halaman
+     * rekonsiliasi. Aksi ini dicatat sebagai FuncLocSyncLog bertipe
+     * manual_link agar riwayat penautan manual tetap terlacak.
+     *
+     * @param  Request  $request
+     * @param  Asset    $asset
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function linkFuncLoc(Request $request, Asset $asset)
+    {
+        $validated = $request->validate([
+            'funcloc_id' => 'required|exists:functional_locations,id',
+        ]);
+
+        $funcLoc = FunctionalLocation::findOrFail($validated['funcloc_id']);
+
+        $data = array_merge(
+            ['funcloc_id' => $funcLoc->id],
+            $this->locationFieldsFromFuncLoc($funcLoc)
+        );
+
+        $asset->update($data);
+
+        FuncLocSyncLog::create([
+            'executed_by'                => auth()->id(),
+            'type'                       => FuncLocSyncLog::TYPE_MANUAL_LINK,
+            'total_scanned'               => 0,
+            'node_created_count'          => 0,
+            'asset_linked_count'          => 1,
+            'asset_skipped_empty_count'   => 0,
+            'asset_missing_node_count'    => 0,
+            'detail_json'                 => [
+                'asset_id'     => $asset->id,
+                'funcloc_id'   => $funcLoc->id,
+                'funcloc_code' => $funcLoc->code,
+            ],
+        ]);
+
+        return redirect()->route('assets.unlinked-funcloc')
+            ->with('success', "Asset berhasil ditautkan ke {$funcLoc->code}.");
+    }
+
+    /**
+     * Tautkan beberapa asset sekaligus ke satu FuncLoc yang sama. Berguna
+     * ketika banyak asset lama berasal dari section yang sama sehingga tidak
+     * perlu ditautkan satu-per-satu. Aksi ini dicatat sebagai FuncLocSyncLog
+     * bertipe bulk_link.
+     *
+     * @param  Request  $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function bulkLinkFuncLoc(Request $request)
+    {
+        $validated = $request->validate([
+            'asset_ids'    => 'required|array|min:1',
+            'asset_ids.*'  => 'integer|exists:assets,id',
+            'funcloc_id'   => 'required|exists:functional_locations,id',
+        ]);
+
+        $funcLoc = FunctionalLocation::findOrFail($validated['funcloc_id']);
+
+        $data = array_merge(
+            ['funcloc_id' => $funcLoc->id],
+            $this->locationFieldsFromFuncLoc($funcLoc)
+        );
+
+        // Batasi ke asset yang masih funcloc_id NULL saja, mencegah race
+        // condition menimpa asset yang sudah sempat ditautkan proses lain.
+        $updated = Asset::whereIn('id', $validated['asset_ids'])
+            ->whereNull('funcloc_id')
+            ->update($data);
+
+        FuncLocSyncLog::create([
+            'executed_by'                => auth()->id(),
+            'type'                       => FuncLocSyncLog::TYPE_BULK_LINK,
+            'total_scanned'               => 0,
+            'node_created_count'          => 0,
+            'asset_linked_count'          => $updated,
+            'asset_skipped_empty_count'   => 0,
+            'asset_missing_node_count'    => 0,
+            'detail_json'                 => [
+                'asset_ids'    => $validated['asset_ids'],
+                'funcloc_id'   => $funcLoc->id,
+                'funcloc_code' => $funcLoc->code,
+            ],
+        ]);
+
+        return redirect()->route('assets.unlinked-funcloc')
+            ->with('success', "{$updated} asset berhasil ditautkan sekaligus ke {$funcLoc->code}.");
+    }
+
+    /**
+     * Bangun label tampilan "KODE — Nama" untuk sebuah FuncLoc, dipakai
+     * mengisi ulang komponen picker saat form gagal validasi atau saat
+     * membuka form edit.
+     *
+     * @param  FunctionalLocation|null  $funcLoc
+     * @return string|null
+     */
+    private function funcLocLabel(?FunctionalLocation $funcLoc): ?string
+    {
+        if ($funcLoc === null) {
+            return null;
+        }
+
+        return $funcLoc->code . ' — ' . $funcLoc->name;
+    }
+
+    /**
+     * Turunkan kolom lokasi lama (functional_loc string dan
+     * company_id/department_id/area_id/sub_area_id) dari FuncLoc yang
+     * dipilih di picker. FuncLoc adalah sumber kebenaran; kolom-kolom ini
+     * hanya ikut terisi untuk menjaga kompatibilitas filter dan laporan
+     * lama yang masih membacanya. Nilai bisa null jika node FuncLoc dibuat
+     * manual tanpa relasi ke master data lama.
+     *
+     * @param  FunctionalLocation  $funcLoc
+     * @return array{functional_loc: string, company_id: int|null, department_id: int|null, area_id: int|null, sub_area_id: int|null}
+     */
+    private function locationFieldsFromFuncLoc(FunctionalLocation $funcLoc): array
+    {
+        return [
+            'functional_loc' => $funcLoc->code,
+            'company_id'     => $funcLoc->company_id,
+            'department_id'  => $funcLoc->department_id,
+            'area_id'        => $funcLoc->area_id,
+            'sub_area_id'    => $funcLoc->sub_area_id,
+        ];
     }
 }

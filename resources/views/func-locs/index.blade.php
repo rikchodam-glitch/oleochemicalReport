@@ -119,7 +119,7 @@
                 <div class="w-24 shrink-0">Level</div>
                 <div class="w-20 shrink-0">Asset</div>
                 <div class="w-24 shrink-0">Status</div>
-                <div class="w-44 shrink-0 text-right">Aksi</div>
+                <div class="flex-1 shrink-0 text-right">Aksi</div>
             </div>
 
             @forelse($tree as $node)

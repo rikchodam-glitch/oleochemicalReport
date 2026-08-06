@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Area;
+use App\Models\Company;
+use App\Models\Department;
 use App\Models\FunctionalLocation;
+use App\Models\SubArea;
 use App\Services\FuncLocSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -91,7 +95,15 @@ class FunctionalLocationController extends Controller
      */
     public function create(Request $request): View
     {
-        $parentOptions = FunctionalLocation::active()->orderBy('code')->get(['id', 'code', 'level']);
+        // Dropdown hanya menampilkan parent yang bisa memiliki anak (level
+        // di bawah Section). Node dengan level tak dikenal (mis. 4 dari data
+        // lama) otomatis disembunyikan agar tidak memicu error saat label
+        // levelnya diakses.
+        $parentOptions = FunctionalLocation::active()
+            ->where('level', '<', FunctionalLocation::LEVEL_SECTION)
+            ->orderBy('code')
+            ->get(['id', 'code', 'level']);
+
         $selectedParentId = $request->query('parent_id');
 
         return view('func-locs.create', [
@@ -190,7 +202,8 @@ class FunctionalLocationController extends Controller
 
     /**
      * Perbarui name dan is_active dari node FuncLoc. Kode (full path) tidak
-     * dapat diubah karena bersifat immutable setelah dibuat.
+     * dapat diubah di sini — perubahan kode hanya terjadi lewat fitur Pindah
+     * (move) yang menulis ulang kode seluruh subtree secara konsisten.
      *
      * @param  Request  $request
      * @param  FunctionalLocation  $funcLoc
@@ -242,6 +255,444 @@ class FunctionalLocationController extends Controller
     }
 
     /**
+     * Hapus permanen node FuncLoc yang sudah NONAKTIF beserta seluruh
+     * subtree-nya. Node yang masih aktif ditolak. Node (atau keturunannya)
+     * yang masih dipakai asset ditolak karena constraint database
+     * assets.funcloc_id (NOT NULL + ON DELETE RESTRICT).
+     *
+     * Report, Area, dan SubArea yang menunjuk ke node yang dihapus otomatis
+     * ke-null-kan oleh foreign key ON DELETE SET NULL di level database.
+     *
+     * @param  FunctionalLocation  $funcLoc
+     * @return RedirectResponse
+     */
+    public function forceDestroy(FunctionalLocation $funcLoc): RedirectResponse
+    {
+        if ($funcLoc->is_active) {
+            return back()->with('error', 'Hanya node berstatus Nonaktif yang bisa dihapus permanen.');
+        }
+
+        $subtreeIds = $funcLoc->getSubtreeIds();
+
+        $activeChildCount = FunctionalLocation::whereIn('parent_id', $subtreeIds)
+            ->where('is_active', true)
+            ->count();
+
+        if ($activeChildCount > 0) {
+            return back()->with('error', 'Masih ada child aktif di dalam subtree node ini. Nonaktifkan child terlebih dahulu.');
+        }
+
+        $assetCount = \App\Models\Asset::whereIn('funcloc_id', $subtreeIds)->count();
+
+        if ($assetCount > 0) {
+            return back()->with('error', "Node \"{$funcLoc->code}\" atau keturunannya masih dipakai {$assetCount} asset. Pindahkan asset terlebih dahulu sebelum menghapus.");
+        }
+
+        DB::transaction(function () use ($subtreeIds) {
+            FunctionalLocation::whereIn('id', $subtreeIds)->delete();
+        });
+
+        return redirect()
+            ->route('func-locs.index')
+            ->with('success', 'Functional Location "' . $funcLoc->code . '" beserta seluruh subtree-nya berhasil dihapus permanen.');
+    }
+
+    /**
+     * Tampilkan form pindah node FuncLoc ke parent lain. Seluruh subtree ikut
+     * berpindah dan kode (full path) setiap node di subtree ditulis ulang
+     * mengikuti jalur baru.
+     *
+     * @param  FunctionalLocation  $funcLoc
+     * @return View
+     */
+    public function move(FunctionalLocation $funcLoc): View
+    {
+        $excludedIds = $funcLoc->getSubtreeIds();
+
+        // Parent tujuan harus aktif, bukan level Section (L3), dan bukan
+        // bagian dari subtree node itu sendiri (cegah cycle).
+        $parentOptions = FunctionalLocation::active()
+            ->where('level', '<', FunctionalLocation::LEVEL_SECTION)
+            ->whereNotIn('id', $excludedIds)
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'level']);
+
+        return view('func-locs.move', [
+            'funcLoc'       => $funcLoc,
+            'parentOptions' => $parentOptions,
+            'levelLabels'   => $this->levelLabels(),
+        ]);
+    }
+
+    /**
+     * Proses pemindahan node FuncLoc (beserta subtree) ke parent tujuan.
+     *
+     * Setelah parent_id berubah:
+     * - level setiap node di subtree dihitung ulang mengikuti kedalaman baru;
+     * - code (full path) setiap node di subtree ditulis ulang mengikuti jalur
+     *   baru, dengan segment lama dipertahankan;
+     * - relasi master lama (company_id, department_id, area_id, sub_area_id)
+     *   disinkronkan ulang mengikuti parent baru agar konsisten.
+     *
+     * Semua perubahan dijalankan dalam satu transaksi database (all-or-nothing).
+     *
+     * @param  Request  $request
+     * @param  FunctionalLocation  $funcLoc
+     * @return RedirectResponse
+     */
+    public function moveUpdate(Request $request, FunctionalLocation $funcLoc): RedirectResponse
+    {
+        $validated = $request->validate([
+            'new_parent_id' => ['nullable', 'exists:functional_locations,id'],
+        ]);
+
+        $newParentId = ! empty($validated['new_parent_id'])
+            ? (int) $validated['new_parent_id']
+            : null;
+
+        $newParent = $newParentId !== null
+            ? FunctionalLocation::findOrFail($newParentId)
+            : null;
+
+        $validationFailed = $this->validateMoveTarget($funcLoc, $newParent);
+
+        if ($validationFailed !== null) {
+            return back()
+                ->withInput()
+                ->withErrors(['new_parent_id' => $validationFailed]);
+        }
+
+        $message = DB::transaction(function () use ($funcLoc, $newParent) {
+            $newLevel = $newParent !== null
+                ? $newParent->level + 1
+                : FunctionalLocation::LEVEL_SITE;
+
+            $newCode = FunctionalLocation::buildCode($newParent, $funcLoc->segment);
+
+            // Pindahkan node itu sendiri tanpa memicu observer (sinkronisasi
+            // master lama ditangani manual di akhir transaksi).
+            $funcLoc->forceFill([
+                'parent_id' => $newParent?->id,
+                'level'     => $newLevel,
+                'code'      => $newCode,
+            ])->saveQuietly();
+
+            $this->rewriteDescendantCodes($funcLoc);
+
+            // Sinkronkan master lama untuk seluruh subtree setelah jalur baru
+            // terbentuk, diproses dari level terendah (parent) ke tertinggi
+            // (child) agar relasi master parent selalu sudah siap saat child
+            // disinkronkan. Reload per node agar relasi parent yang baru
+            // benar-benar segar setelah parent-nya ditulis.
+            $subtreeIds = $funcLoc->getSubtreeIds();
+            $subtree    = FunctionalLocation::with('parent')
+                ->whereIn('id', $subtreeIds)
+                ->orderBy('level')
+                ->get();
+
+            foreach ($subtree as $node) {
+                $freshNode = FunctionalLocation::with('parent')->findOrFail($node->id);
+                $this->syncMasterForNode($freshNode);
+            }
+
+            return "Functional Location \"{$funcLoc->code}\" berhasil dipindahkan beserta seluruh subtree-nya.";
+        });
+
+        return redirect()
+            ->route('func-locs.index')
+            ->with('success', $message);
+    }
+
+    /**
+     * Validasi target pemindahan node FuncLoc.
+     *
+     * @param  FunctionalLocation  $funcLoc
+     * @param  FunctionalLocation|null  $newParent
+     * @return string|null  Pesan error, atau null jika valid.
+     */
+    private function validateMoveTarget(FunctionalLocation $funcLoc, ?FunctionalLocation $newParent): ?string
+    {
+        if ($newParent === null) {
+            return null;
+        }
+
+        if ($newParent->id === $funcLoc->id) {
+            return 'Parent tujuan tidak boleh sama dengan node itu sendiri.';
+        }
+
+        if (! $newParent->is_active) {
+            return 'Parent tujuan harus berstatus Aktif.';
+        }
+
+        if ($newParent->level >= FunctionalLocation::LEVEL_SECTION) {
+            return 'Node Level Section (L3) tidak bisa memiliki anak.';
+        }
+
+        if (in_array($newParent->id, $funcLoc->getDescendantIds(), true)) {
+            return 'Parent tujuan tidak boleh berada di dalam subtree node ini (mencegah siklus).';
+        }
+
+        $segmentTaken = FunctionalLocation::where('parent_id', $newParent->id)
+            ->where('segment', $funcLoc->segment)
+            ->where('id', '!=', $funcLoc->id)
+            ->exists();
+
+        if ($segmentTaken) {
+            return 'Segment "' . $funcLoc->segment . '" sudah dipakai oleh node lain di bawah parent tujuan.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Tulis ulang code dan level seluruh keturunan (descendant) dari node yang
+     * baru dipindah, secara top-down, tanpa memicu observer.
+     *
+     * @param  FunctionalLocation  $funcLoc  Node yang sudah dipindah (parent_id/level/code baru).
+     * @return void
+     */
+    private function rewriteDescendantCodes(FunctionalLocation $funcLoc): void
+    {
+        $byParent = FunctionalLocation::whereIn('id', $funcLoc->getDescendantIds())
+            ->get(['id', 'code', 'segment', 'level', 'parent_id'])
+            ->groupBy('parent_id');
+
+        // Tumpukan berisi [parentId, parentLevel, parentCode]. Proses dari
+        // node yang dipindah ke bawah; child meneruskan level & code parent.
+        $stack = [[$funcLoc->id, $funcLoc->level, $funcLoc->code]];
+
+        while ($stack !== []) {
+            [$parentId, $parentLevel, $parentCode] = array_pop($stack);
+
+            $children = $byParent->get($parentId, collect());
+
+            foreach ($children as $child) {
+                $childLevel = $parentLevel + 1;
+                $childCode  = $parentCode . '-' . $child->segment;
+
+                FunctionalLocation::where('id', $child->id)->update([
+                    'level' => $childLevel,
+                    'code'  => $childCode,
+                ]);
+
+                $stack[] = [$child->id, $childLevel, $childCode];
+            }
+        }
+    }
+
+    /**
+     * Sinkronkan relasi master lama (Company/Department/Area/SubArea) sebuah
+     * node FuncLoc mengikuti parent barunya. Dipakai setelah node dipindah.
+     *
+     * Aturan mengikuti observer created():
+     * - L0 (PT)   -> Company (firstOrCreate by code)
+     * - L1 (Dept) -> Department (firstOrCreate by company_id + code)
+     * - L2 (Area) -> Area tujuan dicari by department_id + code; jika sudah
+     *                ada, node berpindah menunjuk ke Area tsb. Jika belum,
+     *                Area dipakai yang terhubung funcloc_id node ini atau
+     *                dibuat baru.
+     * - L3 (Sec)  -> SubArea tujuan dicari by area_id + code; jika sudah ada,
+     *                node berpindah menunjuk ke SubArea tsb. Jika belum,
+     *                SubArea dipakai yang terhubung funcloc_id node ini atau
+     *                dibuat baru.
+     *
+     * Simpan memakai saveQuietly() agar observer updated (sinkron name) tidak
+     * berjalan berulang saat transaksi pemindahan.
+     *
+     * @param  FunctionalLocation  $node
+     * @return void
+     */
+    private function syncMasterForNode(FunctionalLocation $node): void
+    {
+        if ($node->level === FunctionalLocation::LEVEL_SITE) {
+            $company = Company::firstOrCreate(
+                ['code' => $node->segment],
+                ['name' => $node->name]
+            );
+
+            $node->forceFill([
+                'company_id'    => $company->id,
+                'department_id' => null,
+                'area_id'       => null,
+                'sub_area_id'   => null,
+            ])->saveQuietly();
+
+            return;
+        }
+
+        $parent = $node->parent;
+
+        if ($node->level === FunctionalLocation::LEVEL_DEPARTMENT) {
+            $companyId = $parent?->company_id;
+            $department = $companyId !== null
+                ? Department::firstOrCreate(
+                    ['company_id' => $companyId, 'code' => $node->segment],
+                    ['name' => $node->name]
+                )
+                : null;
+
+            $node->forceFill([
+                'company_id'    => $companyId,
+                'department_id' => $department?->id,
+                'area_id'       => null,
+                'sub_area_id'   => null,
+            ])->saveQuietly();
+
+            return;
+        }
+
+        if ($node->level === FunctionalLocation::LEVEL_AREA) {
+            $departmentId = $parent?->department_id;
+
+            if ($departmentId !== null) {
+                // Area dengan kode yang sama sudah ada di department tujuan:
+                // node berpindah menunjuk ke Area tersebut (hindari duplikat
+                // constraint unique department_id + code).
+                $areaAtTarget = Area::where('department_id', $departmentId)
+                    ->where('code', $node->segment)
+                    ->first();
+
+                if ($areaAtTarget !== null) {
+                    $area = $areaAtTarget;
+
+                    // Master Area tujuan sudah dipakai node FuncLoc lain.
+                    // Lepaskan ikatan node tersebut agar tidak ada dua node
+                    // yang menunjuk ke Area yang sama (1:1 L2 <-> Area).
+                    FunctionalLocation::where('area_id', $area->id)
+                        ->where('id', '!=', $node->id)
+                        ->update(['area_id' => null]);
+                } else {
+                    $area = Area::where('funcloc_id', $node->id)->first()
+                        ?? Area::create([
+                            'department_id' => $departmentId,
+                            'code'          => $node->segment,
+                            'name'          => $node->name,
+                            'funcloc_id'    => $node->id,
+                        ]);
+
+                    if ((int) $area->department_id !== $departmentId) {
+                        $area->forceFill(['department_id' => $departmentId]);
+                    }
+
+                    $area->forceFill([
+                        'code' => $node->segment,
+                        'name' => $node->name,
+                    ]);
+
+                    if ($area->funcloc_id === null) {
+                        $area->funcloc_id = $node->id;
+                    }
+
+                    if ($area->isDirty()) {
+                        $area->save();
+                    }
+                }
+
+                // Pastikan area yang dipakai terhubung dua arah ke node ini,
+                // dan lepaskan area lain yang masih menunjuk ke node ini.
+                if ($area->funcloc_id !== $node->id) {
+                    $area->funcloc_id = $node->id;
+                    $area->save();
+                }
+
+                Area::where('funcloc_id', $node->id)
+                    ->where('id', '!=', $area->id)
+                    ->update(['funcloc_id' => null]);
+
+                $node->forceFill([
+                    'company_id'    => $parent?->company_id,
+                    'department_id' => $departmentId,
+                    'area_id'       => $area->id,
+                    'sub_area_id'   => null,
+                ])->saveQuietly();
+            } else {
+                $node->forceFill([
+                    'company_id'    => $parent?->company_id,
+                    'department_id' => null,
+                    'area_id'       => null,
+                    'sub_area_id'   => null,
+                ])->saveQuietly();
+            }
+
+            return;
+        }
+
+        if ($node->level === FunctionalLocation::LEVEL_SECTION) {
+            $areaId = $parent?->area_id;
+
+            if ($areaId !== null) {
+                // SubArea dengan kode yang sama sudah ada di area tujuan:
+                // node berpindah menunjuk ke SubArea tersebut (hindari
+                // duplikat constraint unique area_id + code).
+                $subAreaAtTarget = SubArea::where('area_id', $areaId)
+                    ->where('code', $node->segment)
+                    ->first();
+
+                if ($subAreaAtTarget !== null) {
+                    $subArea = $subAreaAtTarget;
+
+                    // Master SubArea tujuan sudah dipakai node FuncLoc lain.
+                    // Lepaskan ikatan node tersebut agar tidak ada dua node
+                    // yang menunjuk ke SubArea yang sama (1:1 L3 <-> SubArea).
+                    FunctionalLocation::where('sub_area_id', $subArea->id)
+                        ->where('id', '!=', $node->id)
+                        ->update(['sub_area_id' => null]);
+                } else {
+                    $subArea = SubArea::where('funcloc_id', $node->id)->first()
+                        ?? SubArea::create([
+                            'area_id'    => $areaId,
+                            'code'       => $node->segment,
+                            'name'       => $node->name,
+                            'funcloc_id' => $node->id,
+                        ]);
+
+                    if ((int) $subArea->area_id !== $areaId) {
+                        $subArea->forceFill(['area_id' => $areaId]);
+                    }
+
+                    $subArea->forceFill([
+                        'code' => $node->segment,
+                        'name' => $node->name,
+                    ]);
+
+                    if ($subArea->funcloc_id === null) {
+                        $subArea->funcloc_id = $node->id;
+                    }
+
+                    if ($subArea->isDirty()) {
+                        $subArea->save();
+                    }
+                }
+
+                // Pastikan sub-area yang dipakai terhubung dua arah ke node
+                // ini, dan lepaskan sub-area lain yang masih menunjuk ke node.
+                if ($subArea->funcloc_id !== $node->id) {
+                    $subArea->funcloc_id = $node->id;
+                    $subArea->save();
+                }
+
+                SubArea::where('funcloc_id', $node->id)
+                    ->where('id', '!=', $subArea->id)
+                    ->update(['funcloc_id' => null]);
+
+                $node->forceFill([
+                    'company_id'    => $parent?->company_id,
+                    'department_id' => $parent?->department_id,
+                    'area_id'       => $areaId,
+                    'sub_area_id'   => $subArea->id,
+                ])->saveQuietly();
+            } else {
+                $node->forceFill([
+                    'company_id'    => $parent?->company_id,
+                    'department_id' => $parent?->department_id,
+                    'area_id'       => null,
+                    'sub_area_id'   => null,
+                ])->saveQuietly();
+            }
+        }
+    }
+
+    /**
      * Analisis assets.functional_loc untuk preview sinkronisasi: node baru
      * yang akan dibuat, asset yang akan ditautkan, dan kode yang tidak valid.
      * Tidak ada perubahan yang disimpan ke database pada tahap ini.
@@ -290,6 +741,125 @@ class FunctionalLocationController extends Controller
                 'message' => 'Gagal sinkronisasi: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Cari node FuncLoc aktif berdasarkan kode atau nama, dipakai oleh
+     * komponen picker (<x-funcloc-picker>) di form web seperti Create/Edit
+     * Asset. Hasil dibatasi 20 baris agar respons tetap ringan untuk
+     * pencarian ketik-cepat (debounced) di sisi frontend.
+     *
+     * Setiap hasil menyertakan 'ancestors' (jalur leluhur dari root sampai
+     * satu level di atas node) agar frontend bisa auto-expand tree picker
+     * langsung menuju node yang cocok tanpa query tambahan per node.
+     * Relasi parent di-eager-load berjenjang (maksimal 3 tingkat, sesuai
+     * kedalaman hierarki LEVEL_SITE..LEVEL_SECTION) untuk menghindari N+1
+     * query saat getAncestors() dipanggil di dalam map().
+     *
+     * @param  Request  $request  Query: q (kata kunci), level (opsional, filter level)
+     * @return JsonResponse
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $term  = (string) $request->query('q', '');
+        $level = $request->query('level');
+
+        $query = FunctionalLocation::active()
+            ->with('parent.parent.parent')
+            ->search($term);
+
+        if ($level !== null && $level !== '') {
+            $query->ofLevel((int) $level);
+        }
+
+        $results = $query
+            ->orderBy('code')
+            ->limit(20)
+            ->get(['id', 'code', 'name', 'level', 'parent_id'])
+            ->map(fn (FunctionalLocation $node) => [
+                'id'          => $node->id,
+                'code'        => $node->code,
+                'name'        => $node->name,
+                'level'       => $node->level,
+                'level_label' => $node->level_label,
+                'label'       => $node->code . ' — ' . $node->name,
+                'ancestors'   => $this->mapAncestors($node),
+            ])
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'results' => $results,
+        ]);
+    }
+
+    /**
+     * Ambil daftar node aktif satu level di bawah parent tertentu, dipakai
+     * oleh picker hierarki (<x-funcloc-picker>) di form web untuk memuat
+     * satu level secara lazy setiap kali node di-expand. Jika parent_id
+     * tidak dikirim, dikembalikan node root (level PT / LEVEL_SITE).
+     *
+     * Setiap node disertai 'has_children' agar frontend tahu perlu
+     * menampilkan panah expand atau tidak, tanpa harus fetch dulu.
+     *
+     * @param  Request  $request  Query: parent_id (opsional)
+     * @return JsonResponse
+     */
+    public function children(Request $request): JsonResponse
+    {
+        $parentId = $request->query('parent_id');
+
+        $query = FunctionalLocation::active();
+
+        if ($parentId === null || $parentId === '') {
+            $query->whereNull('parent_id');
+        } else {
+            $query->where('parent_id', (int) $parentId);
+        }
+
+        $nodes = $query->orderBy('code')->get(['id', 'code', 'name', 'level', 'parent_id']);
+
+        $childCounts = FunctionalLocation::active()
+            ->whereIn('parent_id', $nodes->pluck('id'))
+            ->selectRaw('parent_id, count(*) as aggregate')
+            ->groupBy('parent_id')
+            ->pluck('aggregate', 'parent_id');
+
+        $results = $nodes
+            ->map(fn (FunctionalLocation $node) => [
+                'id'           => $node->id,
+                'code'         => $node->code,
+                'name'         => $node->name,
+                'level'        => $node->level,
+                'level_label'  => $node->level_label,
+                'has_children' => (bool) ($childCounts[$node->id] ?? false),
+            ])
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'results' => $results,
+        ]);
+    }
+
+    /**
+     * Ubah koleksi ancestor (dari getAncestors(), urutan root ke bawah)
+     * menjadi array asosiatif ringkas untuk payload JSON.
+     *
+     * @param  FunctionalLocation  $node
+     * @return array<int, array{id: int, code: string, name: string, level: int}>
+     */
+    private function mapAncestors(FunctionalLocation $node): array
+    {
+        return $node->getAncestors()
+            ->map(fn (FunctionalLocation $ancestor) => [
+                'id'    => $ancestor->id,
+                'code'  => $ancestor->code,
+                'name'  => $ancestor->name,
+                'level' => $ancestor->level,
+            ])
+            ->values()
+            ->all();
     }
 
     /**

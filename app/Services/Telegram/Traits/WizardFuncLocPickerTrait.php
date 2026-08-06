@@ -11,11 +11,13 @@ use Illuminate\Support\Facades\Log;
  * Menangani pemilihan Functional Location (FuncLoc) hierarki oleh teknisi
  * saat jenis pekerjaan "area/section" dipilih di wizard laporan.
  *
- * Alur pemilihan:
- *   1. Tampil keyboard L1 (Departemen) setelah work_type:area dipilih
- *   2. Setelah L1 dipilih: tampil keyboard L2 (Area) + tombol "Konfirmasi di sini"
- *   3. Setelah L2 dipilih: tampil keyboard L3 (Section) + tombol "Konfirmasi di sini"
- *   4. Setelah L3 dipilih ATAU tombol konfirmasi ditekan:
+ * Alur pemilihan (diperluas Sesi 4 agar mulai dari PT, bukan langsung
+ * Departemen — mengikuti hierarki penuh FunctionalLocation di database):
+ *   1. Tampil keyboard PT (LEVEL_SITE) setelah work_type:area dipilih
+ *   2. Setelah PT dipilih: tampil keyboard Departemen (LEVEL_DEPARTMENT) + tombol "Konfirmasi di sini"
+ *   3. Setelah Departemen dipilih: tampil keyboard Area (LEVEL_AREA) + tombol "Konfirmasi di sini"
+ *   4. Setelah Area dipilih: tampil keyboard Sub Area/Section (LEVEL_SECTION) + tombol "Konfirmasi di sini"
+ *   5. Setelah Sub Area dipilih ATAU tombol konfirmasi ditekan di level manapun:
  *      state['funcloc_id'] dan state['funcloc_code'] dikunci, lanjut ke Step 4
  *
  * Callback data yang digunakan:
@@ -26,17 +28,27 @@ use Illuminate\Support\Facades\Log;
  * NAVIGASI NAIK SATU LEVEL (funcloc_back, ditambahkan Sesi 5):
  * State wizard menyimpan 'funcloc_path' — stack berisi node yang pernah
  * dipilih (level, id, code, name) sepanjang perjalanan turun hierarki.
- * Setiap kali teknisi memilih node di L1 atau L2 (turun ke level berikutnya),
- * node tersebut di-push ke 'funcloc_path' lewat handleFuncLocPick(). Tombol
- * "Naik Satu Level" (callback_data 'funcloc_back') men-pop entri terakhir
- * dan membangun ulang keyboard level tersebut memakai parent hasil pop
- * (atau kembali ke root Departemen jika stack sudah kosong). Mekanisme ini
+ * Setiap kali teknisi memilih node di PT, Departemen, atau Area (turun ke
+ * level berikutnya), node tersebut di-push ke 'funcloc_path' lewat
+ * handleFuncLocPick(). Tombol "Naik Satu Level" (callback_data
+ * 'funcloc_back') men-pop entri terakhir dan membangun ulang keyboard
+ * level tersebut memakai parent hasil pop (atau kembali ke root PT jika
+ * stack sudah kosong). Mekanisme ini
  * terpisah dari 'wizard:back' (step_history) milik WizardCallbackHandlerTrait
  * karena sifatnya naik-turun DI DALAM Step 2/3, bukan berpindah antar step
  * utama wizard — sama seperti ClarificationService yang juga punya
  * back internal sendiri (action==='back') terpisah dari 'wizard:back'.
  * Tombol Batalkan Laporan (callback_data 'wizard:cancel_wizard') tetap
  * disertakan konsisten di setiap layar level.
+ *
+ * PENCARIAN TEKS (ditambahkan Sesi 5):
+ * Selama funcloc_picker_active bernilai true, teks apa pun yang diketik
+ * teknisi dirutekan oleh ReportWizardService::handleTextInput() ke
+ * handleFuncLocTextSearch() alih-alih step switch biasa. Pencarian bersifat
+ * global ke seluruh level (PT..Sub Area), sebagai pelengkap navigasi
+ * tombol — bukan pengganti. Hasil pencarian memakai callback_data
+ * funcloc_pick yang sama dengan tombol level normal, jadi tetap diproses
+ * lewat handleFuncLocPick() tanpa kontrak callback baru.
  *
  * Trait ini bergantung pada method berikut dari kelas pemakai:
  *   - saveState(string $chatId, array $state): void
@@ -50,12 +62,12 @@ trait WizardFuncLocPickerTrait
     // =========================================================
 
     /**
-     * Tampilkan keyboard L1 (Departemen) sebagai titik masuk FuncLoc picker.
+     * Tampilkan keyboard PT (LEVEL_SITE) sebagai titik masuk FuncLoc picker.
      * Dipanggil setelah teknisi memilih work_type:area.
      *
      * @param  string $chatId Chat ID Telegram
      * @param  array  $state  State wizard saat ini
-     * @return array  Respons dengan keyboard L1
+     * @return array  Respons dengan keyboard PT
      */
     protected function startFuncLocPicker(string $chatId, array $state): array
     {
@@ -64,7 +76,96 @@ trait WizardFuncLocPickerTrait
         $state['funcloc_path']          = [];
         $this->saveState($chatId, $state);
 
-        return $this->buildFuncLocScreen($chatId, FunctionalLocation::LEVEL_DEPARTMENT, null, $state);
+        return $this->buildFuncLocScreen($chatId, FunctionalLocation::LEVEL_SITE, null, $state);
+    }
+
+    // =========================================================
+    // PENCARIAN TEKS (Sesi 5) — pelengkap navigasi tombol
+    // =========================================================
+
+    /**
+     * Cari FuncLoc berdasarkan teks yang diketik teknisi selagi picker
+     * lokasi aktif. Pencarian bersifat global ke seluruh level (PT sampai
+     * Sub Area) memakai FunctionalLocation::scopeSearch() yang sama dengan
+     * pencarian di form web, supaya teknisi tidak harus tap berjenjang dari
+     * PT jika sudah hafal nama/kode Area atau Sub Area yang dituju.
+     *
+     * Tiap hasil dipakai sebagai tombol dengan callback_data funcloc_pick,
+     * sama seperti tombol level normal — jadi tetap diproses lewat
+     * handleFuncLocPick() (auto-lock jika Sub Area, atau turun ke level
+     * berikutnya jika bukan). Kontrak callback lama tidak berubah.
+     *
+     * Catatan: karena node bisa langsung "dilompati" dari root lewat
+     * pencarian, funcloc_path hasil pilihan ini hanya berisi node tersebut
+     * (bukan seluruh leluhurnya) — tombol "Naik Satu Level" akan kembali
+     * langsung ke root PT setelahnya, bukan berhenti di leluhur antara.
+     *
+     * @param  string $chatId Chat ID Telegram
+     * @param  string $text   Kata kunci yang diketik teknisi
+     * @param  array  $state  State wizard saat ini
+     * @return array  Respons dengan daftar hasil sebagai keyboard
+     */
+    protected function handleFuncLocTextSearch(string $chatId, string $text, array $state): array
+    {
+        $term = trim($text);
+
+        if ($term === '') {
+            return $this->errorResponse('Ketik nama atau kode lokasi yang ingin dicari.');
+        }
+
+        // Dibatasi 8 hasil (lebih kecil dari batas 20 di endpoint web) agar
+        // keyboard inline Telegram tetap muat tanpa perlu di-scroll panjang
+        // di layar HP.
+        $nodes = FunctionalLocation::active()
+            ->search($term)
+            ->orderBy('code')
+            ->limit(8)
+            ->get(['id', 'code', 'name', 'level']);
+
+        if ($nodes->isEmpty()) {
+            return [
+                'message'  => "Lokasi \"{$term}\" tidak ditemukan.\n\nCoba kata kunci lain, atau lanjutkan lewat tombol yang sudah tampil sebelumnya.",
+                'keyboard' => [
+                    ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'],
+                ],
+            ];
+        }
+
+        $keyboard = $nodes->map(fn (FunctionalLocation $node) => [
+            'text'          => $this->funcLocSearchResultLabel($node),
+            'callback_data' => "funcloc_pick:{$node->level}:{$node->id}",
+        ])->all();
+
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'];
+
+        return [
+            'message'  => "Hasil pencarian \"{$term}\":\n\nPilih lokasi yang sesuai, atau ketik kata kunci lain untuk mencari ulang.",
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Bangun label tombol untuk satu hasil pencarian FuncLoc, dipotong jika
+     * terlalu panjang agar tetap sesuai batas tombol inline keyboard Telegram.
+     *
+     * @param  FunctionalLocation $node
+     * @return string
+     */
+    protected function funcLocSearchResultLabel(FunctionalLocation $node): string
+    {
+        $label = $node->code;
+
+        if ($node->name) {
+            $label .= ' — ' . $node->name;
+        }
+
+        $label .= ' (' . $node->level_label . ')';
+
+        if (strlen($label) > 64) {
+            $label = substr($label, 0, 61) . '...';
+        }
+
+        return $label;
     }
 
     // =========================================================
@@ -73,9 +174,10 @@ trait WizardFuncLocPickerTrait
 
     /**
      * Proses callback funcloc_pick:{level}:{id}.
-     * Setelah L1 atau L2 dipilih, node yang dipilih disimpan ke funcloc_path
-     * (untuk kebutuhan naik level nanti) lalu level berikutnya ditampilkan.
-     * Setelah L3 dipilih, langsung kunci FuncLoc dan maju ke Step 4.
+     * Setelah PT, Departemen, atau Area dipilih, node yang dipilih disimpan
+     * ke funcloc_path (untuk kebutuhan naik level nanti) lalu level
+     * berikutnya ditampilkan. Setelah Sub Area (LEVEL_SECTION) dipilih,
+     * langsung kunci FuncLoc dan maju ke Step 4.
      *
      * @param  string $chatId     Chat ID Telegram
      * @param  string $callbackData Data callback penuh, mis. "funcloc_pick:1:5"
@@ -99,13 +201,13 @@ trait WizardFuncLocPickerTrait
             return $this->errorResponse('Lokasi tidak ditemukan atau sudah tidak aktif.');
         }
 
-        // L3 dipilih: kunci langsung tanpa perlu confirm
+        // Sub Area (LEVEL_SECTION) dipilih: kunci langsung tanpa perlu confirm
         if ($level === FunctionalLocation::LEVEL_SECTION) {
             return $this->lockFuncLocAndAdvance($chatId, $node, $state);
         }
 
-        // L1 atau L2 dipilih: simpan node ke funcloc_path sebagai riwayat
-        // naik-turun level, lalu tampilkan level berikutnya.
+        // PT, Departemen, atau Area dipilih: simpan node ke funcloc_path
+        // sebagai riwayat naik-turun level, lalu tampilkan level berikutnya.
         $state['funcloc_path'][] = [
             'level' => $node->level,
             'id'    => $node->id,
@@ -157,7 +259,7 @@ trait WizardFuncLocPickerTrait
      * Men-pop entri terakhir dari funcloc_path lalu membangun ulang keyboard
      * level tersebut memakai parent hasil pop (satu level di atas node yang
      * baru saja "dilupakan"). Jika funcloc_path sudah kosong, teknisi memang
-     * sedang berada di level Departemen (root) — layar root ditampilkan ulang.
+     * sedang berada di level PT (root) — layar root ditampilkan ulang.
      *
      * @param  string $chatId Chat ID Telegram
      * @param  array  $state  State wizard saat ini
@@ -168,7 +270,7 @@ trait WizardFuncLocPickerTrait
         $path = $state['funcloc_path'] ?? [];
 
         if (empty($path)) {
-            return $this->buildFuncLocScreen($chatId, FunctionalLocation::LEVEL_DEPARTMENT, null, $state);
+            return $this->buildFuncLocScreen($chatId, FunctionalLocation::LEVEL_SITE, null, $state);
         }
 
         array_pop($path);
@@ -176,7 +278,7 @@ trait WizardFuncLocPickerTrait
         $this->saveState($chatId, $state);
 
         $parentEntry = empty($path) ? null : end($path);
-        $level       = $parentEntry ? $parentEntry['level'] + 1 : FunctionalLocation::LEVEL_DEPARTMENT;
+        $level       = $parentEntry ? $parentEntry['level'] + 1 : FunctionalLocation::LEVEL_SITE;
 
         return $this->buildFuncLocScreen($chatId, $level, $parentEntry, $state);
     }
@@ -194,7 +296,7 @@ trait WizardFuncLocPickerTrait
      * Jika level ini tidak punya anak sama sekali:
      *   - Jika ada $parentEntry (bukan root), kunci parent tersebut langsung
      *     sebagai FuncLoc final (perilaku sama seperti sebelum Sesi 5).
-     *   - Jika ini root (Departemen) dan kosong, kembalikan error konfigurasi.
+     *   - Jika ini root (PT) dan kosong, kembalikan error konfigurasi.
      *
      * @param  string     $chatId     Chat ID Telegram
      * @param  int        $level      Level FuncLoc yang akan ditampilkan (konstanta LEVEL_*)
@@ -255,7 +357,8 @@ trait WizardFuncLocPickerTrait
             $message      = "*{$currentLabel} dipilih:* {$parentEntry['code']} — {$parentEntry['name']}\n\n" .
                             "Pilih {$nextLabel} (opsional) atau konfirmasi sekarang:";
         } else {
-            $message = "*Step 2* — Pilih Departemen\n\nPilih departemen tempat pekerjaan dilakukan:";
+            $rootLabel = $this->funcLocLevelLabel($level);
+            $message   = "*Step 2* — Pilih {$rootLabel}\n\nPilih {$rootLabel} tempat pekerjaan dilakukan:";
         }
 
         return [
@@ -306,7 +409,7 @@ trait WizardFuncLocPickerTrait
      * Hanya node aktif yang dimuat. Diurutkan berdasarkan code secara ascending.
      *
      * @param  int      $level    Level FuncLoc (konstanta LEVEL_* dari FunctionalLocation)
-     * @param  int|null $parentId ID parent — null untuk L1 (root level Departemen)
+     * @param  int|null $parentId ID parent — null untuk root level PT (LEVEL_SITE)
      * @return array    Array tombol inline keyboard Telegram
      */
     protected function buildFuncLocLevelKeyboard(int $level, ?int $parentId): array
@@ -350,7 +453,7 @@ trait WizardFuncLocPickerTrait
     protected function funcLocLevelLabel(int $level): string
     {
         return match ($level) {
-            FunctionalLocation::LEVEL_SITE       => 'Site',
+            FunctionalLocation::LEVEL_SITE       => 'PT',
             FunctionalLocation::LEVEL_DEPARTMENT => 'Departemen',
             FunctionalLocation::LEVEL_AREA       => 'Area',
             FunctionalLocation::LEVEL_SECTION    => 'Section',

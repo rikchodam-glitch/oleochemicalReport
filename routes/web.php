@@ -33,6 +33,14 @@ Route::middleware('admin')->group(function () {
     Route::get('/assets/locations/departments', [AssetController::class, 'getDepartments'])->name('assets.locations.departments');
     Route::get('/assets/locations/areas', [AssetController::class, 'getAreas'])->name('assets.locations.areas');
     Route::get('/assets/locations/subareas', [AssetController::class, 'getSubAreas'])->name('assets.locations.subareas');
+
+    // Rekonsiliasi manual FuncLoc — WAJIB sebelum resource agar tidak
+    // ditimpa wildcard {asset} milik resource (assets.show).
+    Route::get('/assets/unlinked-funcloc', [AssetController::class, 'unlinked'])->name('assets.unlinked-funcloc');
+    Route::post('/assets/unlinked-funcloc/run-sync', [AssetController::class, 'runAutoSync'])->name('assets.unlinked-funcloc.run-sync');
+    Route::post('/assets/bulk-link-funcloc', [AssetController::class, 'bulkLinkFuncLoc'])->name('assets.bulk-link-funcloc');
+    Route::patch('/assets/{asset}/link-funcloc', [AssetController::class, 'linkFuncLoc'])->name('assets.link-funcloc');
+
     Route::get('/assets/{asset}/technicians', [AssetController::class, 'getAssignedTechnicians'])->name('assets.technicians');
     Route::post('/assets/{asset}/technicians/assign', [AssetController::class, 'assignTechnician'])->name('assets.technicians.assign');
     Route::delete('/assets/{asset}/technicians/{technician}', [AssetController::class, 'removeTechnician'])->name('assets.technicians.remove');
@@ -40,9 +48,20 @@ Route::middleware('admin')->group(function () {
     Route::get('/assets/{asset}/technicians/list', [AssetController::class, 'listTechnicians'])->name('assets.technicians.list');
     Route::resource('assets', AssetController::class);
 
-    // Functional Location
+    // Functional Location - route pencarian & lazy-load children untuk
+    // komponen picker (<x-funcloc-picker>). WAJIB sebelum resource agar
+    // tidak ditimpa oleh wildcard {func_loc} milik resource.
+    Route::get('/func-locs/search', [FunctionalLocationController::class, 'search'])->name('func-locs.search');
+    Route::get('/func-locs/children', [FunctionalLocationController::class, 'children'])->name('func-locs.children');
     Route::post('/func-locs/sync/preview', [FunctionalLocationController::class, 'previewSync'])->name('func-locs.sync.preview');
     Route::post('/func-locs/sync/execute', [FunctionalLocationController::class, 'executeSync'])->name('func-locs.sync.execute');
+
+    // Pindah node (beserta subtree) dan hapus permanen node nonaktif — WAJIB
+    // sebelum resource agar tidak ditimpa wildcard {func_loc} milik resource.
+    Route::get('/func-locs/{func_loc}/move', [FunctionalLocationController::class, 'move'])->name('func-locs.move');
+    Route::put('/func-locs/{func_loc}/move', [FunctionalLocationController::class, 'moveUpdate'])->name('func-locs.move.update');
+    Route::delete('/func-locs/{func_loc}/force', [FunctionalLocationController::class, 'forceDestroy'])->name('func-locs.force-destroy');
+
     Route::resource('func-locs', FunctionalLocationController::class)->except(['show']);
 
     // Technicians
