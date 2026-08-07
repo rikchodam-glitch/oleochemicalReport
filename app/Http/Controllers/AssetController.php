@@ -135,8 +135,12 @@ class AssetController extends Controller
             ->pluck('total', 'report_type');
 
         // Statistik per bulan untuk grafik tren
+        $dateFormat = DB::connection()->getDriverName() === 'sqlite'
+            ? "strftime('%Y-%m', report_date)"
+            : "DATE_FORMAT(report_date, '%Y-%m')";
+
         $statsByMonth = Report::select(
-                DB::raw("DATE_FORMAT(report_date, '%Y-%m') as month"),
+                DB::raw("{$dateFormat} as month"),
                 DB::raw('count(*) as total')
             )
             ->where(function ($q) use ($asset) {

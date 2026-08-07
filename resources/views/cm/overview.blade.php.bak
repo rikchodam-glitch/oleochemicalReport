@@ -1,0 +1,664 @@
+@extends('layouts.app')
+
+@section('title', 'Overview — Condition Monitoring')
+@section('breadcrumb')
+    <a href="{{ route('dashboard') }}" class="hover:text-slate-700">Dashboard</a>
+    <span class="text-slate-300">/</span>
+    <a href="{{ route('cm.overview') }}" class="hover:text-slate-700">Condition Monitoring</a>
+    <span class="text-slate-300">/</span>
+    <span class="text-slate-900 font-medium">Overview</span>
+@endsection
+
+@section('content')
+    {{-- Tab Navigasi --}}
+    @include('cm._tabs')
+
+    {{-- Summary Cards --}}
+    <div id="summaryCards" class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+        @include('cm._overview-cards', [
+            'totalRecords' => $totalRecords,
+            'goodCount' => $goodCount, 'goodPct' => $goodPct,
+            'alarmCount' => $alarmCount, 'alarmPct' => $alarmPct,
+            'dangerCount' => $dangerCount, 'dangerPct' => $dangerPct,
+            'visualBadCount' => $visualBadCount, 'visualBadPct' => $visualBadPct,
+        ])
+    </div>
+
+    {{-- Filters --}}
+    <div class="bg-white rounded-xl border border-slate-200 p-4 mb-6">
+        <form id="filterForm" class="flex flex-wrap gap-4 items-end">
+            <div class="space-y-1">
+                <label class="text-xs font-medium text-slate-500">PT</label>
+                <select name="pt" class="filter-select border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="">Semua PT</option>
+                    @foreach($ptList as $pt)
+                        <option value="{{ $pt }}" {{ $filterPt === $pt ? 'selected' : '' }}>{{ $pt }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="space-y-1">
+                <label class="text-xs font-medium text-slate-500">Tahun</label>
+                <select name="tahun" class="filter-select border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    @foreach($tahunList as $th)
+                        <option value="{{ $th }}" {{ $filterTahun == $th ? 'selected' : '' }}>{{ $th }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="space-y-1">
+                <label class="text-xs font-medium text-slate-500">Bulan</label>
+                <select name="bulan" class="filter-select border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="">Semua Bulan</option>
+                    @foreach(range(1, 12) as $b)
+                        <option value="{{ $b }}" {{ $filterBulan == $b ? 'selected' : '' }}>{{ DateTime::createFromFormat('!m', $b)->format('F') }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="space-y-1">
+                <label class="text-xs font-medium text-slate-500">Status</label>
+                <select name="status" class="filter-select border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="">Semua Status</option>
+                    <option value="good" {{ $filterStatus === 'good' ? 'selected' : '' }}>Good</option>
+                    <option value="alarm" {{ $filterStatus === 'alarm' ? 'selected' : '' }}>Alarm</option>
+                    <option value="danger" {{ $filterStatus === 'danger' ? 'selected' : '' }}>Danger</option>
+                    <option value="visual_bad" {{ $filterStatus === 'visual_bad' ? 'selected' : '' }}>Visual Bad</option>
+                </select>
+            </div>
+            <a href="{{ route('cm.overview') }}" class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                Reset
+            </a>
+            <button type="button" onclick="openImportModal()"
+                    class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                Import Excel
+            </button>
+            <a href="{{ route('cm.export-readings', ['pt' => $filterPt, 'tahun' => $filterTahun, 'bulan' => $filterBulan, 'status' => $filterStatus]) }}"
+               class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Export Excel
+            </a>
+        </form>
+    </div>
+
+    {{-- Loading indicator --}}
+    <div id="loadingIndicator" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/10">
+        <div class="bg-white rounded-xl p-6 shadow-xl flex items-center gap-3">
+            <svg class="animate-spin w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            <span class="text-sm text-slate-700">Memuat data...</span>
+        </div>
+    </div>
+
+    {{-- Charts Row --}}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {{-- Donut Chart: Breakdown per PT --}}
+        <div class="bg-white rounded-xl border border-slate-200 p-5">
+            <h3 class="font-medium text-slate-900 mb-4">Breakdown Status per PT</h3>
+            <canvas id="donutChart" height="250"></canvas>
+        </div>
+
+        {{-- Bar Chart: Trend Bulanan --}}
+        <div class="bg-white rounded-xl border border-slate-200 p-5">
+            <h3 class="font-medium text-slate-900 mb-4">Trend Status Bulanan</h3>
+            <canvas id="trendChart" height="250"></canvas>
+        </div>
+    </div>
+
+    {{-- Top 10 Vibrasi Tertinggi --}}
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 class="font-medium text-slate-900">Top 10 Vibrasi Tertinggi (Danger)</h3>
+            <span class="text-xs text-slate-400">Berdasarkan nilai NDEV motor + pompa</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-slate-50 border-b border-slate-100">
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Equipment Tag</th>
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">PT</th>
+                        <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">NDEV Motor</th>
+                        <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">NDEV Pompa</th>
+                        <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Temp Motor</th>
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Tanggal</th>
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50">
+                    @forelse($topVibrasi as $r)
+                        <tr class="hover:bg-slate-50 transition-colors">
+                            <td class="px-5 py-3 font-mono text-sm font-medium text-slate-900">{{ $r->equipment_tag }}</td>
+                            <td class="px-5 py-3 text-slate-600">{{ $r->pt_location }}</td>
+                            <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold">{{ $r->ndev_motor }}</td>
+                            <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold">{{ $r->ndev_pompa }}</td>
+                            <td class="px-5 py-3 text-right font-mono text-slate-700">{{ $r->temp_de_motor }}°C</td>
+                            <td class="px-5 py-3 text-slate-500">{{ $r->tanggal->format('d M Y') }}</td>
+                            <td class="px-5 py-3">
+                                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                                    Danger
+                                </span>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="7" class="px-5 py-8 text-center text-slate-400 text-sm">
+                                Tidak ada data vibrasi danger.
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+@endsection
+
+{{-- Import Modal --}}
+<div id="importModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/30">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-slate-900">Import Excel CM</h3>
+            <button type="button" onclick="closeImportModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="px-6 py-5">
+            <div class="mb-4">
+                <p class="text-sm text-slate-600 mb-2">
+                    Format file harus sesuai template — 5 sheet:
+                    <strong>Data AppSheet</strong>, <strong>Status CM</strong>,
+                    <strong>Master Equipment</strong>, <strong>Monitoring Bulanan</strong>,
+                    <strong>Tabel Mon. Bulanan</strong>.
+                </p>
+                <p class="text-xs text-slate-400">
+                    File .xlsx, maksimal 10MB. Data akan diproses di latar belakang.
+                </p>
+            </div>
+            <form id="importForm">
+                <input type="hidden" name="_token" value="{{ csrf_token() }}">
+                <div class="border-2 border-dashed border-slate-200 rounded-lg p-6 text-center hover:border-teal-400 transition-colors cursor-pointer" id="dropZone">
+                    <svg class="w-8 h-8 mx-auto text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    <p class="text-sm text-slate-500 mb-1">
+                        <span class="text-teal-600 font-medium">Klik untuk pilih file</span> atau drag & drop
+                    </p>
+                    <p class="text-xs text-slate-400" id="fileNameDisplay">Belum ada file dipilih</p>
+                    <input type="file" id="fileInput" name="file" accept=".xlsx" class="hidden">
+                </div>
+                <div id="uploadProgress" class="hidden mt-4">
+                    <div class="flex items-center gap-3">
+                        <svg class="animate-spin w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        <span class="text-sm text-slate-700" id="progressText">Memproses file...</span>
+                    </div>
+                </div>
+                <div id="importResult" class="hidden mt-4 p-4 rounded-lg border text-sm"></div>
+            </form>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+            <button type="button" onclick="closeImportModal()" class="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors">
+                Batal
+            </button>
+            <button type="button" id="uploadBtn" onclick="uploadImport()" disabled
+                    class="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                Upload & Proses
+            </button>
+        </div>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+var kondisiLabels = {'good': 'Good', 'alarm': 'Alarm', 'danger': 'Danger', 'visual_bad': 'Visual Bad'};
+var kondisiColors = {'good': '#10B981', 'alarm': '#F59E0B', 'danger': '#EF4444', 'visual_bad': '#8B5CF6'};
+var kondisiOrder = ['good', 'alarm', 'danger', 'visual_bad'];
+
+var importLogId = null;
+var pollInterval = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('importModal').classList.remove('hidden');
+    document.getElementById('importResult').classList.add('hidden');
+    document.getElementById('uploadProgress').classList.add('hidden');
+    document.getElementById('fileInput').value = '';
+    document.getElementById('fileNameDisplay').textContent = 'Belum ada file dipilih';
+    document.getElementById('uploadBtn').disabled = true;
+}
+
+function closeImportModal() {
+    document.getElementById('importModal').classList.add('hidden');
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+}
+
+// Drag & drop
+var dropZone = document.getElementById('dropZone');
+var fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', function() {
+    fileInput.click();
+});
+
+dropZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    dropZone.classList.add('border-teal-500', 'bg-teal-50');
+});
+
+dropZone.addEventListener('dragleave', function() {
+    dropZone.classList.remove('border-teal-500', 'bg-teal-50');
+});
+
+dropZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dropZone.classList.remove('border-teal-500', 'bg-teal-50');
+    if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        onFileSelect();
+    }
+});
+
+fileInput.addEventListener('change', onFileSelect);
+
+function onFileSelect() {
+    var file = fileInput.files[0];
+    if (file) {
+        document.getElementById('fileNameDisplay').textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+        document.getElementById('uploadBtn').disabled = false;
+    } else {
+        document.getElementById('fileNameDisplay').textContent = 'Belum ada file dipilih';
+        document.getElementById('uploadBtn').disabled = true;
+    }
+}
+
+function uploadImport() {
+    var file = fileInput.files[0];
+    if (!file) {
+        showImportResult('error', 'Silakan pilih file terlebih dahulu.');
+        return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+        showImportResult('error', 'Ukuran file maksimal 10MB.');
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append('file', file);
+    formData.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
+
+    document.getElementById('uploadProgress').classList.remove('hidden');
+    document.getElementById('uploadBtn').disabled = true;
+    document.getElementById('importResult').classList.add('hidden');
+    document.getElementById('progressText').textContent = 'Mengupload file...';
+
+    fetch('{{ route("cm.import.upload") }}', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(resp) {
+        if (resp.success) {
+            document.getElementById('progressText').textContent = 'Upload selesai, memproses data...';
+            importLogId = resp.import_log_id;
+            startPolling();
+        } else {
+            showImportResult('error', resp.message || 'Gagal mengupload file.');
+            document.getElementById('uploadProgress').classList.add('hidden');
+        }
+    })
+    .catch(function(err) {
+        showImportResult('error', 'Terjadi kesalahan saat mengupload: ' + err.message);
+        document.getElementById('uploadProgress').classList.add('hidden');
+    });
+}
+
+function startPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(function() {
+        fetch('{{ route("cm.import.status", ["id" => "__ID__"]) }}'.replace('__ID__', importLogId))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.status === 'completed' || data.status === 'failed') {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                    document.getElementById('uploadProgress').classList.add('hidden');
+                    showImportResult(data.status === 'completed' ? 'success' : 'error', formatResult(data));
+                    document.getElementById('uploadBtn').disabled = false;
+                    // Reload data charts setelah import selesai
+                    if (data.status === 'completed' && typeof loadChartData === 'function') {
+                        loadChartData();
+                    }
+                } else {
+                    document.getElementById('progressText').textContent = 'Memproses data... (' + (data.insert_baru + data.update_existing) + ' baris diproses)';
+                }
+            });
+    }, 2000);
+}
+
+function formatResult(data) {
+    if (data.status === 'failed') {
+        var errors = data.detail_error || [];
+        var msg = 'Import gagal diproses.';
+        if (errors.length > 0) {
+            msg += '<ul class="mt-2 list-disc list-inside text-red-600">';
+            errors.forEach(function(e) {
+                if (typeof e === 'object') {
+                    msg += '<li>Baris ' + e.baris + ': ' + e.pesan + '</li>';
+                } else {
+                    msg += '<li>' + e + '</li>';
+                }
+            });
+            msg += '</ul>';
+        }
+        return msg;
+    }
+
+    var html = '<div class="font-medium text-emerald-700 mb-2">Import Berhasil!</div>';
+    html += '<table class="w-full text-sm">';
+    html += '<tr><td class="py-1 text-slate-600">Total baris diproses</td><td class="py-1 font-semibold text-right">' + (data.total_baris || 0) + '</td></tr>';
+    html += '<tr><td class="py-1 text-slate-600">Baris baru (insert)</td><td class="py-1 font-semibold text-right text-teal-600">' + (data.insert_baru || 0) + '</td></tr>';
+    html += '<tr><td class="py-1 text-slate-600">Baris terupdate</td><td class="py-1 font-semibold text-right text-amber-600">' + (data.update_existing || 0) + '</td></tr>';
+    html += '<tr><td class="py-1 text-slate-600">Equipment belum terdaftar</td><td class="py-1 font-semibold text-right text-orange-600">' + (data.unregistered || 0) + '</td></tr>';
+    html += '<tr><td class="py-1 text-slate-600">Baris gagal</td><td class="py-1 font-semibold text-right text-red-600">' + (data.gagal || 0) + '</td></tr>';
+    html += '</table>';
+
+    if (data.detail_unregistered && data.detail_unregistered.length > 0) {
+        html += '<div class="mt-3 pt-3 border-t border-slate-200">';
+        html += '<p class="text-xs text-slate-500 mb-1">Equipment Tag yang belum terdaftar (tetap dibuat):</p>';
+        html += '<div class="text-xs text-slate-600 max-h-24 overflow-y-auto">';
+        data.detail_unregistered.forEach(function(tag) {
+            html += '<span class="inline-block bg-slate-100 rounded px-2 py-0.5 mr-1 mb-1">' + tag + '</span>';
+        });
+        html += '</div></div>';
+    }
+
+    if (data.detail_error && data.detail_error.length > 0) {
+        html += '<div class="mt-3 pt-3 border-t border-slate-200">';
+        html += '<p class="text-xs text-slate-500 mb-1">Error detail:</p>';
+        html += '<ul class="text-xs text-red-500 list-disc list-inside max-h-24 overflow-y-auto">';
+        data.detail_error.forEach(function(e) {
+            if (typeof e === 'object') {
+                html += '<li>Baris ' + e.baris + ': ' + e.pesan + '</li>';
+            } else {
+                html += '<li>' + e + '</li>';
+            }
+        });
+        html += '</ul></div>';
+    }
+
+    return html;
+}
+
+function showImportResult(type, message) {
+    var el = document.getElementById('importResult');
+    el.classList.remove('hidden');
+    if (type === 'error') {
+        el.className = 'mt-4 p-4 rounded-lg border text-sm bg-red-50 border-red-200 text-red-700';
+    } else {
+        el.className = 'mt-4 p-4 rounded-lg border text-sm bg-emerald-50 border-emerald-200 text-emerald-700';
+    }
+    el.innerHTML = message;
+}
+</script>
+var kondisiLabels = {'good': 'Good', 'alarm': 'Alarm', 'danger': 'Danger', 'visual_bad': 'Visual Bad'};
+var kondisiColors = {'good': '#10B981', 'alarm': '#F59E0B', 'danger': '#EF4444', 'visual_bad': '#8B5CF6'};
+var kondisiOrder = ['good', 'alarm', 'danger', 'visual_bad'];
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadChartData();
+
+    document.querySelectorAll('.filter-select').forEach(function(sel) {
+        sel.addEventListener('change', function() {
+            loadChartData();
+        });
+    });
+});
+
+function loadChartData() {
+    showLoading(true);
+
+    var params = new URLSearchParams();
+    var form = document.getElementById('filterForm');
+    var formData = new FormData(form);
+    formData.forEach(function(value, key) {
+        if (value) params.set(key, value);
+    });
+
+    var queryString = params.toString();
+    var url = '{{ route("cm.trend-chart-data") }}' + (queryString ? '?' + queryString : '');
+
+    window.history.replaceState({}, '', window.location.pathname + (queryString ? '?' + queryString : ''));
+
+    Promise.all([
+        fetch(url).then(function(r) { return r.json(); }),
+        loadDonutData(queryString),
+        loadSummaryCards(queryString)
+    ]).then(function(results) {
+        renderTrendChart(results[0]);
+    }).catch(function(err) {
+        console.error('Error loading data:', err);
+    }).finally(function() {
+        showLoading(false);
+    });
+}
+
+function loadSummaryCards(queryString) {
+    var url = '{{ route("cm.overview-summary") }}' + (queryString ? '?' + queryString : '');
+    return fetch(url)
+        .then(function(r) { return r.text(); })
+        .then(function(html) {
+            document.getElementById('summaryCards').innerHTML = html;
+        });
+}
+
+function loadDonutData(queryString) {
+    var canvas = document.getElementById('donutChart');
+    if (!canvas) return Promise.resolve();
+
+    var url = '{{ route("cm.donut-data") }}' + (queryString ? '?' + queryString : '');
+    return fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            renderDonutChart(data);
+        });
+}
+
+function showLoading(show) {
+    var el = document.getElementById('loadingIndicator');
+    if (el) el.classList.toggle('hidden', !show);
+}
+
+function renderDonutChart(donutData) {
+    var canvas = document.getElementById('donutChart');
+    if (!canvas) return;
+
+    var ctx = canvas.getContext('2d');
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = 250;
+
+    var cx = 120, cy = 125, legendX = 230;
+
+    if (!donutData || !Object.keys(donutData).length) {
+        ctx.fillStyle = '#94A3B8';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Tidak ada data', cx, cy);
+        return;
+    }
+
+    var pts = Object.keys(donutData);
+    var grandTotal = 0;
+    pts.forEach(function(pt) {
+        Object.values(donutData[pt]).forEach(function(v) { grandTotal += v; });
+    });
+
+    if (grandTotal === 0) {
+        ctx.fillStyle = '#94A3B8';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Tidak ada data', cx, cy);
+        return;
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    var ringSpacing = 22, baseRadius = 40;
+    pts.forEach(function(pt, idx) {
+        var r = baseRadius + (idx * ringSpacing);
+        var innerR = r - 14;
+        var data = donutData[pt];
+        var startAngle = -Math.PI / 2;
+
+        kondisiOrder.forEach(function(kondisi) {
+            var val = data[kondisi] || 0;
+            if (val === 0) return;
+            var sliceAngle = (val / grandTotal) * 2 * Math.PI;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, startAngle, startAngle + sliceAngle);
+            ctx.arc(cx, cy, innerR, startAngle + sliceAngle, startAngle, true);
+            ctx.closePath();
+            ctx.fillStyle = kondisiColors[kondisi] || '#CBD5E1';
+            ctx.fill();
+            startAngle += sliceAngle;
+        });
+    });
+
+    var ly = 20;
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#1E293B';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('Status:', legendX, ly);
+    ly += 22;
+    kondisiOrder.forEach(function(k) {
+        ctx.fillStyle = kondisiColors[k];
+        ctx.fillRect(legendX, ly - 4, 12, 12);
+        ctx.fillStyle = '#475569';
+        ctx.font = '12px sans-serif';
+        ctx.fillText(kondisiLabels[k], legendX + 18, ly + 2);
+        ly += 20;
+    });
+    ly += 10;
+    ctx.fillStyle = '#1E293B';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('PT:', legendX, ly);
+    ly += 22;
+    pts.forEach(function(pt) {
+        var totalPt = 0;
+        Object.values(donutData[pt]).forEach(function(v) { totalPt += v; });
+        var pct = grandTotal > 0 ? Math.round((totalPt / grandTotal) * 100) : 0;
+        ctx.fillStyle = '#0E9E8E';
+        ctx.fillRect(legendX, ly - 4, 12, 12);
+        ctx.fillStyle = '#475569';
+        ctx.font = '12px sans-serif';
+        ctx.fillText(pt + ' (' + pct + '%)', legendX + 18, ly + 2);
+        ly += 20;
+    });
+}
+
+function renderTrendChart(data) {
+    var canvas = document.getElementById('trendChart');
+    if (!canvas) return;
+    if (!data || !data.length) {
+        var ctx = canvas.getContext('2d');
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = 250;
+        ctx.fillStyle = '#94A3B8';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Tidak ada data', canvas.width/2, 125);
+        return;
+    }
+
+    var ctx = canvas.getContext('2d');
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = 250;
+
+    var padding = {top: 20, right: 20, bottom: 40, left: 50};
+    var chartW = canvas.width - padding.left - padding.right;
+    var chartH = canvas.height - padding.top - padding.bottom;
+    var barGroups = data.length;
+    var groupWidth = chartW / barGroups;
+    var barWidth = Math.min(groupWidth * 0.7, 40);
+    var warna = {'good': '#10B981', 'alarm': '#F59E0B', 'danger': '#EF4444', 'visual_bad': '#8B5CF6'};
+
+    var maxVal = 0;
+    data.forEach(function(d) {
+        kondisiOrder.forEach(function(k) {
+            if (d[k] > maxVal) maxVal = d[k];
+        });
+    });
+    maxVal = Math.ceil(maxVal * 1.2) || 10;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = '#E2E8F0';
+    ctx.lineWidth = 1;
+    for (var i = 0; i <= 4; i++) {
+        var y = padding.top + (chartH - (chartH * i / 4));
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(canvas.width - padding.right, y);
+        ctx.stroke();
+        ctx.fillStyle = '#94A3B8';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(Math.round(maxVal * i / 4), padding.left - 5, y + 3);
+    }
+
+    ctx.save();
+    ctx.translate(14, padding.top + chartH/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Jumlah Record', 0, 0);
+    ctx.restore();
+
+    data.forEach(function(d, idx) {
+        var x = padding.left + idx * groupWidth + (groupWidth - barWidth) / 2;
+        var yOffset = 0;
+        kondisiOrder.forEach(function(k) {
+            var val = d[k] || 0;
+            if (val === 0) return;
+            var barH = (val / maxVal) * chartH;
+            var y = padding.top + chartH - yOffset - barH;
+            ctx.fillStyle = warna[k];
+            ctx.fillRect(x, y, barWidth, barH);
+            yOffset += barH;
+        });
+        ctx.fillStyle = '#64748B';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(d.period || '', x + barWidth/2, canvas.height - padding.bottom + 15);
+    });
+
+    var lx = padding.left;
+    var ly = canvas.height - 6;
+    kondisiOrder.forEach(function(k) {
+        ctx.fillStyle = warna[k];
+        ctx.fillRect(lx, ly - 8, 10, 10);
+        ctx.fillStyle = '#64748B';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(k.charAt(0).toUpperCase() + k.slice(1).replace('_', ' '), lx + 14, ly + 1);
+        lx += ctx.measureText(k.charAt(0).toUpperCase() + k.slice(1).replace('_', ' ') + '  ').width + 24;
+    });
+}
+</script>
+@endpush

@@ -3,13 +3,18 @@
 use App\Http\Controllers\AiProviderController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\BotController;
+use App\Http\Controllers\CmController;
+use App\Http\Controllers\CmImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FunctionalLocationController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LoginController;
+use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TechnicianController;
 use App\Http\Controllers\TelegramWebhookController;
+use App\Http\Controllers\WorkOrderController;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 // Login routes (no auth)
@@ -19,6 +24,14 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
 // Telegram webhook (no auth, called by Telegram)
 Route::post('/telegram/webhook', [TelegramWebhookController::class, 'handle'])->name('telegram.webhook');
+
+// DEBUG ONLY — auto-login untuk pengembangan lokal (hapus sebelum production!)
+if (app()->environment('local')) {
+    Route::get('/debug-login', function () {
+        Auth::loginUsingId(1);
+        return redirect('/dashboard');
+    })->name('debug.login');
+}
 
 // Admin routes (with auth)
 Route::middleware('admin')->group(function () {
@@ -53,8 +66,6 @@ Route::middleware('admin')->group(function () {
     // tidak ditimpa oleh wildcard {func_loc} milik resource.
     Route::get('/func-locs/search', [FunctionalLocationController::class, 'search'])->name('func-locs.search');
     Route::get('/func-locs/children', [FunctionalLocationController::class, 'children'])->name('func-locs.children');
-    Route::post('/func-locs/sync/preview', [FunctionalLocationController::class, 'previewSync'])->name('func-locs.sync.preview');
-    Route::post('/func-locs/sync/execute', [FunctionalLocationController::class, 'executeSync'])->name('func-locs.sync.execute');
 
     // Pindah node (beserta subtree) dan hapus permanen node nonaktif — WAJIB
     // sebelum resource agar tidak ditimpa wildcard {func_loc} milik resource.
@@ -62,6 +73,9 @@ Route::middleware('admin')->group(function () {
     Route::put('/func-locs/{func_loc}/move', [FunctionalLocationController::class, 'moveUpdate'])->name('func-locs.move.update');
     Route::delete('/func-locs/{func_loc}/force', [FunctionalLocationController::class, 'forceDestroy'])->name('func-locs.force-destroy');
 
+    // Functional Location
+    Route::post('/func-locs/sync/preview', [FunctionalLocationController::class, 'previewSync'])->name('func-locs.sync.preview');
+    Route::post('/func-locs/sync/execute', [FunctionalLocationController::class, 'executeSync'])->name('func-locs.sync.execute');
     Route::resource('func-locs', FunctionalLocationController::class)->except(['show']);
 
     // Technicians
@@ -88,6 +102,35 @@ Route::middleware('admin')->group(function () {
     Route::post('/reports/{report}/update-status', [ReportController::class, 'updateStatus'])->name('reports.update-status');
     Route::post('/reports/{report}/photos', [ReportController::class, 'addPhoto'])->name('reports.add-photo');
 
+    // Condition Monitoring
+    Route::prefix('cm')->name('cm.')->group(function () {
+        Route::get('/overview', [CmController::class, 'overview'])->name('overview');
+        Route::get('/findings', [CmController::class, 'findings'])->name('findings');
+        Route::get('/findings/{kodeFinding}', [CmController::class, 'findingShow'])->name('findings.show');
+        Route::get('/monitoring', [CmController::class, 'monitoring'])->name('monitoring');
+        Route::get('/equipment-status', [CmController::class, 'equipmentStatus'])->name('equipment-status');
+        Route::get('/equipment/{tag}', [CmController::class, 'equipmentShow'])->name('equipment-show');
+        Route::put('/equipment/{tag}', [CmController::class, 'equipmentUpdate'])->name('equipment-update');
+        Route::delete('/readings/{reading}', [CmController::class, 'readingDestroy'])->name('readings.destroy');
+        Route::delete('/findings/{finding}', [CmController::class, 'findingDestroy'])->name('findings.destroy');
+        Route::post('/sync-google-sheets', [CmController::class, 'syncGoogleSheets'])->name('sync-google-sheets');
+        Route::get('/report-analysis', [CmController::class, 'reportAnalysis'])->name('report-analysis');
+        Route::get('/trend-chart-data', [CmController::class, 'trendChartData'])->name('trend-chart-data');
+        Route::get('/donut-data', [CmController::class, 'donutData'])->name('donut-data');
+        Route::get('/overview-summary', [CmController::class, 'overviewSummary'])->name('overview-summary');
+
+        // Import Excel
+        Route::get('/import', [CmImportController::class, 'showImport'])->name('import.show');
+        Route::post('/import/upload', [CmImportController::class, 'uploadImport'])->name('import.upload');
+        Route::get('/import/status/{id}', [CmImportController::class, 'checkStatus'])->name('import.status');
+
+        // Export
+        Route::get('/export/readings', [CmController::class, 'exportReadings'])->name('export-readings');
+        Route::get('/export/findings', [CmController::class, 'exportFindings'])->name('export-findings');
+        Route::get('/export/monitoring', [CmController::class, 'exportMonitoring'])->name('export-monitoring');
+        Route::get('/export/analysis', [CmController::class, 'exportAnalysis'])->name('export-analysis');
+    });
+
     // AI Providers
     Route::get('/ai-providers', [AiProviderController::class, 'index'])->name('ai-providers.index');
     Route::post('/ai-providers', [AiProviderController::class, 'store'])->name('ai-providers.store');
@@ -104,6 +147,12 @@ Route::middleware('admin')->group(function () {
     Route::put('/ai-providers/{aiProvider}', [AiProviderController::class, 'update'])->name('ai-providers.update');
     Route::delete('/ai-providers/{aiProvider}', [AiProviderController::class, 'destroy'])->name('ai-providers.destroy');
     Route::post('/ai-providers/{aiProvider}/test', [AiProviderController::class, 'test'])->name('ai-providers.test');
+
+    // Reliability Dashboard
+    Route::get('/reliability', [ReliabilityController::class, 'index'])->name('reliability.index');
+
+    // Work Orders
+    Route::resource('work-orders', WorkOrderController::class);
 
     // Bot
     Route::get('/bot', [BotController::class, 'index'])->name('bot.index');

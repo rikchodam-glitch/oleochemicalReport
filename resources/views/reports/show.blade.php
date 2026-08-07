@@ -92,7 +92,7 @@
                     <x-status-badge :status="$report->report_type" />
                 </div>
 
-                {{-- Klasifikasi Pekerjaan: selalu tampil, tidak diedit dari sini (lihat edit.blade.php) --}}
+                {{-- Klasifikasi Pekerjaan (ZPM): selalu tampil, tidak diedit dari sini (lihat edit.blade.php) --}}
                 <div class="flex items-center gap-1.5">
                     @if($report->work_classification)
                         <x-status-badge :status="$report->work_classification"
@@ -101,6 +101,23 @@
                         <span class="text-xs text-slate-400">Klasifikasi: -</span>
                     @endif
                 </div>
+
+                {{-- Jenis Pekerjaan (CM/dCM/PM) --}}
+                @if($report->jenis_pekerjaan)
+                    <div class="flex items-center gap-1.5">
+                        @php
+                            $jenisColors = [
+                                'CM'  => 'bg-red-100 text-red-700 border-red-200',
+                                'dCM' => 'bg-amber-100 text-amber-700 border-amber-200',
+                                'PM'  => 'bg-blue-100 text-blue-700 border-blue-200',
+                            ];
+                            $jColor = $jenisColors[$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-400';
+                        @endphp
+                        <span class="inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full border {{ $jColor }}">
+                            {{ $report->jenis_pekerjaan }}
+                        </span>
+                    </div>
+                @endif
             </div>
         </div>
 
@@ -284,6 +301,62 @@
                 @enderror
             </div>
         </div>
+
+        {{-- ── Detail CM / Pekerjaan ──────────────────────── --}}
+        @if($report->jenis_pekerjaan || $report->tanggal_kejadian || $report->linkedFinding || $report->equipment_tag)
+            <div class="bg-white rounded-xl border border-slate-200 p-6">
+                <h3 class="font-medium text-slate-900 mb-3">Detail Pekerjaan</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    @if($report->jenis_pekerjaan)
+                        <div>
+                            <p class="text-xs text-slate-500">Jenis Pekerjaan</p>
+                            @php
+                                $jenisColors = [
+                                    'CM'  => 'bg-red-100 text-red-700 border-red-200',
+                                    'dCM' => 'bg-amber-100 text-amber-700 border-amber-200',
+                                    'PM'  => 'bg-blue-100 text-blue-700 border-blue-200',
+                                ];
+                                $jColor = $jenisColors[$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-400';
+                            @endphp
+                            <span class="inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full border {{ $jColor }}">
+                                {{ $report->jenis_pekerjaan }}
+                            </span>
+                        </div>
+                    @endif
+                    @if($report->tanggal_kejadian)
+                        <div>
+                            <p class="text-xs text-slate-500">Tanggal Kejadian</p>
+                            <p class="font-medium text-slate-700">{{ $report->tanggal_kejadian->format('d/m/Y') }}</p>
+                        </div>
+                    @endif
+                    @if($report->sesuai_rencana)
+                        <div>
+                            <p class="text-xs text-slate-500">Sesuai Rencana</p>
+                            @if($report->sesuai_rencana === 'ya')
+                                <span class="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">Ya</span>
+                            @else
+                                <span class="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">Tidak</span>
+                            @endif
+                        </div>
+                    @endif
+                    @if($report->equipment_tag)
+                        <div>
+                            <p class="text-xs text-slate-500">Equipment Tag</p>
+                            <p class="font-medium text-slate-700 font-mono">{{ $report->equipment_tag }}</p>
+                        </div>
+                    @endif
+                    @if($report->linkedFinding)
+                        <div>
+                            <p class="text-xs text-slate-500">Linked Finding</p>
+                            <p class="font-medium text-slate-700 font-mono">{{ $report->linkedFinding->kode_finding ?? '#' . $report->linked_finding_id }}</p>
+                            @if($report->linkedFinding->kategori)
+                                <p class="text-xs text-slate-400">{{ $report->linkedFinding->kategori }}</p>
+                            @endif
+                        </div>
+                    @endif
+                </div>
+            </div>
+        @endif
 
         {{-- ── Asset / Equipment Detail ────────────────────── --}}
         @if($report->asset_id && $report->asset)

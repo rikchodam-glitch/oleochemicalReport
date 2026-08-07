@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@yield('title', 'Dashboard') — Oleochemical Pro</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     @vite('resources/css/app.css')
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script defer>
@@ -205,6 +206,27 @@
                 Laporan
             </a>
 
+            {{-- Reliability & Maintenance --}}
+            <p class="text-slate-500 text-xs uppercase tracking-wider px-2 pt-4 pb-1">Reliability & Maintenance</p>
+
+            <a href="{{ route('cm.overview') }}"
+               class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
+                      {{ request()->routeIs('cm.overview') || request()->routeIs('cm.findings') || request()->routeIs('cm.monitoring') || request()->routeIs('cm.equipment-status') || request()->routeIs('cm.report-analysis') || request()->routeIs('cm.equipment-show') || request()->routeIs('cm.import.show') ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white' }}">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                Condition Monitoring
+            </a>
+
+            <a href="{{ route('reliability.index') }}"
+               class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
+                      {{ request()->routeIs('reliability.*') ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white' }}">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                Reliability Dashboard
+            </a>
+
             <p class="text-slate-500 text-xs uppercase tracking-wider px-2 pt-4 pb-1">Pengaturan</p>
 
             <a href="{{ route('ai-providers.index') }}"
@@ -260,15 +282,6 @@
                     <h1 class="text-xl font-semibold text-slate-900 mt-1">@yield('title')</h1>
                 </div>
                 <div class="flex items-center gap-3">
-                    <div x-data="serverClock('{{ now()->toIso8601String() }}')" x-init="startClock()"
-                         class="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600"
-                         title="Waktu server — cek kesesuaian dengan waktu sebenarnya">
-                        <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        <span x-text="display"></span>
-                    </div>
-
                     @yield('header-actions')
                 </div>
             </div>
@@ -308,6 +321,7 @@
         </main>
     </div>
 
+    @stack('modals')
     @stack('scripts')
 </body>
 </html>

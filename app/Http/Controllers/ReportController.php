@@ -17,7 +17,7 @@ class ReportController extends Controller
 
     public function index(Request $request)
     {
-        $query = Report::with(['technician', 'area', 'asset', 'creator'])
+        $query = Report::with(['technician', 'area', 'asset', 'creator', 'linkedFinding'])
             ->withCount(['collaboratorReports as collaborator_count']);
 
         // Filter by date range
@@ -94,6 +94,11 @@ class ReportController extends Controller
             }
         }
 
+        // Filter by jenis pekerjaan (CM/dCM/PM)
+        if ($request->filled('jenis_pekerjaan')) {
+            $query->where('jenis_pekerjaan', $request->jenis_pekerjaan);
+        }
+
         $reports = $query->latest()->paginate(20)->withQueryString();
 
         // Append jumlah foto dokumentasi & hygiene ke setiap laporan di
@@ -108,7 +113,81 @@ class ReportController extends Controller
 
         $areas = Area::all();
 
-        return view('reports.index', compact('reports', 'areas'));
+        // Hitung ringkasan CM/dCM/PM dari seluruh dataset (tanpa filter halaman)
+        $summaryQuery = Report::query();
+        if ($request->filled('date_from')) {
+            $summaryQuery->whereDate('report_date', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $summaryQuery->whereDate('report_date', '<=', $request->date_to);
+        }
+        $totalLaporan = (clone $summaryQuery)->count();
+        $countCM  = (clone $summaryQuery)->where('jenis_pekerjaan', 'CM')->count();
+        $countDCM = (clone $summaryQuery)->where('jenis_pekerjaan', 'dCM')->count();
+        $countPM  = (clone $summaryQuery)->where('jenis_pekerjaan', 'PM')->count();
+
+        return view('reports.index', compact(
+            'reports', 'areas',
+            'totalLaporan', 'countCM', 'countDCM', 'countPM'
+        ));
+    }
+
+    /**
+     * Tampilkan form laporan baru (dibuat manual oleh admin di web).
+     *
+     * @return \Illuminate\View\View
+     */
+    public function create()
+    {
+        $areas = Area::orderBy('code')->get(['id', 'code', 'name']);
+
+        return view('reports.create', compact('areas'));
+    }
+
+    /**
+     * Simpan laporan baru yang dibuat manual oleh admin di web.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'report_date'             => 'required|date',
+            'work_description'        => 'required|string',
+            'work_duration_minutes'   => 'required|integer|min:0',
+            'root_cause'              => 'nullable|string',
+            'area_id'                 => 'nullable|exists:areas,id',
+            'funcloc_id'              => 'nullable|exists:functional_locations,id',
+            'asset_id'                => 'nullable|exists:assets,id',
+            'report_type'             => 'required|in:equipment_repair,area_work,general',
+            'work_classification'     => 'nullable|in:zpm1,zpm3,zpm6,zpm5,zpm7',
+            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM',
+            'linked_finding_id'       => 'nullable|exists:cm_findings,id',
+            'sesuai_rencana'          => 'nullable|in:ya,tidak',
+            'tanggal_kejadian'        => 'nullable|date',
+            'equipment_tag'           => 'nullable|string|max:100',
+        ]);
+
+        // Validasi khusus dCM: sesuai_rencana wajib bila jenis dCM
+        if (($validated['jenis_pekerjaan'] ?? '') === 'dCM' && empty($validated['sesuai_rencana'])) {
+            return back()->withErrors(['sesuai_rencana' => 'Untuk pekerjaan dCM, field "Sesuai Rencana" wajib diisi.'])
+                ->withInput();
+        }
+
+        // Validasi non-dCM: null-kan sesuai_rencana
+        if (($validated['jenis_pekerjaan'] ?? '') !== 'dCM') {
+            $validated['sesuai_rencana'] = null;
+        }
+
+        $validated['report_code']    = Report::generateReportCode();
+        $validated['status']         = $request->status ?? 'draft';
+        $validated['is_manually_edited'] = true;
+
+        $report = Report::create($validated);
+
+        return redirect()->route('reports.show', $report)
+            ->with('success', 'Laporan berhasil dibuat.');
     }
 
     public function show(Report $report)
@@ -122,6 +201,8 @@ class ReportController extends Controller
         'creator',
         'parentReport.technician',
         'collaboratorReports.technician',
+        'linkedFinding',
+        'cmEquipment',
     ]);
 
     // Variabel untuk dropdown inline edit di show.blade.php.
@@ -184,7 +265,23 @@ class ReportController extends Controller
             'funcloc_id'              => 'nullable|exists:functional_locations,id',
             'asset_id'                => 'nullable|exists:assets,id',
             'work_classification'     => 'nullable|in:zpm1,zpm3,zpm6,zpm5,zpm7',
+            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM',
+            'linked_finding_id'       => 'nullable|exists:cm_findings,id',
+            'sesuai_rencana'          => 'nullable|in:ya,tidak',
+            'tanggal_kejadian'        => 'nullable|date',
+            'equipment_tag'           => 'nullable|string|max:100',
         ]);
+
+        // Validasi khusus dCM: sesuai_rencana wajib jika jenis diisi dCM
+        if (($validated['jenis_pekerjaan'] ?? '') === 'dCM' && empty($validated['sesuai_rencana'])) {
+            return back()->withErrors(['sesuai_rencana' => 'Untuk pekerjaan dCM, field "Sesuai Rencana" wajib diisi.'])
+                ->withInput();
+        }
+
+        // Validasi non-dCM: null-kan sesuai_rencana
+        if (($validated['jenis_pekerjaan'] ?? '') !== 'dCM') {
+            $validated['sesuai_rencana'] = null;
+        }
 
         $validated['is_manually_edited'] = true;
 
@@ -318,6 +415,7 @@ class ReportController extends Controller
                 'Area',
                 'Tipe',
                 'Klasifikasi',
+                'Jenis Pekerjaan',
                 'Status',
                 'Durasi (menit)',
                 'Root Cause',
@@ -342,6 +440,7 @@ class ReportController extends Controller
                     $report->area?->code ?? '-',
                     $report->report_type,
                     $report->work_classification ?? '-',
+                    $report->jenis_pekerjaan ?? '-',
                     $report->status,
                     $durasiMenit,
                     $report->root_cause ?? '-',
