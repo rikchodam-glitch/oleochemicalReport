@@ -792,6 +792,22 @@ class ReportWizardService
             }
         }
 
+        // 3. Kode FunctionalLocation level Site (PT) dan Departemen yang disebut
+        //    persis di teks, misal "PT NPA", "di NPA", "NPA" saja. Level yang
+        //    lebih tinggi ini tidak punya nama unik seperti Area/Section, jadi
+        //    hanya kode-nya yang bisa dicocokkan. Batas kata (\b) mencegah
+        //    kecocokan palsu dengan kata yang mengandung kode sebagai substring.
+        $siteCodes = FunctionalLocation::active()
+            ->whereIn('level', [FunctionalLocation::LEVEL_SITE, FunctionalLocation::LEVEL_DEPARTMENT])
+            ->pluck('code')
+            ->filter(fn ($c) => $c !== null && $c !== '');
+
+        foreach ($siteCodes as $code) {
+            if (preg_match('/\b' . preg_quote(mb_strtoupper($code), '/') . '\b/u', $textUpper)) {
+                return true;
+            }
+        }
+
         return false;
     }
 
