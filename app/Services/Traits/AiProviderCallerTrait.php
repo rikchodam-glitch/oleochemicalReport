@@ -694,7 +694,7 @@ PROMPT;
             } elseif ($detectedArea) {
                 // Area terdeteksi dari teks — batasi ke area itu agar kandidat
                 // tidak menebar ke seluruh pabrik saat tidak ada keyword.
-                $query->where('area_id', $detectedArea['id']);
+                $this->scopeByDetectedArea($query, $detectedArea);
             }
 
             return $mapResults(
@@ -708,7 +708,7 @@ PROMPT;
         if ($areaId) {
             $baseQuery->where('area_id', $areaId);
         } elseif ($detectedArea) {
-            $baseQuery->where('area_id', $detectedArea['id']);
+            $this->scopeByDetectedArea($baseQuery, $detectedArea);
         }
 
         $baseQuery->where(function ($q) use ($keywords, $priorityAreaId) {
@@ -736,7 +736,7 @@ PROMPT;
             if ($areaId) {
                 $extraQuery->where('area_id', $areaId);
             } elseif ($detectedArea) {
-                $extraQuery->where('area_id', $detectedArea['id']);
+                $this->scopeByDetectedArea($extraQuery, $detectedArea);
             }
 
             $topKeywords = array_slice($keywords, 0, 3);
@@ -796,6 +796,43 @@ PROMPT;
         }
 
         return implode(' > ', $labels);
+    }
+
+    /**
+     * Batasi query pencarian lokasi ke area yang terdeteksi dari teks.
+     *
+     * Sesi 7 audit: sebagian node FunctionalLocation punya area_id NULL
+     * (55 dari 98) walaupun kode-nya jelas mengandung segmen kode area
+     * (mis. "EPE-PROD-TF01-6010" berisi segmen "TF01"). Backfill migration
+     * sudah mengisi area_id untuk 42 node tersebut, tetapi agar pencarian
+     * tetap berfungsi untuk node baru yang belum ter-backfill, filter ini
+     * memakai dua sinyal sekaligus:
+     *   - area_id = area yang terdeteksi, ATAU
+     *   - code mengandung kode area sebagai segmen utuh (dipisah tanda "-")
+     *     di posisi manapun (awal, tengah, akhir).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query       Query funcloc
+     * @param  array                                  $detectedArea Hasil detectArea(): ['id'=>int, 'code'=>string]
+     * @return void
+     */
+    protected function scopeByDetectedArea($query, array $detectedArea): void
+    {
+        $areaId     = $detectedArea['id'] ?? null;
+        $areaCode   = strtoupper((string) ($detectedArea['code'] ?? ''));
+
+        $query->where(function ($q) use ($areaId, $areaCode) {
+            if ($areaId !== null) {
+                $q->where('area_id', $areaId);
+            }
+
+            if ($areaCode !== '') {
+                // Segmen utuh dipisah tanda "-", bisa di awal, tengah, atau akhir.
+                // LIKE dipakai (bukan REGEXP) agar portabel MySQL & SQLite (test).
+                $q->orWhere('code', 'LIKE', $areaCode . '-%')
+                  ->orWhere('code', 'LIKE', '%-' . $areaCode . '-%')
+                  ->orWhere('code', 'LIKE', '%-' . $areaCode);
+            }
+        });
     }
 
     /**
