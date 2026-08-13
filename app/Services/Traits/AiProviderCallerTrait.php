@@ -505,7 +505,9 @@ PROMPT;
                 ->map(function ($l) {
                     $areaCode    = $l['area_code']     ?? '-';
                     $subAreaName = $l['sub_area_name'] ?? '-';
-                    return "ID:{$l['id']} | Kode:{$l['code']} | Nama:{$l['name']} | Level:{$l['level_label']} | Area:{$areaCode} | SubArea:{$subAreaName}";
+                    $hierarchy   = $l['hierarchy']     ?? '';
+                    $hierarchy   = $hierarchy !== '' ? " | Hierarki:{$hierarchy}" : '';
+                    return "ID:{$l['id']} | Kode:{$l['code']} | Nama:{$l['name']} | Level:{$l['level_label']} | Area:{$areaCode} | SubArea:{$subAreaName}{$hierarchy}";
                 })
                 ->implode("\n");
 
@@ -531,7 +533,12 @@ Contoh laporan area/lokasi: "penggantian lantai lab", "pengecatan dinding gudang
 
 TUGAS KAMU:
 1. Baca teks laporan baik-baik, cari nama lokasi/ruangan/area yang disebut.
-2. Cocokkan dengan Kode atau Nama pada daftar kandidat di atas.
+   Lokasi bisa disebut secara eksplisit, misalnya "di Main Office", "di DB2",
+   "di area lab", "gudang", "workshop". Perhatikan juga kode yang mirip
+   TechIdentNo tapi tidak cocok dengan alat — bisa jadi itu kode lokasi.
+2. Cocokkan dengan Kode, Nama, atau Hierarki pada daftar kandidat di atas.
+   Kolom Hierarki berisi jalur penuh (mis. "EPE > HR & General Affairs > Main Office"),
+   sehingga kecocokan bisa ditemukan walau teknisi hanya menyebut sebagian nama.
 3. Jika TIDAK YAKIN (confidence < 60), lebih baik mengembalikan candidates kosong daripada menebak.
 4. Jika YAKIN (confidence >= 60), isi candidates dengan maksimal 3 kandidat paling cocok,
    diurutkan dari yang paling yakin.
@@ -587,6 +594,7 @@ PROMPT;
                                     'sub_area_id'   => $full['sub_area_id'],
                                     'area_code'     => $full['area_code'],
                                     'sub_area_name' => $full['sub_area_name'],
+                                    'hierarchy'     => $full['hierarchy'] ?? '',
                                 ];
                             })
                             ->filter()
@@ -645,8 +653,20 @@ PROMPT;
 
         $relevantLevels = [FunctionalLocation::LEVEL_AREA, FunctionalLocation::LEVEL_SECTION];
 
-        $mapResults = function ($collection) {
-            return $collection->map(function (FunctionalLocation $fl) {
+        // Sesi 7 — deteksi area yang disebut eksplisit di teks (kode/nama,
+        // termasuk varian tanpa leading zero seperti "BD1" untuk "BD01").
+        // Area terdeteksi dipakai untuk memprioritaskan node funcloc di
+        // bawahnya sekaligus memberi konteks tambahan ke AI, sehingga lokasi
+        // seperti "di DB2 tu di Main Office" tetap menemukan kandidat walau
+        // teknisi memakai istilah lapangan yang tidak persis sama dengan kode.
+        $detectedArea = method_exists($this, 'detectArea') ? $this->detectArea($text) : null;
+
+        // Area id yang relevan: areaId dari pemanggil (state wizard) menang;
+        // jika tidak ada, gunakan area hasil deteksi teks.
+        $priorityAreaId = $areaId ?? ($detectedArea['id'] ?? null);
+
+        $mapResults = function ($collection) use ($priorityAreaId) {
+            return $collection->map(function (FunctionalLocation $fl) use ($priorityAreaId) {
                 return [
                     'id'            => $fl->id,
                     'code'          => $fl->code ?? '',
@@ -657,6 +677,8 @@ PROMPT;
                     'sub_area_id'   => $fl->sub_area_id,
                     'area_code'     => $fl->area->code ?? null,
                     'sub_area_name' => $fl->subArea->name ?? null,
+                    'hierarchy'     => $this->buildLocationHierarchyLabel($fl),
+                    'area_match'    => $priorityAreaId !== null && (int) $fl->area_id === (int) $priorityAreaId,
                 ];
             })->toArray();
         };
@@ -664,9 +686,15 @@ PROMPT;
         if (empty($keywords)) {
             // Fallback: tidak ada keyword valid, kembalikan node level Area/Section
             // pertama yang aktif, tetap dibatasi jumlahnya.
-            $query = FunctionalLocation::active()->whereIn('level', $relevantLevels);
+            $query = FunctionalLocation::active()
+                ->with('parent.parent.parent')
+                ->whereIn('level', $relevantLevels);
             if ($areaId) {
                 $query->where('area_id', $areaId);
+            } elseif ($detectedArea) {
+                // Area terdeteksi dari teks — batasi ke area itu agar kandidat
+                // tidak menebar ke seluruh pabrik saat tidak ada keyword.
+                $query->where('area_id', $detectedArea['id']);
             }
 
             return $mapResults(
@@ -674,16 +702,27 @@ PROMPT;
             );
         }
 
-        $baseQuery = FunctionalLocation::active()->whereIn('level', $relevantLevels);
+        $baseQuery = FunctionalLocation::active()
+            ->with('parent.parent.parent')
+            ->whereIn('level', $relevantLevels);
         if ($areaId) {
             $baseQuery->where('area_id', $areaId);
+        } elseif ($detectedArea) {
+            $baseQuery->where('area_id', $detectedArea['id']);
         }
 
-        $baseQuery->where(function ($q) use ($keywords) {
+        $baseQuery->where(function ($q) use ($keywords, $priorityAreaId) {
             foreach ($keywords as $keyword) {
                 $pattern = '%' . $keyword . '%';
                 $q->orWhere('code', 'LIKE', $pattern)
                   ->orWhere('name', 'LIKE', $pattern);
+            }
+
+            // Area terdeteksi dari teks: sertakan seluruh node di area tersebut
+            // sebagai kandidat walau tidak match keyword (mis. "Main Office"
+            // disebut bersama kode area lain yang tidak ada di nama funcloc).
+            if ($priorityAreaId !== null) {
+                $q->orWhere('area_id', $priorityAreaId);
             }
         });
 
@@ -691,9 +730,13 @@ PROMPT;
 
         // Jika hasil terlalu sedikit (< 5), perluas pencarian dengan keyword lebih pendek
         if ($results->count() < 5 && count($keywords) > 0) {
-            $extraQuery = FunctionalLocation::active()->whereIn('level', $relevantLevels);
+            $extraQuery = FunctionalLocation::active()
+                ->with('parent.parent.parent')
+                ->whereIn('level', $relevantLevels);
             if ($areaId) {
                 $extraQuery->where('area_id', $areaId);
+            } elseif ($detectedArea) {
+                $extraQuery->where('area_id', $detectedArea['id']);
             }
 
             $topKeywords = array_slice($keywords, 0, 3);
@@ -717,7 +760,42 @@ PROMPT;
             $mergedResults = $results;
         }
 
-        return $mapResults($mergedResults);
+        // Urutkan kandidat: yang area_id-nya sama dengan area terdeteksi
+        // didahulukan (area_match = true), sisanya menyusul.
+        $sortedResults = $mergedResults->sortByDesc(fn(FunctionalLocation $fl) =>
+            $priorityAreaId !== null && (int) $fl->area_id === (int) $priorityAreaId
+        );
+
+        return $mapResults($sortedResults->values());
+    }
+
+    /**
+     * Bangun label hierarki (breadcrumb) untuk satu node FunctionalLocation,
+     * misalnya "EPE > HR & General Affairs > Main Office". Dipakai di prompt
+     * AI pencarian lokasi dan di pesan konfirmasi ke teknisi, agar posisi
+     * node di dalam pohon lokasi langsung terlihat.
+     *
+     * @param  FunctionalLocation $fl Node FunctionalLocation
+     * @return string Label hierarki lengkap dari root hingga node ini
+     */
+    protected function buildLocationHierarchyLabel(FunctionalLocation $fl): string
+    {
+        $labels = [];
+
+        if ($fl->name) {
+            $labels[] = $fl->name;
+        } elseif ($fl->code) {
+            $labels[] = $fl->code;
+        }
+
+        $parent = $fl->parent;
+        while ($parent !== null) {
+            $label = $parent->name ?: $parent->code;
+            array_unshift($labels, $label);
+            $parent = $parent->parent;
+        }
+
+        return implode(' > ', $labels);
     }
 
     /**

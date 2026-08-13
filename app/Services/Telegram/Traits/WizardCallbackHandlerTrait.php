@@ -5,6 +5,7 @@ namespace App\Services\Telegram\Traits;
 use App\Models\Area;
 use App\Models\Asset;
 use App\Models\Department;
+use App\Models\FunctionalLocation;
 use App\Models\Technician;
 use Illuminate\Support\Facades\Log;
 
@@ -222,6 +223,12 @@ trait WizardCallbackHandlerTrait
             }
 
             return $this->errorResponse('Pilihan lokasi AI tidak dikenali.');
+        }
+
+        // Callback pemilihan satu kandidat lokasi dari keyboard multi-kandidat
+        // (Sesi 7, buildLocationCandidateKeyboard di ReportWizardService).
+        if (str_starts_with($callbackData, 'location_candidate:')) {
+            return $this->handleLocationCandidateCallback($chatId, $callbackData, $state);
         }
 
         // Masuk ke hierarki ClarificationService (Sub-alur C).
@@ -677,6 +684,43 @@ trait WizardCallbackHandlerTrait
         }
 
         return $this->lockEquipmentAndAdvance($chatId, $asset, $state);
+    }
+
+    /**
+     * Proses pemilihan satu kandidat lokasi dari keyboard multi-kandidat AI
+     * (Sesi 7). Callback format: location_candidate:<funcloc_id>.
+     *
+     * Mengambil ulang model FunctionalLocation dari id, mengisi state
+     * pending_location_* persis seperti tryAiLocationSearch() untuk kandidat
+     * tunggal, lalu meneruskan ke confirmAiLocationSuggestion() agar alur
+     * kunci funcloc + advanceToWorkDuration identik dengan konfirmasi Ya/Tidak.
+     *
+     * @param  string $chatId       Chat ID Telegram
+     * @param  string $callbackData Data callback location_candidate:<id>
+     * @param  array  $state        State wizard saat ini
+     * @return array  Respons
+     */
+    protected function handleLocationCandidateCallback(string $chatId, string $callbackData, array $state): array
+    {
+        $id = explode(':', $callbackData)[1] ?? null;
+
+        if (!$id) {
+            return $this->errorResponse('Pilihan lokasi tidak valid.');
+        }
+
+        $funcLoc = FunctionalLocation::find((int) $id);
+        if (!$funcLoc) {
+            return $this->errorResponse('Lokasi tidak ditemukan. Silakan pilih ulang.');
+        }
+
+        $state['pending_location_funcloc_id']  = $funcLoc->id;
+        $state['pending_location_area_id']     = $funcLoc->area_id;
+        $state['pending_location_sub_area_id'] = $funcLoc->sub_area_id;
+        $state['pending_location_label']       = $funcLoc->name ?: $funcLoc->code;
+        $state['pending_location_hierarchy']   = '';
+        $this->saveState($chatId, $state);
+
+        return $this->confirmAiLocationSuggestion($chatId, $state);
     }
 
     /**

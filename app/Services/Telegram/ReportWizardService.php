@@ -393,6 +393,19 @@ class ReportWizardService
             return $this->appendDateConfirmationNote($response, $state);
         }
 
+        // Regex no_match — Sesi 7: jika teks menyebut lokasi secara eksplisit
+        // (kode area, nama area, atau nama funcloc), coba deteksi lokasi lebih
+        // dulu dari pencarian equipment AI. Laporan semacam "di Main Office"
+        // atau "di DB2 tu di Main Office" jelas pekerjaan area, bukan alat —
+        // menunggu AI equipment gagal dulu hanya membuang waktu & token.
+        // Tanpa sinyal lokasi, alur tetap equipment dulu (tidak ada regresi).
+        if ($this->hasExplicitLocationSignal($text)) {
+            $aiLocationResult = $this->tryAiLocationSearch($chatId, $state, $text);
+            if ($aiLocationResult !== null) {
+                return $aiLocationResult;
+            }
+        }
+
         // Regex no_match — coba AI sebagai lapis kedua sebelum tanya manual.
         // AI mencari berdasarkan deskripsi alat (bukan hanya kode),
         // dengan data yang sudah di-pre-filter agar hemat token.
@@ -402,7 +415,9 @@ class ReportWizardService
         }
 
         // AI equipment juga tidak menemukan — coba sebagai laporan lokasi/area
-        // (Sesi 3) sebelum jatuh ke opsi manual.
+        // (Sesi 3) sebelum jatuh ke opsi manual. Dicoba lagi di sini untuk kasus
+        // tanpa sinyal lokasi eksplisit yang baru akan terdeteksi saat teks
+        // difilter sebagai lokasi (mis. "penggantian lantai lab").
         $aiLocationResult = $this->tryAiLocationSearch($chatId, $state, $text);
         if ($aiLocationResult !== null) {
             return $aiLocationResult;
@@ -599,26 +614,43 @@ class ReportWizardService
             return null;
         }
 
-        // Hanya kandidat teratas yang ditawarkan — lihat catatan di docblock.
-        $topCandidate = $aiCandidates[0];
+        // Sesi 7 — tampilkan kandidat lokasi hasil AI. Jika AI cukup yakin dan
+        // hanya memberi satu kandidat, tampilkan konfirmasi Ya/Tidak dengan
+        // hierarki penuh (breadcrumb). Jika AI ragu atau memberi beberapa
+        // kandidat, tampilkan keyboard pilihan beberapa lokasi sekaligus
+        // (buildLocationCandidateKeyboard), bukan hanya kandidat teratas.
+        $candidateCount = count($aiCandidates);
+        $topCandidate   = $aiCandidates[0];
 
         Log::info("WizardService: AI location search found candidate for chat {$chatId}", [
-            'ai_confidence' => $aiConfidence,
-            'funcloc_id'    => $topCandidate['id'] ?? null,
+            'ai_confidence'   => $aiConfidence,
+            'candidate_count' => $candidateCount,
+            'funcloc_id'      => $topCandidate['id'] ?? null,
         ]);
 
-        $state['pending_location_funcloc_id']  = $topCandidate['id'] ?? null;
-        $state['pending_location_area_id']     = $topCandidate['area_id'] ?? null;
-        $state['pending_location_sub_area_id'] = $topCandidate['sub_area_id'] ?? null;
-        $state['pending_location_label']       = $topCandidate['name'] ?? ($topCandidate['code'] ?? 'Lokasi');
-        $state['search_confidence']            = $aiConfidence;
-        $state['ai_suggestion_source']         = true;
-        $state['ai_suggestion_type']           = 'area';
-        $state['ai_suggestion_reasoning']      = $aiResult['reasoning'] ?? $aiResult['ai_message'] ?? null;
-        $state['step']                         = self::STEP_EQUIPMENT_CLARIFY;
+        // Simpan seluruh kandidat lokasi ke state agar bisa dipilih teknisi
+        // dari keyboard (callback location_candidate:<id>).
+        $state['pending_location_candidates'] = $aiCandidates;
+        $state['search_confidence']           = $aiConfidence;
+        $state['ai_suggestion_source']        = true;
+        $state['ai_suggestion_type']          = 'area';
+        $state['ai_suggestion_reasoning']     = $aiResult['reasoning'] ?? $aiResult['ai_message'] ?? null;
+        $state['step']                        = self::STEP_EQUIPMENT_CLARIFY;
         $this->saveState($chatId, $state);
 
-        $response = $this->buildLocationConfirmKeyboard($topCandidate, $aiConfidence, $state);
+        if ($candidateCount === 1 || $aiConfidence >= 85) {
+            $state['pending_location_funcloc_id']  = $topCandidate['id'] ?? null;
+            $state['pending_location_area_id']     = $topCandidate['area_id'] ?? null;
+            $state['pending_location_sub_area_id'] = $topCandidate['sub_area_id'] ?? null;
+            $state['pending_location_label']       = $topCandidate['name'] ?? ($topCandidate['code'] ?? 'Lokasi');
+            $state['pending_location_hierarchy']   = $topCandidate['hierarchy'] ?? '';
+            $this->saveState($chatId, $state);
+
+            $response = $this->buildLocationConfirmKeyboard($topCandidate, $aiConfidence, $state);
+            return $this->appendDateConfirmationNote($response, $state);
+        }
+
+        $response = $this->buildLocationCandidateKeyboard($aiCandidates, $aiConfidence, $state);
         return $this->appendDateConfirmationNote($response, $state);
     }
 
@@ -640,10 +672,14 @@ class ReportWizardService
         $code       = $candidate['code'] ?? '-';
         $levelLabel = $candidate['level_label'] ?? 'Lokasi';
         $areaCode   = $candidate['area_code'] ?? null;
+        $hierarchy  = $candidate['hierarchy'] ?? '';
 
         $detailLine = "{$levelLabel}: {$name} ({$code})";
         if ($areaCode) {
             $detailLine .= " — Area {$areaCode}";
+        }
+        if ($hierarchy !== '') {
+            $detailLine .= "\nHierarki: {$hierarchy}";
         }
 
         $keyboard = array_merge(
@@ -660,6 +696,103 @@ class ReportWizardService
                           "Apakah ini lokasi yang dimaksud?",
             'keyboard' => $keyboard,
         ];
+    }
+
+    /**
+     * Bangun keyboard pilihan beberapa kandidat lokasi hasil AI (Sesi 7).
+     *
+     * Ditampilkan ketika AI kurang yakin (confidence < 85) atau memberi lebih
+     * dari satu kandidat lokasi. Setiap tombol memakai callback_data
+     * location_candidate:<id> yang diproses oleh
+     * WizardCallbackHandlerTrait::handleLocationCandidateCallback() — teknisi
+     * bisa langsung memilih lokasi tanpa harus menolak satu-satu.
+     *
+     * @param  array $candidates Daftar kandidat dari AiService::searchLocation()
+     * @param  int   $confidence Confidence AI (0-100)
+     * @param  array $state      State wizard saat ini (untuk navigationButtons)
+     * @return array Respons dengan message dan keyboard pilihan lokasi
+     */
+    protected function buildLocationCandidateKeyboard(array $candidates, int $confidence, array $state): array
+    {
+        $keyboard = [];
+
+        foreach (array_slice($candidates, 0, 5) as $candidate) {
+            $name       = $candidate['name']       ?? '-';
+            $code       = $candidate['code']       ?? '-';
+            $levelLabel = $candidate['level_label'] ?? 'Lokasi';
+            $areaCode   = $candidate['area_code']   ?? null;
+
+            $label = "{$levelLabel}: {$name} ({$code})";
+            if ($areaCode) {
+                $label .= " — Area {$areaCode}";
+            }
+            if (strlen($label) > 64) {
+                $label = substr($label, 0, 61) . '...';
+            }
+
+            $keyboard[] = [
+                'text'          => $label,
+                'callback_data' => 'location_candidate:' . ($candidate['id'] ?? ''),
+            ];
+        }
+
+        $keyboard[] = ['text' => 'Bukan salah satunya', 'callback_data' => 'ai_location:reject'];
+
+        foreach ($this->navigationButtons($state) as $navButton) {
+            $keyboard[] = $navButton;
+        }
+
+        return [
+            'message'  => "_AI menemukan beberapa kemungkinan lokasi untuk laporan ini._\n\n" .
+                          "Pilih lokasi yang paling sesuai:\n_(Kemiripan: {$confidence}%)_",
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Deteksi apakah teks laporan menyebut lokasi secara eksplisit (Sesi 7).
+     *
+     * Sinyal lokasi eksplisit: kode/nama Area yang cocok (detectArea dari
+     * AiKeywordParserTrait) ATAU nama FunctionalLocation level Area/Section
+     * yang muncul persis di teks. Dipakai processEquipmentSearch() untuk
+     * mencoba pencarian lokasi lebih dulu dari pencarian equipment AI, karena
+     * laporan seperti "di DB2 tu di Main Office" jelas pekerjaan area.
+     *
+     * @param  string $text Teks laporan awal dari teknisi
+     * @return bool   True jika ada sinyal lokasi eksplisit
+     */
+    protected function hasExplicitLocationSignal(string $text): bool
+    {
+        $textUpper = mb_strtoupper(trim($text));
+
+        if ($textUpper === '') {
+            return false;
+        }
+
+        // 1. Deteksi kode/nama Area dari teks (AI keyword parser).
+        $areas = Area::select('id', 'code', 'name')->get();
+        foreach ($areas as $area) {
+            if ($area->code !== null && $area->code !== '' && mb_strpos($textUpper, mb_strtoupper($area->code)) !== false) {
+                return true;
+            }
+            if ($area->name !== null && $area->name !== '' && mb_stripos($text, $area->name) !== false) {
+                return true;
+            }
+        }
+
+        // 2. Nama FunctionalLocation level Area/Section yang muncul persis di teks.
+        $names = FunctionalLocation::active()
+            ->whereIn('level', [FunctionalLocation::LEVEL_AREA, FunctionalLocation::LEVEL_SECTION])
+            ->pluck('name')
+            ->filter(fn ($n) => $n !== null && $n !== '');
+
+        foreach ($names as $name) {
+            if (mb_stripos($text, $name) !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -952,7 +1085,9 @@ class ReportWizardService
             $state['pending_location_funcloc_id'],
             $state['pending_location_area_id'],
             $state['pending_location_sub_area_id'],
-            $state['pending_location_label']
+            $state['pending_location_label'],
+            $state['pending_location_hierarchy'],
+            $state['pending_location_candidates']
         );
 
         return $this->advanceToWorkDuration($chatId, $state);
@@ -980,7 +1115,9 @@ class ReportWizardService
             $state['pending_location_funcloc_id'],
             $state['pending_location_area_id'],
             $state['pending_location_sub_area_id'],
-            $state['pending_location_label']
+            $state['pending_location_label'],
+            $state['pending_location_hierarchy'],
+            $state['pending_location_candidates']
         );
 
         $state['step']               = self::STEP_EQUIPMENT_CLARIFY;
