@@ -41,7 +41,7 @@ trait AssetExportTrait
 
         // Baris header kolom
         $headers = [
-            'Equipment No', 'Description', 'Tech Ident No', 'Object Type',
+            'Equipment No', 'Description', 'Tech Ident No', 'Equipment Type',
             'Functional Loc', 'Company', 'Department', 'Area', 'Sub Area',
             'Manufacturer', 'Model Number', 'Construct Year', 'Status',
             'Data Source', 'Imported At', 'Created At', 'Updated At',
@@ -59,7 +59,7 @@ trait AssetExportTrait
             $sheet->setCellValue('A' . $rowNum, $asset->equipment_no);
             $sheet->setCellValue('B' . $rowNum, $asset->description);
             $sheet->setCellValue('C' . $rowNum, $asset->tech_ident_no);
-            $sheet->setCellValue('D' . $rowNum, $asset->object_type);
+            $sheet->setCellValue('D' . $rowNum, $asset->equipment_type);
             $sheet->setCellValue('E' . $rowNum, $asset->functional_loc);
             $sheet->setCellValue('F' . $rowNum, $asset->company?->code ?? '');
             $sheet->setCellValue('G' . $rowNum, $asset->department?->code ?? '');
@@ -119,7 +119,7 @@ trait AssetExportTrait
 
             // Baris header kolom
             fputcsv($file, [
-                'Equipment No', 'Description', 'Tech Ident No', 'Object Type',
+                'Equipment No', 'Description', 'Tech Ident No', 'Equipment Type',
                 'Functional Loc', 'Company', 'Department', 'Area', 'Sub Area',
                 'Manufacturer', 'Model Number', 'Construct Year', 'Status',
                 'Data Source', 'Imported At', 'Created At', 'Updated At',
@@ -131,7 +131,7 @@ trait AssetExportTrait
                     $asset->equipment_no,
                     $asset->description,
                     $asset->tech_ident_no,
-                    $asset->object_type,
+                    $asset->equipment_type,
                     $asset->functional_loc,
                     $asset->company?->code ?? '',
                     $asset->department?->code ?? '',
@@ -189,8 +189,8 @@ trait AssetExportTrait
         if ($request->filled('sub_area_id')) {
             $query->where('sub_area_id', $request->sub_area_id);
         }
-        if ($request->filled('object_type')) {
-            $query->where('object_type', $request->object_type);
+        if ($request->filled('equipment_type')) {
+            $query->where('equipment_type', $request->equipment_type);
         }
 
         $query->latest();

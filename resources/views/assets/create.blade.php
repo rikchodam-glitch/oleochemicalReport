@@ -37,10 +37,10 @@
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="space-y-1.5">
-                        <label class="block text-sm font-medium text-slate-700">Object Type</label>
-                        <input type="text" name="object_type" value="{{ old('object_type') }}"
+                        <label class="block text-sm font-medium text-slate-700">Equipment Type</label>
+                        <input type="text" name="equipment_type" value="{{ old('equipment_type') }}"
                                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                               placeholder="ZPM-PU1">
+                               placeholder="PUMP">
                     </div>
                     <x-funcloc-picker
                         name="funcloc_id"

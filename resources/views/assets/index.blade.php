@@ -14,8 +14,8 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
         </svg>
         Filter
-        @if(request()->hasAny(['search', 'status', 'company_id', 'department_id', 'area_id', 'sub_area_id', 'object_type']))
-            <span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-blue-500 rounded-full">{{ collect([request('search'), request('status'), request('company_id'), request('department_id'), request('area_id'), request('sub_area_id'), request('object_type')])->filter()->count() }}</span>
+        @if(request()->hasAny(['search', 'status', 'company_id', 'department_id', 'area_id', 'sub_area_id', 'equipment_type']))
+            <span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-blue-500 rounded-full">{{ collect([request('search'), request('status'), request('company_id'), request('department_id'), request('area_id'), request('sub_area_id'), request('equipment_type')])->filter()->count() }}</span>
         @endif
     </button>
     <a href="{{ route('assets.unlinked-funcloc') }}"
@@ -67,7 +67,7 @@
         'department_id' => request('department_id'),
         'area_id' => request('area_id'),
         'sub_area_id' => request('sub_area_id'),
-        'object_type' => request('object_type'),
+        'equipment_type' => request('equipment_type'),
     ])->filter()->count();
 
     $activeFilters = [];
@@ -89,7 +89,7 @@
         $s = $subAreas->firstWhere('id', request('sub_area_id'));
         if ($s) $activeFilters[] = ['key' => 'sub_area_id', 'label' => 'Sub Area: ' . $s->code];
     }
-    if (request('object_type')) $activeFilters[] = ['key' => 'object_type', 'label' => 'Tipe: ' . request('object_type')];
+    if (request('equipment_type')) $activeFilters[] = ['key' => 'equipment_type', 'label' => 'Tipe: ' . request('equipment_type')];
 @endphp
 
 @section('content')
@@ -128,11 +128,11 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs font-medium text-slate-500 mb-1.5">Object Type</label>
-                        <select name="object_type" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
+                        <label class="block text-xs font-medium text-slate-500 mb-1.5">Equipment Type</label>
+                        <select name="equipment_type" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
                             <option value="">Semua Tipe</option>
-                            @foreach($objectTypes as $type)
-                                <option value="{{ $type }}" {{ request('object_type') === $type ? 'selected' : '' }}>{{ $type }}</option>
+                            @foreach($equipmentTypes as $type)
+                                <option value="{{ $type }}" {{ request('equipment_type') === $type ? 'selected' : '' }}>{{ $type }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -248,9 +248,11 @@
                                 <p class="text-slate-700">{{ Str::limit($asset->description, 60) }}</p>
                             </td>
                             <td class="px-5 py-3.5">
-                                <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 rounded">
-                                    {{ $asset->object_type ?? '-' }}
-                                </span>
+                                @if($asset->equipment_type)
+                                    <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 rounded">{{ $asset->equipment_type }}</span>
+                                @else
+                                    <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 rounded">Tanpa Tipe</span>
+                                @endif
                             </td>
                             <td class="px-5 py-3.5">
                                 <div class="text-xs text-slate-600">

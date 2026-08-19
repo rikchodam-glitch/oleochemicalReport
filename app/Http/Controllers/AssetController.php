@@ -59,17 +59,17 @@ class AssetController extends Controller
         if ($request->filled('sub_area_id')) {
             $query->where('sub_area_id', $request->sub_area_id);
         }
-        if ($request->filled('object_type')) {
-            $query->where('object_type', $request->object_type);
+        if ($request->filled('equipment_type')) {
+            $query->where('equipment_type', $request->equipment_type);
         }
 
         $assets      = $query->latest()->paginate(20)->withQueryString();
         $companies   = Company::all();
-        $objectTypes = Asset::select('object_type')
+        $equipmentTypes = Asset::select('equipment_type')
             ->distinct()
-            ->whereNotNull('object_type')
-            ->orderBy('object_type')
-            ->pluck('object_type');
+            ->whereNotNull('equipment_type')
+            ->orderBy('equipment_type')
+            ->pluck('equipment_type');
 
         // Dropdown lokasi dinamis — hanya diisi jika filter terkait aktif
         $departments = collect();
@@ -91,7 +91,7 @@ class AssetController extends Controller
         $unlinkedFuncLocCount = $syncService->unlinkedAssetsCount();
 
         return view('assets.index', compact(
-            'assets', 'companies', 'objectTypes', 'departments', 'areas', 'subAreas',
+            'assets', 'companies', 'equipmentTypes', 'departments', 'areas', 'subAreas',
             'unlinkedFuncLocCount'
         ));
     }
@@ -218,7 +218,7 @@ class AssetController extends Controller
             'equipment_no'   => 'nullable|unique:assets',
             'description'    => 'nullable|string',
             'tech_ident_no'  => 'nullable|string',
-            'object_type'    => 'nullable|string',
+            'equipment_type' => 'nullable|string',
             'funcloc_id'     => 'required|exists:functional_locations,id',
             'manufacturer'   => 'nullable|string',
             'model_number'   => 'nullable|string',
@@ -270,7 +270,7 @@ class AssetController extends Controller
             'equipment_no'   => 'nullable|unique:assets,equipment_no,' . $asset->id,
             'description'    => 'nullable|string',
             'tech_ident_no'  => 'nullable|string',
-            'object_type'    => 'nullable|string',
+            'equipment_type' => 'nullable|string',
             'funcloc_id'     => 'required|exists:functional_locations,id',
             'manufacturer'   => 'nullable|string',
             'model_number'   => 'nullable|string',

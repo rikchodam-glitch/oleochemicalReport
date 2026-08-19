@@ -48,9 +48,13 @@
                             <dd class="mt-1 font-mono text-sm font-semibold text-slate-900">{{ $asset->tech_ident_no ?? '-' }}</dd>
                         </div>
                         <div>
-                            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Object Type</dt>
+                            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Equipment Type</dt>
                             <dd class="mt-1">
-                                <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 rounded">{{ $asset->object_type ?? '-' }}</span>
+                                @if($asset->equipment_type)
+                                    <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 rounded">{{ $asset->equipment_type }}</span>
+                                @else
+                                    <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 rounded">Tanpa Tipe</span>
+                                @endif
                             </dd>
                         </div>
                         <div>
