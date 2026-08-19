@@ -6,6 +6,7 @@ use App\Models\Area;
 use App\Models\Asset;
 use App\Models\FunctionalLocation;
 use App\Services\AiService;
+use App\Services\FuncLocParser;
 use App\Services\TechIdentSearchService;
 use App\Services\Telegram\CollaboratorSearchService;
 use App\Services\Telegram\Traits\WizardCallbackHandlerTrait;
@@ -146,17 +147,20 @@ class ReportWizardService
     protected AiService $aiService;
     protected ClarificationService $clarificationService;
     protected CollaboratorSearchService $collaboratorSearch;
+    protected FuncLocParser $funcLocParser;
 
     public function __construct(
         TechIdentSearchService $techIdentSearch,
         AiService $aiService,
         ClarificationService $clarificationService,
-        CollaboratorSearchService $collaboratorSearch
+        CollaboratorSearchService $collaboratorSearch,
+        FuncLocParser $funcLocParser
     ) {
         $this->techIdentSearch      = $techIdentSearch;
         $this->aiService            = $aiService;
         $this->clarificationService = $clarificationService;
         $this->collaboratorSearch   = $collaboratorSearch;
+        $this->funcLocParser        = $funcLocParser;
     }
 
     // =========================================================
@@ -962,11 +966,12 @@ class ReportWizardService
             return $aiLocationResult;
         }
 
-        // Gagal regex + AI (equipment & lokasi), dan sudah 2 kali: masuk hierarki (Sub-alur C)
+        // Gagal regex + AI (equipment & lokasi), dan sudah 2 kali: masuk hierarki
+        // FuncLoc terpadu (PT -> Dept -> Area -> Section -> TechIdentNo).
         if ($attempts >= 2) {
             $state['retype_attempts'] = $attempts;
             $this->saveState($chatId, $state);
-            return $this->startClarificationHierarchy($chatId, $state);
+            return $this->startFuncLocPicker($chatId, $state, 'equipment');
         }
 
         $remaining               = 2 - $attempts;

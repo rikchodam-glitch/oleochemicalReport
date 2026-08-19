@@ -91,7 +91,7 @@ use Illuminate\Support\Facades\Log;
  * Method dari WizardFuncLocPickerTrait yang dipanggil oleh trait ini
  * (tersedia di kelas pemakai karena keduanya di-use di ReportWizardService):
  *
- * @method array startFuncLocPicker(string $chatId, array $state)
+ * @method array startFuncLocPicker(string $chatId, array $state, string $mode = 'area')
  * @method array handleFuncLocPick(string $chatId, string $callbackData, array $state)
  * @method array handleFuncLocConfirm(string $chatId, string $callbackData, array $state)
  * @method array handleFuncLocBack(string $chatId, array $state)
@@ -231,11 +231,11 @@ trait WizardCallbackHandlerTrait
             return $this->handleLocationCandidateCallback($chatId, $callbackData, $state);
         }
 
-        // Masuk ke hierarki ClarificationService (Sub-alur C).
+        // Masuk ke hierarki FuncLoc terpadu (PT -> Dept -> Area -> Section -> TechIdentNo).
         // Diperiksa sebelum collab_hierarchy agar tidak bentrok — prefix berbeda
         // ('equipment:hierarchy' vs 'collab_hierarchy:'), aman.
         if ($callbackData === 'equipment:hierarchy') {
-            return $this->startClarificationHierarchy($chatId, $state);
+            return $this->startFuncLocPicker($chatId, $state, 'equipment');
         }
 
         // Tombol "Batal" dari dalam navigasi hierarki equipment
@@ -256,6 +256,21 @@ trait WizardCallbackHandlerTrait
         // Naik satu level di FuncLoc picker (Sesi 5)
         if ($callbackData === 'funcloc_back') {
             return $this->handleFuncLocBack($chatId, $state);
+        }
+
+        // Mode equipment FuncLoc picker: pilih tipe alat di bawah node
+        if (str_starts_with($callbackData, 'funcloc_assets_type:')) {
+            return $this->handleFuncLocAssetsType($chatId, $callbackData, $state);
+        }
+
+        // Mode equipment FuncLoc picker: tampilkan daftar equipment di bawah node
+        if (str_starts_with($callbackData, 'funcloc_assets:')) {
+            return $this->handleFuncLocAssets($chatId, $callbackData, $state);
+        }
+
+        // Mode equipment FuncLoc picker: kunci equipment yang dipilih
+        if (str_starts_with($callbackData, 'funcloc_asset_pick:')) {
+            return $this->handleFuncLocAssetPick($chatId, $callbackData, $state);
         }
 
         // Callback pemilihan kandidat nama kolaborator yang ambigu (Step 8a).
@@ -618,19 +633,10 @@ trait WizardCallbackHandlerTrait
         unset($state['awaiting_work_type']);
 
         if ($type === 'equipment') {
-            $state['retype_attempts'] = 0;
-            $this->saveState($chatId, $state);
-
-            return [
-                'message'  => "Silakan ketik *TechIdentNo* atau nama/deskripsi alat:\n" .
-                              "_(contoh: `LSH-2-6600V2`, `Level Switch High 6600V2`, `PT 6163C1`)_",
-                'keyboard' => array_merge(
-                    [
-                        ['text' => 'Pilih dari Hierarki', 'callback_data' => 'equipment:hierarchy'],
-                    ],
-                    $this->navigationButtons($state)
-                ),
-            ];
+            // Perbaikan alat tertentu kini masuk hierarki FuncLoc terpadu
+            // (PT -> Dept -> Area -> Section -> TechIdentNo), sama seperti
+            // tombol "Pilih dari Hierarki".
+            return $this->startFuncLocPicker($chatId, $state, 'equipment');
         }
 
         if ($type === 'area') {
@@ -1333,6 +1339,7 @@ trait WizardCallbackHandlerTrait
             $state['awaiting_work_type'],
             $state['using_clarification_service'],
             $state['funcloc_picker_active'],
+            $state['funcloc_picker_mode'],
             $state['funcloc_path']
         );
 

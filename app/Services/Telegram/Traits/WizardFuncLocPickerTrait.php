@@ -2,7 +2,9 @@
 
 namespace App\Services\Telegram\Traits;
 
+use App\Models\Asset;
 use App\Models\FunctionalLocation;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -57,6 +59,9 @@ use Illuminate\Support\Facades\Log;
  */
 trait WizardFuncLocPickerTrait
 {
+    /** Jumlah equipment dalam satu lokasi sebelum dikelompokkan per tipe alat. */
+    protected const EQUIPMENT_GROUP_THRESHOLD = 10;
+
     // =========================================================
     // ENTRY POINT — dipanggil dari handleWorkTypeCallback
     // =========================================================
@@ -69,10 +74,11 @@ trait WizardFuncLocPickerTrait
      * @param  array  $state  State wizard saat ini
      * @return array  Respons dengan keyboard PT
      */
-    protected function startFuncLocPicker(string $chatId, array $state): array
+    protected function startFuncLocPicker(string $chatId, array $state, string $mode = 'area'): array
     {
-        $state['is_area_work']         = true;
+        $state['is_area_work']          = ($mode === 'area');
         $state['funcloc_picker_active'] = true;
+        $state['funcloc_picker_mode']   = $mode;
         $state['funcloc_path']          = [];
         $this->saveState($chatId, $state);
 
@@ -201,8 +207,12 @@ trait WizardFuncLocPickerTrait
             return $this->errorResponse('Lokasi tidak ditemukan atau sudah tidak aktif.');
         }
 
-        // Sub Area (LEVEL_SECTION) dipilih: kunci langsung tanpa perlu confirm
-        if ($level === FunctionalLocation::LEVEL_SECTION) {
+        // Section (LEVEL_SECTION) dipilih:
+        // - Mode area: kunci langsung (Section = level terdalam).
+        // - Mode equipment: lanjut ke layar Section yang menampilkan daftar
+        //   TechIdentNo/equipment di bawahnya (FuncLoc -> TechIdentNo berkolaborasi).
+        if ($level === FunctionalLocation::LEVEL_SECTION
+            && ($state['funcloc_picker_mode'] ?? 'area') !== 'equipment') {
             return $this->lockFuncLocAndAdvance($chatId, $node, $state);
         }
 
@@ -307,9 +317,16 @@ trait WizardFuncLocPickerTrait
     protected function buildFuncLocScreen(string $chatId, int $level, ?array $parentEntry, array $state): array
     {
         $parentId = $parentEntry['id'] ?? null;
+        $mode     = $state['funcloc_picker_mode'] ?? 'area';
         $options  = $this->buildFuncLocLevelKeyboard($level, $parentId);
 
-        if (empty($options)) {
+        // Equipment langsung di bawah node yang sedang dilihat (hanya mode equipment).
+        $equipmentCount = 0;
+        if ($mode === 'equipment' && $parentId) {
+            $equipmentCount = $this->countAssetsUnderNode($parentId);
+        }
+
+        if (empty($options) && $equipmentCount === 0) {
             if ($parentEntry) {
                 $node = FunctionalLocation::active()->find($parentEntry['id']);
                 if ($node) {
@@ -332,6 +349,14 @@ trait WizardFuncLocPickerTrait
 
         $keyboard = [];
 
+        // Mode equipment: tawarkan pemilihan TechIdentNo di lokasi ini bila ada.
+        if ($equipmentCount > 0) {
+            $keyboard[] = [
+                'text'          => "Pilih Equipment di sini ({$equipmentCount})",
+                'callback_data' => "funcloc_assets:{$parentId}",
+            ];
+        }
+
         // Tombol konfirmasi node yang sedang dilihat (skip turun lebih dalam)
         if ($parentEntry) {
             $keyboard[] = [
@@ -353,9 +378,14 @@ trait WizardFuncLocPickerTrait
 
         if ($parentEntry) {
             $currentLabel = $this->funcLocLevelLabel($parentEntry['level']);
-            $nextLabel    = $this->funcLocLevelLabel($level);
-            $message      = "*{$currentLabel} dipilih:* {$parentEntry['code']} — {$parentEntry['name']}\n\n" .
-                            "Pilih {$nextLabel} (opsional) atau konfirmasi sekarang:";
+            if ($mode === 'equipment' && $equipmentCount > 0) {
+                $message = "*{$currentLabel} dipilih:* {$parentEntry['code']} — {$parentEntry['name']}\n\n" .
+                           "Pilih equipment di lokasi ini, atau konfirmasi lokasi saja:";
+            } else {
+                $nextLabel = $this->funcLocLevelLabel($level);
+                $message   = "*{$currentLabel} dipilih:* {$parentEntry['code']} — {$parentEntry['name']}\n\n" .
+                             "Pilih {$nextLabel} (opsional) atau konfirmasi sekarang:";
+            }
         } else {
             $rootLabel = $this->funcLocLevelLabel($level);
             $message   = "*Step 2* — Pilih {$rootLabel}\n\nPilih {$rootLabel} tempat pekerjaan dilakukan:";
@@ -382,13 +412,19 @@ trait WizardFuncLocPickerTrait
         // Bersihkan state sementara picker
         unset(
             $state['funcloc_picker_active'],
+            $state['funcloc_picker_mode'],
             $state['funcloc_path']
         );
 
-        // Kunci FuncLoc yang dipilih
-        $state['funcloc_id']   = $node->id;
-        $state['funcloc_code'] = $node->code;
-        $state['funcloc_name'] = $node->name;
+        // Kunci FuncLoc sebagai pekerjaan area (tanpa equipment spesifik).
+        // is_area_work dipaksa true karena konfirmasi lokasi = laporan area,
+        // apapun mode picker-nya (area maupun equipment).
+        $state['is_area_work']    = true;
+        $state['equipment_id']    = null;
+        $state['equipment_ident'] = null;
+        $state['funcloc_id']      = $node->id;
+        $state['funcloc_code']    = $node->code;
+        $state['funcloc_name']    = $node->name;
 
         // Sinkronisasi area_id dari relasi FuncLoc jika ada
         if ($node->area_id) {
@@ -459,5 +495,266 @@ trait WizardFuncLocPickerTrait
             FunctionalLocation::LEVEL_SECTION    => 'Section',
             default                              => 'Lokasi',
         };
+    }
+
+    // =========================================================
+    // MODE EQUIPMENT — PEMILIHAN TECHIDENTNO DI BAWAH FUNCLOC
+    // =========================================================
+
+    /**
+     * Hitung jumlah asset yang terdaftar langsung di bawah node FuncLoc.
+     *
+     * @param  int $funclocId ID FunctionalLocation
+     * @return int
+     */
+    protected function countAssetsUnderNode(int $funclocId): int
+    {
+        return Asset::where('funcloc_id', $funclocId)
+            ->whereNotNull('tech_ident_no')
+            ->count();
+    }
+
+    /**
+     * Ambil koleksi asset di bawah node FuncLoc, diurutkan berdasarkan TechIdentNo.
+     *
+     * @param  int        $funclocId ID FunctionalLocation
+     * @return Collection
+     */
+    protected function assetsUnderNode(int $funclocId): Collection
+    {
+        return Asset::where('funcloc_id', $funclocId)
+            ->whereNotNull('tech_ident_no')
+            ->orderBy('tech_ident_no')
+            ->get(['id', 'tech_ident_no', 'description']);
+    }
+
+    /**
+     * Proses callback funcloc_assets:{funcloc_id} — tampilkan daftar equipment
+     * di bawah node. Jika jumlahnya melebihi EQUIPMENT_GROUP_THRESHOLD,
+     * kelompokkan dulu per tipe alat.
+     *
+     * @param  string $chatId       Chat ID Telegram
+     * @param  string $callbackData Data callback penuh
+     * @param  array  $state        State wizard saat ini
+     * @return array  Respons
+     */
+    protected function handleFuncLocAssets(string $chatId, string $callbackData, array $state): array
+    {
+        $funclocId = (int) (explode(':', $callbackData)[1] ?? 0);
+
+        if (!$funclocId) {
+            return $this->errorResponse('ID lokasi tidak valid.');
+        }
+
+        $node = FunctionalLocation::active()->find($funclocId);
+        if (!$node) {
+            return $this->errorResponse('Lokasi tidak ditemukan atau sudah tidak aktif.');
+        }
+
+        $assets = $this->assetsUnderNode($funclocId);
+
+        if ($assets->isEmpty()) {
+            return [
+                'message'  => "Tidak ada equipment terdaftar di {$node->code} — {$node->name}.",
+                'keyboard' => [
+                    ['text' => 'Naik Satu Level', 'callback_data' => 'funcloc_back'],
+                    ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'],
+                ],
+            ];
+        }
+
+        if ($assets->count() > self::EQUIPMENT_GROUP_THRESHOLD) {
+            return $this->buildAssetTypeKeyboard($node, $assets, $state);
+        }
+
+        return $this->buildAssetListKeyboard($node, $assets, null, $state);
+    }
+
+    /**
+     * Proses callback funcloc_assets_type:{funcloc_id}:{type} — tampilkan
+     * equipment dengan tipe tertentu di bawah node.
+     *
+     * @param  string $chatId       Chat ID Telegram
+     * @param  string $callbackData Data callback penuh
+     * @param  array  $state        State wizard saat ini
+     * @return array  Respons
+     */
+    protected function handleFuncLocAssetsType(string $chatId, string $callbackData, array $state): array
+    {
+        $parts     = explode(':', $callbackData);
+        $funclocId = (int) ($parts[1] ?? 0);
+        $type      = $parts[2] ?? '';
+
+        if (!$funclocId || $type === '') {
+            return $this->errorResponse('Data tipe equipment tidak valid.');
+        }
+
+        $node = FunctionalLocation::active()->find($funclocId);
+        if (!$node) {
+            return $this->errorResponse('Lokasi tidak ditemukan atau sudah tidak aktif.');
+        }
+
+        $assets = $this->assetsUnderNode($funclocId)
+            ->filter(fn (Asset $asset) => $this->equipmentTypeOf($asset) === $type)
+            ->values();
+
+        if ($assets->isEmpty()) {
+            return $this->errorResponse('Tidak ada equipment dengan tipe tersebut di lokasi ini.');
+        }
+
+        return $this->buildAssetListKeyboard($node, $assets, $type, $state);
+    }
+
+    /**
+     * Proses callback funcloc_asset_pick:{asset_id} — kunci equipment yang
+     * dipilih dan lanjut ke Step 4.
+     *
+     * @param  string $chatId       Chat ID Telegram
+     * @param  string $callbackData Data callback penuh
+     * @param  array  $state        State wizard saat ini
+     * @return array  Respons
+     */
+    protected function handleFuncLocAssetPick(string $chatId, string $callbackData, array $state): array
+    {
+        $assetId = (int) (explode(':', $callbackData)[1] ?? 0);
+
+        $asset = $assetId ? Asset::find($assetId) : null;
+        if (!$asset) {
+            return $this->errorResponse('Equipment tidak ditemukan. Silakan pilih ulang.');
+        }
+
+        // Sinkronkan funcloc dari asset agar laporan menyimpan lokasi numeriknya.
+        $state['funcloc_id']   = $asset->funcloc_id ?? null;
+        $state['funcloc_code'] = $asset->functional_loc ?? null;
+
+        // Bersihkan state sementara picker sebelum lanjut.
+        unset(
+            $state['funcloc_picker_active'],
+            $state['funcloc_picker_mode'],
+            $state['funcloc_path']
+        );
+
+        return $this->lockEquipmentAndAdvance($chatId, $asset, $state);
+    }
+
+    /**
+     * Bangun keyboard pilihan tipe alat saat equipment di satu lokasi terlalu
+     * banyak untuk ditampilkan langsung.
+     *
+     * @param  FunctionalLocation $node   Node lokasi terpilih
+     * @param  Collection         $assets Koleksi asset di bawah node
+     * @param  array              $state  State wizard saat ini
+     * @return array Respons dengan keyboard tipe alat
+     */
+    protected function buildAssetTypeKeyboard(FunctionalLocation $node, Collection $assets, array $state): array
+    {
+        $grouped = [];
+
+        foreach ($assets as $asset) {
+            $type             = $this->equipmentTypeOf($asset);
+            $grouped[$type][] = $asset;
+        }
+
+        ksort($grouped);
+
+        $keyboard = [];
+        foreach ($grouped as $type => $list) {
+            $label = $this->equipmentTypeLabel($type) . " ({$type}) — " . count($list) . ' alat';
+            if (strlen($label) > 64) {
+                $label = substr($label, 0, 61) . '...';
+            }
+            $keyboard[] = [
+                'text'          => $label,
+                'callback_data' => "funcloc_assets_type:{$node->id}:{$type}",
+            ];
+        }
+
+        $keyboard[] = ['text' => 'Naik Satu Level', 'callback_data' => 'funcloc_back'];
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'];
+
+        return [
+            'message'  => "Equipment di {$node->code} — {$node->name} cukup banyak. Pilih tipe alat dulu:",
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Bangun keyboard daftar equipment (TechIdentNo) untuk dipilih teknisi.
+     *
+     * @param  FunctionalLocation $node   Node lokasi terpilih
+     * @param  Collection         $assets Koleksi asset yang akan ditampilkan
+     * @param  string|null        $type   Tipe alat (jika ini hasil filter tipe)
+     * @param  array              $state  State wizard saat ini
+     * @return array Respons dengan keyboard daftar equipment
+     */
+    protected function buildAssetListKeyboard(FunctionalLocation $node, Collection $assets, ?string $type, array $state): array
+    {
+        $keyboard = [];
+        foreach ($assets as $asset) {
+            $label = $asset->tech_ident_no;
+            if ($asset->description) {
+                $label .= ' — ' . $asset->description;
+            }
+            if (strlen($label) > 64) {
+                $label = substr($label, 0, 61) . '...';
+            }
+            $keyboard[] = [
+                'text'          => $label,
+                'callback_data' => "funcloc_asset_pick:{$asset->id}",
+            ];
+        }
+
+        if ($type !== null) {
+            $keyboard[] = ['text' => 'Kembali', 'callback_data' => "funcloc_assets:{$node->id}"];
+        } else {
+            $keyboard[] = ['text' => 'Naik Satu Level', 'callback_data' => 'funcloc_back'];
+        }
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'];
+
+        return [
+            'message'  => "Pilih equipment di {$node->code} — {$node->name}:",
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Ekstrak kode tipe alat dari TechIdentNo, fallback 'Lainnya' jika tidak
+     * terdeteksi. Mendukung dua format:
+     *   - Prefix huruf leading (mis. "P-6163A1" -> P, "BV-T201" -> BV).
+     *   - Kode section 4-digit diikuti huruf tipe (mis. "6163C1" -> C).
+     *
+     * @param  Asset  $asset Model asset
+     * @return string Kode tipe alat
+     */
+    protected function equipmentTypeOf(Asset $asset): string
+    {
+        $clean = strtoupper(preg_replace('/[^A-Z0-9]/', '', trim((string) ($asset->tech_ident_no ?? ''))));
+
+        if ($clean === '') {
+            return 'Lainnya';
+        }
+
+        // Prefix huruf leading (1-4 huruf)
+        if (preg_match('/^([A-Z]{1,4})/', $clean, $m)) {
+            return $m[1];
+        }
+
+        // Kode section 4-digit diikuti huruf tipe (1-3 huruf)
+        if (preg_match('/^\d{4}([A-Z]{1,3})/', $clean, $m)) {
+            return $m[1];
+        }
+
+        return 'Lainnya';
+    }
+
+    /**
+     * Label ramah-pengguna untuk kode tipe alat.
+     *
+     * @param  string $type Kode tipe alat
+     * @return string
+     */
+    protected function equipmentTypeLabel(string $type): string
+    {
+        return $this->funcLocParser->typeLabel($type);
     }
 }
