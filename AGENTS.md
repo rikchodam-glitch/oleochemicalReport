@@ -3,7 +3,7 @@
 ## PENTING — ROOT PROJECT
 
 Project utama dan SATU-SATUNYA target semua perubahan:
-`C:\Users\ASUS\oleochemicalReport`
+`C:\Users\rikchodam\Herd\projectoleochemical`
 
 Setiap kali menyebutkan kondisi suatu file ("file X sudah ada", "kolom Y
 begini"), WAJIB sertakan path lengkap absolut yang benar-benar dibaca saat
