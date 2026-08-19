@@ -503,6 +503,8 @@ trait WizardFuncLocPickerTrait
 
     /**
      * Hitung jumlah asset yang terdaftar langsung di bawah node FuncLoc.
+     * Hanya asset yang punya equipment_type (dan tech_ident_no) yang dihitung,
+     * karena asset tanpa type tidak ditampilkan di hierarki pemilihan equipment.
      *
      * @param  int $funclocId ID FunctionalLocation
      * @return int
@@ -511,11 +513,13 @@ trait WizardFuncLocPickerTrait
     {
         return Asset::where('funcloc_id', $funclocId)
             ->whereNotNull('tech_ident_no')
+            ->whereNotNull('equipment_type')
             ->count();
     }
 
     /**
      * Ambil koleksi asset di bawah node FuncLoc, diurutkan berdasarkan TechIdentNo.
+     * Asset tanpa equipment_type dikecualikan dari hasil.
      *
      * @param  int        $funclocId ID FunctionalLocation
      * @return Collection
@@ -524,8 +528,9 @@ trait WizardFuncLocPickerTrait
     {
         return Asset::where('funcloc_id', $funclocId)
             ->whereNotNull('tech_ident_no')
+            ->whereNotNull('equipment_type')
             ->orderBy('tech_ident_no')
-            ->get(['id', 'tech_ident_no', 'description']);
+            ->get(['id', 'tech_ident_no', 'description', 'equipment_type']);
     }
 
     /**
@@ -659,7 +664,9 @@ trait WizardFuncLocPickerTrait
 
         $keyboard = [];
         foreach ($grouped as $type => $list) {
-            $label = $this->equipmentTypeLabel($type) . " ({$type}) — " . count($list) . ' alat';
+            // equipment_type sudah berupa label deskriptif (mis. PUMP, AC),
+            // jadi tampilkan langsung tanpa duplikasi "(type)".
+            $label = $type . " — " . count($list) . ' alat';
             if (strlen($label) > 64) {
                 $label = substr($label, 0, 61) . '...';
             }
@@ -718,43 +725,15 @@ trait WizardFuncLocPickerTrait
     }
 
     /**
-     * Ekstrak kode tipe alat dari TechIdentNo, fallback 'Lainnya' jika tidak
-     * terdeteksi. Mendukung dua format:
-     *   - Prefix huruf leading (mis. "P-6163A1" -> P, "BV-T201" -> BV).
-     *   - Kode section 4-digit diikuti huruf tipe (mis. "6163C1" -> C).
+     * Ambil kode tipe alat dari kolom equipment_type di database.
+     * Asset tanpa equipment_type sudah disaring di assetsUnderNode(),
+     * jadi method ini hanya dipanggil untuk asset yang punya type.
      *
      * @param  Asset  $asset Model asset
      * @return string Kode tipe alat
      */
     protected function equipmentTypeOf(Asset $asset): string
     {
-        $clean = strtoupper(preg_replace('/[^A-Z0-9]/', '', trim((string) ($asset->tech_ident_no ?? ''))));
-
-        if ($clean === '') {
-            return 'Lainnya';
-        }
-
-        // Prefix huruf leading (1-4 huruf)
-        if (preg_match('/^([A-Z]{1,4})/', $clean, $m)) {
-            return $m[1];
-        }
-
-        // Kode section 4-digit diikuti huruf tipe (1-3 huruf)
-        if (preg_match('/^\d{4}([A-Z]{1,3})/', $clean, $m)) {
-            return $m[1];
-        }
-
-        return 'Lainnya';
-    }
-
-    /**
-     * Label ramah-pengguna untuk kode tipe alat.
-     *
-     * @param  string $type Kode tipe alat
-     * @return string
-     */
-    protected function equipmentTypeLabel(string $type): string
-    {
-        return $this->funcLocParser->typeLabel($type);
+        return (string) ($asset->equipment_type ?? '');
     }
 }

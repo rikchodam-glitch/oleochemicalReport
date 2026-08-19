@@ -14,6 +14,7 @@ class Asset extends Model
         'description',
         'tech_ident_no',
         'object_type',
+        'equipment_type',
         'functional_loc',
         'funcloc_id',
         'company_id',

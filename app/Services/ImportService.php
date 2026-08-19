@@ -15,30 +15,6 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ImportService
 {
-    const COLUMNS_SLIM = [
-        'equipment'    => 0,
-        'description'  => 1,
-        'valid_to'     => 2,
-        'planning_plant' => 3,
-        'tech_ident_no'  => 4,
-        'object_type'    => 5,
-        'functional_loc' => 6,
-    ];
-
-    const COLUMNS_FULL = [
-        'equipment'    => 0,
-        'description'  => 1,
-        'valid_to'     => 2,
-        'planning_plant' => 3,
-        'tech_ident_no'  => 4,
-        'object_type'    => 5,
-        'functional_loc' => 6,
-        'construct_year' => 21,
-        'company_code'   => 26,
-        'manufacturer'   => 57,
-        'model_number'   => 114,
-    ];
-
     /**
      * Analisa file Excel dan kelompokkan tiap baris ke salah satu bucket:
      * clean (siap import), duplicate (equipment_no sudah ada), no_equip
@@ -52,70 +28,83 @@ class ImportService
     {
         ini_set('memory_limit', '512M');
 
-        $rows = $this->readExcel($file);
-        if (empty($rows) || count($rows) < 2) {
+        $sheets = $this->readExcel($file);
+        if (empty($sheets)) {
             throw new \Exception('File Excel kosong atau tidak valid.');
         }
-
-        $headers = $rows[0];
-        $isFullFormat = count($headers) > 10;
-        $colMap = $isFullFormat ? self::COLUMNS_FULL : self::COLUMNS_SLIM;
 
         $results = [
             'clean'       => [],
             'duplicate'   => [],
             'no_equip'    => [],
             'bad_funcloc' => [],
-            'total_rows'  => count($rows) - 1,
-            'is_full_format' => $isFullFormat,
+            'total_rows'  => 0,
         ];
 
-        foreach (array_slice($rows, 1) as $index => $row) {
-            $equipNo = trim($row[$colMap['equipment']] ?? '');
-            $funcLoc = trim($row[$colMap['functional_loc']] ?? '');
+        foreach ($sheets as $sheet) {
+            $rows = $sheet['rows'];
+            if (count($rows) < 2) {
+                continue;
+            }
 
-            if (empty($equipNo)) {
-                $results['no_equip'][] = [
-                    'row' => $index + 2,
-                    'description' => $row[$colMap['description']] ?? '',
+            $headers = $rows[0];
+            $colMap  = $this->buildColMap($headers);
+
+            // Lewati sheet yang bukan data asset (tidak punya kolom wajib).
+            if (!isset($colMap['equipment'], $colMap['tech_ident_no'], $colMap['functional_loc'])) {
+                continue;
+            }
+
+            $results['total_rows'] += count($rows) - 1;
+
+            foreach (array_slice($rows, 1) as $index => $row) {
+                $equipNo = $this->colVal($row, $colMap, 'equipment');
+                $funcLoc = $this->colVal($row, $colMap, 'functional_loc');
+
+                if (empty($equipNo)) {
+                    $results['no_equip'][] = [
+                        'row'            => $index + 2,
+                        'description'    => $this->colVal($row, $colMap, 'description'),
+                        'functional_loc' => $funcLoc,
+                    ];
+                    continue;
+                }
+
+                // funcloc_id wajib diisi (kolom assets.funcloc_id NOT NULL),
+                // jadi baris dengan Functional Loc. kosong tidak bisa langsung
+                // diimport. Baris ini harus ditambahkan manual lewat form
+                // Create Asset setelah file diimport, atau file Excel-nya
+                // dilengkapi dulu lalu diimport ulang.
+                if (empty($funcLoc)) {
+                    $results['bad_funcloc'][] = [
+                        'row'          => $index + 2,
+                        'equipment_no' => $equipNo,
+                        'description'  => $this->colVal($row, $colMap, 'description'),
+                    ];
+                    continue;
+                }
+
+                $isDuplicate = Asset::where('equipment_no', $equipNo)->exists();
+                $location    = $this->parseFunctionalLoc($funcLoc);
+
+                $rowData = [
+                    'equipment_no'   => $equipNo,
+                    'description'    => $this->colVal($row, $colMap, 'description'),
+                    'tech_ident_no'  => $this->colVal($row, $colMap, 'tech_ident_no'),
+                    'object_type'    => $this->colVal($row, $colMap, 'object_type'),
+                    'equipment_type' => $this->colVal($row, $colMap, 'equipment_type'),
                     'functional_loc' => $funcLoc,
+                    'location'       => $location,
+                    'manufacturer'   => $this->colVal($row, $colMap, 'manufacturer'),
+                    'model_number'   => $this->colVal($row, $colMap, 'model_number'),
+                    'construct_year' => $this->colVal($row, $colMap, 'construct_year'),
                 ];
-                continue;
-            }
 
-            // funcloc_id wajib diisi (kolom assets.funcloc_id NOT NULL),
-            // jadi baris dengan Functional Loc. kosong tidak bisa langsung
-            // diimport. Baris ini harus ditambahkan manual lewat form
-            // Create Asset setelah file diimport, atau file Excel-nya
-            // dilengkapi dulu lalu diimport ulang.
-            if (empty($funcLoc)) {
-                $results['bad_funcloc'][] = [
-                    'row' => $index + 2,
-                    'equipment_no' => $equipNo,
-                    'description' => $row[$colMap['description']] ?? '',
-                ];
-                continue;
-            }
-
-            $isDuplicate = Asset::where('equipment_no', $equipNo)->exists();
-            $location = $this->parseFunctionalLoc($funcLoc);
-
-            $rowData = [
-                'equipment_no'   => $equipNo,
-                'description'    => $row[$colMap['description']] ?? '',
-                'tech_ident_no'  => $row[$colMap['tech_ident_no']] ?? '',
-                'object_type'    => $row[$colMap['object_type']] ?? '',
-                'functional_loc' => $funcLoc,
-                'location'       => $location,
-                'manufacturer'   => $isFullFormat ? ($row[$colMap['manufacturer']] ?? '') : '',
-                'model_number'   => $isFullFormat ? ($row[$colMap['model_number']] ?? '') : '',
-                'construct_year' => $isFullFormat ? ($row[$colMap['construct_year']] ?? '') : '',
-            ];
-
-            if ($isDuplicate) {
-                $results['duplicate'][] = $rowData;
-            } else {
-                $results['clean'][] = $rowData;
+                if ($isDuplicate) {
+                    $results['duplicate'][] = $rowData;
+                } else {
+                    $results['clean'][] = $rowData;
+                }
             }
         }
 
@@ -228,11 +217,21 @@ class ImportService
 
                         $location = $this->findOrCreateLocation($row['location']);
 
-                        $existing->update(array_merge(
+                        $updateData = array_merge(
                             $this->mapToAsset($row),
                             $location,
                             ['funcloc_id' => $funcLocNode->id, 'imported_at' => now()]
-                        ));
+                        );
+
+                        // Sheet tanpa kolom "Equipment Type" (mis. Sheet1 (1))
+                        // menghasilkan equipment_type kosong. Jangan biarkan nilai
+                        // kosong itu menimpa tipe yang sudah diisi dari sheet lain
+                        // (Sheet1) — pertahankan nilai lama.
+                        if (empty($row['equipment_type'] ?? '')) {
+                            unset($updateData['equipment_type']);
+                        }
+
+                        $existing->update($updateData);
                         $successCount++;
                     } elseif ($duplicateAction === 'keep_flag') {
                         $existing->update(['status' => 'needs_review']);
@@ -300,6 +299,67 @@ class ImportService
         ];
     }
 
+    /**
+     * Bangun peta kolom berdasarkan NAMA header (bukan indeks tetap), supaya
+     * format file yang berbeda (dengan/tanpa kolom "Equipment Type") tetap
+     * terbaca benar.
+     *
+     * @param  array<int, mixed> $headers Baris header Excel
+     * @return array<string, int>         Peta nama field -> indeks kolom
+     */
+    private function buildColMap(array $headers): array
+    {
+        $map = [];
+
+        foreach ($headers as $index => $header) {
+            // Lowercase dulu, baru buang karakter non-huruf — urutan penting
+            // supaya huruf kapital tidak ikut terhapus oleh regex [^a-z].
+            $name = preg_replace('/[^a-z]/', '', strtolower((string) $header));
+
+            switch ($name) {
+                case 'equipment':     $map['equipment'] = $index; break;
+                case 'description':   $map['description'] = $index; break;
+                case 'validto':       $map['valid_to'] = $index; break;
+                case 'planningplant': $map['planning_plant'] = $index; break;
+                case 'techidentno':   $map['tech_ident_no'] = $index; break;
+                case 'equipmenttype': $map['equipment_type'] = $index; break;
+                case 'objecttype':    $map['object_type'] = $index; break;
+                case 'functionalloc': $map['functional_loc'] = $index; break;
+                case 'constructyear': $map['construct_year'] = $index; break;
+                case 'companycode':   $map['company_code'] = $index; break;
+                case 'manufacturer':  $map['manufacturer'] = $index; break;
+                case 'modelnumber':   $map['model_number'] = $index; break;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Ambil nilai sel dari satu baris Excel berdasarkan nama field, aman
+     * untuk kolom yang tidak ada di format tertentu.
+     *
+     * @param  array<int, mixed>  $row    Baris data Excel
+     * @param  array<string, int> $colMap Peta field -> indeks kolom
+     * @param  string             $key    Nama field yang diambil
+     * @return string
+     */
+    private function colVal(array $row, array $colMap, string $key): string
+    {
+        if (!isset($colMap[$key])) {
+            return '';
+        }
+
+        return trim((string) ($row[$colMap[$key]] ?? ''));
+    }
+
+    /**
+     * Baca seluruh sheet data dari file Excel, satu sheet per waktu untuk
+     * menghemat memori (lihat Riwayat Insiden #5).
+     *
+     * @param  UploadedFile $file
+     * @return array<int, array{name: string, rows: array}>
+     */
     private function readExcel(UploadedFile $file): array
     {
         ini_set('memory_limit', '512M');
@@ -307,20 +367,32 @@ class ImportService
         $reader = IOFactory::createReaderForFile($file->getPathname());
         $reader->setReadDataOnly(true);
 
-        $spreadsheet = $reader->load($file->getPathname());
-        $worksheet = $spreadsheet->getActiveSheet();
-        $rows = $worksheet->toArray();
+        $sheetNames = $reader->listWorksheetNames($file->getPathname());
+        $sheets     = [];
 
-        // Free memory
-        $spreadsheet->disconnectWorksheets();
-        unset($spreadsheet);
+        foreach ($sheetNames as $name) {
+            $reader->setLoadSheetsOnly([$name]);
+            $spreadsheet = $reader->load($file->getPathname());
+            $worksheet   = $spreadsheet->getSheetByName($name);
+            $rows        = $worksheet->toArray();
 
-        // Remove completely empty trailing rows
-        while (!empty($rows) && empty(array_filter($rows[count($rows) - 1]))) {
-            array_pop($rows);
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+            gc_collect_cycles();
+
+            // Buang baris kosong di akhir
+            while (!empty($rows) && empty(array_filter($rows[count($rows) - 1]))) {
+                array_pop($rows);
+            }
+
+            if (empty($rows)) {
+                continue;
+            }
+
+            $sheets[] = ['name' => $name, 'rows' => $rows];
         }
 
-        return $rows;
+        return $sheets;
     }
 
     private function findOrCreateLocation(array $loc): array
@@ -363,11 +435,14 @@ class ImportService
 
     private function mapToAsset(array $row): array
     {
+        $equipmentType = $row['equipment_type'] ?? '';
+
         return [
             'equipment_no'   => $row['equipment_no'] ?? null,
             'description'    => $row['description'] ?? '',
             'tech_ident_no'  => $row['tech_ident_no'] ?? '',
             'object_type'    => $row['object_type'] ?? '',
+            'equipment_type' => $equipmentType !== '' ? $equipmentType : null,
             'functional_loc' => $row['functional_loc'] ?? '',
             'manufacturer'   => $row['manufacturer'] ?? '',
             'model_number'   => $row['model_number'] ?? '',
