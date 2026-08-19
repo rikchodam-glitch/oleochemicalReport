@@ -41,14 +41,14 @@ class Technician extends Model
     ];
 
     public const SECTIONS = [
-        'mekanik'       => 'Mekanik',
-        'electrical'    => 'Electrical',
-        'it'            => 'IT',
-        'instrumentasi' => 'Instrumentasi',
-        'sipil'         => 'Sipil',
-        'welding'       => 'Welding',
-        'general'       => 'General',
-        'lainnya'       => 'Lainnya',
+        'mekanik'   => 'Mekanik',
+        'ei'        => 'EI',
+        'it'        => 'IT',
+        'sipil'     => 'Sipil',
+        'fabrikasi' => 'Fabrikasi',
+        'general'   => 'General',
+        'lainnya'   => 'Lainnya',
+        'cm_pm'     => 'CM/PM',
     ];
 
     // =========================================================

@@ -83,7 +83,7 @@ action_taken (replace/keep_flag/cancel), detail_json, created_at
 ```sql
 id, telegram_id, telegram_username, name, nik, department_id,
 area_ids (JSON), group (reguler/grub_a/grub_b/grub_c),
-section (mekanik/electrical/it/instrumentasi/sipil/welding/general/lainnya),
+section (mekanik/ei/it/sipil/fabrikasi/general/lainnya/cm_pm),
 status (pending/active/suspended), approved_by (user_id),
 approved_at, last_active_at, created_at, updated_at
 ```
