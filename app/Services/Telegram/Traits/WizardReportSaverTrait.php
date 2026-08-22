@@ -65,6 +65,7 @@ trait WizardReportSaverTrait
         $msg .= "Periksa ringkasan berikut sebelum disimpan:\n\n";
         $msg .= "*Tanggal*   : {$formattedDate}\n";
         $msg .= "*Klasifikasi*: {$this->classificationLabel($state)}\n";
+        $msg .= "*Jenis*     : " . ($state['jenis_pekerjaan'] ?? '-') . "\n";
 
         // Tampilkan FuncLoc jika laporan area, atau Equipment jika laporan alat
         if (!empty($state['funcloc_code'])) {
@@ -166,9 +167,12 @@ trait WizardReportSaverTrait
                 'funcloc_id'              => $state['funcloc_id'] ?? null,
                 'report_type'             => $reportType,
                 'work_classification'     => $state['work_classification'] ?? null,
+                'jenis_pekerjaan'         => $state['jenis_pekerjaan'] ?? null,
                 'ai_analyzed'             => !empty($state['ai_analysis']),
                 'ai_confidence'           => $state['ai_analysis']['confidence'] ?? null,
                 'work_duration_minutes'   => $state['work_duration_minutes'] ?? null,
+                'start_time'              => $state['start_time'] ?? null,
+                'end_time'                => $state['end_time'] ?? null,
                 'root_cause'              => $state['root_cause'],
                 'photo_documentation'     => $photoDocumentation,
                 'photo_hygiene_clearance' => $photoHygieneClearance,

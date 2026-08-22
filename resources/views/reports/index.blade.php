@@ -78,8 +78,8 @@
                     </div>
                 </div>
 
-                {{-- Baris 2: tanggal, area, status, tipe, jenis --}}
-                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {{-- Baris 2: tanggal, area, tipe, jenis --}}
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                     <div>
                         <label class="block text-xs text-slate-500 mb-1">Tanggal Dari</label>
                         <input type="date" name="date_from" value="{{ request('date_from') }}"
@@ -104,16 +104,6 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs text-slate-500 mb-1">Status</label>
-                        <select name="status"
-                                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="">Semua Status</option>
-                            <option value="draft" {{ request('status') === 'draft' ? 'selected' : '' }}>Draft</option>
-                            <option value="needs_review" {{ request('status') === 'needs_review' ? 'selected' : '' }}>Perlu Review</option>
-                            <option value="completed" {{ request('status') === 'completed' ? 'selected' : '' }}>Selesai</option>
-                        </select>
-                    </div>
-                    <div>
                         <label class="block text-xs text-slate-500 mb-1">Tipe</label>
                         <select name="report_type"
                                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -128,14 +118,16 @@
                         <select name="jenis_pekerjaan"
                                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <option value="">Semua Jenis</option>
-                            <option value="CM" {{ request('jenis_pekerjaan') === 'CM' ? 'selected' : '' }}>CM (Corrective)</option>
-                            <option value="dCM" {{ request('jenis_pekerjaan') === 'dCM' ? 'selected' : '' }}>dCM (Deferred)</option>
-                            <option value="PM" {{ request('jenis_pekerjaan') === 'PM' ? 'selected' : '' }}>PM (Preventive)</option>
+                            <option value="EI" {{ request('jenis_pekerjaan') === 'EI' ? 'selected' : '' }}>EI</option>
+                            <option value="Mekanik" {{ request('jenis_pekerjaan') === 'Mekanik' ? 'selected' : '' }}>Mekanik</option>
+                            <option value="CM/PM" {{ request('jenis_pekerjaan') === 'CM/PM' ? 'selected' : '' }}>CM/PM</option>
+                            <option value="Fabrikasi" {{ request('jenis_pekerjaan') === 'Fabrikasi' ? 'selected' : '' }}>Fabrikasi</option>
+                            <option value="Sipil" {{ request('jenis_pekerjaan') === 'Sipil' ? 'selected' : '' }}>Sipil</option>
                         </select>
                     </div>
                 </div>
 
-                {{-- Baris 3: klasifikasi + foto + tombol aksi --}}
+                {{-- Baris 3: klasifikasi + tombol aksi --}}
                 <div class="flex flex-wrap items-end gap-3">
                     <div class="w-44">
                         <label class="block text-xs text-slate-500 mb-1">Klasifikasi (Wizard)</label>
@@ -147,15 +139,6 @@
                             <option value="zpm6" {{ request('work_classification') === 'zpm6' ? 'selected' : '' }}>ZPM 6 - Planned</option>
                             <option value="zpm5" {{ request('work_classification') === 'zpm5' ? 'selected' : '' }}>ZPM 5 - Fabrikasi</option>
                             <option value="zpm7" {{ request('work_classification') === 'zpm7' ? 'selected' : '' }}>ZPM 7 - Sipil</option>
-                        </select>
-                    </div>
-                    <div class="w-44">
-                        <label class="block text-xs text-slate-500 mb-1">Foto</label>
-                        <select name="has_photo"
-                                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="">Semua</option>
-                            <option value="1" {{ request('has_photo') === '1' ? 'selected' : '' }}>Ada Foto</option>
-                            <option value="0" {{ request('has_photo') === '0' ? 'selected' : '' }}>Tanpa Foto</option>
                         </select>
                     </div>
                     <div class="flex items-center gap-2 pb-0.5">
@@ -175,18 +158,26 @@
     </div>
 
     {{-- ── Summary Cards ─────────────────────────────────────── --}}
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+        <div class="bg-white rounded-xl border border-cyan-200 px-4 py-3">
+            <p class="text-2xl font-bold text-cyan-600">{{ number_format($countEI) }}</p>
+            <p class="text-xs text-slate-500 mt-1">EI</p>
+        </div>
         <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
-            <p class="text-2xl font-bold text-red-600">{{ number_format($countCM) }}</p>
-            <p class="text-xs text-slate-500 mt-1">CM (Corrective)</p>
+            <p class="text-2xl font-bold text-slate-700">{{ number_format($countMekanik) }}</p>
+            <p class="text-xs text-slate-500 mt-1">Mekanik</p>
         </div>
-        <div class="bg-white rounded-xl border border-amber-200 px-4 py-3">
-            <p class="text-2xl font-bold text-amber-600">{{ number_format($countDCM) }}</p>
-            <p class="text-xs text-slate-500 mt-1">dCM (Deferred)</p>
+        <div class="bg-white rounded-xl border border-emerald-200 px-4 py-3">
+            <p class="text-2xl font-bold text-emerald-600">{{ number_format($countCmPm) }}</p>
+            <p class="text-xs text-slate-500 mt-1">CM/PM</p>
         </div>
-        <div class="bg-white rounded-xl border border-blue-200 px-4 py-3">
-            <p class="text-2xl font-bold text-blue-600">{{ number_format($countPM) }}</p>
-            <p class="text-xs text-slate-500 mt-1">PM (Preventive)</p>
+        <div class="bg-white rounded-xl border border-violet-200 px-4 py-3">
+            <p class="text-2xl font-bold text-violet-600">{{ number_format($countFabrikasi) }}</p>
+            <p class="text-xs text-slate-500 mt-1">Fabrikasi</p>
+        </div>
+        <div class="bg-white rounded-xl border border-orange-200 px-4 py-3">
+            <p class="text-2xl font-bold text-orange-600">{{ number_format($countSipil) }}</p>
+            <p class="text-xs text-slate-500 mt-1">Sipil</p>
         </div>
         <div class="bg-white rounded-xl border border-teal-200 px-4 py-3">
             <p class="text-2xl font-bold text-teal-600">{{ number_format($totalLaporan) }}</p>
@@ -200,7 +191,6 @@
             <table class="w-full text-sm">
                 <thead>
                     <tr class="bg-slate-50 border-b border-slate-100">
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Kode</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Tanggal</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Teknisi</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Deskripsi</th>
@@ -208,8 +198,6 @@
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Durasi & Foto</th>
                         <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Jenis</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Klasifikasi</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Tipe & AI</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Status</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 sr-only">Aksi</th>
                     </tr>
                 </thead>
@@ -217,9 +205,14 @@
                     @forelse($reports as $report)
                         @php
                             $jenisColors = [
-                                'CM'  => 'bg-red-100 text-red-700 border-red-200',
-                                'dCM' => 'bg-amber-100 text-amber-700 border-amber-200',
-                                'PM'  => 'bg-blue-100 text-blue-700 border-blue-200',
+                                'CM'        => 'bg-red-100 text-red-700 border-red-200',
+                                'dCM'       => 'bg-amber-100 text-amber-700 border-amber-200',
+                                'PM'        => 'bg-blue-100 text-blue-700 border-blue-200',
+                                'EI'        => 'bg-cyan-100 text-cyan-700 border-cyan-200',
+                                'Mekanik'   => 'bg-slate-100 text-slate-700 border-slate-200',
+                                'CM/PM'     => 'bg-emerald-100 text-emerald-700 border-emerald-200',
+                                'Fabrikasi' => 'bg-violet-100 text-violet-700 border-violet-200',
+                                'Sipil'     => 'bg-orange-100 text-orange-700 border-orange-200',
                             ];
                             $jColor = $jenisColors[$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-400';
                             $zpmlabels = [
@@ -230,13 +223,6 @@
                         {{-- Seluruh baris bisa diklik ke halaman detail --}}
                         <tr class="hover:bg-slate-50 transition-colors cursor-pointer"
                             onclick="window.location='{{ route('reports.show', $report) }}'">
-
-                            {{-- Kode laporan --}}
-                            <td class="px-5 py-3.5 whitespace-nowrap">
-                                <span class="text-xs font-mono font-medium text-slate-700">
-                                    {{ $report->report_code ?? '-' }}
-                                </span>
-                            </td>
 
                             {{-- Tanggal --}}
                             <td class="px-5 py-3.5 text-xs text-slate-600 whitespace-nowrap">
@@ -266,8 +252,8 @@
 
                             {{-- Deskripsi --}}
                             <td class="px-5 py-3.5 max-w-xs">
-                                <p class="text-slate-600 text-sm leading-snug line-clamp-2">
-                                    {{ Str::limit($report->work_description, 80) }}
+                                <p class="text-slate-600 text-sm leading-snug whitespace-normal break-words">
+                                    {{ $report->work_description }}
                                 </p>
                             </td>
 
@@ -281,23 +267,22 @@
                                 </p>
                             </td>
 
-                            {{-- Durasi & Foto: digabung --}}
+                            {{-- Durasi & Foto: jam, durasi, jumlah foto --}}
                             <td class="px-5 py-3.5 whitespace-nowrap">
-                                <p class="text-xs text-slate-600">
-                                    @if($report->work_duration_minutes)
-                                        {{ floor($report->work_duration_minutes / 60) }}j {{ $report->work_duration_minutes % 60 }}m
-                                    @else
-                                        <span class="text-slate-400">-</span>
-                                    @endif
+                                @if($report->time_range)
+                                    <p class="text-xs text-slate-600">{{ $report->time_range }}</p>
+                                @endif
+                                <p class="text-xs text-slate-600 {{ $report->time_range ? 'mt-0.5' : '' }}">
+                                    {{ $report->duration_label ?? '-' }}
                                 </p>
                                 <p class="text-xs text-slate-400 mt-0.5">
-                                    Dok:{{ $report->photo_doc_count }}
+                                    Dok : {{ $report->photo_doc_count }}
                                     <span class="text-slate-200 mx-0.5">|</span>
-                                    HC:{{ $report->photo_hyg_count }}
+                                    HC : {{ $report->photo_hyg_count }}
                                 </p>
                             </td>
 
-                            {{-- Jenis Pekerjaan (CM/dCM/PM) --}}
+                            {{-- Jenis Pekerjaan --}}
                             <td class="px-5 py-3.5 text-center">
                                 @if($report->jenis_pekerjaan)
                                     <span class="inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full border {{ $jColor }}">
@@ -318,30 +303,6 @@
                                 @endif
                             </td>
 
-                            {{-- Tipe & AI: digabung --}}
-                            <td class="px-5 py-3.5">
-                                <x-status-badge :status="$report->report_type" />
-                                <div class="mt-1">
-                                    @if($report->is_manually_edited)
-                                        <x-status-badge status="edited" label="Edited" />
-                                    @elseif($report->ai_analyzed)
-                                        <span class="text-xs font-medium
-                                            {{ $report->ai_confidence >= 70
-                                                ? 'text-green-600'
-                                                : ($report->ai_confidence >= 40 ? 'text-amber-600' : 'text-red-600') }}">
-                                            AI {{ $report->ai_confidence }}%
-                                        </span>
-                                    @else
-                                        <span class="text-xs text-slate-400">-</span>
-                                    @endif
-                                </div>
-                            </td>
-
-                            {{-- Status --}}
-                            <td class="px-5 py-3.5">
-                                <x-status-badge :status="$report->status" />
-                            </td>
-
                             {{-- Aksi: hanya ikon mata — klik tidak propagate ke baris --}}
                             <td class="px-5 py-3.5">
                                 <a href="{{ route('reports.show', $report) }}"
@@ -358,7 +319,7 @@
                     @empty
                         {{-- Empty state dengan ilustrasi SVG sederhana --}}
                         <tr>
-                            <td colspan="11" class="px-5 py-16 text-center">
+                            <td colspan="8" class="px-5 py-16 text-center">
                                 <div class="flex flex-col items-center gap-3">
                                     <svg class="w-12 h-12 text-slate-200" fill="none" viewBox="0 0 48 48">
                                         <rect x="8" y="6" width="32" height="36" rx="4" fill="currentColor" opacity=".4"/>
@@ -373,7 +334,7 @@
                                         <p class="text-sm font-medium text-slate-500">Belum ada laporan ditemukan</p>
                                         <p class="text-xs text-slate-400 mt-1">Coba ubah atau reset filter pencarian</p>
                                     </div>
-                                    @if(request()->hasAny(['search','report_code','asset_code','date_from','date_to','area_id','status','report_type','jenis_pekerjaan','work_classification','has_photo']))
+                                    @if(request()->hasAny(['search','report_code','asset_code','date_from','date_to','area_id','report_type','jenis_pekerjaan','work_classification']))
                                         <a href="{{ route('reports.index') }}"
                                            class="mt-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 border border-blue-200 hover:bg-blue-50 rounded-lg transition-colors">
                                             Reset filter
@@ -428,11 +389,9 @@ function reportIndex() {
             request('date_from'),
             request('date_to'),
             request('area_id'),
-            request('status'),
             request('report_type'),
             request('jenis_pekerjaan'),
             request('work_classification'),
-            request('has_photo'),
         ])->filter()->isNotEmpty() ? 'true' : 'false' }},
 
         // Jumlah filter aktif — dipakai untuk badge di header panel
@@ -443,11 +402,9 @@ function reportIndex() {
             request('date_from'),
             request('date_to'),
             request('area_id'),
-            request('status'),
             request('report_type'),
             request('jenis_pekerjaan'),
             request('work_classification'),
-            request('has_photo'),
         ])->filter()->count() }},
 
         init() {

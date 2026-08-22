@@ -28,11 +28,6 @@ class ReportController extends Controller
             $query->whereDate('report_date', '<=', $request->date_to);
         }
 
-        // Filter by status
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
         // Filter by report type
         if ($request->filled('report_type')) {
             $query->where('report_type', $request->report_type);
@@ -75,26 +70,7 @@ class ReportController extends Controller
             $query->where('report_code', 'like', '%' . $request->report_code . '%');
         }
 
-        // Filter by has_photo: '1' = ada foto (dokumentasi atau hygiene),
-        // '0' = tidak ada foto sama sekali. NULL kolom dianggap "tidak ada foto".
-        if ($request->filled('has_photo')) {
-            if ($request->has_photo === '1') {
-                $query->where(function ($q) {
-                    $q->whereJsonLength('photo_documentation', '>', 0)
-                      ->orWhereJsonLength('photo_hygiene_clearance', '>', 0);
-                });
-            } elseif ($request->has_photo === '0') {
-                $query->where(function ($q) {
-                    $q->whereNull('photo_documentation')
-                      ->orWhereJsonLength('photo_documentation', 0);
-                })->where(function ($q) {
-                    $q->whereNull('photo_hygiene_clearance')
-                      ->orWhereJsonLength('photo_hygiene_clearance', 0);
-                });
-            }
-        }
-
-        // Filter by jenis pekerjaan (CM/dCM/PM)
+        // Filter by jenis pekerjaan
         if ($request->filled('jenis_pekerjaan')) {
             $query->where('jenis_pekerjaan', $request->jenis_pekerjaan);
         }
@@ -113,7 +89,7 @@ class ReportController extends Controller
 
         $areas = Area::all();
 
-        // Hitung ringkasan CM/dCM/PM dari seluruh dataset (tanpa filter halaman)
+        // Hitung ringkasan jenis pekerjaan dari seluruh dataset (tanpa filter halaman)
         $summaryQuery = Report::query();
         if ($request->filled('date_from')) {
             $summaryQuery->whereDate('report_date', '>=', $request->date_from);
@@ -121,14 +97,16 @@ class ReportController extends Controller
         if ($request->filled('date_to')) {
             $summaryQuery->whereDate('report_date', '<=', $request->date_to);
         }
-        $totalLaporan = (clone $summaryQuery)->count();
-        $countCM  = (clone $summaryQuery)->where('jenis_pekerjaan', 'CM')->count();
-        $countDCM = (clone $summaryQuery)->where('jenis_pekerjaan', 'dCM')->count();
-        $countPM  = (clone $summaryQuery)->where('jenis_pekerjaan', 'PM')->count();
+        $totalLaporan   = (clone $summaryQuery)->count();
+        $countEI        = (clone $summaryQuery)->where('jenis_pekerjaan', 'EI')->count();
+        $countMekanik   = (clone $summaryQuery)->where('jenis_pekerjaan', 'Mekanik')->count();
+        $countCmPm      = (clone $summaryQuery)->where('jenis_pekerjaan', 'CM/PM')->count();
+        $countFabrikasi = (clone $summaryQuery)->where('jenis_pekerjaan', 'Fabrikasi')->count();
+        $countSipil     = (clone $summaryQuery)->where('jenis_pekerjaan', 'Sipil')->count();
 
         return view('reports.index', compact(
             'reports', 'areas',
-            'totalLaporan', 'countCM', 'countDCM', 'countPM'
+            'totalLaporan', 'countEI', 'countMekanik', 'countCmPm', 'countFabrikasi', 'countSipil'
         ));
     }
 
@@ -162,7 +140,7 @@ class ReportController extends Controller
             'asset_id'                => 'nullable|exists:assets,id',
             'report_type'             => 'required|in:equipment_repair,area_work,general',
             'work_classification'     => 'nullable|in:zpm1,zpm3,zpm6,zpm5,zpm7',
-            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM',
+            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil',
             'linked_finding_id'       => 'nullable|exists:cm_findings,id',
             'sesuai_rencana'          => 'nullable|in:ya,tidak',
             'tanggal_kejadian'        => 'nullable|date',
@@ -265,7 +243,7 @@ class ReportController extends Controller
             'funcloc_id'              => 'nullable|exists:functional_locations,id',
             'asset_id'                => 'nullable|exists:assets,id',
             'work_classification'     => 'nullable|in:zpm1,zpm3,zpm6,zpm5,zpm7',
-            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM',
+            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil',
             'linked_finding_id'       => 'nullable|exists:cm_findings,id',
             'sesuai_rencana'          => 'nullable|in:ya,tidak',
             'tanggal_kejadian'        => 'nullable|date',
@@ -300,6 +278,8 @@ class ReportController extends Controller
         $data = ['status' => $request->status];
         if ($request->status === 'completed') {
             $data['completed_at'] = now();
+        } else {
+            $data['completed_at'] = null;
         }
 
         $report->update($data);

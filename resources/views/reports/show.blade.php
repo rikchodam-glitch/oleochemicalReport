@@ -102,14 +102,19 @@
                     @endif
                 </div>
 
-                {{-- Jenis Pekerjaan (CM/dCM/PM) --}}
+                {{-- Jenis Pekerjaan --}}
                 @if($report->jenis_pekerjaan)
                     <div class="flex items-center gap-1.5">
                         @php
                             $jenisColors = [
-                                'CM'  => 'bg-red-100 text-red-700 border-red-200',
-                                'dCM' => 'bg-amber-100 text-amber-700 border-amber-200',
-                                'PM'  => 'bg-blue-100 text-blue-700 border-blue-200',
+                                'CM'        => 'bg-red-100 text-red-700 border-red-200',
+                                'dCM'       => 'bg-amber-100 text-amber-700 border-amber-200',
+                                'PM'        => 'bg-blue-100 text-blue-700 border-blue-200',
+                                'EI'        => 'bg-cyan-100 text-cyan-700 border-cyan-200',
+                                'Mekanik'   => 'bg-slate-100 text-slate-700 border-slate-200',
+                                'CM/PM'     => 'bg-emerald-100 text-emerald-700 border-emerald-200',
+                                'Fabrikasi' => 'bg-violet-100 text-violet-700 border-violet-200',
+                                'Sipil'     => 'bg-orange-100 text-orange-700 border-orange-200',
                             ];
                             $jColor = $jenisColors[$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-400';
                         @endphp
@@ -312,9 +317,14 @@
                             <p class="text-xs text-slate-500">Jenis Pekerjaan</p>
                             @php
                                 $jenisColors = [
-                                    'CM'  => 'bg-red-100 text-red-700 border-red-200',
-                                    'dCM' => 'bg-amber-100 text-amber-700 border-amber-200',
-                                    'PM'  => 'bg-blue-100 text-blue-700 border-blue-200',
+                                    'CM'        => 'bg-red-100 text-red-700 border-red-200',
+                                    'dCM'       => 'bg-amber-100 text-amber-700 border-amber-200',
+                                    'PM'        => 'bg-blue-100 text-blue-700 border-blue-200',
+                                    'EI'        => 'bg-cyan-100 text-cyan-700 border-cyan-200',
+                                    'Mekanik'   => 'bg-slate-100 text-slate-700 border-slate-200',
+                                    'CM/PM'     => 'bg-emerald-100 text-emerald-700 border-emerald-200',
+                                    'Fabrikasi' => 'bg-violet-100 text-violet-700 border-violet-200',
+                                    'Sipil'     => 'bg-orange-100 text-orange-700 border-orange-200',
                                 ];
                                 $jColor = $jenisColors[$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-400';
                             @endphp
@@ -671,6 +681,17 @@
                         <button type="submit"
                                 class="w-full px-4 py-2 border border-amber-300 hover:bg-amber-50 text-amber-700 text-sm font-medium rounded-lg transition-colors">
                             Tandai Perlu Review
+                        </button>
+                    </form>
+                @endif
+
+                @if($report->status !== 'draft')
+                    <form method="POST" action="{{ route('reports.update-status', $report) }}">
+                        @csrf
+                        <input type="hidden" name="status" value="draft">
+                        <button type="submit"
+                                class="w-full px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                            Tandai Draft
                         </button>
                     </form>
                 @endif

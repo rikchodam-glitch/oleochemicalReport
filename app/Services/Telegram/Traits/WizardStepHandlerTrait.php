@@ -115,6 +115,32 @@ trait WizardStepHandlerTrait
         ];
     }
 
+    /**
+     * Bangun pesan prompt pilihan jenis pekerjaan EI vs Mekanik.
+     * Ditampilkan setelah teknisi memilih klasifikasi ZPM 1 atau ZPM 6.
+     * Callback_data mengikuti pola 'jenis_pekerjaan:<kode>', ditangani
+     * WizardCallbackHandlerTrait::handleJenisPekerjaanCallback().
+     *
+     * @param  array $state State wizard saat ini
+     * @return array Respons dengan message dan keyboard EI/Mekanik
+     */
+    protected function buildJenisPekerjaanPrompt(array $state): array
+    {
+        $keyboard = [
+            ['text' => 'EI', 'callback_data' => 'jenis_pekerjaan:EI'],
+            ['text' => 'Mekanik', 'callback_data' => 'jenis_pekerjaan:Mekanik'],
+        ];
+
+        foreach ($this->navigationButtons($state) as $navButton) {
+            $keyboard[] = $navButton;
+        }
+
+        return [
+            'message'  => "Pilih jenis pekerjaan untuk laporan ini:",
+            'keyboard' => $keyboard,
+        ];
+    }
+
     // =========================================================
     // STEP 4 — WAKTU PENGERJAAN
     // =========================================================
@@ -193,9 +219,9 @@ trait WizardStepHandlerTrait
      */
     protected function handleDurationInput(string $chatId, string $text, array $state): array
     {
-        $minutes = $this->parseDurationToMinutes($text);
+        $range = $this->parseWorkTimeRange($text);
 
-        if ($minutes === null || $minutes <= 0) {
+        if ($range === null) {
             return [
                 'message'  => "Rentang waktu tidak dikenali. Coba format lain:\n" .
                     "`08:00 sampai 09:00`, `08:00-10:00`\n" .
@@ -205,7 +231,9 @@ trait WizardStepHandlerTrait
         }
 
         $state                          = $this->pushStepHistory($state, self::STEP_WORK_DURATION);
-        $state['work_duration_minutes'] = $minutes;
+        $state['work_duration_minutes'] = $range['minutes'];
+        $state['start_time']            = $range['start'];
+        $state['end_time']              = $range['end'];
         $state['step']                  = self::STEP_ROOT_CAUSE;
         $this->saveState($chatId, $state);
 

@@ -58,6 +58,22 @@ trait WizardUtilityTrait
      * Format durasi langsung seperti "2 jam", "30 menit", atau angka saja
      * tidak lagi didukung dan akan mengembalikan null.
      *
+     * Delegasikan ke parseWorkTimeRange() yang juga menangkap jam mulai
+     * dan jam selesai.
+     *
+     * @param  string   $text Input teks dari teknisi
+     * @return int|null       Durasi dalam menit, null jika format tidak dikenali
+     */
+    public function parseDurationToMinutes(string $text): ?int
+    {
+        $range = $this->parseWorkTimeRange($text);
+
+        return $range ? $range['minutes'] : null;
+    }
+
+    /**
+     * Parse teks rentang waktu menjadi array jam mulai, jam selesai, dan durasi.
+     *
      * Format yang didukung:
      *   Rentang dengan menit di kedua sisi:
      *     "08:00 sampai 09:00", "08:00-09:00",
@@ -74,10 +90,10 @@ trait WizardUtilityTrait
      * Hasil divalidasi: tidak boleh 0/negatif dan tidak boleh lebih dari
      * 24 jam (1440 menit).
      *
-     * @param  string   $text Input teks dari teknisi
-     * @return int|null       Durasi dalam menit, null jika format tidak dikenali
+     * @param  string $text Input teks dari teknisi
+     * @return array{start: string, end: string, minutes: int}|null
      */
-    public function parseDurationToMinutes(string $text): ?int
+    public function parseWorkTimeRange(string $text): ?array
     {
         $text = strtolower(trim($text));
 
@@ -89,12 +105,10 @@ trait WizardUtilityTrait
             $text,
             $m
         )) {
-            $diff = $this->calcRangeDiff(
+            return $this->buildTimeRange(
                 (int) $m[1] * 60 + (int) $m[2],
                 (int) $m[3] * 60 + (int) $m[4]
             );
-
-            return $this->validateDurationRange($diff);
         }
 
         // Rentang fleksibel (2a): pemisah berupa kata (sampai / s/d / sd / hingga).
@@ -110,7 +124,7 @@ trait WizardUtilityTrait
             $startMinutes = (int) $m[1] * 60 + (isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0);
             $endMinutes   = (int) $m[3] * 60 + (isset($m[4]) && $m[4] !== '' ? (int) $m[4] : 0);
 
-            return $this->validateDurationRange($this->calcRangeDiff($startMinutes, $endMinutes));
+            return $this->buildTimeRange($startMinutes, $endMinutes);
         }
 
         // Rentang fleksibel (2b): pemisah berupa tanda "-" yang diapit spasi.
@@ -125,10 +139,44 @@ trait WizardUtilityTrait
             $startMinutes = (int) $m[1] * 60 + (isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0);
             $endMinutes   = (int) $m[3] * 60 + (isset($m[4]) && $m[4] !== '' ? (int) $m[4] : 0);
 
-            return $this->validateDurationRange($this->calcRangeDiff($startMinutes, $endMinutes));
+            return $this->buildTimeRange($startMinutes, $endMinutes);
         }
 
         return null;
+    }
+
+    /**
+     * Bangun array hasil parsing rentang waktu dari menit-sejak-tengah-malam.
+     * Durasi divalidasi lewat validateDurationRange().
+     *
+     * @param  int $startMinutes Waktu mulai dalam menit sejak pukul 00:00
+     * @param  int $endMinutes   Waktu selesai dalam menit sejak pukul 00:00
+     * @return array{start: string, end: string, minutes: int}|null
+     */
+    private function buildTimeRange(int $startMinutes, int $endMinutes): ?array
+    {
+        $minutes = $this->validateDurationRange($this->calcRangeDiff($startMinutes, $endMinutes));
+
+        if ($minutes === null) {
+            return null;
+        }
+
+        return [
+            'start'   => $this->formatMinutesToHhMm($startMinutes),
+            'end'     => $this->formatMinutesToHhMm($endMinutes),
+            'minutes' => $minutes,
+        ];
+    }
+
+    /**
+     * Format menit-sejak-tengah-malam menjadi string HH:MM.
+     *
+     * @param  int    $minutes Menit sejak pukul 00:00
+     * @return string Format HH:MM
+     */
+    private function formatMinutesToHhMm(int $minutes): string
+    {
+        return sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
     }
 
     /**
@@ -429,6 +477,24 @@ trait WizardUtilityTrait
         return $classification ? $classification->label() : $value;
     }
 
+    /**
+     * Tentukan nilai jenis_pekerjaan otomatis dari kode klasifikasi ZPM.
+     * Mengembalikan null untuk ZPM 1/6 karena butuh pilihan EI vs Mekanik
+     * dari teknisi di step tambahan wizard.
+     *
+     * @param  string      $classification Kode ZPM (zpm1/zpm3/zpm6/zpm5/zpm7)
+     * @return string|null Nilai jenis_pekerjaan atau null
+     */
+    protected function autoJenisPekerjaan(string $classification): ?string
+    {
+        return match ($classification) {
+            'zpm3' => 'CM/PM',
+            'zpm5' => 'Fabrikasi',
+            'zpm7' => 'Sipil',
+            default => null,
+        };
+    }
+
     // =========================================================
     // STATE AWAL & RESPONS ERROR
     // =========================================================
@@ -449,6 +515,9 @@ trait WizardUtilityTrait
             'step'                        => self::STEP_EQUIPMENT_SEARCH,
             'step_history'                => [],
             'work_classification'         => null,
+            'jenis_pekerjaan'             => null,
+            'start_time'                  => null,
+            'end_time'                    => null,
             'ai_analysis'                 => [],
             'equipment_id'                => null,
             'equipment_ident'             => null,

@@ -193,6 +193,14 @@ trait WizardCallbackHandlerTrait
             return $this->handleWorkClassificationCallback($chatId, $callbackData, $state);
         }
 
+        // Callback pilihan jenis pekerjaan EI vs Mekanik (hanya untuk ZPM 1/6)
+        if (str_starts_with($callbackData, 'jenis_pekerjaan:')) {
+            if ($state['step'] !== self::STEP_JENIS_PEKERJAAN) {
+                return $this->errorResponse('Callback jenis pekerjaan tidak sesuai step aktif.');
+            }
+            return $this->handleJenisPekerjaanCallback($chatId, $callbackData, $state);
+        }
+
         // Callback klarifikasi equipment Step 2 (kandidat dari TechIdentSearch)
         if (str_starts_with($callbackData, 'equipment_candidate:')) {
             return $this->handleEquipmentCandidateCallback($chatId, $callbackData, $state);
@@ -304,9 +312,9 @@ trait WizardCallbackHandlerTrait
 
     /**
      * Proses pilihan klasifikasi pekerjaan (step paling awal wizard).
-     * Simpan pilihan ke state, catat step ke riwayat, lalu lanjutkan wizard
-     * ke pencarian equipment memakai teks laporan awal yang sudah tersimpan
-     * di $state['text'].
+     * Simpan pilihan ke state, catat step ke riwayat, lalu lanjutkan wizard.
+     * Untuk ZPM 1/6 dilanjutkan ke step pilihan jenis pekerjaan EI vs Mekanik,
+     * sedangkan ZPM 3/5/7 langsung ditentukan jenis pekerjaannya secara otomatis.
      *
      * @param  string $chatId       Chat ID Telegram
      * @param  string $callbackData Data callback classification:<kode>
@@ -324,7 +332,47 @@ trait WizardCallbackHandlerTrait
 
         $state['work_classification'] = $classification;
         $state                        = $this->pushStepHistory($state, self::STEP_WORK_CLASSIFICATION);
-        $state['step']                = self::STEP_EQUIPMENT_SEARCH;
+
+        $autoJenis = $this->autoJenisPekerjaan($classification);
+
+        // ZPM 1 & ZPM 6 butuh pilihan jenis pekerjaan EI vs Mekanik.
+        if ($autoJenis === null) {
+            $state['step'] = self::STEP_JENIS_PEKERJAAN;
+            $this->saveState($chatId, $state);
+
+            return $this->buildJenisPekerjaanPrompt($state);
+        }
+
+        // ZPM 3 / 5 / 7 otomatis ditentukan jenis pekerjaannya.
+        $state['jenis_pekerjaan'] = $autoJenis;
+        $state['step']            = self::STEP_EQUIPMENT_SEARCH;
+        $this->saveState($chatId, $state);
+
+        return $this->processEquipmentSearch($chatId, $state);
+    }
+
+    /**
+     * Proses pilihan jenis pekerjaan EI vs Mekanik untuk klasifikasi ZPM 1/6.
+     * Simpan pilihan ke state, catat step ke riwayat, lalu lanjutkan wizard
+     * ke pencarian equipment.
+     *
+     * @param  string $chatId       Chat ID Telegram
+     * @param  string $callbackData Data callback jenis_pekerjaan:<kode>
+     * @param  array  $state        State wizard saat ini
+     * @return array  Respons
+     */
+    protected function handleJenisPekerjaanCallback(string $chatId, string $callbackData, array $state): array
+    {
+        $jenis   = str_replace('jenis_pekerjaan:', '', $callbackData);
+        $allowed = ['EI', 'Mekanik'];
+
+        if (!in_array($jenis, $allowed, true)) {
+            return $this->errorResponse('Jenis pekerjaan tidak dikenali.');
+        }
+
+        $state['jenis_pekerjaan'] = $jenis;
+        $state                    = $this->pushStepHistory($state, self::STEP_JENIS_PEKERJAAN);
+        $state['step']            = self::STEP_EQUIPMENT_SEARCH;
         $this->saveState($chatId, $state);
 
         return $this->processEquipmentSearch($chatId, $state);
@@ -1271,6 +1319,9 @@ trait WizardCallbackHandlerTrait
         switch ($step) {
             case self::STEP_WORK_CLASSIFICATION:
                 return $this->buildWorkClassificationPrompt($state);
+
+            case self::STEP_JENIS_PEKERJAAN:
+                return $this->buildJenisPekerjaanPrompt($state);
 
             case self::STEP_EQUIPMENT_SEARCH:
             case self::STEP_EQUIPMENT_CLARIFY:

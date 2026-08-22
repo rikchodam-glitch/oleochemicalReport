@@ -19,6 +19,8 @@ class Report extends Model
         'report_code',
         'work_description',
         'work_duration_minutes',
+        'start_time',
+        'end_time',
         'root_cause',
         'photo_documentation',
         'photo_hygiene_clearance',
@@ -197,6 +199,45 @@ class Report extends Model
     public function hasPhotos(): bool
     {
         return !empty($this->photo_documentation) || !empty($this->photo_hygiene_clearance);
+    }
+
+    /**
+     * Accessor: label durasi pengerjaan dalam format "X Jam Y Menit".
+     * Mengembalikan null jika durasi tidak tersedia.
+     */
+    public function getDurationLabelAttribute(): ?string
+    {
+        $minutes = $this->work_duration_minutes;
+
+        if (!$minutes) {
+            return null;
+        }
+
+        $jam   = intdiv($minutes, 60);
+        $menit = $minutes % 60;
+
+        $parts = [];
+        if ($jam > 0) {
+            $parts[] = $jam . ' Jam';
+        }
+        if ($menit > 0) {
+            $parts[] = $menit . ' Menit';
+        }
+
+        return $parts ? implode(' ', $parts) : null;
+    }
+
+    /**
+     * Accessor: rentang waktu pengerjaan "HH:MM - HH:MM".
+     * Mengembalikan null jika wizard_started_at atau submitted_at kosong.
+     */
+    public function getTimeRangeAttribute(): ?string
+    {
+        if (!$this->start_time || !$this->end_time) {
+            return null;
+        }
+
+        return $this->start_time . ' - ' . $this->end_time;
     }
 
     /**

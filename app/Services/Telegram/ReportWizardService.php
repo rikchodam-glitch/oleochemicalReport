@@ -123,6 +123,7 @@ class ReportWizardService
     /** Step ID — digunakan sebagai konstanta agar tidak typo. */
     const STEP_INITIAL             = 'initial';
     const STEP_WORK_CLASSIFICATION = 'work_classification';
+    const STEP_JENIS_PEKERJAAN     = 'jenis_pekerjaan';
     const STEP_EQUIPMENT_SEARCH    = 'equipment_search';
     const STEP_EQUIPMENT_CLARIFY   = 'equipment_clarify';
     const STEP_WORK_DURATION       = 'work_duration';
