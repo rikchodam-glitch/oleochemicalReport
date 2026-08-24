@@ -383,6 +383,17 @@ class ReportWizardService
             return $this->appendDateConfirmationNote($response, $state);
         }
 
+        // Hasil type_confirm: banyak kandidat lintas tipe alat -> pilih tipe dulu.
+        if (($results['status'] ?? '') === 'type_confirm') {
+            $state['step']            = self::STEP_EQUIPMENT_CLARIFY;
+            $state['search_results']  = $results;
+            $state['retype_attempts'] = 0;
+            $this->saveState($chatId, $state);
+
+            $response = $this->buildTypeConfirmKeyboard($results['type_groups'] ?? [], $state);
+            return $this->appendDateConfirmationNote($response, $state);
+        }
+
         // Confidence 80-94%: ada kandidat ambigu -> tampilkan keyboard kandidat (Step 2)
         if (!empty($candidates)) {
             $state['step']            = self::STEP_EQUIPMENT_CLARIFY;
@@ -894,6 +905,41 @@ class ReportWizardService
 
         return [
             'message'  => "Equipment tidak ditemukan secara pasti. Pilih yang paling sesuai:{$confidenceNote}",
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Bangun keyboard pilihan tipe alat saat kode yang dicari cocok dengan
+     * banyak equipment lintas tipe (hasil type_confirm dari TechIdentSearch).
+     *
+     * @param  array $typeGroups Daftar {type, count} dari hasil pencarian
+     * @param  array $state      State wizard saat ini (untuk navigationButtons)
+     * @return array Respons dengan message dan keyboard pilihan tipe
+     */
+    protected function buildTypeConfirmKeyboard(array $typeGroups, array $state): array
+    {
+        $keyboard = [];
+        foreach ($typeGroups as $group) {
+            $label = ($group['type'] ?? 'Tanpa Tipe') . ' — ' . ($group['count'] ?? 0) . ' alat';
+            if (strlen($label) > 64) {
+                $label = substr($label, 0, 61) . '...';
+            }
+            $keyboard[] = [
+                'text'          => $label,
+                'callback_data' => 'equipment_type:' . ($group['type'] ?? ''),
+            ];
+        }
+
+        $keyboard[] = ['text' => 'Tulis Ulang Kode',    'callback_data' => 'equipment_candidate:retype'];
+        $keyboard[] = ['text' => 'Pilih dari Hierarki', 'callback_data' => 'equipment:hierarchy'];
+
+        foreach ($this->navigationButtons($state) as $navButton) {
+            $keyboard[] = $navButton;
+        }
+
+        return [
+            'message'  => "Banyak equipment cocok dengan kode tersebut. Pilih tipe alat dulu:",
             'keyboard' => $keyboard,
         ];
     }

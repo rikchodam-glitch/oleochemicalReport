@@ -201,6 +201,11 @@ trait WizardCallbackHandlerTrait
             return $this->handleJenisPekerjaanCallback($chatId, $callbackData, $state);
         }
 
+        // Callback pilihan tipe alat saat banyak kandidat lintas tipe
+        if (str_starts_with($callbackData, 'equipment_type:')) {
+            return $this->handleEquipmentTypeCallback($chatId, $callbackData, $state);
+        }
+
         // Callback klarifikasi equipment Step 2 (kandidat dari TechIdentSearch)
         if (str_starts_with($callbackData, 'equipment_candidate:')) {
             return $this->handleEquipmentCandidateCallback($chatId, $callbackData, $state);
@@ -738,6 +743,37 @@ trait WizardCallbackHandlerTrait
         }
 
         return $this->lockEquipmentAndAdvance($chatId, $asset, $state);
+    }
+
+    /**
+     * Proses pilihan tipe alat saat kode cocok dengan banyak equipment lintas
+     * tipe (hasil type_confirm). Filter kandidat hasil pencarian berdasarkan
+     * tipe yang dipilih, lalu tampilkan daftar equipment spesifik untuk dipilih.
+     *
+     * @param  string $chatId       Chat ID Telegram
+     * @param  string $callbackData Data callback equipment_type:<tipe>
+     * @param  array  $state        State wizard saat ini
+     * @return array  Respons
+     */
+    protected function handleEquipmentTypeCallback(string $chatId, string $callbackData, array $state): array
+    {
+        $type = str_replace('equipment_type:', '', $callbackData);
+
+        $results    = $state['search_results'] ?? [];
+        $candidates = $results['candidates'] ?? [];
+
+        $filtered = array_values(array_filter(
+            $candidates,
+            fn ($c) => ($c['equipment_type'] ?: 'Tanpa Tipe') === $type
+        ));
+
+        if (empty($filtered)) {
+            return $this->errorResponse('Tidak ada equipment untuk tipe tersebut.');
+        }
+
+        $this->saveState($chatId, $state);
+
+        return $this->buildCandidateKeyboard($filtered, $results, $state);
     }
 
     /**

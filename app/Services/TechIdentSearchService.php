@@ -11,9 +11,10 @@ use Illuminate\Support\Collection;
  * Pencarian TechIdentNo 3-pass sesuai dokumen "E. Logika Pencarian TechIdentNo".
  *
  * Pass 1: exact match full string apa adanya.
- * Pass 2: exact match setelah normalisasi (uppercase, hapus spasi, strip prefix umum).
+ * Pass 2: exact match setelah normalisasi (uppercase, hapus separator, strip prefix).
  * Pass 3: kombinasi section code 4-digit + tipe/unit alat disebut bersamaan.
  * Pass 3b: prefix instrumen dari deskripsi + section code (tanpa suffix eksplisit).
+ * Pass 4: partial/prefix match setelah normalisasi (mis. "UPSSER" -> UPS-SER01/02).
  *
  * Pass 1 & 2 selalu auto-accept (confidence >= 95%, satu kandidat).
  * Pass 3/3b auto-accept jika kandidatnya tunggal, atau confirm (80-94%) jika ambigu.
@@ -55,6 +56,13 @@ class TechIdentSearchService
     use TechIdentTokenizerTrait;
 
     /**
+     * Ambang jumlah kandidat: jika sebuah pass menemukan lebih dari ini DAN
+     * kandidat tersebar di lebih dari satu tipe alat, hasil dikembalikan
+     * sebagai pilihan tipe (type_confirm) alih-alih daftar kandidat individual.
+     */
+    public const TYPE_CONFIRM_THRESHOLD = 5;
+
+    /**
      * Jalankan pencarian 3-pass terhadap teks mentah dari teknisi.
      *
      * @param  string   $rawText Teks laporan awal dari teknisi
@@ -77,6 +85,14 @@ class TechIdentSearchService
         foreach ($tokens as $token) {
             $hit = $assets->first(fn ($a) => strcasecmp($a->tech_ident_no, $token) === 0);
             if ($hit) {
+                // Kode ini juga bisa menjadi bagian dari TechIdentNo alat lain
+                // (mis. "6400P4" muncul di "FCV-6400P4-1", "PI-6400P4-1", dst).
+                // Jika ada lebih dari satu, kembalikan pilihan tipe.
+                $related = $this->relatedAssets($assets, $token);
+                if ($related->count() > 1) {
+                    return $this->confirmOrTypeConfirm($related, 'pass1', 85);
+                }
+
                 return $this->autoAccept('pass1', 100, [$hit]);
             }
         }
@@ -86,6 +102,11 @@ class TechIdentSearchService
             $normalizedToken = $this->normalize($token);
             $hit = $assets->first(fn ($a) => $this->normalize($a->tech_ident_no) === $normalizedToken);
             if ($hit) {
+                $related = $this->relatedAssets($assets, $token);
+                if ($related->count() > 1) {
+                    return $this->confirmOrTypeConfirm($related, 'pass2', 88);
+                }
+
                 return $this->autoAccept('pass2', 98, [$hit]);
             }
         }
@@ -168,7 +189,7 @@ class TechIdentSearchService
                 }
 
                 if ($instrumentMatches->count() > 1) {
-                    return $this->confirm('pass3', 85, $instrumentMatches->take(4)->all());
+                    return $this->confirmOrTypeConfirm($instrumentMatches, 'pass3', 85);
                 }
             }
 
@@ -177,7 +198,7 @@ class TechIdentSearchService
             }
 
             if ($matches->count() > 1) {
-                return $this->confirm('pass3', 85, $matches->take(4)->all());
+                return $this->confirmOrTypeConfirm($matches, 'pass3', 85);
             }
         }
 
@@ -213,8 +234,32 @@ class TechIdentSearchService
                 }
 
                 if ($prefixMatches->count() > 1) {
-                    return $this->confirm('pass3b', 80, $prefixMatches->take(5)->all());
+                    return $this->confirmOrTypeConfirm($prefixMatches, 'pass3b', 80);
                 }
+            }
+        }
+
+        // Pass 4: partial/prefix match — teknisi hanya mengetik sebagian kode
+        // (mis. "UPSSER" -> UPS-SER01, UPS-SER02). Dijalankan sebagai fallback
+        // terakhir setelah pass terstruktur, dengan token minimal 4 karakter
+        // supaya tidak membanjiri kandidat.
+        foreach ($tokens as $token) {
+            $partialToken = $this->normalize($token);
+
+            if (strlen($partialToken) < 4) {
+                continue;
+            }
+
+            $partialMatches = $assets->filter(function ($a) use ($partialToken) {
+                return str_starts_with($this->normalize($a->tech_ident_no), $partialToken);
+            })->values();
+
+            if ($partialMatches->count() === 1) {
+                return $this->autoAccept('pass4_partial', 90, [$partialMatches->first()]);
+            }
+
+            if ($partialMatches->count() > 1) {
+                return $this->confirmOrTypeConfirm($partialMatches, 'pass4_partial', 80);
             }
         }
 
@@ -235,7 +280,26 @@ class TechIdentSearchService
             $query->where('area_id', $areaId);
         }
 
-        return $query->get(['id', 'tech_ident_no', 'description', 'functional_loc', 'area_id']);
+        return $query->get(['id', 'tech_ident_no', 'description', 'functional_loc', 'area_id', 'equipment_type']);
+    }
+
+    /**
+     * Ambil semua asset yang TechIdentNo-nya (setelah normalisasi) mengandung
+     * token. Dipakai untuk mendeteksi ambiguitas saat sebuah kode cocok persis
+     * tapi juga menjadi bagian dari kode alat lain (mis. "6400P4" muncul di
+     * "FCV-6400P4-1", "PI-6400P4-1", dst).
+     *
+     * @param  Collection $assets Koleksi kandidat asset
+     * @param  string     $token  Token yang dicari
+     * @return Collection
+     */
+    protected function relatedAssets(Collection $assets, string $token): Collection
+    {
+        $normalizedToken = $this->normalize($token);
+
+        return $assets->filter(
+            fn ($a) => str_contains($this->normalize($a->tech_ident_no), $normalizedToken)
+        )->values();
     }
 
     /**
@@ -393,6 +457,60 @@ class TechIdentSearchService
     }
 
     /**
+     * Putuskan apakah hasil sebuah pass ditampilkan sebagai daftar kandidat
+     * individual (confirm) atau sebagai pilihan tipe alat (type_confirm).
+     *
+     * @param  Collection $matches    Koleksi asset yang cocok
+     * @param  string     $pass       Identifier pass
+     * @param  int        $confidence Skor kepercayaan
+     * @param  int        $take       Maksimal kandidat individual
+     * @return array
+     */
+    protected function confirmOrTypeConfirm(Collection $matches, string $pass, int $confidence, int $take = 4): array
+    {
+        $distinctTypes = $matches->pluck('equipment_type')->unique()->count();
+
+        if ($matches->count() > self::TYPE_CONFIRM_THRESHOLD && $distinctTypes > 1) {
+            return $this->typeConfirmResult($matches, $pass, $confidence);
+        }
+
+        return $this->confirm($pass, $confidence, $matches->take($take)->all());
+    }
+
+    /**
+     * Kembalikan hasil type_confirm: kelompokkan kandidat berdasarkan tipe
+     * alat agar teknisi memilih tipe dulu sebelum memilih equipment spesifik.
+     *
+     * @param  Collection $matches    Koleksi asset yang cocok
+     * @param  string     $pass       Identifier pass
+     * @param  int        $confidence Skor kepercayaan
+     * @return array
+     */
+    protected function typeConfirmResult(Collection $matches, string $pass, int $confidence): array
+    {
+        $grouped = $matches->groupBy(fn ($a) => $a->equipment_type ?: 'Tanpa Tipe');
+
+        $typeGroups = [];
+        foreach ($grouped as $type => $list) {
+            $typeGroups[] = [
+                'type'  => $type,
+                'count' => $list->count(),
+            ];
+        }
+
+        // Urutkan dari jumlah terbanyak agar tipe paling relevan tampil di atas.
+        usort($typeGroups, fn ($a, $b) => $b['count'] <=> $a['count']);
+
+        return [
+            'status'      => 'type_confirm',
+            'pass'        => $pass,
+            'confidence'  => $confidence,
+            'type_groups' => $typeGroups,
+            'candidates'  => $this->formatCandidates($matches->all()),
+        ];
+    }
+
+    /**
      * Kembalikan struktur hasil no_match — tidak ada asset yang cocok.
      *
      * @return array
@@ -421,6 +539,7 @@ class TechIdentSearchService
             'tech_ident_no'  => $a->tech_ident_no,
             'description'    => $a->description,
             'functional_loc' => $a->functional_loc,
+            'equipment_type' => $a->equipment_type,
         ])->all();
     }
 }

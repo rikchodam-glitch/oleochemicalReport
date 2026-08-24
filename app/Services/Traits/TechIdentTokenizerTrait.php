@@ -130,7 +130,9 @@ trait TechIdentTokenizerTrait
     }
 
     /**
-     * Normalisasi TechIdentNo/token: uppercase, hapus spasi, strip prefix umum.
+     * Normalisasi TechIdentNo/token: uppercase, strip prefix umum, lalu hapus
+     * semua separator (spasi, dash, titik, slash, underscore) sehingga
+     * "UPS-SER01", "UPSSER01", dan "ups ser 01" dinormalisasi menjadi sama.
      *
      * @param  string $value Token atau TechIdentNo yang akan dinormalisasi
      * @return string        Nilai yang sudah dinormalisasi
@@ -138,14 +140,19 @@ trait TechIdentTokenizerTrait
     protected function normalize(string $value): string
     {
         $value = strtoupper(trim($value));
-        $value = preg_replace('/\s+/', '', $value);
 
+        // Strip prefix umum (dengan dash, mis. 'M-', 'VFD-', 'AT-') sebelum
+        // separator dihapus, agar pola prefix tetap dikenali dengan benar.
         foreach (self::STRIPPABLE_PREFIXES as $prefix) {
             if (str_starts_with($value, $prefix)) {
                 $value = substr($value, strlen($prefix));
                 break;
             }
         }
+
+        // Hapus semua separator umum agar perbandingan tidak sensitif
+        // terhadap perbedaan penulisan tanda hubung/spasi.
+        $value = preg_replace('/[\s\-\.\/_]+/', '', $value);
 
         return $value;
     }
