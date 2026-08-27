@@ -8,6 +8,7 @@ use App\Http\Controllers\CmImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FunctionalLocationController;
 use App\Http\Controllers\ImportController;
+use App\Http\Controllers\ItAssetController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\ReportController;
@@ -154,6 +155,14 @@ Route::middleware('admin')->group(function () {
     // Work Orders
     Route::resource('work-orders', WorkOrderController::class);
 
+    // IT Assets
+    Route::get('/it-assets', [ItAssetController::class, 'index'])->name('it-assets.index');
+    Route::get('/it-assets/import', [ItAssetController::class, 'showImport'])->name('it-assets.import');
+    Route::post('/it-assets/import', [ItAssetController::class, 'import'])->name('it-assets.import.execute');
+    Route::get('/it-assets/{itAsset}', [ItAssetController::class, 'show'])->name('it-assets.show');
+    Route::post('/it-assets/{itAsset}/ping', [ItAssetController::class, 'ping'])->name('it-assets.ping');
+    Route::put('/it-assets/{itAsset}/snapshot-settings', [ItAssetController::class, 'updateSnapshotSettings'])->name('it-assets.snapshot-settings');
+    Route::post('/it-assets/{itAsset}/snapshot', [ItAssetController::class, 'snapshot'])->name('it-assets.snapshot');
     // Bot
     Route::get('/bot', [BotController::class, 'index'])->name('bot.index');
     Route::post('/bot/settings', [BotController::class, 'updateSettings'])->name('bot.settings.update');

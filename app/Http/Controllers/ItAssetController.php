@@ -1,0 +1,359 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\ItAsset;
+use App\Models\ItPingLog;
+use App\Services\CctvSnapshotService;
+use App\Services\ItAssetImportService;
+use App\Services\ItPingService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\View\View;
+
+class ItAssetController extends Controller
+{
+    /**
+     * Daftar device_type yang dikenal modul ini, dipakai untuk dropdown
+     * filter dan urutan summary card di halaman index.
+     *
+     * @var array<int, string>
+     */
+    private const DEVICE_TYPES = [
+        'PC', 'LAPTOP', 'PRINTER', 'CCTV', 'NVR', 'ACCESS_DOOR',
+        'WIFI', 'NETWORK', 'UPS', 'OTHER',
+    ];
+
+    protected ItAssetImportService $importService;
+
+    protected ItPingService $pingService;
+
+    protected CctvSnapshotService $snapshotService;
+
+    public function __construct(
+        ItAssetImportService $importService,
+        ItPingService $pingService,
+        CctvSnapshotService $snapshotService
+    ) {
+        $this->importService = $importService;
+        $this->pingService = $pingService;
+        $this->snapshotService = $snapshotService;
+    }
+
+    /**
+     * Tampilkan daftar perangkat IT dengan filter device_type/status,
+     * pencarian teks (tag/name/IP), dan ringkasan jumlah per device_type.
+     *
+     * @param  Request  $request
+     * @return View
+     */
+    public function index(Request $request): View
+    {
+        $query = ItAsset::query();
+
+        if ($request->filled('device_type')) {
+            $query->ofType($request->string('device_type')->toString());
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->string('status')->toString());
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->string('search')->toString();
+            $query->where(function ($sub) use ($search) {
+                $sub->where('tag_name', 'like', "%{$search}%")
+                    ->orWhere('name', 'like', "%{$search}%")
+                    ->orWhere('ip_address', 'like', "%{$search}%");
+            });
+        }
+
+        $itAssets = $query->orderBy('device_type')
+            ->orderBy('tag_name')
+            ->paginate(20)
+            ->withQueryString();
+
+        $summary = $this->buildDeviceTypeSummary();
+
+        return view('it-assets.index', [
+            'itAssets'    => $itAssets,
+            'summary'     => $summary,
+            'deviceTypes' => self::DEVICE_TYPES,
+        ]);
+    }
+
+    /**
+     * Hitung jumlah perangkat per device_type untuk summary card.
+     * device_type yang belum punya data tetap muncul dengan nilai 0 agar
+     * urutan card konsisten.
+     *
+     * @return array<string, int>
+     */
+    private function buildDeviceTypeSummary(): array
+    {
+        $counts = ItAsset::query()
+            ->selectRaw('device_type, count(*) as total')
+            ->groupBy('device_type')
+            ->pluck('total', 'device_type');
+
+        $summary = [];
+
+        foreach (self::DEVICE_TYPES as $type) {
+            $summary[$type] = (int) ($counts[$type] ?? 0);
+        }
+
+        return $summary;
+    }
+
+    /**
+     * Tampilkan detail satu perangkat IT: info lengkap, spec (JSON),
+     * riwayat ping terbaru, dan panel CCTV Snapshot bila device_type
+     * mendukungnya (CCTV/NVR).
+     *
+     * @param  ItAsset  $itAsset
+     * @return View
+     */
+    public function show(ItAsset $itAsset): View
+    {
+        $recentPingLogs = $itAsset->pingLogs()
+            ->orderByDesc('checked_at')
+            ->limit(20)
+            ->get();
+
+        return view('it-assets.show', [
+            'itAsset'         => $itAsset,
+            'recentPingLogs'  => $recentPingLogs,
+            'deviceTypeLabel' => $this->deviceTypeLabel($itAsset->device_type),
+        ]);
+    }
+
+    /**
+     * Label tampilan untuk satu device_type.
+     *
+     * @param  string  $type
+     * @return string
+     */
+    private function deviceTypeLabel(string $type): string
+    {
+        $labels = [
+            'PC'          => 'PC',
+            'LAPTOP'      => 'Laptop',
+            'PRINTER'     => 'Printer',
+            'CCTV'        => 'CCTV',
+            'NVR'         => 'NVR',
+            'ACCESS_DOOR' => 'Access Door',
+            'WIFI'        => 'WiFi',
+            'NETWORK'     => 'Network',
+            'UPS'         => 'UPS',
+            'OTHER'       => 'Lainnya',
+        ];
+
+        return $labels[$type] ?? $type;
+    }
+
+    /**
+     * Ping satu perangkat IT berdasarkan ip_address, simpan hasilnya ke
+     * kolom last_ping_* pada it_assets dan catat riwayat ke it_ping_logs.
+     *
+     * @param  ItAsset  $itAsset
+     * @return JsonResponse
+     */
+    public function ping(ItAsset $itAsset): JsonResponse
+    {
+        if (empty($itAsset->ip_address)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Perangkat ini tidak memiliki IP address untuk di-ping.',
+            ], 422);
+        }
+
+        $result = $this->pingService->ping($itAsset->ip_address);
+
+        $itAsset->update([
+            'last_ping_status'  => $result['status'],
+            'last_ping_latency' => $result['latency_ms'],
+            'last_ping_at'      => now(),
+        ]);
+
+        ItPingLog::create([
+            'it_asset_id' => $itAsset->id,
+            'status'      => $result['status'],
+            'latency_ms'  => $result['latency_ms'],
+            'checked_at'  => now(),
+        ]);
+
+        return response()->json([
+            'success'    => true,
+            'status'     => $result['status'],
+            'latency_ms' => $result['latency_ms'],
+        ]);
+    }
+
+    /**
+     * Simpan/perbarui pengaturan sumber CCTV Snapshot (URL + kredensial)
+     * untuk satu perangkat CCTV/NVR. Password hanya diperbarui bila diisi
+     * ulang oleh admin — dikosongkan di form berarti "tidak diubah", BUKAN
+     * "hapus password", supaya admin tidak perlu ketik ulang password
+     * setiap kali hanya ingin ganti URL.
+     *
+     * @param  Request  $request
+     * @param  ItAsset  $itAsset
+     * @return RedirectResponse
+     */
+    public function updateSnapshotSettings(Request $request, ItAsset $itAsset): RedirectResponse
+    {
+        if (!$itAsset->supportsSnapshot()) {
+            return redirect()
+                ->route('it-assets.show', $itAsset)
+                ->with('error', 'Perangkat tipe ini tidak mendukung fitur CCTV Snapshot.');
+        }
+
+        $validated = $request->validate([
+            'snapshot_url'      => ['nullable', 'string', 'max:255', 'regex:/^(rtsp|https?):\/\//i'],
+            'snapshot_username' => ['nullable', 'string', 'max:255'],
+            'snapshot_password' => ['nullable', 'string', 'max:255'],
+        ], [
+            'snapshot_url.regex' => 'URL harus diawali rtsp://, http://, atau https://.',
+        ]);
+
+        $payload = [
+            'snapshot_url'      => $validated['snapshot_url'] ?? null,
+            'snapshot_username' => $validated['snapshot_username'] ?? null,
+        ];
+
+        // Hanya timpa password bila admin mengisi field-nya. Ini kolom
+        // 'encrypted' cast di model — Eloquent otomatis meng-enkripsi
+        // sebelum disimpan.
+        if (!empty($validated['snapshot_password'])) {
+            $payload['snapshot_password'] = $validated['snapshot_password'];
+        }
+
+        $itAsset->update($payload);
+
+        return redirect()
+            ->route('it-assets.show', $itAsset)
+            ->with('success', 'Pengaturan snapshot berhasil disimpan.');
+    }
+
+    /**
+     * Ambil snapshot terbaru dari kamera lewat CctvSnapshotService dan
+     * simpan hasilnya (path + waktu, atau pesan error) ke kolom
+     * last_snapshot_* pada it_assets.
+     *
+     * @param  ItAsset  $itAsset
+     * @return JsonResponse
+     */
+    public function snapshot(ItAsset $itAsset): JsonResponse
+    {
+        if (!$itAsset->supportsSnapshot()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Perangkat tipe ini tidak mendukung fitur CCTV Snapshot.',
+            ], 422);
+        }
+
+        if (empty($itAsset->snapshot_url)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Isi dulu URL snapshot di pengaturan perangkat ini.',
+            ], 422);
+        }
+
+        $result = $this->snapshotService->capture($itAsset);
+
+        if (!$result['success']) {
+            $itAsset->update(['last_snapshot_error' => $result['error']]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $result['error'] ?? 'Gagal mengambil snapshot.',
+            ], 422);
+        }
+
+        $itAsset->update([
+            'last_snapshot_path'   => $result['path'],
+            'last_snapshot_at'     => now(),
+            'last_snapshot_error'  => null,
+        ]);
+
+        return response()->json([
+            'success'       => true,
+            'snapshot_url'  => \Illuminate\Support\Facades\Storage::disk(config('cctv.snapshot_disk'))->url($result['path']),
+            'captured_at'   => $itAsset->last_snapshot_at->format('d/m/Y H:i:s'),
+        ]);
+    }
+
+    /**
+     * Tampilkan form upload Excel untuk import IT Assets.
+     *
+     * @return View
+     */
+    public function showImport(): View
+    {
+        return view('it-assets.import');
+    }
+
+    /**
+     * Proses upload file Excel dan jalankan import ke tabel it_assets lewat
+     * ItAssetImportService. Sukses -> redirect ke daftar IT Assets dengan
+     * ringkasan hasil. Gagal -> redirect kembali ke form import dengan
+     * pesan error.
+     *
+     * @param  Request  $request
+     * @return RedirectResponse
+     */
+    public function import(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,xls|max:10240',
+        ]);
+
+        try {
+            ini_set('memory_limit', '512M');
+
+            $summary = $this->importService->import($request->file('file'));
+
+            return redirect()
+                ->route('it-assets.index')
+                ->with('success', $this->buildSummaryMessage($summary));
+        } catch (\Exception $e) {
+            return redirect()
+                ->route('it-assets.import')
+                ->with('error', 'Gagal import: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Susun pesan ringkasan hasil import per sheet untuk ditampilkan lewat
+     * flash message. Sheet yang tidak ditemukan di file Excel dilewati
+     * dari pesan (bukan dianggap error).
+     *
+     * @param  array<string, array{total: int, inserted: int, updated: int, skipped: int, sheet_found: bool}>  $summary
+     * @return string
+     */
+    private function buildSummaryMessage(array $summary): string
+    {
+        $parts = [];
+
+        foreach ($summary as $deviceType => $result) {
+            if (!$result['sheet_found']) {
+                continue;
+            }
+
+            $parts[] = sprintf(
+                '%s: %d baru, %d update, %d dilewati',
+                $deviceType,
+                $result['inserted'],
+                $result['updated'],
+                $result['skipped']
+            );
+        }
+
+        if (empty($parts)) {
+            return 'Import selesai, tapi tidak ada sheet yang cocok dengan format yang dikenali.';
+        }
+
+        return 'Import berhasil. ' . implode(' | ', $parts);
+    }
+}

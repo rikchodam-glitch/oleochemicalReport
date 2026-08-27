@@ -624,4 +624,56 @@ trait WizardUtilityTrait
 
         return $buttons;
     }
+
+    /**
+     * Peta kata kunci tipe alat (Indonesia & Inggris) ke nilai kolom
+     * equipment_type di tabel assets. Dipakai untuk pencarian berbasis tipe
+     * ketika teknisi menulis nama tipe alih-alih kode TechIdentNo.
+     *
+     * Urutan penting: kata kunci yang lebih spesifik ditaruh lebih dulu.
+     */
+    protected const TYPE_KEYWORDS = [
+        'pressure transmitter'    => 'PRESSURE TRANSMITTER',
+        'pressure gauge'          => 'PRESSURE GAUGE',
+        'pressure indicator'      => 'PRESSURE GAUGE',
+        'temperature transmitter' => 'TEMPERATURE TRANSMITTER',
+        'temperature gauge'       => 'TEMPERATURE GAUGE',
+        'level transmitter'       => 'LEVEL TRANSMITTER',
+        'level switch'            => 'LEVEL SWITCH',
+        'solenoid valve'          => 'SOLENOID VALVE',
+        'control valve'           => 'CONTROL VALVE',
+        'breather valve'          => 'BREATHER VALVE',
+        'heat exchanger'          => 'HEAT EXCHANGER (HE)',
+        'rupture disc'            => 'RUPTURE DISC',
+        'rupture disk'            => 'RUPTURE DISC',
+        'flow meter'              => 'FLOWMETER',
+        'flowmeter'               => 'FLOWMETER',
+        'ph meter'                => 'PH METER',
+        'mixer'                   => 'MIXER & AGITATOR',
+        'agitator'                => 'MIXER & AGITATOR',
+        'compressor'              => 'COMPRESSOR',
+        'forklift'                => 'FORKLIFT',
+        'pump'                    => 'PUMP',
+        'pompa'                   => 'PUMP',
+    ];
+
+    /**
+     * Deteksi tipe alat dari teks bebas teknisi berdasarkan TYPE_KEYWORDS.
+     * Mengembalikan nilai equipment_type yang cocok, atau null jika tidak ada.
+     *
+     * @param  string      $text Teks laporan dari teknisi
+     * @return string|null Nilai equipment_type atau null
+     */
+    protected function detectEquipmentType(string $text): ?string
+    {
+        $textLower = strtolower($text);
+
+        foreach (self::TYPE_KEYWORDS as $keyword => $type) {
+            if (str_contains($textLower, $keyword)) {
+                return $type;
+            }
+        }
+
+        return null;
+    }
 }

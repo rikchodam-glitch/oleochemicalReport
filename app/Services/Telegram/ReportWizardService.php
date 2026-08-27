@@ -14,6 +14,7 @@ use App\Services\Telegram\Traits\WizardPhotoAddonTrait;
 use App\Services\Telegram\Traits\WizardReportSaverTrait;
 use App\Services\Telegram\Traits\WizardStepHandlerTrait;
 use App\Services\Telegram\Traits\WizardUtilityTrait;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -403,6 +404,16 @@ class ReportWizardService
 
             $response = $this->buildCandidateKeyboard($candidates, $results, $state);
             return $this->appendDateConfirmationNote($response, $state);
+        }
+
+        // Pencarian berbasis tipe alat: jika teks menyebut nama tipe (mis. "pompa",
+        // "control valve"), arahkan ke alur pilih lokasi lalu pilih kode alat.
+        $detectedType = $this->detectEquipmentType($text);
+        if ($detectedType !== null) {
+            $typeResult = $this->startTypeSearch($chatId, $state, $detectedType);
+            if ($typeResult !== null) {
+                return $typeResult;
+            }
         }
 
         // Regex no_match — Sesi 7: jika teks menyebut lokasi secara eksplisit
@@ -940,6 +951,131 @@ class ReportWizardService
 
         return [
             'message'  => "Banyak equipment cocok dengan kode tersebut. Pilih tipe alat dulu:",
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Mulai pencarian berbasis tipe alat. Kelompokkan asset bertipe sama per
+     * area; jika hanya satu area langsung tampilkan kode, jika banyak area
+     * tampilkan pilihan lokasi (dept/area) dulu.
+     *
+     * @param  string    $chatId Chat ID Telegram
+     * @param  array     $state  State wizard
+     * @param  string    $type   Nilai equipment_type yang terdeteksi
+     * @return array|null        Respons, atau null jika tipe tidak punya asset
+     */
+    protected function startTypeSearch(string $chatId, array $state, string $type): ?array
+    {
+        $areaCounts = Asset::where('equipment_type', $type)
+            ->whereNotNull('tech_ident_no')
+            ->selectRaw('area_id, count(*) as total')
+            ->groupBy('area_id')
+            ->orderByDesc('total')
+            ->get();
+
+        if ($areaCounts->isEmpty()) {
+            return null;
+        }
+
+        $state['type_search_type'] = $type;
+        $state['step']             = self::STEP_EQUIPMENT_CLARIFY;
+        $this->saveState($chatId, $state);
+
+        if ($areaCounts->count() === 1) {
+            return $this->buildTypeAreaAssetsKeyboard($type, $areaCounts->first()->area_id);
+        }
+
+        return $this->buildTypeAreaKeyboard($areaCounts, $state, $type);
+    }
+
+    /**
+     * Bangun keyboard pilihan lokasi (dept/area) untuk tipe alat yang tersebar
+     * di banyak area.
+     *
+     * @param  Collection $areaCounts Hasil agregasi area_id + jumlah alat
+     * @param  array      $state      State wizard
+     * @param  string     $type       Nilai equipment_type
+     * @return array Respons dengan keyboard pilihan lokasi
+     */
+    protected function buildTypeAreaKeyboard(Collection $areaCounts, array $state, string $type): array
+    {
+        $areas = Area::whereIn('id', $areaCounts->pluck('area_id')->filter())
+            ->with('department')
+            ->get()
+            ->keyBy('id');
+
+        $keyboard = [];
+        foreach ($areaCounts as $ac) {
+            $area = $areas[$ac->area_id] ?? null;
+            $dept = $area?->department?->name ?? '';
+
+            $label = $area ? ($area->code . ' - ' . $area->name) : 'Tanpa Lokasi';
+            if ($dept !== '') {
+                $label = $dept . ' / ' . $label;
+            }
+            $label .= ' (' . $ac->total . ' alat)';
+            if (strlen($label) > 64) {
+                $label = substr($label, 0, 61) . '...';
+            }
+
+            $keyboard[] = [
+                'text'          => $label,
+                'callback_data' => 'type_area:' . ($ac->area_id ?? 'null'),
+            ];
+        }
+
+        $keyboard[] = ['text' => 'Tulis Ulang Kode',    'callback_data' => 'equipment_candidate:retype'];
+        $keyboard[] = ['text' => 'Pilih dari Hierarki', 'callback_data' => 'equipment:hierarchy'];
+
+        foreach ($this->navigationButtons($state) as $navButton) {
+            $keyboard[] = $navButton;
+        }
+
+        return [
+            'message'  => "Tipe *{$type}* tersebar di beberapa lokasi. Pilih lokasi (dept/area):",
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Bangun keyboard daftar kode alat (TechIdentNo) untuk tipe tertentu di
+     * area tertentu. Pemilihan kode memakai callback equipment_candidate:{id}
+     * yang sudah ada.
+     *
+     * @param  string    $type   Nilai equipment_type
+     * @param  int|null  $areaId ID Area, null berarti tanpa lokasi
+     * @return array Respons dengan keyboard daftar kode alat
+     */
+    protected function buildTypeAreaAssetsKeyboard(string $type, ?int $areaId): array
+    {
+        $assets = Asset::where('equipment_type', $type)
+            ->whereNotNull('tech_ident_no')
+            ->where('area_id', $areaId)
+            ->orderBy('tech_ident_no')
+            ->get(['id', 'tech_ident_no', 'description']);
+
+        $keyboard = [];
+        foreach ($assets->take(20) as $asset) {
+            $label = $asset->tech_ident_no;
+            if ($asset->description) {
+                $label .= ' — ' . $asset->description;
+            }
+            if (strlen($label) > 64) {
+                $label = substr($label, 0, 61) . '...';
+            }
+
+            $keyboard[] = [
+                'text'          => $label,
+                'callback_data' => 'equipment_candidate:' . $asset->id,
+            ];
+        }
+
+        $keyboard[] = ['text' => 'Kembali ke Lokasi', 'callback_data' => 'type_area_back'];
+        $keyboard[] = ['text' => 'Batalkan Laporan',  'callback_data' => 'wizard:cancel_wizard'];
+
+        return [
+            'message'  => "Pilih equipment {$type}:",
             'keyboard' => $keyboard,
         ];
     }

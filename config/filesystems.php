@@ -61,6 +61,20 @@ return [
             'report' => false,
         ],
 
+        // Disk khusus untuk hasil tangkapan snapshot CCTV/NVR
+        // (lihat CctvSnapshotService & config/cctv.php). Root-nya di dalam
+        // storage/app/public sehingga ikut ter-link oleh `php artisan
+        // storage:link` dan gambarnya bisa ditampilkan langsung di halaman
+        // detail IT Asset lewat /storage/snapshots/...
+        'cctv_snapshots' => [
+            'driver' => 'local',
+            'root' => storage_path('app/public'),
+            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

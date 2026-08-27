@@ -1,0 +1,113 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class ItAsset extends Model
+{
+    /**
+     * Device type yang mendukung fitur CCTV Snapshot (Sesi 7).
+     * Dipakai oleh view detail untuk menampilkan/menyembunyikan panel
+     * snapshot, dan oleh controller untuk validasi sebelum capture.
+     *
+     * @var array<int, string>
+     */
+    public const SNAPSHOT_CAPABLE_TYPES = ['CCTV', 'NVR'];
+
+    protected $fillable = [
+        'device_type',
+        'tag_name',
+        'name',
+        'brand',
+        'model',
+        'serial_number',
+        'ip_address',
+        'plant',
+        'department',
+        'location',
+        'application',
+        'status',
+        'spec',
+        'last_ping_status',
+        'last_ping_latency',
+        'last_ping_at',
+        'last_snapshot_path',
+        'last_snapshot_at',
+        'snapshot_url',
+        'snapshot_username',
+        'snapshot_password',
+        'last_snapshot_error',
+        'data_source',
+        'imported_at',
+    ];
+
+    /**
+     * snapshot_password TIDAK PERNAH dikirim ke frontend (mis. lewat
+     * ItAsset::toArray() pada endpoint JSON). Password hanya dipakai
+     * secara internal oleh CctvSnapshotService.
+     *
+     * @var array<int, string>
+     */
+    protected $hidden = [
+        'snapshot_password',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'spec'               => 'array',
+            'last_ping_at'       => 'datetime',
+            'last_snapshot_at'   => 'datetime',
+            'imported_at'        => 'datetime',
+            // Dienkripsi otomatis oleh Laravel (APP_KEY) saat disimpan dan
+            // didekripsi saat dibaca lewat Eloquent — tidak pernah plaintext
+            // di kolom DB. Lihat CctvSnapshotService::resolveCredentials().
+            'snapshot_password'  => 'encrypted',
+        ];
+    }
+
+    /**
+     * Riwayat ping untuk perangkat IT ini.
+     *
+     * @return HasMany<ItPingLog>
+     */
+    public function pingLogs(): HasMany
+    {
+        return $this->hasMany(ItPingLog::class);
+    }
+
+    /**
+     * Scope perangkat dengan status active.
+     *
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('status', 'active');
+    }
+
+    /**
+     * Scope filter perangkat berdasarkan device_type.
+     *
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param string $type
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeOfType($query, string $type)
+    {
+        return $query->where('device_type', $type);
+    }
+
+    /**
+     * Apakah device_type ini mendukung fitur CCTV Snapshot.
+     *
+     * @return bool
+     */
+    public function supportsSnapshot(): bool
+    {
+        return in_array($this->device_type, self::SNAPSHOT_CAPABLE_TYPES, true);
+    }
+}

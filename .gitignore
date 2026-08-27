@@ -31,6 +31,8 @@ database/schema/
 design.md
 export.ps1
 *ZPM*.xlsx
+*.xlsx
+update-project.bat
 /storage/app/reports/*
 !/storage/app/reports/.gitkeep
 public/storage/*

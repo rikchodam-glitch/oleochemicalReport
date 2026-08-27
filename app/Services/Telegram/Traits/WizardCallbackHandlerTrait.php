@@ -206,6 +206,11 @@ trait WizardCallbackHandlerTrait
             return $this->handleEquipmentTypeCallback($chatId, $callbackData, $state);
         }
 
+        // Callback pilihan lokasi/area pada pencarian berbasis tipe alat
+        if (str_starts_with($callbackData, 'type_area')) {
+            return $this->handleTypeAreaCallback($chatId, $callbackData, $state);
+        }
+
         // Callback klarifikasi equipment Step 2 (kandidat dari TechIdentSearch)
         if (str_starts_with($callbackData, 'equipment_candidate:')) {
             return $this->handleEquipmentCandidateCallback($chatId, $callbackData, $state);
@@ -774,6 +779,37 @@ trait WizardCallbackHandlerTrait
         $this->saveState($chatId, $state);
 
         return $this->buildCandidateKeyboard($filtered, $results, $state);
+    }
+
+    /**
+     * Proses pilihan lokasi (area) pada pencarian berbasis tipe alat.
+     * Menangani pemilihan area tertentu dan tombol kembali ke daftar lokasi.
+     *
+     * @param  string $chatId       Chat ID Telegram
+     * @param  string $callbackData Data callback type_area:{id} atau type_area_back
+     * @param  array  $state        State wizard saat ini
+     * @return array  Respons
+     */
+    protected function handleTypeAreaCallback(string $chatId, string $callbackData, array $state): array
+    {
+        $type = $state['type_search_type'] ?? '';
+
+        // Tombol "Kembali ke Lokasi": tampilkan ulang daftar area.
+        if ($callbackData === 'type_area_back') {
+            $areaCounts = Asset::where('equipment_type', $type)
+                ->whereNotNull('tech_ident_no')
+                ->selectRaw('area_id, count(*) as total')
+                ->groupBy('area_id')
+                ->orderByDesc('total')
+                ->get();
+
+            return $this->buildTypeAreaKeyboard($areaCounts, $state, $type);
+        }
+
+        $areaId = str_replace('type_area:', '', $callbackData);
+        $areaId = $areaId === 'null' ? null : (int) $areaId;
+
+        return $this->buildTypeAreaAssetsKeyboard($type, $areaId);
     }
 
     /**
