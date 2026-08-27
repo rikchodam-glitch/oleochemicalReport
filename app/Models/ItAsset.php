@@ -110,4 +110,38 @@ class ItAsset extends Model
     {
         return in_array($this->device_type, self::SNAPSHOT_CAPABLE_TYPES, true);
     }
+
+    /**
+     * Label tampilan device_type (mis. 'CCTV', 'Access Door').
+     *
+     * @return string
+     */
+    public function deviceLabel(): string
+    {
+        $labels = [
+            'PC'          => 'PC',
+            'LAPTOP'      => 'Laptop',
+            'PRINTER'     => 'Printer',
+            'CCTV'        => 'CCTV',
+            'NVR'         => 'NVR',
+            'ACCESS_DOOR' => 'Access Door',
+            'WIFI'        => 'WiFi',
+            'NETWORK'     => 'Network',
+            'UPS'         => 'UPS',
+            'OTHER'       => 'Lainnya',
+        ];
+
+        return $labels[$this->device_type] ?? $this->device_type ?? 'Perangkat';
+    }
+
+    /**
+     * Nama tampilan perangkat: tag_name bila ada, jika tidak name, jika
+     * tidak keduanya maka '#' + id.
+     *
+     * @return string
+     */
+    public function displayName(): string
+    {
+        return $this->tag_name ?: ($this->name ?: ('#' . $this->id));
+    }
 }

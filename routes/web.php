@@ -157,9 +157,17 @@ Route::middleware('admin')->group(function () {
 
     // IT Assets
     Route::get('/it-assets', [ItAssetController::class, 'index'])->name('it-assets.index');
+    Route::get('/it-assets/notifications', [ItAssetController::class, 'notifications'])->name('it-assets.notifications');
+    Route::post('/it-assets/notifications/read-all', [ItAssetController::class, 'markAllNotificationsRead'])->name('it-assets.notifications.read-all');
+    Route::post('/it-assets/notifications/{notification}/read', [ItAssetController::class, 'markNotificationRead'])->name('it-assets.notifications.read');
+    Route::get('/it-assets/create', [ItAssetController::class, 'create'])->name('it-assets.create');
+    Route::post('/it-assets', [ItAssetController::class, 'store'])->name('it-assets.store');
     Route::get('/it-assets/import', [ItAssetController::class, 'showImport'])->name('it-assets.import');
     Route::post('/it-assets/import', [ItAssetController::class, 'import'])->name('it-assets.import.execute');
     Route::get('/it-assets/{itAsset}', [ItAssetController::class, 'show'])->name('it-assets.show');
+    Route::get('/it-assets/{itAsset}/edit', [ItAssetController::class, 'edit'])->name('it-assets.edit');
+    Route::put('/it-assets/{itAsset}', [ItAssetController::class, 'update'])->name('it-assets.update');
+    Route::delete('/it-assets/{itAsset}', [ItAssetController::class, 'destroy'])->name('it-assets.destroy');
     Route::post('/it-assets/{itAsset}/ping', [ItAssetController::class, 'ping'])->name('it-assets.ping');
     Route::put('/it-assets/{itAsset}/snapshot-settings', [ItAssetController::class, 'updateSnapshotSettings'])->name('it-assets.snapshot-settings');
     Route::post('/it-assets/{itAsset}/snapshot', [ItAssetController::class, 'snapshot'])->name('it-assets.snapshot');

@@ -8,6 +8,15 @@
 @endsection
 
 @section('header-actions')
+    <a href="{{ route('it-assets.notifications') }}" title="Notifikasi perangkat"
+       class="relative inline-flex items-center justify-center w-10 h-10 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+        </svg>
+        @if($unreadNotificationCount > 0)
+            <span class="absolute -top-1.5 -right-1.5 inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full">{{ $unreadNotificationCount }}</span>
+        @endif
+    </a>
     <button onclick="toggleFilter()"
             class="inline-flex items-center gap-2 px-4 py-2 border border-blue-300 hover:bg-blue-50 text-blue-700 text-sm font-medium rounded-lg transition-colors">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -18,6 +27,13 @@
             <span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-blue-500 rounded-full">{{ collect([request('search'), request('device_type'), request('status')])->filter()->count() }}</span>
         @endif
     </button>
+    <a href="{{ route('it-assets.create') }}"
+       class="inline-flex items-center gap-2 px-4 py-2 border border-blue-600 text-blue-700 hover:bg-blue-50 text-sm font-medium rounded-lg transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        Tambah Manual
+    </a>
     <a href="{{ route('it-assets.import') }}"
        class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -106,6 +122,7 @@
                     </div>
                 </div>
 
+
                 <div class="flex items-center gap-3 pt-2 border-t border-slate-100">
                     <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
                         <svg class="w-4 h-4 inline mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -140,6 +157,7 @@
             </a>
         </div>
     @endif
+
 
     <!-- Table -->
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -181,6 +199,8 @@
                             <td class="px-5 py-3.5">
                                 <span class="font-mono text-xs text-slate-700">{{ $itAsset->ip_address ?? '-' }}</span>
                             </td>
+
+
                             <td class="px-5 py-3.5">
                                 <p class="text-slate-600 text-xs">{{ $itAsset->location ?? '-' }}</p>
                                 @if($itAsset->plant || $itAsset->department)
@@ -201,7 +221,7 @@
                                 </span>
                             </td>
                             <td class="px-5 py-3.5">
-                                <div class="flex items-center gap-2">
+                                <div class="flex items-center gap-2.5">
                                     @if($itAsset->ip_address)
                                         <button type="button" id="ping-btn-{{ $itAsset->id }}"
                                                 onclick="pingDevice({{ $itAsset->id }}, this)"
@@ -212,6 +232,13 @@
                                         <span class="text-slate-300 text-xs" title="Tidak ada IP address">Ping</span>
                                     @endif
                                     <a href="{{ route('it-assets.show', $itAsset) }}" class="text-slate-500 hover:text-blue-600 text-xs font-medium transition-colors">Detail</a>
+                                    <a href="{{ route('it-assets.edit', $itAsset) }}" class="text-slate-500 hover:text-blue-600 text-xs font-medium transition-colors">Edit</a>
+                                    <form method="POST" action="{{ route('it-assets.destroy', $itAsset) }}"
+                                          onsubmit="return confirm('Yakin ingin menghapus perangkat ini beserta riwayatnya?');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="text-red-500 hover:text-red-700 text-xs font-medium">Hapus</button>
+                                    </form>
                                 </div>
                             </td>
                         </tr>
@@ -233,6 +260,7 @@
         @endif
     </div>
 @endsection
+
 
 @push('scripts')
 <script>
@@ -316,3 +344,4 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 @endpush
+

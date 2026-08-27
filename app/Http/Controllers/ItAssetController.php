@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ItAsset;
+use App\Models\ItNotification;
 use App\Models\ItPingLog;
 use App\Services\CctvSnapshotService;
 use App\Services\ItAssetImportService;
@@ -10,6 +11,9 @@ use App\Services\ItPingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ItAssetController extends Controller
@@ -77,9 +81,11 @@ class ItAssetController extends Controller
         $summary = $this->buildDeviceTypeSummary();
 
         return view('it-assets.index', [
-            'itAssets'    => $itAssets,
-            'summary'     => $summary,
-            'deviceTypes' => self::DEVICE_TYPES,
+            'itAssets'                => $itAssets,
+            'summary'                 => $summary,
+            'deviceTypes'             => self::DEVICE_TYPES,
+            'deviceTypeLabels'        => $this->deviceTypeLabels(),
+            'unreadNotificationCount' => ItNotification::unread()->count(),
         ]);
     }
 
@@ -134,9 +140,9 @@ class ItAssetController extends Controller
      * @param  string  $type
      * @return string
      */
-    private function deviceTypeLabel(string $type): string
+    private function deviceTypeLabels(): array
     {
-        $labels = [
+        return [
             'PC'          => 'PC',
             'LAPTOP'      => 'Laptop',
             'PRINTER'     => 'Printer',
@@ -148,8 +154,11 @@ class ItAssetController extends Controller
             'UPS'         => 'UPS',
             'OTHER'       => 'Lainnya',
         ];
+    }
 
-        return $labels[$type] ?? $type;
+    private function deviceTypeLabel(string $type): string
+    {
+        return $this->deviceTypeLabels()[$type] ?? $type;
     }
 
     /**
@@ -282,6 +291,207 @@ class ItAssetController extends Controller
             'snapshot_url'  => \Illuminate\Support\Facades\Storage::disk(config('cctv.snapshot_disk'))->url($result['path']),
             'captured_at'   => $itAsset->last_snapshot_at->format('d/m/Y H:i:s'),
         ]);
+    }
+
+    /**
+     * Tampilkan form tambah perangkat IT manual.
+     *
+     * @return View
+     */
+    public function create(): View
+    {
+        return view('it-assets.form', [
+            'itAsset'          => new ItAsset(['status' => 'active', 'device_type' => 'PC']),
+            'deviceTypes'      => self::DEVICE_TYPES,
+            'deviceTypeLabels' => $this->deviceTypeLabels(),
+        ]);
+    }
+
+    /**
+     * Simpan perangkat IT baru hasil input manual.
+     *
+     * @param  Request  $request
+     * @return RedirectResponse
+     */
+    public function store(Request $request): RedirectResponse
+    {
+        $validated = $this->validateForm($request);
+        $validated['data_source'] = 'manual';
+        $validated['imported_at'] = now();
+
+        ItAsset::create($validated);
+
+        return redirect()
+            ->route('it-assets.index')
+            ->with('success', 'Perangkat IT berhasil ditambahkan.');
+    }
+
+    /**
+     * Tampilkan form edit perangkat IT.
+     *
+     * @param  ItAsset  $itAsset
+     * @return View
+     */
+    public function edit(ItAsset $itAsset): View
+    {
+        return view('it-assets.form', [
+            'itAsset'          => $itAsset,
+            'deviceTypes'      => self::DEVICE_TYPES,
+            'deviceTypeLabels' => $this->deviceTypeLabels(),
+        ]);
+    }
+
+    /**
+     * Simpan perubahan data perangkat IT.
+     *
+     * @param  Request  $request
+     * @param  ItAsset  $itAsset
+     * @return RedirectResponse
+     */
+    public function update(Request $request, ItAsset $itAsset): RedirectResponse
+    {
+        $itAsset->update($this->validateForm($request));
+
+        return redirect()
+            ->route('it-assets.show', $itAsset)
+            ->with('success', 'Perangkat IT berhasil diperbarui.');
+    }
+
+    /**
+     * Hapus perangkat IT beserta riwayat ping, snapshot, dan notifikasinya
+     * (cascade dari relasi foreign key).
+     *
+     * @param  ItAsset  $itAsset
+     * @return RedirectResponse
+     */
+    public function destroy(ItAsset $itAsset): RedirectResponse
+    {
+        $itAsset->delete();
+
+        return redirect()
+            ->route('it-assets.index')
+            ->with('success', 'Perangkat IT berhasil dihapus.');
+    }
+
+    /**
+     * Validasi data form tambah/edit perangkat IT.
+     *
+     * @param  Request  $request
+     * @return array<string, mixed>
+     */
+    private function validateForm(Request $request): array
+    {
+        $validated = $request->validate([
+            'device_type'        => ['required', 'string', Rule::in(self::DEVICE_TYPES)],
+            'tag_name'           => ['nullable', 'string', 'max:255'],
+            'name'               => ['nullable', 'string', 'max:255'],
+            'brand'              => ['nullable', 'string', 'max:255'],
+            'model'              => ['nullable', 'string', 'max:255'],
+            'serial_number'      => ['nullable', 'string', 'max:255'],
+            'ip_address'         => ['nullable', 'ip'],
+            'plant'              => ['nullable', 'string', 'max:255'],
+            'department'         => ['nullable', 'string', 'max:255'],
+            'location'           => ['nullable', 'string', 'max:255'],
+            'application'        => ['nullable', 'string'],
+            'status'             => ['required', 'string', Rule::in(['active', 'inactive', 'needs_review'])],
+            'snapshot_url'       => ['nullable', 'string', 'max:255', 'regex:/^(rtsp|https?):\/\//i'],
+            'snapshot_username'  => ['nullable', 'string', 'max:255'],
+            'snapshot_password'  => ['nullable', 'string', 'max:255'],
+            'spec'               => ['nullable', 'string'],
+        ], [
+            'snapshot_url.regex' => 'URL snapshot harus diawali rtsp://, http://, atau https://.',
+            'ip_address.ip'      => 'Alamat IP tidak valid.',
+        ]);
+
+        // Kolom spec diisi sebagai JSON opsional di form; diparse ulang.
+        $validated['spec'] = $this->parseSpecJson($validated['spec'] ?? null);
+
+        // Password snapshot hanya diisi saat diinput ulang (mengikuti cast
+        // 'encrypted' dan tidak menimpa yang lama saat diedit).
+        if (empty($validated['snapshot_password'])) {
+            unset($validated['snapshot_password']);
+        }
+
+        return $validated;
+    }
+
+    /**
+     * Parse input JSON spesifikasi opsional dari form. Mengembalikan array
+     * bila JSON valid, null bila kosong, atau melempar ValidationException
+     * bila format JSON salah.
+     *
+     * @param  string|null  $value
+     * @return array<string, mixed>|null
+     */
+    private function parseSpecJson(?string $value): ?array
+    {
+        if ($value === null || trim($value) === '') {
+            return null;
+        }
+
+        $decoded = json_decode($value, true);
+
+        if (!is_array($decoded)) {
+            throw ValidationException::withMessages([
+                'spec' => 'Spesifikasi harus berupa JSON yang valid.',
+            ]);
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * Tampilkan daftar notifikasi IT dengan filter belum dibaca dan aksi
+     * tandai dibaca.
+     *
+     * @param  Request  $request
+     * @return View
+     */
+    public function notifications(Request $request): View
+    {
+        $query = ItNotification::query()->with('itAsset');
+
+        if ($request->boolean('unread')) {
+            $query->unread();
+        }
+
+        $notifications = $query->orderByDesc('created_at')->paginate(25)->withQueryString();
+
+        return view('it-assets.notifications', [
+            'notifications'           => $notifications,
+            'unreadNotificationCount' => ItNotification::unread()->count(),
+        ]);
+    }
+
+    /**
+     * Tandai satu notifikasi sudah dibaca.
+     *
+     * @param  ItNotification  $notification
+     * @return RedirectResponse
+     */
+    public function markNotificationRead(ItNotification $notification): RedirectResponse
+    {
+        $notification->update([
+            'is_read' => true,
+            'read_at' => now(),
+        ]);
+
+        return redirect()->route('it-assets.notifications');
+    }
+
+    /**
+     * Tandai semua notifikasi sudah dibaca.
+     *
+     * @return RedirectResponse
+     */
+    public function markAllNotificationsRead(): RedirectResponse
+    {
+        ItNotification::unread()->update([
+            'is_read' => true,
+            'read_at' => now(),
+        ]);
+
+        return redirect()->route('it-assets.notifications');
     }
 
     /**

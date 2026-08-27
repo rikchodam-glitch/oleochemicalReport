@@ -16,6 +16,10 @@ diverifikasi di akhir sesi, tidak lompat-lompat antar file).
 | 5 | Daftar IT Assets: Index + Filter + Badge Ping | Selesai (tombol Detail sudah aktif) |
 | 6 | Fitur Ping | Selesai, teruji offline/online |
 | 7 | Detail + CCTV Snapshot | Selesai (disk `cctv_snapshots` ditambahkan, migration kolom snapshot dijalankan) |
+| 8 | Input Manual + Edit/Hapus | Selesai, form tambah/edit + hapus aktif |
+| 9 | Notifikasi dalam aplikasi | Selesai, badge + halaman notifikasi (offline, ping tinggi, kembali online, error snapshot) |
+| 10 | Ping otomatis terjadwal | Selesai, command `it:ping` terjadwal tiap 5 menit |
+| 11 | Snapshot berkala CCTV/NVR | Selesai, command `it:snapshot` terjadwal tiap 60 menit |
 
 Catatan audit:
 
@@ -273,6 +277,65 @@ Langkah:
 Kriteria selesai: halaman detail tampil; tombol snapshot (bila kredensial Hikvision
 tersedia) menyimpan & menampilkan gambar. Bila kredensial belum ada, tampilkan pesan
 error jelas, bukan crash.
+
+---
+
+### Sesi 8 — Input Manual + Edit/Hapus (CRUD)
+
+Tujuan: perangkat IT tidak hanya bisa masuk lewat import, tapi juga ditambah,
+diedit, dan dihapus manual lewat web.
+
+1. Route baru: `it-assets.create`, `.store`, `.edit`, `.update`, `.destroy`.
+2. `ItAssetController`: `create()`, `store()`, `edit()`, `update()`, `destroy()`
+   dengan validasi terpusat `validateForm()` (device_type wajib, ip_address
+   divalidasi, snapshot_url regex rtsp/http(s), spec JSON opsional).
+3. View `form.blade.php` dipakai bersama create & edit (field device_type,
+   status, tag, nama, brand, model, serial, IP, plant, dept, lokasi,
+   aplikasi, spec JSON, dan bagian CCTV Snapshot yang tampil otomatis untuk
+   CCTV/NVR via JS).
+4. Tombol "Tambah Manual" + aksi Edit/Hapus di tabel index; tombol
+   "Edit Perangkat" di halaman detail.
+5. `data_source = 'manual'` untuk membedakan data buatan tangan vs import.
+
+### Sesi 9 — Notifikasi dalam aplikasi
+
+Tujuan: admin tahu perangkat offline / ping tinggi / kembali online / error
+snapshot lewat badge lonceng dan daftar notifikasi di web (tanpa integrasi
+eksternal).
+
+1. Migration `it_notifications` (it_asset_id, type, message, is_read, read_at).
+2. `ItMonitorService`: pusat logika monitoring — ping, simpan hasil, lalu buat
+   notifikasi hanya pada peristiwa relevan. Tipe: `offline`, `high_latency`,
+   `recovered`, `snapshot_error`.
+3. Anti-spam cooldown (config `it.notification.cooldown_minutes`, default 30)
+   — perangkat yang sudah dapat notifikasi sejenis tidak dibanjiri ulang.
+4. Halaman `/it-assets/notifications`: filter belum dibaca, tandai dibaca,
+   tandai semua dibaca. Badge lonceng dengan jumlah belum dibaca di index.
+
+### Sesi 10 — Ping otomatis terjadwal
+
+Tujuan: status online/offline ter-update otomatis tanpa klik manual.
+
+1. Command `it:ping` — ping semua perangkat aktif yang punya IP, simpan ke
+   `last_ping_*` + `it_ping_logs`, dan lewatkan ke `ItMonitorService` untuk
+   notifikasi.
+2. Penjadwalan di `routes/console.php`: `cron('*/5 * * * *')` dengan
+   `withoutOverlapping()` (interval bisa diubah via `config/it.php` /
+   `IT_PING_INTERVAL_MINUTES`).
+3. Jalankan `php artisan schedule:work` (atau cron `* * * * * php artisan
+   schedule:run`) supaya penjadwalan aktif.
+
+### Sesi 11 — Snapshot berkala CCTV/NVR
+
+Tujuan: tangkapan gambar terakhir CCTV/NVR ter-update otomatis.
+
+1. Command `it:snapshot` — ambil snapshot semua CCTV/NVR aktif yang punya
+   `snapshot_url` (rtsp via ffmpeg / http via ISAPI), update
+   `last_snapshot_*`, dan buat notifikasi `snapshot_error` bila gagal.
+2. Penjadwalan di `routes/console.php`: `cron('0 * * * *')` tiap jam
+   (`IT_SNAPSHOT_INTERVAL_MINUTES`).
+3. Isi `snapshot_url` + kredensial lewat form tambah/edit perangkat untuk
+   mengaktifkan fitur ini per kamera.
 
 ---
 

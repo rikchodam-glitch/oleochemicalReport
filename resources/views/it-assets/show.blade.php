@@ -143,6 +143,11 @@
                 @else
                     <p class="text-xs text-slate-400 italic">Perangkat ini tidak punya IP address.</p>
                 @endif
+                <a href="{{ route('it-assets.edit', $itAsset) }}"
+                   class="mt-2 inline-flex items-center justify-center w-full px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                    Edit Perangkat
+                </a>
+
 
                 @if($recentPingLogs->isNotEmpty())
                     <div class="border-t border-slate-100 mt-5 pt-4">
