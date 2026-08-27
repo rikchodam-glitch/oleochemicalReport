@@ -164,7 +164,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
         @forelse($itAssets as $itAsset)
             <div class="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col">
-                <div class="relative h-36 bg-slate-100">
+                <div class="relative h-40 bg-slate-100">
                     @if(in_array($itAsset->device_type, ['CCTV', 'NVR'], true) && $itAsset->last_snapshot_path)
                         <img src="{{ \Illuminate\Support\Facades\Storage::disk(config('cctv.snapshot_disk'))->url($itAsset->last_snapshot_path) }}"
                              alt="Snapshot {{ $itAsset->tag_name }}"
@@ -179,8 +179,16 @@
                     <span class="absolute top-2 left-2 inline-flex px-2 py-0.5 text-xs font-medium bg-slate-900/70 text-white rounded">
                         {{ $deviceTypeLabels[$itAsset->device_type] ?? $itAsset->device_type }}
                     </span>
-                    <span class="absolute top-2 right-2">
-                        <span id="ping-badge-{{ $itAsset->id }}">
+                </div>
+                <div class="p-4 flex flex-col flex-1">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0">
+                            <p class="font-medium text-slate-900 text-sm truncate">{{ $itAsset->tag_name ?? $itAsset->name ?? '-' }}</p>
+                            @if($itAsset->ip_address)
+                                <p class="font-mono text-xs text-slate-500 mt-0.5 truncate">{{ $itAsset->ip_address }}</p>
+                            @endif
+                        </div>
+                        <span id="ping-badge-{{ $itAsset->id }}" class="shrink-0">
                             @if($itAsset->last_ping_status === 'online')
                                 <x-status-badge status="active" :label="'Online' . ($itAsset->last_ping_latency !== null ? ' (' . $itAsset->last_ping_latency . 'ms)' : '')" />
                             @elseif($itAsset->last_ping_status === 'offline')
@@ -189,15 +197,9 @@
                                 <x-status-badge status="inactive" label="Belum Dicek" />
                             @endif
                         </span>
-                    </span>
-                </div>
-                <div class="p-4 flex flex-col flex-1">
-                    <p class="font-medium text-slate-900 text-sm truncate">{{ $itAsset->tag_name ?? $itAsset->name ?? '-' }}</p>
-                    @if($itAsset->ip_address)
-                        <p class="font-mono text-xs text-slate-500 mt-0.5">{{ $itAsset->ip_address }}</p>
-                    @endif
+                    </div>
                     @if($itAsset->location)
-                        <p class="text-xs text-slate-400 mt-0.5 truncate">{{ $itAsset->location }}</p>
+                        <p class="text-xs text-slate-400 mt-1.5 truncate">{{ $itAsset->location }}</p>
                     @endif
                     <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                         <a href="{{ route('it-assets.show', $itAsset) }}" class="text-blue-600 hover:text-blue-700 text-xs font-medium shrink-0">Detail</a>
