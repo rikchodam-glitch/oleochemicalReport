@@ -466,24 +466,58 @@ class ItAssetController extends Controller
     }
 
     /**
-     * Tampilkan daftar notifikasi IT dengan filter belum dibaca dan aksi
-     * tandai dibaca.
+     * Tampilkan halaman monitoring IT Assets: ringkasan status langsung dan
+     * daftar perangkat yang perlu perhatian (offline, ping tinggi, error
+     * snapshot), bukan daftar event notifikasi — agar lebih mudah dipantau.
      *
      * @param  Request  $request
      * @return View
      */
     public function notifications(Request $request): View
     {
-        $query = ItNotification::query()->with('itAsset');
+        $threshold = (int) config('it.ping.high_latency_ms', 500);
 
-        if ($request->boolean('unread')) {
-            $query->unread();
-        }
+        $assets = ItAsset::orderBy('device_type')->orderBy('tag_name')->get();
 
-        $notifications = $query->orderByDesc('created_at')->paginate(25)->withQueryString();
+        $summary = [
+            'total'          => $assets->count(),
+            'online'         => $assets->where('last_ping_status', 'online')->count(),
+            'offline'        => $assets->where('last_ping_status', 'offline')->count(),
+            'not_checked'    => $assets->whereNull('last_ping_status')->count(),
+            'high_latency'   => $assets->filter(fn ($a) => $a->last_ping_status === 'online' && $a->last_ping_latency !== null && $a->last_ping_latency >= $threshold)->count(),
+            'snapshot_error' => $assets->filter(fn ($a) => in_array($a->device_type, ItAsset::SNAPSHOT_CAPABLE_TYPES, true) && !empty($a->last_snapshot_error))->count(),
+        ];
 
-        return view('it-assets.notifications', [
-            'notifications'           => $notifications,
+        $issues = $assets
+            ->filter(fn ($a) => $a->last_ping_status === 'offline'
+                || ($a->last_ping_status === 'online' && $a->last_ping_latency !== null && $a->last_ping_latency >= $threshold)
+                || (in_array($a->device_type, ItAsset::SNAPSHOT_CAPABLE_TYPES, true) && !empty($a->last_snapshot_error)))
+            ->map(function ($a) use ($threshold) {
+                $problems = [];
+
+                if ($a->last_ping_status === 'offline') {
+                    $problems[] = 'offline';
+                } elseif ($a->last_ping_status === 'online' && $a->last_ping_latency !== null && $a->last_ping_latency >= $threshold) {
+                    $problems[] = 'high_latency';
+                }
+
+                if (in_array($a->device_type, ItAsset::SNAPSHOT_CAPABLE_TYPES, true) && !empty($a->last_snapshot_error)) {
+                    $problems[] = 'snapshot_error';
+                }
+
+                $severity = in_array('offline', $problems, true)
+                    ? 3
+                    : (in_array('high_latency', $problems, true) ? 2 : 1);
+
+                return ['asset' => $a, 'problems' => $problems, 'severity' => $severity];
+            })
+            ->sortByDesc('severity')
+            ->values();
+
+        return view('it-assets.monitoring', [
+            'summary'                 => $summary,
+            'issues'                  => $issues,
+            'deviceTypeLabels'        => $this->deviceTypeLabels(),
             'unreadNotificationCount' => ItNotification::unread()->count(),
         ]);
     }
