@@ -60,7 +60,7 @@
     $activeFilters = [];
     if (request('search')) $activeFilters[] = ['key' => 'search', 'label' => 'Pencarian: ' . request('search')];
     if (request('device_type')) $activeFilters[] = ['key' => 'device_type', 'label' => 'Tipe: ' . ($deviceTypeLabels[request('device_type')] ?? request('device_type'))];
-    if (request('status')) $activeFilters[] = ['key' => 'status', 'label' => 'Status: ' . (['active' => 'Aktif', 'inactive' => 'Nonaktif', 'needs_review' => 'Perlu Review'][request('status')] ?? request('status'))];
+    if (request('status')) $activeFilters[] = ['key' => 'status', 'label' => 'Status: ' . (['active' => 'Aktif', 'inactive' => 'Nonaktif', 'needs_review' => 'Perlu Review', 'spare' => 'Spare'][request('status')] ?? request('status'))];
 @endphp
 
 @section('content')
@@ -118,6 +118,7 @@
                             <option value="active" {{ request('status') === 'active' ? 'selected' : '' }}>Aktif</option>
                             <option value="inactive" {{ request('status') === 'inactive' ? 'selected' : '' }}>Nonaktif</option>
                             <option value="needs_review" {{ request('status') === 'needs_review' ? 'selected' : '' }}>Perlu Review</option>
+                            <option value="spare" {{ request('status') === 'spare' ? 'selected' : '' }}>Spare</option>
                         </select>
                     </div>
                 </div>

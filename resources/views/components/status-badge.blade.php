@@ -34,6 +34,7 @@
         'zpm6' => 'bg-amber-100 text-amber-700',
         'zpm5' => 'bg-blue-100 text-blue-700',
         'zpm7' => 'bg-violet-100 text-violet-700',
+        'spare' => 'bg-slate-200 text-slate-700',
     ];
 
     $dotColors = [
@@ -63,6 +64,7 @@
         'zpm6' => 'bg-amber-500',
         'zpm5' => 'bg-blue-500',
         'zpm7' => 'bg-violet-500',
+        'spare' => 'bg-slate-500',
     ];
 
     $displayLabel = $label ?? ucfirst($status);

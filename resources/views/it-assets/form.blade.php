@@ -52,6 +52,7 @@
                         <option value="active" {{ old('status', $itAsset->status) === 'active' ? 'selected' : '' }}>Aktif</option>
                         <option value="inactive" {{ old('status', $itAsset->status) === 'inactive' ? 'selected' : '' }}>Nonaktif</option>
                         <option value="needs_review" {{ old('status', $itAsset->status) === 'needs_review' ? 'selected' : '' }}>Perlu Review</option>
+                        <option value="spare" {{ old('status', $itAsset->status) === 'spare' ? 'selected' : '' }}>Spare</option>
                     </select>
                 </div>
 

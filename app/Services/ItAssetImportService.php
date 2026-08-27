@@ -28,10 +28,10 @@ class ItAssetImportService
         $sheetsByName = collect($sheets)->keyBy('name');
 
         return [
-            'PC'          => $this->importSheet($sheetsByName->get('PC'), 'PC', fn (array $mapped) => $this->transformPcRow($mapped), headerRowOffset: 2),
+            'PC'          => $this->importSheet($sheetsByName->get('PC'), 'PC', fn (array $mapped) => $this->transformPcRow($mapped), headerRowOffset: 2, requireIp: false),
             'LAPTOP'      => $this->importSheet($sheetsByName->get('LAPTOP'), 'LAPTOP', fn (array $mapped) => $this->transformLaptopRow($mapped)),
             'PRINTER'     => $this->importSheet($sheetsByName->get('PRINTER'), 'PRINTER', fn (array $mapped) => $this->transformPrinterRow($mapped)),
-            'CCTV'        => $this->importSheet($sheetsByName->get('CCTV APPROVED'), 'CCTV', fn (array $mapped) => $this->transformCctvRow($mapped)),
+            'CCTV'        => $this->importSheet($sheetsByName->get('CCTV'), 'CCTV', fn (array $mapped) => $this->transformCctvRow($mapped)),
             'NVR'         => $this->importSheet($sheetsByName->get('NVR'), 'NVR', fn (array $mapped) => $this->transformNvrRow($mapped)),
             'ACCESS_DOOR' => $this->importSheet($sheetsByName->get('Access Door & Absensi'), 'ACCESS_DOOR', fn (array $mapped) => $this->transformAccessDoorRow($mapped)),
             'WIFI'        => $this->importSheet($sheetsByName->get('WIFI'), 'WIFI', fn (array $mapped) => $this->transformWifiRow($mapped), requireIp: false, skipFirstDataRows: 1),
@@ -160,9 +160,15 @@ class ItAssetImportService
             'department'    => $mapped['dept'] ?? null,
             'brand'         => $mapped['typepc'] ?? null,
             'serial_number' => $mapped['snpc'] ?? null,
-            'ip_address'    => $mapped['ip'] ?? null,
+            'ip_address'    => $this->validIpOrNull($mapped['ip'] ?? null),
             'location'      => $mapped['jabatan'] ?? null,
         ];
+
+        // PC cadangan ditandai "Spare" di kolom Name atau Tag-Name.
+        if (preg_match('/\bspare\b/i', (string) ($mapped['name'] ?? ''))
+            || preg_match('/\bspare\b/i', (string) ($mapped['tagname'] ?? ''))) {
+            $core['status'] = 'spare';
+        }
 
         $spec = $this->filterSpec([
             'os'            => $mapped['os'] ?? null,
@@ -232,9 +238,10 @@ class ItAssetImportService
     }
 
     /**
-     * Petakan baris sheet CCTV APPROVED ke kolom inti it_assets dan kolom
-     * spec. Kolom "Func Lock" dipetakan ke department mengikuti keputusan
-     * di rencana Sesi 3.
+     * Petakan baris sheet CCTV (sumber utama, 95 kamera) atau CCTV APPROVED
+     * ke kolom inti it_assets dan kolom spec. Mendukung dua varian header:
+     * sheet CCTV memakai "S/N", "Model", "IP Address", "NVR", "Chanel";
+     * sheet CCTV APPROVED memakai "Type", "IP", "Func Lock".
      *
      * @param  array<string, string|null>  $mapped
      * @return array{0: array<string, mixed>, 1: array<string, mixed>}
@@ -242,14 +249,15 @@ class ItAssetImportService
     private function transformCctvRow(array $mapped): array
     {
         $core = [
-            'tag_name'    => $mapped['tagname'] ?? null,
-            'brand'       => $mapped['brand'] ?? null,
-            'model'       => $mapped['type'] ?? null,
-            'plant'       => $mapped['plant'] ?? null,
-            'location'    => $mapped['location'] ?? null,
-            'application' => $mapped['application'] ?? null,
-            'ip_address'  => $mapped['ip'] ?? null,
-            'department'  => $mapped['funclock'] ?? null,
+            'tag_name'      => $mapped['tagname'] ?? null,
+            'serial_number' => $mapped['sn'] ?? null,
+            'brand'         => $mapped['brand'] ?? null,
+            'model'         => $this->firstNonEmpty($mapped, ['type', 'model']),
+            'plant'         => $mapped['plant'] ?? null,
+            'location'      => $mapped['location'] ?? null,
+            'application'   => $mapped['application'] ?? null,
+            'ip_address'    => $this->firstNonEmpty($mapped, ['ip', 'ipaddress']),
+            'department'    => $mapped['funclock'] ?? null,
         ];
 
         $spec = $this->filterSpec([
@@ -258,6 +266,8 @@ class ItAssetImportService
             'remarks'    => $mapped['remarks'] ?? null,
             'status'     => $mapped['status'] ?? null,
             'header'     => $mapped['header'] ?? null,
+            'nvr'        => $mapped['nvr'] ?? null,
+            'chanel'     => $mapped['chanel'] ?? null,
         ]);
 
         return [$core, $spec];
@@ -418,10 +428,7 @@ class ItAssetImportService
      */
     private function upsertItAsset(string $deviceType, array $core, array $spec): bool
     {
-        $serial   = $core['serial_number'] ?? null;
-        $tagName  = $core['tag_name'] ?? null;
-        $ip       = $core['ip_address'] ?? null;
-        $existing = $this->findExistingItAsset($deviceType, $serial, $tagName, $ip);
+        $existing = $this->findExistingItAsset($deviceType, $core);
 
         $payload = array_filter($core, fn ($value) => $value !== null && $value !== '');
         $payload['device_type']  = $deviceType;
@@ -441,16 +448,21 @@ class ItAssetImportService
     /**
      * Cari record it_assets yang sudah ada. Urutan prioritas kunci identitas:
      * IP (paling unik untuk perangkat berjaringan), lalu serial_number, lalu
-     * tag_name (last resort karena bisa berisi model generik).
+     * tag_name (last resort karena bisa berisi model generik). Untuk
+     * perangkat yang tidak punya identitas stabil sama sekali (mis. WIFI:
+     * tanpa IP, serial sering kosong, tanpa tag), dipakai kombinasi
+     * model + location agar import bersifat idempoten.
      *
      * @param  string       $deviceType
-     * @param  string|null  $serial
-     * @param  string|null  $tagName
-     * @param  string|null  $ip
+     * @param  array<string, mixed>  $core
      * @return ItAsset|null
      */
-    private function findExistingItAsset(string $deviceType, ?string $serial, ?string $tagName, ?string $ip): ?ItAsset
+    private function findExistingItAsset(string $deviceType, array $core): ?ItAsset
     {
+        $serial   = $core['serial_number'] ?? null;
+        $tagName  = $core['tag_name'] ?? null;
+        $ip       = $core['ip_address'] ?? null;
+
         if (!empty($ip)) {
             $found = ItAsset::where('device_type', $deviceType)
                 ->where('ip_address', $ip)
@@ -472,8 +484,22 @@ class ItAssetImportService
         }
 
         if (!empty($tagName)) {
-            return ItAsset::where('device_type', $deviceType)
+            $found = ItAsset::where('device_type', $deviceType)
                 ->where('tag_name', $tagName)
+                ->first();
+
+            if ($found) {
+                return $found;
+            }
+        }
+
+        $model    = $core['model'] ?? null;
+        $location = $core['location'] ?? null;
+
+        if (!empty($model) && !empty($location)) {
+            return ItAsset::where('device_type', $deviceType)
+                ->where('model', $model)
+                ->where('location', $location)
                 ->first();
         }
 
@@ -557,6 +583,24 @@ class ItAssetImportService
         }
 
         return null;
+    }
+
+    /**
+     * Kembalikan IP bila valid, atau null bila kosong/tidak valid (misalnya
+     * placeholder teks seperti "WIfi" di sheet sumber PC).
+     *
+     * @param  string|null  $ip
+     * @return string|null
+     */
+    private function validIpOrNull(?string $ip): ?string
+    {
+        $ip = $ip !== null ? trim($ip) : null;
+
+        if ($ip === null || $ip === '') {
+            return null;
+        }
+
+        return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : null;
     }
 
     /**
