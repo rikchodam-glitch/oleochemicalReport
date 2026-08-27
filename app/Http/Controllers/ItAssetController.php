@@ -80,12 +80,16 @@ class ItAssetController extends Controller
 
         $summary = $this->buildDeviceTypeSummary();
 
+        // Mode tampilan: 'layout' (grid + snapshot, default) atau 'table'.
+        $viewMode = $request->string('view')->toString() === 'table' ? 'table' : 'layout';
+
         return view('it-assets.index', [
             'itAssets'                => $itAssets,
             'summary'                 => $summary,
             'deviceTypes'             => self::DEVICE_TYPES,
             'deviceTypeLabels'        => $this->deviceTypeLabels(),
             'unreadNotificationCount' => ItNotification::unread()->count(),
+            'viewMode'                => $viewMode,
         ]);
     }
 

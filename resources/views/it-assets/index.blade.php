@@ -41,6 +41,16 @@
         </svg>
         Import Excel
     </a>
+    <div class="inline-flex items-center rounded-lg border border-slate-300 overflow-hidden shrink-0">
+        <a href="{{ route('it-assets.index', array_merge(request()->except('view'), ['view' => 'layout'])) }}"
+           class="px-3 py-2 text-xs font-medium {{ $viewMode === 'layout' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50' }}">
+            Layout
+        </a>
+        <a href="{{ route('it-assets.index', array_merge(request()->except('view'), ['view' => 'table'])) }}"
+           class="px-3 py-2 text-xs font-medium {{ $viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50' }}">
+            Tabel
+        </a>
+    </div>
 @endsection
 
 @php
@@ -159,6 +169,73 @@
     @endif
 
 
+    @if($viewMode === 'layout')
+    <!-- Layout Cards (grid + snapshot, default) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
+        @forelse($itAssets as $itAsset)
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col">
+                <div class="relative h-36 bg-slate-100">
+                    @if(in_array($itAsset->device_type, ['CCTV', 'NVR'], true) && $itAsset->last_snapshot_path)
+                        <img src="{{ \Illuminate\Support\Facades\Storage::disk(config('cctv.snapshot_disk'))->url($itAsset->last_snapshot_path) }}"
+                             alt="Snapshot {{ $itAsset->tag_name }}"
+                             class="w-full h-full object-cover">
+                    @else
+                        <div class="w-full h-full flex items-center justify-center">
+                            <svg class="w-10 h-10 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                            </svg>
+                        </div>
+                    @endif
+                    <span class="absolute top-2 left-2 inline-flex px-2 py-0.5 text-xs font-medium bg-slate-900/70 text-white rounded">
+                        {{ $deviceTypeLabels[$itAsset->device_type] ?? $itAsset->device_type }}
+                    </span>
+                    <span class="absolute top-2 right-2">
+                        <span id="ping-badge-{{ $itAsset->id }}">
+                            @if($itAsset->last_ping_status === 'online')
+                                <x-status-badge status="active" :label="'Online' . ($itAsset->last_ping_latency !== null ? ' (' . $itAsset->last_ping_latency . 'ms)' : '')" />
+                            @elseif($itAsset->last_ping_status === 'offline')
+                                <x-status-badge status="error" label="Offline" />
+                            @else
+                                <x-status-badge status="inactive" label="Belum Dicek" />
+                            @endif
+                        </span>
+                    </span>
+                </div>
+                <div class="p-4 flex flex-col flex-1">
+                    <p class="font-medium text-slate-900 text-sm truncate">{{ $itAsset->tag_name ?? $itAsset->name ?? '-' }}</p>
+                    @if($itAsset->ip_address)
+                        <p class="font-mono text-xs text-slate-500 mt-0.5">{{ $itAsset->ip_address }}</p>
+                    @endif
+                    @if($itAsset->location)
+                        <p class="text-xs text-slate-400 mt-0.5 truncate">{{ $itAsset->location }}</p>
+                    @endif
+                    <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                        <a href="{{ route('it-assets.show', $itAsset) }}" class="text-blue-600 hover:text-blue-700 text-xs font-medium shrink-0">Detail</a>
+                        <div class="flex items-center gap-2.5">
+                            @if($itAsset->ip_address)
+                                <button type="button" id="ping-btn-{{ $itAsset->id }}"
+                                        onclick="pingDevice({{ $itAsset->id }}, this)"
+                                        class="text-blue-600 hover:text-blue-700 text-xs font-medium">Ping</button>
+                            @endif
+                            <a href="{{ route('it-assets.edit', $itAsset) }}" class="text-slate-500 hover:text-blue-600 text-xs font-medium">Edit</a>
+                            <form method="POST" action="{{ route('it-assets.destroy', $itAsset) }}"
+                                  onsubmit="return confirm('Yakin ingin menghapus perangkat ini beserta riwayatnya?');">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="text-red-500 hover:text-red-700 text-xs font-medium">Hapus</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @empty
+            <div class="col-span-full text-center py-10 text-sm text-slate-400">
+                Belum ada data. <a href="{{ route('it-assets.import') }}" class="text-blue-600 hover:underline">Import dari Excel</a>
+            </div>
+        @endforelse
+    </div>
+    @else
+
     <!-- Table -->
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div class="overflow-x-auto">
@@ -259,8 +336,8 @@
             </div>
         @endif
     </div>
+@endif
 @endsection
-
 
 @push('scripts')
 <script>
