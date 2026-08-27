@@ -134,9 +134,11 @@ class CctvSnapshotService
 
     /**
      * Ambil gambar langsung dari HTTP snapshot endpoint kamera.
-     * Mendukung Basic auth (kredensial dikirim di kolom snapshot_username/
-     * snapshot_password) untuk perangkat yang mendukungnya (mis. Hikvision
-     * ISAPI dengan digest/basic auth diaktifkan).
+     *
+     * Hikvision ISAPI umumnya memakai HTTP Digest authentication, jadi
+     * percobaan pertama dikirim dengan mode digest. Bila kamera menolak
+     * (401) dan username diisi, dicoba sekali lagi dengan Basic auth untuk
+     * perangkat yang hanya mendukung basic.
      *
      * @param  string       $url
      * @param  string|null  $username
@@ -147,13 +149,21 @@ class CctvSnapshotService
      */
     private function captureFromHttp(string $url, ?string $username, ?string $password): string
     {
-        $request = Http::timeout($this->httpTimeout)->withOptions(['verify' => false]);
+        $options = ['verify' => false];
 
         if (!empty($username)) {
-            $request = $request->withBasicAuth($username, (string) $password);
+            $options['auth'] = [$username, (string) $password, 'digest'];
         }
 
-        $response = $request->get($url);
+        $response = Http::timeout($this->httpTimeout)->withOptions($options)->get($url);
+
+        if (!$response->successful() && !empty($username)) {
+            // Fallback: beberapa perangkat hanya mendukung Basic auth.
+            $response = Http::timeout($this->httpTimeout)
+                ->withOptions(['verify' => false])
+                ->withBasicAuth($username, (string) $password)
+                ->get($url);
+        }
 
         if (!$response->successful()) {
             throw new \RuntimeException("Kamera merespons dengan status HTTP {$response->status()}.");
