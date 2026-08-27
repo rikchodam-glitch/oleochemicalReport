@@ -79,14 +79,17 @@ class ItAssetController extends Controller
 
         if ($viewMode === 'layout') {
             // Mode layout CCTV: tampilkan SEMUA kamera yang cocok, dikelompokkan
-            // per PT (plant) supaya mudah di-collapse. Paginasi tidak dipakai di
-            // mode ini karena tujuannya melihat keseluruhan kamera.
+            // per PT (plant) lalu per "Connect To" (lokasi switch). Paginasi
+            // tidak dipakai di mode ini karena tujuannya melihat keseluruhan.
             $cctvGroups = (clone $query)
                 ->ofType('CCTV')
                 ->orderBy('plant')
                 ->orderBy('tag_name')
                 ->get()
-                ->groupBy(fn (ItAsset $asset) => $asset->plant ?: 'Tanpa PT');
+                ->groupBy(fn (ItAsset $asset) => $asset->plant ?: 'Tanpa PT')
+                ->map(fn ($plantGroup) => $plantGroup->groupBy(
+                    fn (ItAsset $asset) => ($asset->spec['connect_to'] ?? null) ?: 'Tanpa Switch'
+                ));
 
             $itAssets = collect();
         } else {

@@ -162,7 +162,7 @@
 
     @if($viewMode === 'layout')
     <!-- Layout CCTV per PT (collapsible) -->
-    @forelse($cctvGroups as $plant => $group)
+    @forelse($cctvGroups as $plant => $switchGroups)
         <div class="mb-6">
             <button type="button" onclick="toggleCctvGroup('cctv-group-{{ Str::slug($plant) }}', this)"
                     class="w-full flex items-center justify-between bg-white rounded-xl border border-slate-200 px-5 py-3 hover:bg-slate-50 transition-colors">
@@ -171,11 +171,24 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                     </svg>
                     <span class="text-sm font-semibold text-slate-900">{{ $plant }}</span>
-                    <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded">{{ $group->count() }} kamera</span>
+                    <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded">{{ $switchGroups->flatten(1)->count() }} kamera</span>
                 </span>
             </button>
-            <div id="cctv-group-{{ Str::slug($plant) }}" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-3">
-            @foreach($group as $itAsset)
+            <div id="cctv-group-{{ Str::slug($plant) }}" class="mt-3 space-y-4">
+                @forelse($switchGroups as $switch => $cameras)
+                    <div>
+                        <button type="button" onclick="toggleCctvGroup('switch-group-{{ Str::slug($plant) }}-{{ Str::slug($switch) }}', this)"
+                                class="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors">
+                            <span class="flex items-center gap-2">
+                                <svg class="w-4 h-4 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                </svg>
+                                <span class="text-xs font-semibold text-slate-700">{{ $switch }}</span>
+                                <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded">{{ $cameras->count() }} kamera</span>
+                            </span>
+                        </button>
+                        <div id="switch-group-{{ Str::slug($plant) }}-{{ Str::slug($switch) }}" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-2">
+                        @foreach($cameras as $itAsset)
             <div class="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col">
                 <div class="relative h-40 bg-slate-100">
                     @if(in_array($itAsset->device_type, ['CCTV', 'NVR'], true) && $itAsset->last_snapshot_path)
@@ -214,6 +227,9 @@
                     @if($itAsset->location)
                         <p class="text-xs text-slate-400 mt-1.5 truncate">{{ $itAsset->location }}</p>
                     @endif
+                    @if(($itAsset->spec['connect_to'] ?? null))
+                        <p class="text-[11px] text-slate-400 mt-0.5 truncate">Switch: {{ $itAsset->spec['connect_to'] }}</p>
+                    @endif
                     <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                         <a href="{{ route('it-assets.show', $itAsset) }}" class="text-blue-600 hover:text-blue-700 text-xs font-medium shrink-0">Detail</a>
                         <div class="flex items-center gap-2.5">
@@ -233,7 +249,12 @@
                     </div>
                 </div>
             </div>
-            @endforeach
+                            @endforeach
+                        </div>
+                    </div>
+                @empty
+                    <div class="text-sm text-slate-400 italic py-2">Tidak ada kamera untuk switch ini.</div>
+                @endforelse
             </div>
         </div>
         @empty
