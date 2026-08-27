@@ -73,19 +73,36 @@ class ItAssetController extends Controller
             });
         }
 
-        $itAssets = $query->orderBy('device_type')
-            ->orderBy('tag_name')
-            ->paginate(20)
-            ->withQueryString();
+        // Mode tampilan: 'layout' (grid + snapshot per PT, collapsible) hanya
+        // saat filter Tipe = CCTV; selain itu memakai tabel.
+        $viewMode = $request->string('device_type')->toString() === 'CCTV' ? 'layout' : 'table';
+
+        if ($viewMode === 'layout') {
+            // Mode layout CCTV: tampilkan SEMUA kamera yang cocok, dikelompokkan
+            // per PT (plant) supaya mudah di-collapse. Paginasi tidak dipakai di
+            // mode ini karena tujuannya melihat keseluruhan kamera.
+            $cctvGroups = (clone $query)
+                ->ofType('CCTV')
+                ->orderBy('plant')
+                ->orderBy('tag_name')
+                ->get()
+                ->groupBy(fn (ItAsset $asset) => $asset->plant ?: 'Tanpa PT');
+
+            $itAssets = collect();
+        } else {
+            $itAssets = $query->orderBy('device_type')
+                ->orderBy('tag_name')
+                ->paginate(20)
+                ->withQueryString();
+
+            $cctvGroups = collect();
+        }
 
         $summary = $this->buildDeviceTypeSummary();
 
-        // Mode tampilan: 'layout' (grid + snapshot) hanya muncul saat filter
-        // Tipe Perangkat = CCTV; selain itu memakai tabel.
-        $viewMode = $request->string('device_type')->toString() === 'CCTV' ? 'layout' : 'table';
-
         return view('it-assets.index', [
             'itAssets'                => $itAssets,
+            'cctvGroups'              => $cctvGroups,
             'summary'                 => $summary,
             'deviceTypes'             => self::DEVICE_TYPES,
             'deviceTypeLabels'        => $this->deviceTypeLabels(),

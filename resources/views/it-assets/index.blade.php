@@ -161,9 +161,21 @@
 
 
     @if($viewMode === 'layout')
-    <!-- Layout Cards (grid + snapshot, default) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
-        @forelse($itAssets as $itAsset)
+    <!-- Layout CCTV per PT (collapsible) -->
+    @forelse($cctvGroups as $plant => $group)
+        <div class="mb-6">
+            <button type="button" onclick="toggleCctvGroup('cctv-group-{{ Str::slug($plant) }}', this)"
+                    class="w-full flex items-center justify-between bg-white rounded-xl border border-slate-200 px-5 py-3 hover:bg-slate-50 transition-colors">
+                <span class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                    <span class="text-sm font-semibold text-slate-900">{{ $plant }}</span>
+                    <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded">{{ $group->count() }} kamera</span>
+                </span>
+            </button>
+            <div id="cctv-group-{{ Str::slug($plant) }}" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-3">
+            @foreach($group as $itAsset)
             <div class="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col">
                 <div class="relative h-40 bg-slate-100">
                     @if(in_array($itAsset->device_type, ['CCTV', 'NVR'], true) && $itAsset->last_snapshot_path)
@@ -221,12 +233,14 @@
                     </div>
                 </div>
             </div>
+            @endforeach
+            </div>
+        </div>
         @empty
-            <div class="col-span-full text-center py-10 text-sm text-slate-400">
-                Belum ada data. <a href="{{ route('it-assets.import') }}" class="text-blue-600 hover:underline">Import dari Excel</a>
+            <div class="bg-white rounded-xl border border-slate-200 py-10 text-center text-sm text-slate-400">
+                Belum ada data kamera CCTV untuk filter ini.
             </div>
         @endforelse
-    </div>
     @else
 
     <!-- Table -->
@@ -335,6 +349,24 @@
 @push('scripts')
 <script>
 const itAssetPingUrlTemplate = '{{ route('it-assets.ping', ['itAsset' => '__ID__']) }}';
+
+/**
+ * Collapse/expand grup CCTV per PT pada mode layout. Grup disembunyikan
+ * dengan class 'hidden' dan chevron diputar 180 derajat.
+ *
+ * @param {string} groupId
+ * @param {HTMLButtonElement} button
+ */
+function toggleCctvGroup(groupId, button) {
+    const group = document.getElementById(groupId);
+    if (!group) return;
+
+    group.classList.toggle('hidden');
+    const chevron = button.querySelector('svg');
+    if (chevron) {
+        chevron.classList.toggle('rotate-180');
+    }
+}
 
 /**
  * Ping satu perangkat lewat AJAX dan perbarui badge status ping inline
