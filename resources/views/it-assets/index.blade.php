@@ -41,16 +41,6 @@
         </svg>
         Import Excel
     </a>
-    <div class="inline-flex items-center rounded-lg border border-slate-300 overflow-hidden shrink-0">
-        <a href="{{ route('it-assets.index', array_merge(request()->except('view'), ['view' => 'layout'])) }}"
-           class="px-3 py-2 text-xs font-medium {{ $viewMode === 'layout' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50' }}">
-            Layout
-        </a>
-        <a href="{{ route('it-assets.index', array_merge(request()->except('view'), ['view' => 'table'])) }}"
-           class="px-3 py-2 text-xs font-medium {{ $viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50' }}">
-            Tabel
-        </a>
-    </div>
 @endsection
 
 @php

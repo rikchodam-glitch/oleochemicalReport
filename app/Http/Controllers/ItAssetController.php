@@ -80,8 +80,9 @@ class ItAssetController extends Controller
 
         $summary = $this->buildDeviceTypeSummary();
 
-        // Mode tampilan: 'layout' (grid + snapshot, default) atau 'table'.
-        $viewMode = $request->string('view')->toString() === 'table' ? 'table' : 'layout';
+        // Mode tampilan: 'layout' (grid + snapshot) hanya muncul saat filter
+        // Tipe Perangkat = CCTV; selain itu memakai tabel.
+        $viewMode = $request->string('device_type')->toString() === 'CCTV' ? 'layout' : 'table';
 
         return view('it-assets.index', [
             'itAssets'                => $itAssets,
