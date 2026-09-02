@@ -6,7 +6,7 @@
 <td class="px-5 py-3.5">
     <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 rounded">{{ $item->level_label }}</span>
 </td>
-<td class="px-5 py-3.5 text-slate-600">{{ $item->assets_count }} asset</td>
+<td class="px-5 py-3.5 text-slate-600">{{ $item->assets_total ?? $item->assets_count }} asset</td>
 <td class="px-5 py-3.5">
     <x-status-badge :status="$item->is_active ? 'active' : 'inactive'" :label="$item->is_active ? 'Aktif' : 'Nonaktif'" />
 </td>

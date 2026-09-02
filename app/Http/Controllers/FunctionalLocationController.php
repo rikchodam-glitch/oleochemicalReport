@@ -44,6 +44,11 @@ class FunctionalLocationController extends Controller
 
         $hasFilter = collect($filters)->filter(fn ($value) => $value !== null && $value !== '')->isNotEmpty();
 
+        // Muat seluruh node sekaligus (lengkap dengan jumlah asset langsung)
+        // supaya jumlah kumulatif per node bisa dihitung dalam satu lintasan.
+        $all    = FunctionalLocation::withCount('assets')->orderBy('code')->get();
+        $totals = $this->attachSubtreeAssetTotals($all);
+
         $tree  = null;
         $items = null;
 
@@ -63,8 +68,14 @@ class FunctionalLocationController extends Controller
             }
 
             $items = $query->orderBy('code')->get();
+
+            // Pada tampilan datar hasil filter, child tidak ikut dimuat,
+            // sehingga jumlah kumulatif disalin dari peta totals yang sudah
+            // dihitung dari seluruh node.
+            $items->each(function (FunctionalLocation $node) use ($totals) {
+                $node->setAttribute('assets_total', $totals[$node->id] ?? (int) $node->assets_count);
+            });
         } else {
-            $all  = FunctionalLocation::withCount('assets')->orderBy('code')->get();
             $tree = $this->buildTree($all);
         }
 
@@ -74,7 +85,7 @@ class FunctionalLocationController extends Controller
             'total'         => FunctionalLocation::count(),
             'active'        => FunctionalLocation::active()->count(),
             'inactive'      => FunctionalLocation::where('is_active', false)->count(),
-            'without_asset' => FunctionalLocation::doesntHave('assets')->count(),
+            'without_asset' => $all->filter(fn (FunctionalLocation $node) => ($totals[$node->id] ?? 0) === 0)->count(),
         ];
 
         return view('func-locs.index', [
@@ -951,6 +962,41 @@ class FunctionalLocationController extends Controller
         };
 
         return $attach('root');
+    }
+
+    /**
+     * Hitung jumlah asset kumulatif untuk setiap node (asset yang menempel
+     * langsung pada node ditambah seluruh asset di semua keturunannya), lalu
+     * simpan hasilnya sebagai atribut `assets_total` pada model yang sama.
+     *
+     * Dipakai agar angka asset pada node induk (misal level PT) tidak tampil 0
+     * hanya karena tidak ada asset yang funcloc_id-nya persis menunjuk ke node
+     * tersebut, padahal di bawahnya banyak asset.
+     *
+     * @param  Collection<int, FunctionalLocation>  $all
+     * @return array<int, int>
+     */
+    private function attachSubtreeAssetTotals(Collection $all): array
+    {
+        $grouped = $all->groupBy(fn (FunctionalLocation $node) => $node->parent_id ?? 'root');
+        $totals  = [];
+
+        $sum = function ($parentKey) use (&$sum, $grouped, &$totals) {
+            $subtotal = 0;
+
+            foreach ($grouped->get($parentKey) ?? collect() as $node) {
+                $nodeTotal = (int) $node->assets_count + $sum($node->id);
+                $totals[$node->id]   = $nodeTotal;
+                $node->setAttribute('assets_total', $nodeTotal);
+                $subtotal += $nodeTotal;
+            }
+
+            return $subtotal;
+        };
+
+        $sum('root');
+
+        return $totals;
     }
 
     /**

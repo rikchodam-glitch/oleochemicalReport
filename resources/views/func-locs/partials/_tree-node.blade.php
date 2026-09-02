@@ -27,7 +27,7 @@
         </div>
 
         <div class="w-20 shrink-0 text-sm text-slate-600">
-            {{ $node->assets_count }} asset
+            {{ $node->assets_total ?? $node->assets_count }} asset
         </div>
 
         <div class="w-24 shrink-0">
