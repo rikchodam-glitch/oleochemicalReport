@@ -20,7 +20,7 @@ Backend  : PHP 8.2 + Laravel 11
 Frontend : Blade + Tailwind CSS + Alpine.js + Vanilla JS
 Database : MySQL 8.0
 Bot      : Telegram Bot API (Long Polling via PollTelegramUpdates artisan command)
-AI       : Groq API (llama-3.3-70b-versatile), Ollama (local fallback), OpenAI (fallback)
+AI       : Groq API (groq/compound), Ollama (local fallback), OpenAI (fallback)
 Import   : PhpSpreadsheet / rap2hpoutre/fast-excel
 Queue    : Laravel Queue (database driver)
 ```

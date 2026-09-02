@@ -860,7 +860,7 @@ PROMPT;
 
         try {
             $endpoint = $provider->endpoint_url ?? 'https://api.groq.com/openai/v1/chat/completions';
-            $model    = $provider->model         ?? 'llama-3.3-70b-versatile';
+            $model    = $provider->model         ?? 'groq/compound';
 
             // BUG 2 FIX — gunakan accessor api_key (bukan api_key_encrypted)
             // agar nilai yang terenkripsi di-decrypt terlebih dahulu.
