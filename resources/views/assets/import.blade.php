@@ -16,7 +16,7 @@
             <h3 class="font-medium text-slate-900 mb-4">Upload File Excel</h3>
             <p class="text-sm text-slate-500 mb-4">
                 Upload file ZPM export dari SAP. Format .xlsx, .xls, atau .csv (maks 10MB).
-                <br>Kolom yang diproses: Equipment, Description, TechIdentNo., Object Type, Functional Loc.
+                <br>Kolom yang diproses: Equipment, Description, TechIdentNo., Object Type, Functional Loc. — <a href="{{ route('assets.import.template') }}" class="text-teal-600 hover:underline font-medium">Download Template Excel</a>
             </p>
 
             <form @submit.prevent="uploadFile" class="space-y-4">

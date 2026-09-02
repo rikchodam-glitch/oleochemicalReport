@@ -42,6 +42,7 @@ Route::middleware('admin')->group(function () {
     Route::get('/assets/import', [ImportController::class, 'showImport'])->name('assets.import');
     Route::post('/assets/import/preview', [ImportController::class, 'previewImport'])->name('assets.import.preview');
     Route::post('/assets/import/execute', [ImportController::class, 'executeImport'])->name('assets.import.execute');
+    Route::get('/assets/import/template', [ImportController::class, 'downloadTemplate'])->name('assets.import.template');
     Route::get('/assets/export/excel', [AssetController::class, 'exportExcel'])->name('assets.export-excel');
     Route::get('/assets/export/csv', [AssetController::class, 'exportCsv'])->name('assets.export-csv');
     Route::get('/assets/locations/departments', [AssetController::class, 'getDepartments'])->name('assets.locations.departments');
