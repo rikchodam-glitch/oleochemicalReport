@@ -193,6 +193,7 @@
                 <div class="relative h-40 bg-slate-100">
                     @if(in_array($itAsset->device_type, ['CCTV', 'NVR'], true) && $itAsset->last_snapshot_path)
                         <img src="{{ \Illuminate\Support\Facades\Storage::disk(config('cctv.snapshot_disk'))->url($itAsset->last_snapshot_path) }}"
+                             id="snapshot-img-{{ $itAsset->id }}"
                              alt="Snapshot {{ $itAsset->tag_name }}"
                              class="w-full h-full object-cover">
                     @else
@@ -231,7 +232,7 @@
                         <p class="text-[11px] text-slate-400 mt-0.5 truncate">Switch: {{ $itAsset->spec['connect_to'] }}</p>
                     @endif
                     <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                        <a href="{{ route('it-assets.show', $itAsset) }}" class="text-blue-600 hover:text-blue-700 text-xs font-medium shrink-0">Detail</a>
+                        <a href="{{ route('it-assets.show', $itAsset) }}" class="text-blue-600 hover:text-blue-700 text-xs font-medium shrink-0">Detail</a>@include('it-assets.partials._snapshot-btn', ['itAsset' => $itAsset])
                         <div class="flex items-center gap-2.5">
                             @if($itAsset->ip_address)
                                 <button type="button" id="ping-btn-{{ $itAsset->id }}"
@@ -336,7 +337,7 @@
                                     @else
                                         <span class="text-slate-300 text-xs" title="Tidak ada IP address">Ping</span>
                                     @endif
-                                    <a href="{{ route('it-assets.show', $itAsset) }}" class="text-slate-500 hover:text-blue-600 text-xs font-medium transition-colors">Detail</a>
+                                    <a href="{{ route('it-assets.show', $itAsset) }}" class="text-slate-500 hover:text-blue-600 text-xs font-medium transition-colors">Detail</a>@include('it-assets.partials._snapshot-btn', ['itAsset' => $itAsset])
                                     <a href="{{ route('it-assets.edit', $itAsset) }}" class="text-slate-500 hover:text-blue-600 text-xs font-medium transition-colors">Edit</a>
                                     <form method="POST" action="{{ route('it-assets.destroy', $itAsset) }}"
                                           onsubmit="return confirm('Yakin ingin menghapus perangkat ini beserta riwayatnya?');">
