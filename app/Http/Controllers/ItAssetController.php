@@ -56,6 +56,21 @@ class ItAssetController extends Controller
     {
         $query = ItAsset::query();
 
+        // Simpan filter daftar yang sedang aktif di session, supaya setelah
+        // aksi tambah/edit/hapus user bisa kembali ke daftar dengan filter
+        // yang sama (misal tetap Tipe=CCTV) tanpa harus memilih ulang.
+        $listQuery = array_filter([
+            'device_type' => $request->query('device_type'),
+            'status'      => $request->query('status'),
+            'search'      => $request->query('search'),
+        ], fn ($value) => $value !== null && $value !== '');
+
+        if ($listQuery === []) {
+            session()->forget('it_assets.list_query');
+        } else {
+            session()->put('it_assets.list_query', $listQuery);
+        }
+
         if ($request->filled('device_type')) {
             $query->ofType($request->string('device_type')->toString());
         }
@@ -346,8 +361,7 @@ class ItAssetController extends Controller
 
         ItAsset::create($validated);
 
-        return redirect()
-            ->route('it-assets.index')
+        return $this->redirectToItAssetList()
             ->with('success', 'Perangkat IT berhasil ditambahkan.');
     }
 
@@ -377,8 +391,7 @@ class ItAssetController extends Controller
     {
         $itAsset->update($this->validateForm($request));
 
-        return redirect()
-            ->route('it-assets.show', $itAsset)
+        return $this->redirectToItAssetList()
             ->with('success', 'Perangkat IT berhasil diperbarui.');
     }
 
@@ -393,9 +406,20 @@ class ItAssetController extends Controller
     {
         $itAsset->delete();
 
-        return redirect()
-            ->route('it-assets.index')
+        return $this->redirectToItAssetList()
             ->with('success', 'Perangkat IT berhasil dihapus.');
+    }
+
+    /**
+     * Redirect ke halaman daftar IT Assets sambil mempertahankan filter
+     * terakhir (device_type/status/search) yang tersimpan saat user membuka
+     * daftar. Jika tidak ada filter tersimpan, kembali ke daftar polos.
+     *
+     * @return RedirectResponse
+     */
+    private function redirectToItAssetList(): RedirectResponse
+    {
+        return redirect()->route('it-assets.index', session('it_assets.list_query', []));
     }
 
     /**
