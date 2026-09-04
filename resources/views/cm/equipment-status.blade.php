@@ -68,7 +68,6 @@
                         </label>
                     </div>
                 </div>
-                <p class="text-[11px] text-slate-400 mt-1">Bisa pilih lebih dari satu status.</p>
             </div>
             <div class="flex items-end gap-2">
                 <button type="submit"
