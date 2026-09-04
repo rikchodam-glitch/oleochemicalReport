@@ -774,7 +774,9 @@ class CmController extends Controller
     public function equipmentStatus(Request $request)
     {
         $filterPt     = $request->input('pt');
-        $filterStatus = $request->get('status', '');
+        $filterStatus = $request->get('status', []);
+        $filterStatus = is_string($filterStatus) ? array_filter(explode(',', $filterStatus)) : (array) $filterStatus;
+        $filterStatus = array_values(array_intersect($filterStatus, ['good', 'alarm', 'danger', 'visual_bad']));
         $search       = $request->get('search', '');
 
         $query = CmEquipment::with(['asset.company']);
@@ -787,7 +789,7 @@ class CmController extends Controller
         // Filter status — cari equipment dengan last reading sesuai status
         if ($filterStatus) {
             $query->whereHas('readings', function ($q) use ($filterStatus) {
-                $q->where('kondisi', $filterStatus)
+                $q->whereIn('kondisi', $filterStatus)
                   ->whereIn('id', function ($sub) {
                       $sub->selectRaw('MAX(id)')
                           ->from('cm_readings')

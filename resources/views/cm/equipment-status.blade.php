@@ -36,14 +36,15 @@
                 </select>
             </div>
             <div>
-                <label class="block text-xs font-medium text-slate-500 mb-1.5">Status</label>
-                <select name="status" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">Semua Status</option>
-                    <option value="good" {{ $filterStatus === 'good' ? 'selected' : '' }}>Normal</option>
-                    <option value="alarm" {{ $filterStatus === 'alarm' ? 'selected' : '' }}>Alarm</option>
-                    <option value="danger" {{ $filterStatus === 'danger' ? 'selected' : '' }}>Danger</option>
-                    <option value="visual_bad" {{ $filterStatus === 'visual_bad' ? 'selected' : '' }}>Visual Bad</option>
+                <label class="block text-xs font-medium text-slate-500 mb-1.5">Status (bisa pilih lebih dari satu)</label>
+                <select name="status[]" multiple size="4" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    {{-- Kosongkan semua pilihan = tanpa filter status --}}
+                    <option value="good" {{ in_array('good', $filterStatus, true) ? 'selected' : '' }}>Normal</option>
+                    <option value="alarm" {{ in_array('alarm', $filterStatus, true) ? 'selected' : '' }}>Alarm</option>
+                    <option value="danger" {{ in_array('danger', $filterStatus, true) ? 'selected' : '' }}>Danger</option>
+                    <option value="visual_bad" {{ in_array('visual_bad', $filterStatus, true) ? 'selected' : '' }}>Visual Bad</option>
                 </select>
+                <p class="text-[11px] text-slate-400 mt-1">Ctrl/Shift + klik untuk pilih beberapa status.</p>
             </div>
             <div class="flex items-end gap-2">
                 <button type="submit"
@@ -66,7 +67,7 @@
         $activeFilters = [];
         if ($search) $activeFilters[] = ['key' => 'search', 'label' => 'Pencarian: ' . $search];
         if ($filterPt) $activeFilters[] = ['key' => 'pt', 'label' => 'PT: ' . $filterPt];
-        if ($filterStatus) $activeFilters[] = ['key' => 'status', 'label' => 'Status: ' . ucfirst(str_replace('_', ' ', $filterStatus))];
+        if ($filterStatus) $activeFilters[] = ['key' => 'status', 'label' => 'Status: ' . implode(', ', array_map(fn($s) => ucfirst(str_replace('_', ' ', $s)), $filterStatus))];
     @endphp
     @if(count($activeFilters) > 0)
         <div class="flex flex-wrap items-center gap-2 mb-4">
