@@ -36,15 +36,39 @@
                 </select>
             </div>
             <div>
-                <label class="block text-xs font-medium text-slate-500 mb-1.5">Status (bisa pilih lebih dari satu)</label>
-                <select name="status[]" multiple size="4" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    {{-- Kosongkan semua pilihan = tanpa filter status --}}
-                    <option value="good" {{ in_array('good', $filterStatus, true) ? 'selected' : '' }}>Normal</option>
-                    <option value="alarm" {{ in_array('alarm', $filterStatus, true) ? 'selected' : '' }}>Alarm</option>
-                    <option value="danger" {{ in_array('danger', $filterStatus, true) ? 'selected' : '' }}>Danger</option>
-                    <option value="visual_bad" {{ in_array('visual_bad', $filterStatus, true) ? 'selected' : '' }}>Visual Bad</option>
-                </select>
-                <p class="text-[11px] text-slate-400 mt-1">Ctrl/Shift + klik untuk pilih beberapa status.</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1.5">Status</label>
+                @php
+                    $statusLabels = ['good' => 'Normal', 'alarm' => 'Alarm', 'danger' => 'Danger', 'visual_bad' => 'Visual Bad'];
+                    $selectedStatuses = array_values(array_intersect((array) $filterStatus, array_keys($statusLabels)));
+                @endphp
+                <div class="relative" id="status-wrap">
+                    <button type="button" id="status-drop-btn" onclick="toggleStatusDrop('status-drop-panel', 'status-drop-btn')"
+                            class="w-full flex items-center justify-between gap-2 border border-slate-300 hover:border-teal-400 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 text-left">
+                        <span id="status-drop-label" class="truncate text-sm text-slate-700">{{ $selectedStatuses ? implode(', ', array_map(fn($s) => $statusLabels[$s], $selectedStatuses)) : 'Semua Status' }}</span>
+                        <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <div id="status-drop-panel" class="hidden absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg py-1 max-h-48 overflow-auto">
+                        <label class="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 hover:bg-teal-50 cursor-pointer">
+                            <input type="checkbox" name="status[]" value="good" class="status-check rounded" {{ in_array('good', (array) $filterStatus, true) ? 'checked' : '' }}>
+                            Normal
+                        </label>
+                        <label class="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 hover:bg-teal-50 cursor-pointer">
+                            <input type="checkbox" name="status[]" value="alarm" class="status-check rounded" {{ in_array('alarm', (array) $filterStatus, true) ? 'checked' : '' }}>
+                            Alarm
+                        </label>
+                        <label class="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 hover:bg-teal-50 cursor-pointer">
+                            <input type="checkbox" name="status[]" value="danger" class="status-check rounded" {{ in_array('danger', (array) $filterStatus, true) ? 'checked' : '' }}>
+                            Danger
+                        </label>
+                        <label class="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 hover:bg-teal-50 cursor-pointer">
+                            <input type="checkbox" name="status[]" value="visual_bad" class="status-check rounded" {{ in_array('visual_bad', (array) $filterStatus, true) ? 'checked' : '' }}>
+                            Visual Bad
+                        </label>
+                    </div>
+                </div>
+                <p class="text-[11px] text-slate-400 mt-1">Bisa pilih lebih dari satu status.</p>
             </div>
             <div class="flex items-end gap-2">
                 <button type="submit"
@@ -180,3 +204,59 @@
         @endif
     </div>
 @endsection
+
+@push('scripts')
+<script>
+/**
+ * Toggle panel dropdown filter Status (multi-select checkbox).
+ *
+ * @param {string} panelId
+ * @param {string} btnId
+ */
+function toggleStatusDrop(panelId, btnId) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+    panel.classList.toggle('hidden');
+
+    const btn = document.getElementById(btnId);
+    if (btn) {
+        // Putar chevron saat panel terbuka
+        const chevron = btn.querySelector('svg');
+        if (chevron) {
+            chevron.classList.toggle('rotate-180');
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    const panel = document.getElementById('status-drop-panel');
+    if (!panel) return;
+
+    const updateLabel = function () {
+        const labels = { good: 'Normal', alarm: 'Alarm', danger: 'Danger', visual_bad: 'Visual Bad' };
+        const checked = Array.from(panel.querySelectorAll('input.status-check:checked'))
+            .map(function (input) {
+                return labels[input.value] || input.value;
+            });
+        const label = document.getElementById('status-drop-label');
+        if (label) {
+            label.textContent = checked.length ? checked.join(', ') : 'Semua Status';
+        }
+    };
+
+    panel.querySelectorAll('input.status-check').forEach(function (input) {
+        input.addEventListener('change', updateLabel);
+    });
+
+    // Tutup panel saat klik di luar
+    document.addEventListener('click', function (e) {
+        const btn = document.getElementById('status-drop-btn');
+        if (panel.contains(e.target) || (btn && btn.contains(e.target))) {
+            return;
+        }
+        panel.classList.add('hidden');
+    });
+});
+</script>
+@endpush
+
