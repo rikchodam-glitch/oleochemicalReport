@@ -996,6 +996,39 @@ class CmController extends Controller
         // Pastikan unik per equipment (fallback tidak boleh duplikat dengan aktif)
         $latestRows = $latestRows->unique('cm_equipment_id')->values();
 
+        // Jika user memilih BULAN tertentu, kotak "Equipment Vibrasi Tinggi per PT"
+        // ditampilkan berdasarkan equipment yang alarm/danger pada bulan tersebut,
+        // bukan latest sepanjang waktu. Ambil reading alarm/danger terakhir per
+        // equipment di dalam tahun+bulan terpilih.
+        if ($filterBulan) {
+            $monthlyIds = DB::table('cm_readings')
+                ->select(DB::raw('MAX(id) as id'))
+                ->whereIn('kondisi', $statusFilter)
+                ->where('max_vibration', '>', $vibThreshold)
+                ->whereYear('tanggal', (int) $filterTahun)
+                ->whereMonth('tanggal', (int) $filterBulan)
+                ->groupBy('cm_equipment_id')
+                ->pluck('id');
+
+            $latestRows = DB::table('cm_readings')
+                ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+                ->whereIn('cm_readings.id', $monthlyIds)
+                ->whereNotNull('cm_readings.analysis')
+                ->where('cm_readings.analysis', '!=', '')
+                ->select(
+                    DB::raw("'bulanan' as source"),
+                    'cm_equipment.pt_location',
+                    'cm_readings.analysis',
+                    'cm_readings.cm_equipment_id',
+                    'cm_equipment.equipment_tag',
+                    'cm_readings.kondisi',
+                    'cm_readings.tanggal'
+                )
+                ->get()
+                ->unique('cm_equipment_id')
+                ->values();
+        }
+
         // Daftar PT
         $ptListForCards = $filterPt
             ? [$filterPt]
