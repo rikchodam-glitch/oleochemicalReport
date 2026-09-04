@@ -168,7 +168,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelectorAll('.filter-select').forEach(function(sel) {
         sel.addEventListener('change', function() {
-            loadChartData();
+            // Muat ulang halaman agar seluruh bagian (termasuk Top 10 Vibrasi)
+            // ikut mengikuti filter yang dipilih. Chart tetap digambar oleh JS
+            // saat halaman selesai dimuat ulang.
+            var form = document.getElementById('filterForm');
+            if (!form) return;
+
+            var params = new URLSearchParams();
+            new FormData(form).forEach(function(value, key) {
+                if (value) params.append(key, value);
+            });
+
+            var qs = params.toString();
+            window.location.href = window.location.pathname + (qs ? '?' + qs : '');
         });
     });
 });
