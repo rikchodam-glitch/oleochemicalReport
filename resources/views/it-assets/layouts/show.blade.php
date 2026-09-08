@@ -320,7 +320,7 @@
                     pdfPage = page;
                     pdfBaseVp = page.getViewport({ scale: 1 });
                     pdfBaseScale = 1600 / pdfBaseVp.width;
-                    return renderPageCanvas(page, pdfBaseScale);
+                    return renderPageCanvas(page, pdfScaleForContainer());
                 })
                 .then(canvas => { setBgCanvas(canvas); loading.style.display = 'none'; })
                 .catch(err => {
@@ -344,11 +344,18 @@
             if (old && old !== canvas) old.remove();
         }
 
+        function pdfScaleForContainer() {
+            const dpr = window.devicePixelRatio || 1;
+            const containerW = denahWrap.clientWidth || 1400;
+            const s = (containerW * Math.max(1, zoom) * dpr) / pdfBaseVp.width;
+            return Math.max(s, pdfBaseScale);
+        }
+
         function rerenderPdf() {
             if (!pdfPage || !pdfBaseVp) return;
             const seq = ++pdfRenderSeq;
-            let scale = pdfBaseScale * Math.max(1, zoom);
-            const maxWidth = 4096;
+            const maxWidth = 8000;
+            let scale = pdfScaleForContainer();
             if (pdfBaseVp.width * scale > maxWidth) scale = maxWidth / pdfBaseVp.width;
             renderPageCanvas(pdfPage, scale).then(canvas => {
                 if (pdfPage && seq === pdfRenderSeq) setBgCanvas(canvas);
@@ -358,7 +365,7 @@
         function schedulePdfRerender() {
             if (LAYOUT.file_type !== 'pdf' || !pdfPage) return;
             clearTimeout(pdfTimer);
-            pdfTimer = setTimeout(rerenderPdf, 180);
+            pdfTimer = setTimeout(rerenderPdf, 140);
         }
 
         let linksData = LAYOUT.links || [];
