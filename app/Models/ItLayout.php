@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Support\Facades\Storage;
 
 class ItLayout extends Model
 {
@@ -67,5 +68,19 @@ class ItLayout extends Model
     public function links(): HasMany
     {
         return $this->hasMany(NetworkLink::class, 'layout_id');
+    }
+
+    /**
+     * URL file denah dalam bentuk path relatif (tanpa skema + host), supaya
+     * fetch oleh PDF.js atau <img> di browser selalu same-origin dan tidak
+     * diblokir CORS saat aplikasi diakses lewat host selain APP_URL.
+     *
+     * @return string|null
+     */
+    public function fileUrlRelative(): ?string
+    {
+        $full = Storage::disk('public')->url($this->file_path);
+
+        return parse_url($full, PHP_URL_PATH);
     }
 }

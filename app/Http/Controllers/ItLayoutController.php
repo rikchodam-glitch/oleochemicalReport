@@ -131,7 +131,7 @@ class ItLayoutController extends Controller
             'label'       => $layout->label,
             'description' => $layout->description,
             'file_type'   => $layout->file_type,
-            'file_url'    => Storage::disk('public')->url($layout->file_path),
+            'file_url'    => $layout->fileUrlRelative(),
             'page'        => $layout->page,
             'width'       => $layout->width,
             'height'      => $layout->height,

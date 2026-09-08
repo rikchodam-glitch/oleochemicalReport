@@ -45,7 +45,7 @@
                 <div class="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col">
                     <div class="relative h-40 bg-slate-100 flex items-center justify-center">
                         @if($layout->file_type === 'image' && $layout->width && $layout->height)
-                            <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($layout->file_path) }}"
+                            <img src="{{ $layout->fileUrlRelative() }}"
                                  alt="{{ $layout->label ?: $layout->name }}"
                                  class="w-full h-full object-contain">
                         @else
