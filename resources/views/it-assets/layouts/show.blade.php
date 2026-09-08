@@ -59,10 +59,20 @@
     </aside>
 
     <div class="flex-1 space-y-3">
-        <div id="denahWrap" class="relative rounded-xl border border-slate-200 bg-white overflow-hidden" style="min-height:420px;">
-            <div id="bgBox" class="pointer-events-none"></div>
-            <svg id="svgLinks" class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
-            <div id="markersLayer" class="absolute inset-0 pointer-events-none"></div>
+        <div id="denahWrap" class="relative rounded-xl border border-slate-200 bg-white overflow-hidden select-none" style="min-height:420px; cursor:grab;">
+            <div id="stage" class="relative w-full" style="transform-origin:0 0;">
+                <div id="bgBox" class="pointer-events-none"></div>
+                <svg id="svgLinks" class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+                <div id="markersLayer" class="absolute inset-0 pointer-events-none"></div>
+            </div>
+            <div id="zoomControls" class="absolute top-2 right-2 z-30 flex items-center gap-1 bg-white rounded-lg border border-slate-200 shadow px-1 py-1">
+                <button id="zoomOut" type="button" title="Perkecil" class="w-7 h-7 rounded-md text-slate-600 hover:bg-slate-100 transition-colors text-sm font-bold leading-none">&minus;</button>
+                <span id="zoomLabel" class="w-12 text-center text-xs font-medium text-slate-600">100%</span>
+                <button id="zoomIn" type="button" title="Perbesar" class="w-7 h-7 rounded-md text-slate-600 hover:bg-slate-100 transition-colors text-sm font-bold leading-none">+</button>
+                <button id="zoomReset" type="button" title="Reset zoom" class="w-7 h-7 rounded-md text-slate-600 hover:bg-slate-100 transition-colors" aria-label="Reset">
+                    <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M4 10a8 8 0 0116 0M20 14a8 8 0 01-16 0"/></svg>
+                </button>
+            </div>
             <div id="loading" class="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">Memuat denah&hellip;</div>
         </div>
         <p id="modeHint" class="text-sm text-slate-600"></p>
@@ -115,6 +125,7 @@
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
         const denahWrap = document.getElementById('denahWrap');
+        const stage = document.getElementById('stage');
         const bgBox = document.getElementById('bgBox');
         const svgLinks = document.getElementById('svgLinks');
         const markersLayer = document.getElementById('markersLayer');
@@ -122,10 +133,17 @@
         const modeHint = document.getElementById('modeHint');
         const btnDrawLink = document.getElementById('btnDrawLink');
         const btnCancelMode = document.getElementById('btnCancelMode');
+        const zoomLabel = document.getElementById('zoomLabel');
+        const zoomInBtn = document.getElementById('zoomIn');
+        const zoomOutBtn = document.getElementById('zoomOut');
+        const zoomResetBtn = document.getElementById('zoomReset');
 
         const state = { mode: 'idle', placingAssetId: null, linkFrom: null, linkTo: null };
         const itemsMap = {};
         const pathEls = {};
+        let zoom = 1;
+        let pan = { x: 0, y: 0 };
+        let panned = false;
 
         function escapeHtml(value) {
             return String(value ?? '')
@@ -161,13 +179,77 @@
             }
         }
 
-        function computePct(clientX, clientY) {
+        function contentPct(clientX, clientY) {
             const r = denahWrap.getBoundingClientRect();
+            const px = clientX - r.left;
+            const py = clientY - r.top;
+            const cx = (px - pan.x) / zoom;
+            const cy = (py - pan.y) / zoom;
+            const w = stage.offsetWidth || 1;
+            const h = stage.offsetHeight || 1;
             return {
-                x: Math.max(0, Math.min(100, ((clientX - r.left) / r.width) * 100)),
-                y: Math.max(0, Math.min(100, ((clientY - r.top) / r.height) * 100)),
+                x: Math.max(0, Math.min(100, (cx / w) * 100)),
+                y: Math.max(0, Math.min(100, (cy / h) * 100)),
             };
         }
+
+        function applyStage() {
+            stage.style.transform = 'translate(' + pan.x + 'px,' + pan.y + 'px) scale(' + zoom + ')';
+            if (zoomLabel) zoomLabel.textContent = Math.round(zoom * 100) + '%';
+        }
+
+        function setZoomCenter(newZoom, clientX, clientY) {
+            const r = denahWrap.getBoundingClientRect();
+            const px = clientX - r.left;
+            const py = clientY - r.top;
+            const cx = (px - pan.x) / zoom;
+            const cy = (py - pan.y) / zoom;
+            newZoom = Math.max(0.3, Math.min(6, newZoom));
+            pan.x = px - cx * newZoom;
+            pan.y = py - cy * newZoom;
+            zoom = newZoom;
+            applyStage();
+        }
+
+        denahWrap.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const factor = e.deltaY < 0 ? 1.15 : 0.87;
+            setZoomCenter(zoom * factor, e.clientX, e.clientY);
+        }, { passive: false });
+
+        zoomInBtn.addEventListener('click', () => {
+            const r = denahWrap.getBoundingClientRect();
+            setZoomCenter(zoom * 1.25, r.left + r.width / 2, r.top + r.height / 2);
+        });
+        zoomOutBtn.addEventListener('click', () => {
+            const r = denahWrap.getBoundingClientRect();
+            setZoomCenter(zoom / 1.25, r.left + r.width / 2, r.top + r.height / 2);
+        });
+        zoomResetBtn.addEventListener('click', () => {
+            zoom = 1;
+            pan = { x: 0, y: 0 };
+            applyStage();
+        });
+
+        // Pan (geser) dengan drag di area kosong denah.
+        let panCtx = null;
+        denahWrap.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 || e.target.closest('.pointer-events-auto')) return;
+            panCtx = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y, started: false };
+            panned = false;
+        });
+        document.addEventListener('pointermove', (e) => {
+            if (!panCtx) return;
+            const dx = e.clientX - panCtx.x;
+            const dy = e.clientY - panCtx.y;
+            if (!panCtx.started && (Math.abs(dx) + Math.abs(dy)) < 6) return;
+            panCtx.started = true;
+            panned = true;
+            pan.x = panCtx.px + dx;
+            pan.y = panCtx.py + dy;
+            applyStage();
+        });
+        document.addEventListener('pointerup', () => { panCtx = null; });
 
         function renderBackground() {
             bgBox.innerHTML = '';
@@ -329,22 +411,21 @@
             el.addEventListener('pointerdown', (e) => {
                 e.stopPropagation();
                 if (state.mode === 'link') return;
-                const startX = e.clientX, startY = e.clientY;
-                const origX = item.x, origY = item.y;
+                const start = { x: item.x, y: item.y };
+                let moved = false;
                 const onMove = (ev) => {
-                    const r = denahWrap.getBoundingClientRect();
-                    const nx = Math.max(0, Math.min(100, origX + ((ev.clientX - startX) / r.width) * 100));
-                    const ny = Math.max(0, Math.min(100, origY + ((ev.clientY - startY) / r.height) * 100));
-                    item.x = nx;
-                    item.y = ny;
-                    el.style.left = nx + '%';
-                    el.style.top = ny + '%';
-                    redrawLinks();
+                    const p = contentPct(ev.clientX, ev.clientY);
+                    if (Math.abs(p.x - start.x) > 0.01 || Math.abs(p.y - start.y) > 0.01) moved = true;
+                    item.x = p.x;
+                    item.y = p.y;
+                    el.style.left = p.x + '%';
+                    el.style.top = p.y + '%';
+                    if (moved) redrawLinks();
                 };
                 const onUp = () => {
                     document.removeEventListener('pointermove', onMove);
                     document.removeEventListener('pointerup', onUp);
-                    saveMove(item);
+                    if (moved) saveMove(item);
                 };
                 document.addEventListener('pointermove', onMove);
                 document.addEventListener('pointerup', onUp);
@@ -501,8 +582,9 @@
 
         denahWrap.addEventListener('click', async (e) => {
             if (state.mode !== 'place' || !state.placingAssetId) return;
+            if (panned) { panned = false; return; }
             const assetId = state.placingAssetId;
-            const pct = computePct(e.clientX, e.clientY);
+            const pct = contentPct(e.clientX, e.clientY);
             const res = await fetch(PLACE_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
@@ -592,6 +674,7 @@
         }
 
         function init() {
+            applyStage();
             renderBackground();
             (LAYOUT.items || []).forEach(addMarker);
             (LAYOUT.links || []).forEach(drawLink);
