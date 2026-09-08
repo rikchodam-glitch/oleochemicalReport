@@ -189,6 +189,11 @@ class ItLayoutController extends Controller
                 'message' => 'Perangkat sudah terpasang di denah lain.',
             ], 422);
         }
+        if ($existing && $existing->is_locked) {
+            return response()->json([
+                'message' => 'Perangkat terkunci. Buka kunci terlebih dahulu untuk mengubah posisi.',
+            ], 422);
+        }
 
         $item = ItLayoutItem::updateOrCreate(
             ['it_asset_id' => $asset->id],
@@ -218,6 +223,12 @@ class ItLayoutController extends Controller
             'y' => ['required', 'numeric', 'min:0', 'max:100'],
         ]);
 
+        if ($item->is_locked) {
+            return response()->json([
+                'message' => 'Perangkat terkunci. Buka kunci terlebih dahulu untuk mengubah posisi.',
+            ], 422);
+        }
+
         $item->update([
             'x' => $validated['x'],
             'y' => $validated['y'],
@@ -241,6 +252,12 @@ class ItLayoutController extends Controller
      */
     public function removeAsset(ItLayoutItem $item): JsonResponse
     {
+        if ($item->is_locked) {
+            return response()->json([
+                'message' => 'Perangkat terkunci. Buka kunci terlebih dahulu untuk menghapusnya.',
+            ], 422);
+        }
+
         $assetId = $item->it_asset_id;
 
         NetworkLink::where('from_asset_id', $assetId)
@@ -251,6 +268,25 @@ class ItLayoutController extends Controller
 
         return response()->json([
             'message' => 'Perangkat dikeluarkan dari denah.',
+        ]);
+    }
+
+    /**
+     * Kunci / buka kunci sebuah item pada denah. Saat terkunci, posisi dan
+     * penghapusan ditolak sampai dibuka kembali.
+     *
+     * @param  ItLayoutItem  $item
+     * @return JsonResponse
+     */
+    public function toggleLock(ItLayoutItem $item): JsonResponse
+    {
+        $item->update(['is_locked' => !$item->is_locked]);
+
+        $item->load('asset');
+
+        return response()->json([
+            'message' => $item->is_locked ? 'Perangkat terkunci.' : 'Perangkat dibuka kuncinya.',
+            'item'    => $this->serializeItem($item),
         ]);
     }
 
@@ -326,6 +362,7 @@ class ItLayoutController extends Controller
             'it_asset_id' => $item->it_asset_id,
             'x'           => $item->x,
             'y'           => $item->y,
+            'is_locked'   => (bool) $item->is_locked,
             'asset'       => $this->serializeAsset($item->asset),
         ];
     }

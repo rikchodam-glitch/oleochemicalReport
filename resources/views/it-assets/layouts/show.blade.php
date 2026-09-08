@@ -122,6 +122,31 @@
         const CABLE_LABELS = { fiber_optic: 'Fiber Optic', utp: 'UTP', wireless: 'Wireless', coaxial: 'Coaxial', other: 'Lainnya' };
         const deviceLabels = { PC: 'PC', LAPTOP: 'Laptop', PRINTER: 'Printer', CCTV: 'CCTV', NVR: 'NVR', ACCESS_DOOR: 'Access Door', WIFI: 'WiFi', NETWORK: 'Network', UPS: 'UPS', OTHER: 'Lainnya' };
 
+        // Ikon (logo) per jenis perangkat — dibedakan dari bentuknya.
+        const DEVICE_ICONS = {
+            PC: '<path d="M4 5h16v11H4zM9 19h6M12 16v3"/>',
+            LAPTOP: '<path d="M4 6h16v9H4zM2 18h20"/>',
+            PRINTER: '<path d="M7 8V4h10v4M9 14h6M3 10a2 2 0 012-2h14a2 2 0 012 2v5h-4v4H7v-4H3z"/>',
+            CCTV: '<path d="M4 7h12a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V9a2 2 0 012-2zm16 3l4-2v8l-4-2z"/>',
+            NVR: '<path d="M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01"/>',
+            ACCESS_DOOR: '<path d="M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zM15 13h2"/>',
+            WIFI: '<path d="M12 18h.01M8.3 14.3a5.5 5.5 0 017.4 0M5.1 11.1a10 10 0 0113.8 0M2 8a15 15 0 0120 0"/>',
+            NETWORK: '<path d="M12 3a3 3 0 100 6 3 3 0 000-6zM12 15a3 3 0 100 6 3 3 0 000-6zM5 9a3 3 0 100 6 3 3 0 000-6zM19 9a3 3 0 100 6 3 3 0 000-6zM8 7l2 3M16 7l-2 3M10 14l-2 2M14 14l2 2"/>',
+            UPS: '<path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z"/>',
+            OTHER: '<circle cx="12" cy="12" r="7"/>',
+        };
+
+        function deviceIconHtml(type) {
+            const icon = DEVICE_ICONS[type] || DEVICE_ICONS.OTHER;
+            return '<svg class="block mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">' + icon + '</svg>';
+        }
+
+        function lockBadgeHtml() {
+            return '<span class="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 border border-white flex items-center justify-center">'
+                + '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:8px;height:8px;"><path d="M7 11h10v9H7zM9 11V8a3 3 0 016 0v3"/></svg>'
+                + '</span>';
+        }
+
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
         const denahWrap = document.getElementById('denahWrap');
@@ -144,6 +169,13 @@
         let zoom = 1;
         let pan = { x: 0, y: 0 };
         let panned = false;
+        // Untuk re-render PDF pada resolusi sesuai zoom (agar tidak blur).
+        let pdfDoc = null;
+        let pdfPage = null;
+        let pdfBaseVp = null;
+        let pdfBaseScale = 1;
+        let pdfTimer = null;
+        let pdfRenderSeq = 0;
 
         function escapeHtml(value) {
             return String(value ?? '')
@@ -196,6 +228,15 @@
         function applyStage() {
             stage.style.transform = 'translate(' + pan.x + 'px,' + pan.y + 'px) scale(' + zoom + ')';
             if (zoomLabel) zoomLabel.textContent = Math.round(zoom * 100) + '%';
+            updateMarkerScale();
+            schedulePdfRerender();
+        }
+
+        function updateMarkerScale() {
+            const s = 1 / zoom;
+            Object.values(itemsMap).forEach(entry => {
+                entry.el.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
+            });
         }
 
         function setZoomCenter(newZoom, clientX, clientY) {
@@ -274,23 +315,50 @@
 
             pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
             pdfjsLib.getDocument(LAYOUT.file_url).promise
-                .then(pdf => pdf.getPage(Math.min(LAYOUT.page || 1, pdf.numPages)))
+                .then(pdf => { pdfDoc = pdf; return pdf.getPage(Math.min(LAYOUT.page || 1, pdf.numPages)); })
                 .then(page => {
-                    const base = page.getViewport({ scale: 1 });
-                    const scale = 1600 / base.width;
-                    const viewport = page.getViewport({ scale: scale });
-                    const canvas = document.createElement('canvas');
-                    canvas.width = viewport.width;
-                    canvas.height = viewport.height;
-                    canvas.className = 'block w-full h-auto';
-                    bgBox.appendChild(canvas);
-                    return page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+                    pdfPage = page;
+                    pdfBaseVp = page.getViewport({ scale: 1 });
+                    pdfBaseScale = 1600 / pdfBaseVp.width;
+                    return renderPageCanvas(page, pdfBaseScale);
                 })
-                .then(() => { loading.style.display = 'none'; })
+                .then(canvas => { setBgCanvas(canvas); loading.style.display = 'none'; })
                 .catch(err => {
                     bgBox.innerHTML = '<div class="text-red-600 text-sm p-4">Gagal memuat denah: ' + escapeHtml(err.message) + '</div>';
                     loading.style.display = 'none';
                 });
+        }
+
+        function renderPageCanvas(page, scale) {
+            const viewport = page.getViewport({ scale: scale });
+            const canvas = document.createElement('canvas');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            canvas.className = 'block w-full h-auto';
+            return page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise.then(() => canvas);
+        }
+
+        function setBgCanvas(canvas) {
+            const old = bgBox.querySelector('canvas');
+            bgBox.appendChild(canvas);
+            if (old && old !== canvas) old.remove();
+        }
+
+        function rerenderPdf() {
+            if (!pdfPage || !pdfBaseVp) return;
+            const seq = ++pdfRenderSeq;
+            let scale = pdfBaseScale * Math.max(1, zoom);
+            const maxWidth = 4096;
+            if (pdfBaseVp.width * scale > maxWidth) scale = maxWidth / pdfBaseVp.width;
+            renderPageCanvas(pdfPage, scale).then(canvas => {
+                if (pdfPage && seq === pdfRenderSeq) setBgCanvas(canvas);
+            });
+        }
+
+        function schedulePdfRerender() {
+            if (LAYOUT.file_type !== 'pdf' || !pdfPage) return;
+            clearTimeout(pdfTimer);
+            pdfTimer = setTimeout(rerenderPdf, 180);
         }
 
         let linksData = LAYOUT.links || [];
@@ -364,13 +432,45 @@
             if (asset.snapshot_url) {
                 snap = '<img src="' + asset.snapshot_url + '" class="block w-full rounded-lg border border-slate-200 mt-2" alt="Snapshot" loading="lazy">';
             }
+            let actions;
+            if (item.is_locked) {
+                actions = '<button type="button" data-act="unlock" class="px-2 py-1 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded">Buka Kunci</button>';
+            } else {
+                actions = '<button type="button" data-act="lock" class="px-2 py-1 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded">Kunci</button>'
+                    + '<button type="button" data-act="remove" class="px-2 py-1 text-xs font-medium text-red-600 hover:text-red-800">Hapus</button>';
+            }
             const html = '<div class="font-semibold">' + escapeHtml(displayName(asset)) + '</div>'
                 + '<div class="text-slate-500">' + escapeHtml(deviceLabels[asset.device_type] || asset.device_type || 'Perangkat') + '</div>'
+                + (item.is_locked ? '<div class="text-xs text-amber-600 mt-1">Status: Terkunci</div>' : '')
                 + (asset.ip_address ? '<div class="mt-1">IP: <code class="text-xs">' + escapeHtml(asset.ip_address) + '</code></div>' : '')
                 + (loc ? '<div class="text-xs text-slate-500">' + escapeHtml(loc) + '</div>' : '')
                 + (asset.last_ping_status ? '<div class="text-xs mt-1">Status: ' + escapeHtml(asset.last_ping_status) + '</div>' : '')
-                + snap;
+                + snap
+                + '<div class="mt-2 flex gap-2">' + actions + '</div>';
             showPopup(html, el);
+
+            const lockBtn = document.querySelector('#tempPopup [data-act="lock"], #tempPopup [data-act="unlock"]');
+            if (lockBtn) lockBtn.addEventListener('click', () => toggleLockItem(item.it_asset_id));
+            const removeBtn = document.querySelector('#tempPopup [data-act="remove"]');
+            if (removeBtn) removeBtn.addEventListener('click', () => removePlacement(item.it_asset_id));
+        }
+
+        async function toggleLockItem(assetId) {
+            const entry = itemsMap[assetId];
+            if (!entry) return;
+            const res = await fetch(TOGGLE_LOCK_URL.replace('__ID__', entry.item.id), {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                alert(data.message || 'Gagal mengubah status kunci.');
+                return;
+            }
+            entry.item.is_locked = data.item.is_locked;
+            closePopup();
+            refreshMarker(entry);
+            renderPlaced();
         }
 
         function showLinkPopup(link, poly) {
@@ -387,18 +487,48 @@
             const asset = item.asset;
             const el = document.createElement('div');
             el.className = 'pointer-events-auto absolute';
-            el.style.left = item.x + '%';
-            el.style.top = item.y + '%';
-            el.style.width = '24px';
-            el.style.height = '24px';
-            el.style.transform = 'translate(-50%, -50%)';
-            el.style.borderRadius = '9999px';
+            el.style.width = '26px';
+            el.style.height = '26px';
+            el.style.borderRadius = '50%';
+            el.style.display = 'flex';
+            el.style.alignItems = 'center';
+            el.style.justifyContent = 'center';
             el.style.background = colorFor(asset.device_type);
             el.style.border = '3px solid #fff';
             el.style.boxShadow = '0 1px 4px rgba(0,0,0,.4)';
-            el.style.cursor = 'move';
+            el.style.color = '#fff';
             el.title = displayName(asset);
 
+            const entry = { item, el };
+            markersLayer.appendChild(el);
+            itemsMap[asset.id] = entry;
+
+            refreshMarker(entry);
+            bindMarkerEvents(entry);
+            renderPlaced();
+            return el;
+        }
+
+        function refreshMarker(entry) {
+            const { item, el } = entry;
+            const asset = item.asset;
+            el.style.left = item.x + '%';
+            el.style.top = item.y + '%';
+            el.innerHTML = deviceIconHtml(asset.device_type) + (item.is_locked ? lockBadgeHtml() : '');
+            if (item.is_locked) {
+                el.style.cursor = 'pointer';
+                el.style.borderStyle = 'dashed';
+                el.style.borderColor = '#f59e0b';
+            } else {
+                el.style.cursor = 'move';
+                el.style.borderStyle = 'solid';
+                el.style.borderColor = '#fff';
+            }
+        }
+
+        function bindMarkerEvents(entry) {
+            const { item, el } = entry;
+            const asset = item.asset;
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (state.mode === 'link') {
@@ -407,10 +537,9 @@
                     showMarkerPopup(item, el);
                 }
             });
-
             el.addEventListener('pointerdown', (e) => {
                 e.stopPropagation();
-                if (state.mode === 'link') return;
+                if (state.mode === 'link' || item.is_locked) return;
                 const start = { x: item.x, y: item.y };
                 let moved = false;
                 const onMove = (ev) => {
@@ -430,11 +559,6 @@
                 document.addEventListener('pointermove', onMove);
                 document.addEventListener('pointerup', onUp);
             });
-
-            markersLayer.appendChild(el);
-            itemsMap[asset.id] = { item, el };
-            renderPlaced();
-            return el;
         }
 
         function removeMarker(assetId) {
@@ -456,6 +580,7 @@
         const DELETE_LINK_URL = '{{ route('it-assets.network-links.destroy', ['networkLink' => '__ID__']) }}';
         const MOVE_ITEM_URL = '{{ route('it-assets.layouts.move-asset', ['item' => '__ID__']) }}';
         const REMOVE_ITEM_URL = '{{ route('it-assets.layouts.remove-asset', ['item' => '__ID__']) }}';
+        const TOGGLE_LOCK_URL = '{{ route('it-assets.layouts.toggle-lock', ['item' => '__ID__']) }}';
 
         async function saveMove(item) {
             if (item.id == null) return;
@@ -502,6 +627,7 @@
                 alert(data.message || 'Gagal mengeluarkan perangkat.');
                 return;
             }
+            closePopup();
             removeMarker(assetId);
             if (UNPLACED.findIndex(a => a.id === assetId) === -1) {
                 UNPLACED.push(entry.item.asset);
@@ -617,12 +743,15 @@
             }
             Object.values(itemsMap).forEach(entry => {
                 const asset = entry.item.asset;
+                const locked = entry.item.is_locked;
                 const li = document.createElement('li');
                 li.className = 'flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 text-xs text-slate-700';
                 li.innerHTML = '<span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:' + colorFor(asset.device_type) + '"></span>'
-                    + '<span class="min-w-0 flex-1 truncate">' + escapeHtml(displayName(asset)) + '</span>'
-                    + '<button type="button" class="placed-remove text-slate-400 hover:text-red-600 px-1" title="Keluarkan dari denah">&times;</button>';
-                li.querySelector('.placed-remove').addEventListener('click', () => removePlacement(asset.id));
+                    + '<span class="min-w-0 flex-1 truncate" title="' + escapeHtml(displayName(asset)) + '">' + escapeHtml(displayName(asset)) + '</span>'
+                    + (locked ? '<span class="flex items-center justify-center shrink-0" title="Terkunci"><svg viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" style="width:12px;height:12px"><path d="M7 11h10v9H7zM9 11V8a3 3 0 016 0v3"/></svg></span>' : '')
+                    + (locked ? '' : '<button type="button" class="placed-remove text-slate-400 hover:text-red-600 px-1" title="Keluarkan dari denah">&times;</button>');
+                const removeBtn = li.querySelector('.placed-remove');
+                if (removeBtn) removeBtn.addEventListener('click', () => removePlacement(asset.id));
                 list.appendChild(li);
             });
         }
@@ -677,6 +806,7 @@
             applyStage();
             renderBackground();
             (LAYOUT.items || []).forEach(addMarker);
+            updateMarkerScale();
             (LAYOUT.links || []).forEach(drawLink);
             renderLegends();
             renderUnplaced();

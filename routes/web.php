@@ -176,6 +176,7 @@ Route::middleware('admin')->group(function () {
     Route::post('/it-assets/layouts/{layout}/links', [ItLayoutController::class, 'storeLink'])->name('it-assets.layouts.store-link');
     Route::delete('/it-assets/layout-items/{item}', [ItLayoutController::class, 'removeAsset'])->name('it-assets.layouts.remove-asset');
     Route::patch('/it-assets/layout-items/{item}', [ItLayoutController::class, 'moveAsset'])->name('it-assets.layouts.move-asset');
+    Route::patch('/it-assets/layout-items/{item}/lock', [ItLayoutController::class, 'toggleLock'])->name('it-assets.layouts.toggle-lock');
     Route::delete('/it-assets/network-links/{networkLink}', [ItLayoutController::class, 'destroyLink'])->name('it-assets.network-links.destroy');
     Route::get('/it-assets/{itAsset}', [ItAssetController::class, 'show'])->name('it-assets.show');
     Route::get('/it-assets/{itAsset}/edit', [ItAssetController::class, 'edit'])->name('it-assets.edit');

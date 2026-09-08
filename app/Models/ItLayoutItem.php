@@ -17,6 +17,7 @@ class ItLayoutItem extends Model
         'it_asset_id',
         'x',
         'y',
+        'is_locked',
     ];
 
     /**
@@ -27,8 +28,9 @@ class ItLayoutItem extends Model
     protected function casts(): array
     {
         return [
-            'x' => 'float',
-            'y' => 'float',
+            'x'         => 'float',
+            'y'         => 'float',
+            'is_locked' => 'boolean',
         ];
     }
 
