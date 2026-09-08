@@ -9,6 +9,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FunctionalLocationController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\ItAssetController;
+use App\Http\Controllers\ItNetworkMapController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\ReportController;
@@ -165,6 +166,11 @@ Route::middleware('admin')->group(function () {
     Route::post('/it-assets', [ItAssetController::class, 'store'])->name('it-assets.store');
     Route::get('/it-assets/import', [ItAssetController::class, 'showImport'])->name('it-assets.import');
     Route::post('/it-assets/import', [ItAssetController::class, 'import'])->name('it-assets.import.execute');
+    // Network Map — visualisasi skema jaringan & titik lokasi perangkat IT.
+    Route::get('/it-assets/network-map', [ItNetworkMapController::class, 'index'])->name('it-assets.network-map');
+    Route::patch('/it-assets/network-map/location', [ItNetworkMapController::class, 'updateLocation'])->name('it-assets.network-map.location');
+    Route::post('/it-assets/network-map/links', [ItNetworkMapController::class, 'storeLink'])->name('it-assets.network-map.store-link');
+    Route::delete('/it-assets/network-map/links/{networkLink}', [ItNetworkMapController::class, 'destroyLink'])->name('it-assets.network-map.destroy-link');
     Route::get('/it-assets/{itAsset}', [ItAssetController::class, 'show'])->name('it-assets.show');
     Route::get('/it-assets/{itAsset}/edit', [ItAssetController::class, 'edit'])->name('it-assets.edit');
     Route::put('/it-assets/{itAsset}', [ItAssetController::class, 'update'])->name('it-assets.update');

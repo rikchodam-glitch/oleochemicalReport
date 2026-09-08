@@ -41,6 +41,10 @@ class ItAsset extends Model
         'last_snapshot_error',
         'data_source',
         'imported_at',
+        // Kolom koordinat lokasi untuk fitur Network Map.
+        'latitude',
+        'longitude',
+        'location_set_at',
     ];
 
     /**
@@ -61,6 +65,9 @@ class ItAsset extends Model
             'last_ping_at'       => 'datetime',
             'last_snapshot_at'   => 'datetime',
             'imported_at'        => 'datetime',
+            'location_set_at'    => 'datetime',
+            'latitude'           => 'float',
+            'longitude'          => 'float',
             // Dienkripsi otomatis oleh Laravel (APP_KEY) saat disimpan dan
             // didekripsi saat dibaca lewat Eloquent — tidak pernah plaintext
             // di kolom DB. Lihat CctvSnapshotService::resolveCredentials().
@@ -76,6 +83,26 @@ class ItAsset extends Model
     public function pingLogs(): HasMany
     {
         return $this->hasMany(ItPingLog::class);
+    }
+
+    /**
+     * Jalur (link) yang berangkat dari perangkat ini (menjadi from_asset).
+     *
+     * @return HasMany<NetworkLink>
+     */
+    public function linksFrom(): HasMany
+    {
+        return $this->hasMany(NetworkLink::class, 'from_asset_id');
+    }
+
+    /**
+     * Jalur (link) yang menuju ke perangkat ini (menjadi to_asset).
+     *
+     * @return HasMany<NetworkLink>
+     */
+    public function linksTo(): HasMany
+    {
+        return $this->hasMany(NetworkLink::class, 'to_asset_id');
     }
 
     /**

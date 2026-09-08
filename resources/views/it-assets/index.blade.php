@@ -41,6 +41,14 @@
         </svg>
         Import Excel
     </a>
+    <a href="{{ route('it-assets.network-map') }}" title="Visualisasi skema jaringan & titik lokasi perangkat IT"
+       class="inline-flex items-center gap-2 px-4 py-2 border border-blue-600 text-blue-700 hover:bg-blue-50 text-sm font-medium rounded-lg transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+        Network Map
+    </a>
+
 @endsection
 
 @php
@@ -394,13 +402,23 @@ function toggleCctvGroup(groupId, button) {
  * Ping satu perangkat lewat AJAX dan perbarui badge status ping inline
  * tanpa reload halaman.
  *
+ * Karena perangkat offline bisa memakan waktu hingga beberapa detik untuk
+ * merespons, tombol ping menampilkan spinner + keterangan selama proses
+ * berjalan agar user tidak mengira halaman macet.
+ *
  * @param {number} id
  * @param {HTMLButtonElement} button
  */
 function pingDevice(id, button) {
-    const originalText = button.textContent;
+    const originalHtml = button.innerHTML;
     button.disabled = true;
-    button.textContent = 'Ping...';
+    button.classList.add('cursor-wait');
+    // Tampilkan indikator loading + keterangan pada tombol.
+    button.innerHTML = '<svg class="w-3 h-3 mr-1 inline animate-spin" fill="none" viewBox="0 0 24 24">'
+        + '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>'
+        + '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>'
+        + '</svg>Memeriksa...';
+    button.title = 'Sedang memeriksa koneksi perangkat...';
 
     const url = itAssetPingUrlTemplate.replace('__ID__', id);
 
@@ -434,7 +452,9 @@ function pingDevice(id, button) {
     })
     .finally(() => {
         button.disabled = false;
-        button.textContent = originalText;
+        button.classList.remove('cursor-wait');
+        button.innerHTML = originalHtml;
+        button.title = '';
     });
 }
 
