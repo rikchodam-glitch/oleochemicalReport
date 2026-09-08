@@ -48,7 +48,7 @@
 
     {{-- ── Peta ───────────────────────────────────────────────────────── --}}
     <div class="flex-1 space-y-3">
-        <div id="network-map" class="h-[70vh] w-full rounded-xl border border-slate-200 z-0"></div>
+        <div id="network-map" class="w-full rounded-xl border border-slate-200 z-0" style="height:70vh; min-height:420px;"></div>
         <p id="modeHint" class="text-sm text-slate-600"></p>
     </div>
 </div>
@@ -112,6 +112,16 @@
         };
 
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+        // Guard: kalau Leaflet gagal dimuat (mis. CDN diblokir), tampilkan
+        // pesan yang jelas alih-alih area peta kosong.
+        if (typeof L === 'undefined') {
+            const el = document.getElementById('network-map');
+            if (el) {
+                el.innerHTML = '<div class="flex items-center justify-center h-full text-sm text-red-600">Library peta (Leaflet) tidak termuat. Periksa koneksi internet.</div>';
+            }
+            throw new Error('Leaflet library is not loaded.');
+        }
 
         const map = L.map('network-map');
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
