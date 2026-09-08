@@ -13,6 +13,7 @@ class NetworkLink extends Model
      * @var array<int, string>
      */
     protected $fillable = [
+        'layout_id',
         'from_asset_id',
         'to_asset_id',
         'cable_type',
@@ -31,6 +32,16 @@ class NetworkLink extends Model
         return [
             'path_points' => 'array',
         ];
+    }
+
+    /**
+     * Layout (denah) tempat jalur ini digambar.
+     *
+     * @return BelongsTo<ItLayout>
+     */
+    public function layout(): BelongsTo
+    {
+        return $this->belongsTo(ItLayout::class);
     }
 
     /**

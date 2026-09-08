@@ -9,7 +9,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FunctionalLocationController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\ItAssetController;
-use App\Http\Controllers\ItNetworkMapController;
+use App\Http\Controllers\ItLayoutController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\ReportController;
@@ -166,11 +166,17 @@ Route::middleware('admin')->group(function () {
     Route::post('/it-assets', [ItAssetController::class, 'store'])->name('it-assets.store');
     Route::get('/it-assets/import', [ItAssetController::class, 'showImport'])->name('it-assets.import');
     Route::post('/it-assets/import', [ItAssetController::class, 'import'])->name('it-assets.import.execute');
-    // Network Map — visualisasi skema jaringan & titik lokasi perangkat IT.
-    Route::get('/it-assets/network-map', [ItNetworkMapController::class, 'index'])->name('it-assets.network-map');
-    Route::patch('/it-assets/network-map/location', [ItNetworkMapController::class, 'updateLocation'])->name('it-assets.network-map.location');
-    Route::post('/it-assets/network-map/links', [ItNetworkMapController::class, 'storeLink'])->name('it-assets.network-map.store-link');
-    Route::delete('/it-assets/network-map/links/{networkLink}', [ItNetworkMapController::class, 'destroyLink'])->name('it-assets.network-map.destroy-link');
+    // Denah / Peta Letak — penempatan perangkat IT di atas denah PDF/gambar.
+    Route::get('/it-assets/layouts', [ItLayoutController::class, 'index'])->name('it-assets.layouts.index');
+    Route::get('/it-assets/layouts/create', [ItLayoutController::class, 'create'])->name('it-assets.layouts.create');
+    Route::post('/it-assets/layouts', [ItLayoutController::class, 'store'])->name('it-assets.layouts.store');
+    Route::get('/it-assets/layouts/{layout}', [ItLayoutController::class, 'show'])->name('it-assets.layouts.show');
+    Route::delete('/it-assets/layouts/{layout}', [ItLayoutController::class, 'destroy'])->name('it-assets.layouts.destroy');
+    Route::post('/it-assets/layouts/{layout}/place', [ItLayoutController::class, 'placeAsset'])->name('it-assets.layouts.place');
+    Route::post('/it-assets/layouts/{layout}/links', [ItLayoutController::class, 'storeLink'])->name('it-assets.layouts.store-link');
+    Route::delete('/it-assets/layout-items/{item}', [ItLayoutController::class, 'removeAsset'])->name('it-assets.layouts.remove-asset');
+    Route::patch('/it-assets/layout-items/{item}', [ItLayoutController::class, 'moveAsset'])->name('it-assets.layouts.move-asset');
+    Route::delete('/it-assets/network-links/{networkLink}', [ItLayoutController::class, 'destroyLink'])->name('it-assets.network-links.destroy');
     Route::get('/it-assets/{itAsset}', [ItAssetController::class, 'show'])->name('it-assets.show');
     Route::get('/it-assets/{itAsset}/edit', [ItAssetController::class, 'edit'])->name('it-assets.edit');
     Route::put('/it-assets/{itAsset}', [ItAssetController::class, 'update'])->name('it-assets.update');

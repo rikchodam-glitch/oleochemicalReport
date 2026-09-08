@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ItAsset extends Model
 {
@@ -103,6 +104,17 @@ class ItAsset extends Model
     public function linksTo(): HasMany
     {
         return $this->hasMany(NetworkLink::class, 'to_asset_id');
+    }
+
+    /**
+     * Posisi perangkat ini pada sebuah denah (layout). HasOne karena satu
+     * perangkat hanya boleh ditempatkan di satu layout (UNIQUE it_asset_id).
+     *
+     * @return HasOne<ItLayoutItem>
+     */
+    public function layoutItem(): HasOne
+    {
+        return $this->hasOne(ItLayoutItem::class, 'it_asset_id');
     }
 
     /**
