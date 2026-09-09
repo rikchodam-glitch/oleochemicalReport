@@ -68,6 +68,8 @@ class ItAssetController extends Controller
             'search'      => $request->query('search'),
             'plant'       => $request->query('plant'),
             'vlan'        => $request->query('vlan'),
+            'sort'        => $request->query('sort'),
+            'dir'         => $request->query('dir'),
         ], fn ($value) => $value !== null && $value !== '');
 
         if ($listQuery === []) {
@@ -104,6 +106,23 @@ class ItAssetController extends Controller
             if ($vlan > 0) {
                 $query->where('ip_address', 'like', '192.168.' . $vlan . '.%');
             }
+        }
+
+        // Urutkan (sort) dari klik header tabel. Hanya kolom yang dikenal yang
+        // boleh dipakai; kolom IP diurutkan secara numerik (INET_ATON) agar
+        // 192.168.41.2 muncul sebelum .10.
+        $sortable = ['device_type', 'tag_name', 'name', 'brand', 'model', 'ip_address', 'location', 'plant', 'status', 'last_ping_status'];
+        $sort = in_array($request->input('sort'), $sortable, true) ? $request->input('sort') : null;
+        $dir = $request->input('dir') === 'desc' ? 'desc' : 'asc';
+
+        if ($sort) {
+            if ($sort === 'ip_address') {
+                $query->orderByRaw('INET_ATON(ip_address) ' . $dir);
+            } else {
+                $query->orderBy($sort, $dir);
+            }
+        } else {
+            $query->orderBy('device_type')->orderBy('tag_name');
         }
 
         // Mode tampilan: 'layout' (grid + snapshot per PT, collapsible) hanya

@@ -75,6 +75,31 @@
     if (request('status')) $activeFilters[] = ['key' => 'status', 'label' => 'Status: ' . (['active' => 'Aktif', 'inactive' => 'Nonaktif', 'needs_review' => 'Perlu Review', 'spare' => 'Spare'][request('status')] ?? request('status'))];
     if (request('plant')) $activeFilters[] = ['key' => 'plant', 'label' => 'Plant: ' . request('plant')];
     if (request('vlan')) $activeFilters[] = ['key' => 'vlan', 'label' => 'VLAN: ' . request('vlan')];
+
+    $sortBy = request('sort');
+    $sortDir = request('dir') === 'desc' ? 'desc' : 'asc';
+
+    // Toggle arah sort: asc -> desc -> asc saat kolom yang sama diklik lagi.
+    if (!function_exists('itAssetSortUrl')) {
+        function itAssetSortUrl($col) {
+            $isActive = request('sort') === $col;
+            $dir = ($isActive && request('dir') === 'asc') ? 'desc' : 'asc';
+            return route('it-assets.index', array_merge(
+                request()->except(['page']),
+                ['sort' => $col, 'dir' => $dir]
+            ));
+        }
+    }
+
+    // Indikator panah untuk kolom yang sedang diurutkan.
+    $sortArrow = function ($col) use ($sortBy, $sortDir) {
+        if ($sortBy !== $col) {
+            return '';
+        }
+        return $sortDir === 'asc'
+            ? ' <span class="inline-block ml-1">&#9650;</span>'
+            : ' <span class="inline-block ml-1">&#9660;</span>';
+    };
 @endphp
 
 @section('content')
@@ -306,12 +331,24 @@
             <table class="w-full text-sm">
                 <thead>
                     <tr class="bg-slate-50 border-b border-slate-100">
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Tipe</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Tag / Name</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Brand / Model</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">IP Address</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Lokasi</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Status Ping</th>
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">
+                            <a href="{{ itAssetSortUrl('device_type') }}" class="hover:text-slate-700">Tipe{!! $sortArrow('device_type') !!}</a>
+                        </th>
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">
+                            <a href="{{ itAssetSortUrl('tag_name') }}" class="hover:text-slate-700">Tag / Name{!! $sortArrow('tag_name') !!}</a>
+                        </th>
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">
+                            <a href="{{ itAssetSortUrl('brand') }}" class="hover:text-slate-700">Brand / Model{!! $sortArrow('brand') !!}</a>
+                        </th>
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">
+                            <a href="{{ itAssetSortUrl('ip_address') }}" class="hover:text-slate-700">IP Address{!! $sortArrow('ip_address') !!}</a>
+                        </th>
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">
+                            <a href="{{ itAssetSortUrl('location') }}" class="hover:text-slate-700">Lokasi{!! $sortArrow('location') !!}</a>
+                        </th>
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">
+                            <a href="{{ itAssetSortUrl('last_ping_status') }}" class="hover:text-slate-700">Status Ping{!! $sortArrow('last_ping_status') !!}</a>
+                        </th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Aksi</th>
                     </tr>
                 </thead>
