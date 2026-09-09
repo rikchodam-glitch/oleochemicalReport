@@ -73,6 +73,8 @@
     if (request('search')) $activeFilters[] = ['key' => 'search', 'label' => 'Pencarian: ' . request('search')];
     if (request('device_type')) $activeFilters[] = ['key' => 'device_type', 'label' => 'Tipe: ' . ($deviceTypeLabels[request('device_type')] ?? request('device_type'))];
     if (request('status')) $activeFilters[] = ['key' => 'status', 'label' => 'Status: ' . (['active' => 'Aktif', 'inactive' => 'Nonaktif', 'needs_review' => 'Perlu Review', 'spare' => 'Spare'][request('status')] ?? request('status'))];
+    if (request('plant')) $activeFilters[] = ['key' => 'plant', 'label' => 'Plant: ' . request('plant')];
+    if (request('vlan')) $activeFilters[] = ['key' => 'vlan', 'label' => 'VLAN: ' . request('vlan')];
 @endphp
 
 @section('content')
@@ -131,6 +133,24 @@
                             <option value="inactive" {{ request('status') === 'inactive' ? 'selected' : '' }}>Nonaktif</option>
                             <option value="needs_review" {{ request('status') === 'needs_review' ? 'selected' : '' }}>Perlu Review</option>
                             <option value="spare" {{ request('status') === 'spare' ? 'selected' : '' }}>Spare</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1.5">Plant</label>
+                        <select name="plant" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
+                            <option value="">Semua Plant</option>
+                            @foreach($plants as $plant)
+                                <option value="{{ $plant }}" {{ request('plant') === $plant ? 'selected' : '' }}>{{ $plant }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1.5">VLAN IP</label>
+                        <select name="vlan" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
+                            <option value="">Semua VLAN</option>
+                            @foreach($vlans as $vlan)
+                                <option value="{{ $vlan }}" {{ request('vlan') == $vlan ? 'selected' : '' }}>VLAN {{ $vlan }}</option>
+                            @endforeach
                         </select>
                     </div>
                 </div>

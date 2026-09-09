@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\IpAddress;
+use App\Models\IpNetwork;
 use App\Models\ItAsset;
 use App\Models\ItNotification;
 use App\Models\ItPingLog;
@@ -65,6 +66,8 @@ class ItAssetController extends Controller
             'device_type' => $request->query('device_type'),
             'status'      => $request->query('status'),
             'search'      => $request->query('search'),
+            'plant'       => $request->query('plant'),
+            'vlan'        => $request->query('vlan'),
         ], fn ($value) => $value !== null && $value !== '');
 
         if ($listQuery === []) {
@@ -88,6 +91,19 @@ class ItAssetController extends Controller
                     ->orWhere('name', 'like', "%{$search}%")
                     ->orWhere('ip_address', 'like', "%{$search}%");
             });
+        }
+
+        if ($request->filled('plant')) {
+            $query->where('plant', $request->string('plant')->toString());
+        }
+
+        if ($request->filled('vlan')) {
+            // Konvensi network: 192.168.[vlan].0 => IP perangkat berada di
+            // rentang 192.168.[vlan].x. Cukup cocokkan prefix octet ketiga.
+            $vlan = $request->integer('vlan');
+            if ($vlan > 0) {
+                $query->where('ip_address', 'like', '192.168.' . $vlan . '.%');
+            }
         }
 
         // Mode tampilan: 'layout' (grid + snapshot per PT, collapsible) hanya
@@ -120,6 +136,17 @@ class ItAssetController extends Controller
 
         $summary = $this->buildDeviceTypeSummary();
 
+        $plants = ItAsset::query()
+            ->whereNotNull('plant')
+            ->distinct()
+            ->orderBy('plant')
+            ->pluck('plant');
+
+        $vlans = IpNetwork::query()
+            ->distinct()
+            ->orderBy('vlan')
+            ->pluck('vlan');
+
         return view('it-assets.index', [
             'itAssets'                => $itAssets,
             'cctvGroups'              => $cctvGroups,
@@ -128,6 +155,8 @@ class ItAssetController extends Controller
             'deviceTypeLabels'        => $this->deviceTypeLabels(),
             'unreadNotificationCount' => ItNotification::unread()->count(),
             'viewMode'                => $viewMode,
+            'plants'                  => $plants,
+            'vlans'                   => $vlans,
         ]);
     }
 

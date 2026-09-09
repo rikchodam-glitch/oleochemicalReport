@@ -92,19 +92,16 @@
 
                 <div>
                     <label class="block text-xs font-medium text-slate-500 mb-1.5">IP Address</label>
-                    <input type="text" id="ip-address-search" placeholder="Cari IP&hellip;" autocomplete="off"
-                           class="w-full mb-1.5 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                    <select name="ip_address" id="ip-address-select"
-                            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
-                        <option value="">&mdash; Pilih IP &mdash;</option>
-                        @foreach($ipGroups as $group)
-                            <optgroup label="{{ $group['label'] }}">
-                                @foreach($group['ips'] as $ip)
-                                    <option value="{{ $ip['address'] }}" {{ (old('ip_address', $itAsset->ip_address) === $ip['address'] || $ip['selected']) ? 'selected' : '' }}>{{ $ip['address'] }}</option>
-                                @endforeach
-                            </optgroup>
-                        @endforeach
-                    </select>
+                    <div class="relative" id="ip-combobox">
+                        <input type="text" id="ip-address-input" value="{{ old('ip_address', $itAsset->ip_address) }}"
+                               placeholder="Ketik IP / VLAN untuk mencari&hellip;" autocomplete="off"
+                               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <input type="hidden" name="ip_address" id="ip-address-value" value="{{ old('ip_address', $itAsset->ip_address) }}">
+                        <svg class="absolute right-3 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                        <ul id="ip-options" class="hidden absolute z-20 mt-1 w-full max-h-60 overflow-auto bg-white border border-slate-300 rounded-lg shadow-lg"></ul>
+                    </div>
                     <p class="text-[11px] text-slate-400 mt-1">Pilih dari pool IP yang tersedia (kelola lewat menu Daftar IP).</p>
                 </div>
 
@@ -289,25 +286,81 @@ function togglePcSpecSection() {
     jsonSection.classList.toggle('hidden', show);
 }
 
-function filterIpOptions() {
-    const search = document.getElementById('ip-address-search');
-    const select = document.getElementById('ip-address-select');
-    if (!search || !select) return;
+var IP_GROUPS = @json($ipGroups);
 
-    const q = search.value.toLowerCase().trim();
-
-    Array.from(select.options).forEach(function (opt) {
-        if (opt.value === '') return;
-        const match = opt.textContent.toLowerCase().includes(q);
-        opt.style.display = q && !match ? 'none' : '';
-        opt.disabled = q && !match;
+function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
+}
 
-    Array.from(select.querySelectorAll('optgroup')).forEach(function (og) {
-        const anyVisible = Array.from(og.querySelectorAll('option')).some(function (o) {
-            return o.style.display !== 'none';
+function ipComboboxInit() {
+    const input = document.getElementById('ip-address-input');
+    const hidden = document.getElementById('ip-address-value');
+    const list = document.getElementById('ip-options');
+    if (!input || !hidden || !list) return;
+
+    const groups = (typeof IP_GROUPS !== 'undefined') ? (IP_GROUPS || []) : [];
+
+    function close() {
+        list.classList.add('hidden');
+    }
+
+    function render(query) {
+        const q = (query || '').toLowerCase().trim();
+        list.innerHTML = '';
+        let any = false;
+
+        groups.forEach(function (group) {
+            const matched = group.ips.filter(function (ip) {
+                return !q || ip.address.toLowerCase().includes(q) || group.label.toLowerCase().includes(q);
+            });
+            if (!matched.length) return;
+            any = true;
+
+            const header = document.createElement('li');
+            header.className = 'px-3 py-1.5 text-[11px] uppercase tracking-wide text-slate-400 bg-slate-50';
+            header.textContent = group.label;
+            list.appendChild(header);
+
+            matched.forEach(function (ip) {
+                const item = document.createElement('li');
+                item.className = 'px-3 py-2 cursor-pointer text-sm text-slate-700 hover:bg-blue-50 flex items-center justify-between gap-2';
+                item.innerHTML = '<span class="font-mono">' + escapeHtml(ip.address) + '</span>'
+                    + '<span class="text-[11px] font-sans text-slate-400">' + escapeHtml(group.label) + '</span>';
+                item.addEventListener('click', function () {
+                    hidden.value = ip.address;
+                    input.value = ip.address;
+                    close();
+                    list.querySelectorAll('li').forEach(function (el) { el.classList.remove('bg-blue-100'); });
+                    item.classList.add('bg-blue-100');
+                });
+                list.appendChild(item);
+            });
         });
-        og.style.display = anyVisible ? '' : 'none';
+
+        if (!any) {
+            list.innerHTML = '<li class="px-3 py-2 text-sm text-slate-400">Tidak ada IP yang cocok.</li>';
+        }
+
+        list.classList.remove('hidden');
+    }
+
+    input.addEventListener('focus', function () { render(input.value); });
+    input.addEventListener('input', function () { render(input.value); });
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') e.preventDefault();
+        if (e.key === 'Escape') close();
+    });
+    input.addEventListener('blur', function () {
+        const v = input.value;
+        const found = groups.some(function (g) {
+            return g.ips.some(function (ip) { return ip.address === v; });
+        });
+        hidden.value = found ? v : '';
+    });
+    document.addEventListener('click', function (e) {
+        if (input !== e.target && !list.contains(e.target)) close();
     });
 }
 
@@ -322,11 +375,7 @@ document.addEventListener('DOMContentLoaded', function () {
     toggleSnapshotSection();
     togglePcSpecSection();
 
-    const ipSearch = document.getElementById('ip-address-search');
-    const ipSelect = document.getElementById('ip-address-select');
-    if (ipSearch && ipSelect) {
-        ipSearch.addEventListener('input', filterIpOptions);
-    }
+    ipComboboxInit();
 });
 </script>
 @endpush
