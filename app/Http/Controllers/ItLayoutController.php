@@ -26,10 +26,14 @@ class ItLayoutController extends Controller
         'CCTV'        => '#ef4444',
         'NVR'         => '#ec4899',
         'ACCESS_DOOR' => '#10b981',
-        'WIFI'        => '#06b6d4',
-        'NETWORK'     => '#6366f1',
-        'UPS'         => '#84cc16',
-        'OTHER'       => '#64748b',
+        'WIFI'                 => '#06b6d4',
+        'NETWORK'              => '#6366f1',
+        'SWITCH_MANAGED'       => '#0891b2',
+        'SWITCH_POE_UNMANAGED' => '#e11d48',
+        'ACCESS_POINT'         => '#9333ea',
+        'HUB'                  => '#ea580c',
+        'UPS'                  => '#84cc16',
+        'OTHER'                => '#64748b',
     ];
 
     /**

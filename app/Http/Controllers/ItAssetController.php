@@ -26,7 +26,8 @@ class ItAssetController extends Controller
      */
     private const DEVICE_TYPES = [
         'PC', 'LAPTOP', 'PRINTER', 'CCTV', 'NVR', 'ACCESS_DOOR',
-        'WIFI', 'NETWORK', 'UPS', 'OTHER',
+        'WIFI', 'NETWORK', 'SWITCH_MANAGED', 'SWITCH_POE_UNMANAGED',
+        'ACCESS_POINT', 'HUB', 'UPS', 'OTHER',
     ];
 
     protected ItAssetImportService $importService;
@@ -189,10 +190,14 @@ class ItAssetController extends Controller
             'CCTV'        => 'CCTV',
             'NVR'         => 'NVR',
             'ACCESS_DOOR' => 'Access Door',
-            'WIFI'        => 'WiFi',
-            'NETWORK'     => 'Network',
-            'UPS'         => 'UPS',
-            'OTHER'       => 'Lainnya',
+            'WIFI'                  => 'WiFi',
+            'NETWORK'               => 'Network',
+            'SWITCH_MANAGED'        => 'Switch Managed',
+            'SWITCH_POE_UNMANAGED'  => 'Switch PoE Unmanaged',
+            'ACCESS_POINT'          => 'Access Point',
+            'HUB'                   => 'HUB',
+            'UPS'                   => 'UPS',
+            'OTHER'                 => 'Lainnya',
         ];
     }
 

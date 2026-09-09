@@ -164,10 +164,14 @@ class ItAsset extends Model
             'CCTV'        => 'CCTV',
             'NVR'         => 'NVR',
             'ACCESS_DOOR' => 'Access Door',
-            'WIFI'        => 'WiFi',
-            'NETWORK'     => 'Network',
-            'UPS'         => 'UPS',
-            'OTHER'       => 'Lainnya',
+            'WIFI'                  => 'WiFi',
+            'NETWORK'               => 'Network',
+            'SWITCH_MANAGED'        => 'Switch Managed',
+            'SWITCH_POE_UNMANAGED'  => 'Switch PoE Unmanaged',
+            'ACCESS_POINT'          => 'Access Point',
+            'HUB'                   => 'HUB',
+            'UPS'                   => 'UPS',
+            'OTHER'                 => 'Lainnya',
         ];
 
         return $labels[$this->device_type] ?? $this->device_type ?? 'Perangkat';

@@ -120,7 +120,7 @@
         const DEVICE_COLORS = @json($deviceTypeColors) || {};
         const CABLE_COLORS = { fiber_optic: '#f59e0b', utp: '#3b82f6', wireless: '#10b981', coaxial: '#ef4444', other: '#94a3b8' };
         const CABLE_LABELS = { fiber_optic: 'Fiber Optic', utp: 'UTP', wireless: 'Wireless', coaxial: 'Coaxial', other: 'Lainnya' };
-        const deviceLabels = { PC: 'PC', LAPTOP: 'Laptop', PRINTER: 'Printer', CCTV: 'CCTV', NVR: 'NVR', ACCESS_DOOR: 'Access Door', WIFI: 'WiFi', NETWORK: 'Network', UPS: 'UPS', OTHER: 'Lainnya' };
+        const deviceLabels = { PC: 'PC', LAPTOP: 'Laptop', PRINTER: 'Printer', CCTV: 'CCTV', NVR: 'NVR', ACCESS_DOOR: 'Access Door', WIFI: 'WiFi', NETWORK: 'Network', SWITCH_MANAGED: 'Switch Managed', SWITCH_POE_UNMANAGED: 'Switch PoE Unmanaged', ACCESS_POINT: 'Access Point', HUB: 'HUB', UPS: 'UPS', OTHER: 'Lainnya' };
 
         // Ikon (logo) per jenis perangkat — dibedakan dari bentuknya.
         const DEVICE_ICONS = {
@@ -132,6 +132,10 @@
             ACCESS_DOOR: '<path d="M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zM15 13h2"/>',
             WIFI: '<path d="M12 18h.01M8.3 14.3a5.5 5.5 0 017.4 0M5.1 11.1a10 10 0 0113.8 0M2 8a15 15 0 0120 0"/>',
             NETWORK: '<path d="M12 3a3 3 0 100 6 3 3 0 000-6zM12 15a3 3 0 100 6 3 3 0 000-6zM5 9a3 3 0 100 6 3 3 0 000-6zM19 9a3 3 0 100 6 3 3 0 000-6zM8 7l2 3M16 7l-2 3M10 14l-2 2M14 14l2 2"/>',
+            SWITCH_MANAGED: '<path d="M3 5h18v6H3zM3 13h18v6H3zM7 8h.01M7 16h.01M11 8h6M11 16h6"/>',
+            SWITCH_POE_UNMANAGED: '<path d="M3 5h18v6H3zM3 13h18v6H3zM7 8h.01M7 16h.01M12 8h4M12 16h4M13 2l-1.5 2.5h2.5L12 7"/>',
+            ACCESS_POINT: '<path d="M12 3a9 9 0 019 9M12 3a9 9 0 00-9 9M12 6a6 6 0 016 6M12 6a6 6 0 00-6 6M12 9a3 3 0 013 3M12 9a3 3 0 00-3 3M12 21a2 2 0 100-4 2 2 0 000 4z"/>',
+            HUB: '<path d="M12 6a2 2 0 100-4 2 2 0 000 4zM12 14a2 2 0 100-4 2 2 0 000 4zM6 18a2 2 0 100-4 2 2 0 000 4zM18 18a2 2 0 100-4 2 2 0 000 4zM10 8l-3 6M14 8l3 6M12 14v4"/>',
             UPS: '<path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z"/>',
             OTHER: '<circle cx="12" cy="12" r="7"/>',
         };
