@@ -102,7 +102,11 @@
                     <div class="border-t border-slate-100 mt-5 pt-5">
                         <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Spesifikasi Tambahan</h4>
                         <dl class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-3">
-                            @php $specItems = $itAsset->device_type === 'PC' ? $itAsset->pcSpecItems() : $itAsset->spec; @endphp
+                            @php
+                                $specItems = $itAsset->device_type === 'PC'
+                                    ? $itAsset->pcSpecItems()
+                                    : ($itAsset->device_type === 'CCTV' ? $itAsset->cctvSpecItems() : $itAsset->spec);
+                            @endphp
                             @foreach($specItems as $key => $value)
                                 <div>
                                     <dt class="text-[11px] text-slate-400 uppercase tracking-wide">{{ str_replace('_', ' ', $key) }}</dt>

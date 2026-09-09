@@ -401,6 +401,7 @@ class ItAssetController extends Controller
             'deviceTypes'      => self::DEVICE_TYPES,
             'deviceTypeLabels' => $this->deviceTypeLabels(),
             'ipGroups'         => $this->ipOptionsGroups($itAsset),
+            'nvrOptions'       => ItAsset::where('device_type', 'NVR')->orderBy('tag_name')->get(),
         ]);
     }
 
@@ -437,6 +438,7 @@ class ItAssetController extends Controller
             'deviceTypes'      => self::DEVICE_TYPES,
             'deviceTypeLabels' => $this->deviceTypeLabels(),
             'ipGroups'         => $this->ipOptionsGroups($itAsset),
+            'nvrOptions'       => ItAsset::where('device_type', 'NVR')->orderBy('tag_name')->get(),
         ]);
     }
 
@@ -621,6 +623,9 @@ class ItAssetController extends Controller
             'spec_pc_ram_capacity'  => ['nullable', 'string', 'max:100'],
             'spec_pc_ram_type'      => ['nullable', 'string', 'max:50'],
             'spec_pc_storage'       => ['nullable', 'string', Rule::in(['SSD', 'HDD'])],
+            'spec_cctv_pointing'    => ['nullable', 'string', 'max:255'],
+            'spec_cctv_show'        => ['nullable', 'string', 'max:255'],
+            'spec_cctv_channel'     => ['nullable', 'string', 'max:50'],
         ], [
             'snapshot_url.regex' => 'URL snapshot harus diawali rtsp://, http://, atau https://.',
             'ip_address.ip'      => 'Alamat IP tidak valid.',
@@ -633,6 +638,12 @@ class ItAssetController extends Controller
         // RAM, penyimpanan) yang diisi lewat form, bukan lewat JSON mentah.
         if (($validated['device_type'] ?? null) === 'PC') {
             $validated['spec'] = $this->buildPcSpec($request, $validated['spec'] ?? null);
+        }
+
+        // Untuk tipe CCTV, gabungkan field terstruktur (pointing, show, channel)
+        // dengan spec JSON lama (connect_to, pic, dst).
+        if (($validated['device_type'] ?? null) === 'CCTV') {
+            $validated['spec'] = $this->buildCctvSpec($request, $validated['spec'] ?? null);
         }
 
         // Password snapshot hanya diisi saat diinput ulang (mengikuti cast
@@ -730,6 +741,35 @@ class ItAssetController extends Controller
             unset($spec['cpu']);
         } else {
             $spec['cpu'] = $cpu;
+        }
+
+        return $spec === [] ? null : $spec;
+    }
+
+    /**
+     * Bangun array spec untuk tipe CCTV dari field form terstruktur (pointing,
+     * show/NVR, channel), digabung dengan kunci spec lama (connect_to, dst).
+     * Nilai kosong dihapus agar bersih saat diedit.
+     *
+     * @param  Request  $request
+     * @param  array<string, mixed>|null  $base
+     * @return array<string, mixed>|null
+     */
+    private function buildCctvSpec(Request $request, ?array $base): ?array
+    {
+        $spec = $base ?? [];
+
+        foreach ([
+            'pointing' => 'spec_cctv_pointing',
+            'show'     => 'spec_cctv_show',
+            'channel'  => 'spec_cctv_channel',
+        ] as $key => $field) {
+            $value = trim((string) $request->input($field));
+            if ($value === '') {
+                unset($spec[$key]);
+            } else {
+                $spec[$key] = $value;
+            }
         }
 
         return $spec === [] ? null : $spec;

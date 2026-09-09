@@ -271,4 +271,55 @@ class ItAsset extends Model
 
         return implode(' · ', $parts);
     }
+
+    /**
+     * Daftar label => nilai untuk spefikasi CCTV (pointing, show/NVR, channel)
+     * ditambah kunci spec datar lainnya (connect_to, pic, dst).
+     *
+     * @return array<string, string>
+     */
+    public function cctvSpecItems(): array
+    {
+        $spec = $this->spec ?? [];
+
+        $items = [
+            'Pointing' => $spec['pointing'] ?? null,
+            'NVR (Show)' => $spec['show'] ?? null,
+            'Channel' => $spec['channel'] ?? null,
+        ];
+        $items = array_filter($items, fn ($value) => $value !== null && $value !== '');
+
+        $reserved = ['pointing', 'show', 'channel'];
+        foreach ($spec as $key => $value) {
+            if (in_array($key, $reserved, true) || is_array($value)) {
+                continue;
+            }
+            $items[str_replace('_', ' ', (string) $key)] = $value;
+        }
+
+        return $items;
+    }
+
+    /**
+     * Ringkasan satu baris spefikasi CCTV untuk kartu daftar.
+     *
+     * @return string
+     */
+    public function cctvSummary(): string
+    {
+        $spec = $this->spec ?? [];
+
+        $parts = [];
+        if (!empty($spec['show'])) {
+            $parts[] = 'NVR: ' . $spec['show'];
+        }
+        if (!empty($spec['channel'])) {
+            $parts[] = 'CH: ' . $spec['channel'];
+        }
+        if (!empty($spec['pointing'])) {
+            $parts[] = 'Pointing: ' . $spec['pointing'];
+        }
+
+        return implode(' · ', $parts);
+    }
 }

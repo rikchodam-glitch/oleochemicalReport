@@ -209,6 +209,44 @@
             </div>
         </div>
 
+        <div id="cctvSpecSection" class="bg-white rounded-xl border border-slate-200 overflow-hidden {{ $itAsset->device_type === 'CCTV' ? '' : 'hidden' }}">
+            @php
+                $cctvSpec = $itAsset->spec ?? [];
+            @endphp
+            <div class="px-6 py-4 border-b border-slate-100">
+                <h3 class="text-sm font-semibold text-slate-900">Spesifikasi CCTV</h3>
+                <p class="text-[11px] text-slate-400 mt-1">Isi arah sorot (Pointing), NVR tempat tampil (Show), dan nomor channel pada NVR.</p>
+            </div>
+            <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1.5">Pointing</label>
+                    <input type="text" name="spec_cctv_pointing" value="{{ old('spec_cctv_pointing', $cctvSpec['pointing'] ?? '') }}"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                           placeholder="contoh: Menghadap pintu utama">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1.5">Show (NVR)</label>
+                    <select name="spec_cctv_show"
+                            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
+                        <option value="">&mdash; Pilih NVR &mdash;</option>
+                        @foreach($nvrOptions as $nvr)
+                            @php
+                                $nvrVal = $nvr->tag_name ?: ($nvr->name ?: ('#' . $nvr->id));
+                            @endphp
+                            <option value="{{ $nvrVal }}" {{ (old('spec_cctv_show', $cctvSpec['show'] ?? '') === $nvrVal) ? 'selected' : '' }}>{{ $nvrVal }}</option>
+                        @endforeach
+                    </select>
+                    <p class="text-[11px] text-slate-400 mt-1">Berdasarkan daftar perangkat NVR yang terdaftar.</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1.5">Channel</label>
+                    <input type="text" name="spec_cctv_channel" value="{{ old('spec_cctv_channel', $cctvSpec['channel'] ?? '') }}"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                           placeholder="contoh: 3">
+                </div>
+            </div>
+        </div>
+
         <div id="snapshotSection" class="bg-white rounded-xl border border-slate-200 overflow-hidden {{ in_array($itAsset->device_type, ['CCTV', 'NVR'], true) ? '' : 'hidden' }}">
             <div class="px-6 py-4 border-b border-slate-100">
                 <h3 class="text-sm font-semibold text-slate-900">CCTV Snapshot</h3>
@@ -284,6 +322,14 @@ function togglePcSpecSection() {
     const show = select.value === 'PC';
     pcSection.classList.toggle('hidden', !show);
     jsonSection.classList.toggle('hidden', show);
+}
+
+function toggleCctvSpecSection() {
+    const select = document.getElementById('device-type-select');
+    const section = document.getElementById('cctvSpecSection');
+    if (!select || !section) return;
+
+    section.classList.toggle('hidden', select.value !== 'CCTV');
 }
 
 var IP_GROUPS = @json($ipGroups);
@@ -370,10 +416,12 @@ document.addEventListener('DOMContentLoaded', function () {
         select.addEventListener('change', function () {
             toggleSnapshotSection();
             togglePcSpecSection();
+            toggleCctvSpecSection();
         });
     }
     toggleSnapshotSection();
     togglePcSpecSection();
+    toggleCctvSpecSection();
 
     ipComboboxInit();
 });
