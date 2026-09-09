@@ -187,4 +187,79 @@ class ItAsset extends Model
     {
         return $this->tag_name ?: ($this->name ?: ('#' . $this->id));
     }
+
+    /**
+     * Daftar label => nilai tampilan untuk spesifikasi PC (monitor, CPU, RAM,
+     * penyimpanan). Dipakai di halaman detail agar struktur nested spec tampil
+     * rapi; kunci spec lama yang masih datar (mis. 'os') tetap diikutkan.
+     *
+     * @return array<string, string>
+     */
+    public function pcSpecItems(): array
+    {
+        $spec = $this->spec ?? [];
+        $monitor = is_array($spec['monitor'] ?? null) ? $spec['monitor'] : [];
+        $cpu = is_array($spec['cpu'] ?? null) ? $spec['cpu'] : [];
+        $ram = is_array($cpu['ram'] ?? null) ? $cpu['ram'] : [];
+
+        $items = [
+            'Monitor Model'  => $monitor['model'] ?? null,
+            'Monitor Serial' => $monitor['serial_number'] ?? null,
+            'CPU Model'      => $cpu['model'] ?? null,
+            'CPU Serial'     => $cpu['serial_number'] ?? null,
+            'RAM Kapasitas'  => $ram['capacity'] ?? null,
+            'RAM Jenis'      => $ram['type'] ?? null,
+            'Penyimpanan'    => $cpu['storage'] ?? null,
+        ];
+
+        $items = array_filter($items, fn ($value) => $value !== null && $value !== '');
+
+        // Sertakan kunci spec lama yang masih berbentuk nilai datar (bukan
+        // array) agar tidak hilang saat data PC hasil import sebelumnya dibuka
+        // lagi. Kunci terstruktur (monitor, cpu) sudah dihandle di atas.
+        foreach ($spec as $key => $value) {
+            if (is_array($value)) {
+                continue;
+            }
+            $items[str_replace('_', ' ', (string) $key)] = $value;
+        }
+
+        return $items;
+    }
+
+    /**
+     * Ringkasan satu baris spesifikasi PC untuk ditampilkan di kartu daftar.
+     *
+     * @return string
+     */
+    public function pcSpecSummary(): string
+    {
+        $spec = $this->spec ?? [];
+        $monitor = is_array($spec['monitor'] ?? null) ? $spec['monitor'] : [];
+        $cpu = is_array($spec['cpu'] ?? null) ? $spec['cpu'] : [];
+        $ram = is_array($cpu['ram'] ?? null) ? $cpu['ram'] : [];
+
+        $parts = [];
+
+        if (!empty($monitor['model'])) {
+            $parts[] = 'Monitor: ' . $monitor['model']
+                . (!empty($monitor['serial_number']) ? ' (S/N ' . $monitor['serial_number'] . ')' : '');
+        }
+
+        if (!empty($cpu['model'])) {
+            $parts[] = 'CPU: ' . $cpu['model']
+                . (!empty($cpu['serial_number']) ? ' (S/N ' . $cpu['serial_number'] . ')' : '');
+        }
+
+        if (!empty($ram['capacity'])) {
+            $parts[] = 'RAM: ' . $ram['capacity']
+                . (!empty($ram['type']) ? ' ' . $ram['type'] : '');
+        }
+
+        if (!empty($cpu['storage'])) {
+            $parts[] = 'Penyimpanan: ' . $cpu['storage'];
+        }
+
+        return implode(' · ', $parts);
+    }
 }

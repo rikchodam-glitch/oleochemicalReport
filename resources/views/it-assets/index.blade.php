@@ -243,6 +243,9 @@
                     @if(($itAsset->spec['connect_to'] ?? null))
                         <p class="text-[11px] text-slate-400 mt-0.5 truncate">Switch: {{ $itAsset->spec['connect_to'] }}</p>
                     @endif
+                    @if($itAsset->device_type === 'PC' && $itAsset->pcSpecSummary())
+                        <p class="text-[11px] text-slate-400 mt-0.5 truncate" title="{{ $itAsset->pcSpecSummary() }}">{{ $itAsset->pcSpecSummary() }}</p>
+                    @endif
                     <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                         <a href="{{ route('it-assets.show', $itAsset) }}" class="text-blue-600 hover:text-blue-700 text-xs font-medium shrink-0">Detail</a>@include('it-assets.partials._snapshot-btn', ['itAsset' => $itAsset])
                         <div class="flex items-center gap-2.5">

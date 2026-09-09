@@ -123,12 +123,80 @@
                               placeholder="Kegunaan perangkat di lapangan">{{ old('application', $itAsset->application) }}</textarea>
                 </div>
 
-                <div class="md:col-span-2">
+                <div class="md:col-span-2 {{ $itAsset->device_type === 'PC' ? 'hidden' : '' }}" id="specJsonSection">
                     <label class="block text-xs font-medium text-slate-500 mb-1.5">Spesifikasi (JSON opsional)</label>
                     <textarea name="spec" rows="3" spellcheck="false"
                               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               placeholder='{"cpu": "i5", "ram": "8GB"}'>{{ old('spec', $itAsset->spec ? json_encode($itAsset->spec) : '') }}</textarea>
                     <p class="text-[11px] text-slate-400 mt-1">Isi dengan format JSON bila perlu data tambahan per tipe perangkat.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="pcSpecSection" class="bg-white rounded-xl border border-slate-200 overflow-hidden {{ $itAsset->device_type === 'PC' ? '' : 'hidden' }}">
+            @php
+                $pcSpec = $itAsset->spec ?? [];
+                $pcMon = $pcSpec['monitor'] ?? [];
+                $pcCpu = $pcSpec['cpu'] ?? [];
+                $pcRam = $pcCpu['ram'] ?? [];
+            @endphp
+            <div class="px-6 py-4 border-b border-slate-100">
+                <h3 class="text-sm font-semibold text-slate-900">Spesifikasi PC</h3>
+                <p class="text-[11px] text-slate-400 mt-1">Isi detail monitor, CPU, RAM, dan penyimpanan. S/N = nomor seri perangkat.</p>
+            </div>
+            <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="md:col-span-2">
+                    <label class="block text-xs font-medium text-slate-500 mb-1.5">Monitor</label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1.5">Model Monitor</label>
+                            <input type="text" name="spec_pc_monitor_model" value="{{ old('spec_pc_monitor_model', $pcMon['model'] ?? '') }}"
+                                   class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   placeholder="contoh: Dell P2422H">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1.5">S/N Monitor</label>
+                            <input type="text" name="spec_pc_monitor_sn" value="{{ old('spec_pc_monitor_sn', $pcMon['serial_number'] ?? '') }}"
+                                   class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                    </div>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-xs font-medium text-slate-500 mb-1.5">CPU</label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1.5">Model CPU</label>
+                            <input type="text" name="spec_pc_cpu_model" value="{{ old('spec_pc_cpu_model', $pcCpu['model'] ?? '') }}"
+                                   class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   placeholder="contoh: Core i5-12400">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1.5">S/N CPU</label>
+                            <input type="text" name="spec_pc_cpu_sn" value="{{ old('spec_pc_cpu_sn', $pcCpu['serial_number'] ?? '') }}"
+                                   class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1.5">Kapasitas RAM</label>
+                    <input type="text" name="spec_pc_ram_capacity" value="{{ old('spec_pc_ram_capacity', $pcRam['capacity'] ?? '') }}"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                           placeholder="contoh: 16GB">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1.5">Jenis RAM</label>
+                    <input type="text" name="spec_pc_ram_type" value="{{ old('spec_pc_ram_type', $pcRam['type'] ?? '') }}"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                           placeholder="contoh: DDR4">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1.5">Penyimpanan</label>
+                    <select name="spec_pc_storage"
+                            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
+                        <option value="">&mdash; Pilih &mdash;</option>
+                        <option value="SSD" {{ old('spec_pc_storage', $pcCpu['storage'] ?? '') === 'SSD' ? 'selected' : '' }}>SSD</option>
+                        <option value="HDD" {{ old('spec_pc_storage', $pcCpu['storage'] ?? '') === 'HDD' ? 'selected' : '' }}>HDD</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -194,12 +262,32 @@ function toggleSnapshotSection() {
     section.classList.toggle('hidden', !show);
 }
 
+/**
+ * Untuk tipe PC, tampilkan form spesifikasi terstruktur (pcSpecSection) dan
+ * sembunyikan textarea JSON mentah (specJsonSection). Untuk tipe lain,
+ * kebalikannya: JSON mentah ditampilkan.
+ */
+function togglePcSpecSection() {
+    const select = document.getElementById('device-type-select');
+    const pcSection = document.getElementById('pcSpecSection');
+    const jsonSection = document.getElementById('specJsonSection');
+    if (!select || !pcSection || !jsonSection) return;
+
+    const show = select.value === 'PC';
+    pcSection.classList.toggle('hidden', !show);
+    jsonSection.classList.toggle('hidden', show);
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     const select = document.getElementById('device-type-select');
     if (select) {
-        select.addEventListener('change', toggleSnapshotSection);
+        select.addEventListener('change', function () {
+            toggleSnapshotSection();
+            togglePcSpecSection();
+        });
     }
     toggleSnapshotSection();
+    togglePcSpecSection();
 });
 </script>
 @endpush

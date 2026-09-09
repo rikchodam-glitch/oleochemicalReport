@@ -451,7 +451,14 @@ class ItAssetController extends Controller
             'snapshot_url'       => ['nullable', 'string', 'max:255', 'regex:/^(rtsp|https?):\/\//i'],
             'snapshot_username'  => ['nullable', 'string', 'max:255'],
             'snapshot_password'  => ['nullable', 'string', 'max:255'],
-            'spec'               => ['nullable', 'string'],
+            'spec'                => ['nullable', 'string'],
+            'spec_pc_monitor_model' => ['nullable', 'string', 'max:255'],
+            'spec_pc_monitor_sn'    => ['nullable', 'string', 'max:255'],
+            'spec_pc_cpu_model'     => ['nullable', 'string', 'max:255'],
+            'spec_pc_cpu_sn'        => ['nullable', 'string', 'max:255'],
+            'spec_pc_ram_capacity'  => ['nullable', 'string', 'max:100'],
+            'spec_pc_ram_type'      => ['nullable', 'string', 'max:50'],
+            'spec_pc_storage'       => ['nullable', 'string', Rule::in(['SSD', 'HDD'])],
         ], [
             'snapshot_url.regex' => 'URL snapshot harus diawali rtsp://, http://, atau https://.',
             'ip_address.ip'      => 'Alamat IP tidak valid.',
@@ -459,6 +466,12 @@ class ItAssetController extends Controller
 
         // Kolom spec diisi sebagai JSON opsional di form; diparse ulang.
         $validated['spec'] = $this->parseSpecJson($validated['spec'] ?? null);
+
+        // Untuk tipe PC, spec dibangun dari field terstruktur (monitor, CPU,
+        // RAM, penyimpanan) yang diisi lewat form, bukan lewat JSON mentah.
+        if (($validated['device_type'] ?? null) === 'PC') {
+            $validated['spec'] = $this->buildPcSpec($request, $validated['spec'] ?? null);
+        }
 
         // Password snapshot hanya diisi saat diinput ulang (mengikuti cast
         // 'encrypted' dan tidak menimpa yang lama saat diedit).
@@ -492,6 +505,72 @@ class ItAssetController extends Controller
         }
 
         return $decoded;
+    }
+
+    /**
+     * Bangun array spec untuk tipe PC dari field form terstruktur (monitor, CPU,
+     * RAM, penyimpanan). Nilai kosong dihapus agar bisa dibersihkan saat edit;
+     * kunci spec lain dari import (mis. 'os') tetap dipertahankan.
+     *
+     * @param  Request  $request
+     * @param  array<string, mixed>|null  $base
+     * @return array<string, mixed>|null
+     */
+    private function buildPcSpec(Request $request, ?array $base): ?array
+    {
+        $spec = $base ?? [];
+
+        $monitorModel = trim((string) $request->input('spec_pc_monitor_model'));
+        $monitorSn = trim((string) $request->input('spec_pc_monitor_sn'));
+        $cpuModel = trim((string) $request->input('spec_pc_cpu_model'));
+        $cpuSn = trim((string) $request->input('spec_pc_cpu_sn'));
+        $ramCapacity = trim((string) $request->input('spec_pc_ram_capacity'));
+        $ramType = trim((string) $request->input('spec_pc_ram_type'));
+        $storage = trim((string) $request->input('spec_pc_storage'));
+
+        $monitor = [];
+        if ($monitorModel !== '') {
+            $monitor['model'] = $monitorModel;
+        }
+        if ($monitorSn !== '') {
+            $monitor['serial_number'] = $monitorSn;
+        }
+
+        $ram = [];
+        if ($ramCapacity !== '') {
+            $ram['capacity'] = $ramCapacity;
+        }
+        if ($ramType !== '') {
+            $ram['type'] = $ramType;
+        }
+
+        $cpu = [];
+        if ($cpuModel !== '') {
+            $cpu['model'] = $cpuModel;
+        }
+        if ($cpuSn !== '') {
+            $cpu['serial_number'] = $cpuSn;
+        }
+        if ($ram !== []) {
+            $cpu['ram'] = $ram;
+        }
+        if ($storage !== '') {
+            $cpu['storage'] = $storage;
+        }
+
+        if ($monitor === []) {
+            unset($spec['monitor']);
+        } else {
+            $spec['monitor'] = $monitor;
+        }
+
+        if ($cpu === []) {
+            unset($spec['cpu']);
+        } else {
+            $spec['cpu'] = $cpu;
+        }
+
+        return $spec === [] ? null : $spec;
     }
 
     /**
