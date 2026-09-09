@@ -48,6 +48,11 @@
             <ul id="placedList" class="space-y-1 max-h-56 overflow-y-auto pr-1 mb-4"></ul>
             <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Belum ditempatkan</h4>
             <p class="text-xs text-slate-400 mb-2">Klik perangkat, lalu klik posisinya di denah.</p>
+            <label for="unplacedTypeFilter" class="sr-only">Filter jenis perangkat</label>
+            <select id="unplacedTypeFilter"
+                    class="w-full mb-2 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <option value="">Semua Jenis</option>
+            </select>
             <ul id="unplacedList" class="space-y-1 max-h-56 overflow-y-auto pr-1"></ul>
         </div>
         <div class="bg-white rounded-xl border border-slate-200 p-4">
@@ -173,6 +178,7 @@
         let zoom = 1;
         let pan = { x: 0, y: 0 };
         let panned = false;
+        let unplacedTypeFilter = '';
         // Untuk re-render PDF pada resolusi sesuai zoom (agar tidak blur).
         let pdfDoc = null;
         let pdfPage = null;
@@ -767,14 +773,47 @@
             });
         }
 
+        function renderUnplacedTypes() {
+            const sel = document.getElementById('unplacedTypeFilter');
+            if (!sel) return;
+            const current = unplacedTypeFilter;
+            const types = [...new Set(UNPLACED.map(a => a.device_type))].sort();
+            sel.innerHTML = '';
+            const optAll = document.createElement('option');
+            optAll.value = '';
+            optAll.textContent = 'Semua Jenis';
+            sel.appendChild(optAll);
+            types.forEach(type => {
+                const opt = document.createElement('option');
+                opt.value = type;
+                opt.textContent = deviceLabels[type] || type;
+                sel.appendChild(opt);
+            });
+            if (current && types.includes(current)) {
+                sel.value = current;
+                unplacedTypeFilter = current;
+            } else {
+                sel.value = '';
+                unplacedTypeFilter = '';
+            }
+        }
+
         function renderUnplaced() {
+            renderUnplacedTypes();
             const list = document.getElementById('unplacedList');
             list.innerHTML = '';
             if (!UNPLACED.length) {
                 list.innerHTML = '<li class="text-xs text-slate-400">Semua perangkat aktif sudah ditempatkan.</li>';
                 return;
             }
-            UNPLACED.forEach(asset => {
+            const filtered = unplacedTypeFilter
+                ? UNPLACED.filter(asset => asset.device_type === unplacedTypeFilter)
+                : UNPLACED;
+            if (!filtered.length) {
+                list.innerHTML = '<li class="text-xs text-slate-400">Tidak ada perangkat untuk jenis ini.</li>';
+                return;
+            }
+            filtered.forEach(asset => {
                 const li = document.createElement('li');
                 li.className = 'flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs text-slate-700';
                 li.innerHTML = '<span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:' + colorFor(asset.device_type) + '"></span>'
@@ -820,6 +859,13 @@
             updateMarkerScale();
             (LAYOUT.links || []).forEach(drawLink);
             renderLegends();
+            const unplacedTypeFilterEl = document.getElementById('unplacedTypeFilter');
+            if (unplacedTypeFilterEl) {
+                unplacedTypeFilterEl.addEventListener('change', function () {
+                    unplacedTypeFilter = this.value;
+                    renderUnplaced();
+                });
+            }
             renderUnplaced();
             renderPlaced();
         }
