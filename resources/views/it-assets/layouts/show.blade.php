@@ -424,17 +424,33 @@
             const existing = document.getElementById('tempPopup');
             if (existing) existing.remove();
 
-            const wr = denahWrap.getBoundingClientRect();
             const ar = anchorEl.getBoundingClientRect();
             const pop = document.createElement('div');
             pop.id = 'tempPopup';
-            pop.className = 'absolute z-20 bg-white rounded-lg border border-slate-200 shadow-lg text-sm p-3 whitespace-normal';
-            pop.style.maxWidth = '280px';
-            pop.style.left = Math.max(4, (ar.left - wr.left) + ar.width / 2) + 'px';
-            pop.style.top = Math.max(4, (ar.top - wr.top) - 6) + 'px';
+            pop.className = 'fixed bg-white rounded-lg border border-slate-200 shadow-lg text-sm p-3 whitespace-normal';
+            pop.style.maxWidth = '300px';
+            pop.style.maxHeight = '72vh';
+            pop.style.overflowY = 'auto';
+            pop.style.zIndex = '9999';
+            pop.style.left = (ar.left + ar.width / 2) + 'px';
+            pop.style.top = (ar.top - 6) + 'px';
             pop.style.transform = 'translate(-50%, -100%)';
             pop.innerHTML = html;
-            denahWrap.appendChild(pop);
+            document.body.appendChild(pop);
+
+            // Jaga popup tetap berada di dalam layar (tidak terpotong frame).
+            const rect = pop.getBoundingClientRect();
+            const margin = 8;
+            if (rect.left < margin) {
+                pop.style.left = (parseFloat(pop.style.left) + (margin - rect.left)) + 'px';
+            } else if (rect.right > window.innerWidth - margin) {
+                pop.style.left = (parseFloat(pop.style.left) - (rect.right - (window.innerWidth - margin))) + 'px';
+            }
+            if (rect.top < margin) {
+                // Ruang di atas marker tidak cukup, tampilkan di bawah marker.
+                pop.style.top = (ar.bottom + 8) + 'px';
+                pop.style.transform = 'translate(-50%, 0)';
+            }
         }
 
         function closePopup() {
@@ -750,6 +766,10 @@
                 closePopup();
             }
         });
+
+        // Popup posisi fixed; tutup saat halaman digulir agar tidak "mengambang"
+        // jauh dari marker yang ikut bergeser karena scroll.
+        window.addEventListener('scroll', closePopup, { passive: true });
 
         function renderPlaced() {
             const list = document.getElementById('placedList');
