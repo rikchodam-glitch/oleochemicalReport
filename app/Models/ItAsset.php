@@ -203,13 +203,17 @@ class ItAsset extends Model
         $ram = is_array($cpu['ram'] ?? null) ? $cpu['ram'] : [];
 
         $items = [
-            'Monitor Model'  => $monitor['model'] ?? null,
-            'Monitor Serial' => $monitor['serial_number'] ?? null,
-            'CPU Model'      => $cpu['model'] ?? null,
-            'CPU Serial'     => $cpu['serial_number'] ?? null,
-            'RAM Kapasitas'  => $ram['capacity'] ?? null,
-            'RAM Jenis'      => $ram['type'] ?? null,
-            'Penyimpanan'    => $cpu['storage'] ?? null,
+            'Monitor Model'     => $monitor['model'] ?? null,
+            'Monitor Serial'    => $monitor['serial_number'] ?? null,
+            'CPU Model'         => $cpu['model'] ?? null,
+            'CPU Serial'        => $cpu['serial_number'] ?? null,
+            'Processor'         => $cpu['processor'] ?? null,
+            'RAM Kapasitas'     => $ram['capacity'] ?? null,
+            'RAM Jenis'         => $ram['type'] ?? null,
+            'RAM Slot'          => $ram['slot'] ?? null,
+            'RAM Speed'         => $ram['bandwidth'] ?? null,
+            'Penyimpanan'       => $cpu['storage'] ?? null,
+            'Kapasitas Disk'    => $cpu['storage_capacity'] ?? null,
         ];
 
         $items = array_filter($items, fn ($value) => $value !== null && $value !== '');
@@ -249,11 +253,16 @@ class ItAsset extends Model
         if (!empty($cpu['model'])) {
             $parts[] = 'CPU: ' . $cpu['model']
                 . (!empty($cpu['serial_number']) ? ' (S/N ' . $cpu['serial_number'] . ')' : '');
+        } elseif (!empty($cpu['processor'])) {
+            $parts[] = 'CPU: ' . $cpu['processor'];
         }
 
         if (!empty($ram['capacity'])) {
             $parts[] = 'RAM: ' . $ram['capacity']
                 . (!empty($ram['type']) ? ' ' . $ram['type'] : '');
+            if (!empty($ram['bandwidth'])) {
+                $parts[count($parts) - 1] .= ' ' . $ram['bandwidth'];
+            }
         }
 
         if (!empty($cpu['storage'])) {
