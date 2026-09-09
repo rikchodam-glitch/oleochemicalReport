@@ -180,11 +180,20 @@
 
             <a href="{{ route('it-assets.index') }}"
                class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
-                      {{ request()->routeIs('it-assets.*') ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white' }}">
+                      {{ request()->routeIs('it-assets.*') && !request()->routeIs('it-assets.ip-addresses.*') ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white' }}">
                 <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                 </svg>
                 IT Assets
+            </a>
+
+            <a href="{{ route('it-assets.ip-addresses.index') }}"
+               class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
+                      {{ request()->routeIs('it-assets.ip-addresses.*') ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white' }}">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 6h6M9 12h6M9 18h6M5 6h.01M5 12h.01M5 18h.01M19 6h.01M19 12h.01M19 18h.01"/>
+                </svg>
+                Daftar IP
             </a>
 
             <a href="{{ route('func-locs.index') }}"

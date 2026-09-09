@@ -92,9 +92,20 @@
 
                 <div>
                     <label class="block text-xs font-medium text-slate-500 mb-1.5">IP Address</label>
-                    <input type="text" name="ip_address" value="{{ old('ip_address', $itAsset->ip_address) }}"
-                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                           placeholder="192.168.x.x">
+                    <input type="text" id="ip-address-search" placeholder="Cari IP&hellip;" autocomplete="off"
+                           class="w-full mb-1.5 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <select name="ip_address" id="ip-address-select"
+                            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
+                        <option value="">&mdash; Pilih IP &mdash;</option>
+                        @foreach($ipGroups as $group)
+                            <optgroup label="{{ $group['label'] }}">
+                                @foreach($group['ips'] as $ip)
+                                    <option value="{{ $ip['address'] }}" {{ (old('ip_address', $itAsset->ip_address) === $ip['address'] || $ip['selected']) ? 'selected' : '' }}>{{ $ip['address'] }}</option>
+                                @endforeach
+                            </optgroup>
+                        @endforeach
+                    </select>
+                    <p class="text-[11px] text-slate-400 mt-1">Pilih dari pool IP yang tersedia (kelola lewat menu Daftar IP).</p>
                 </div>
 
                 <div>
@@ -278,6 +289,28 @@ function togglePcSpecSection() {
     jsonSection.classList.toggle('hidden', show);
 }
 
+function filterIpOptions() {
+    const search = document.getElementById('ip-address-search');
+    const select = document.getElementById('ip-address-select');
+    if (!search || !select) return;
+
+    const q = search.value.toLowerCase().trim();
+
+    Array.from(select.options).forEach(function (opt) {
+        if (opt.value === '') return;
+        const match = opt.textContent.toLowerCase().includes(q);
+        opt.style.display = q && !match ? 'none' : '';
+        opt.disabled = q && !match;
+    });
+
+    Array.from(select.querySelectorAll('optgroup')).forEach(function (og) {
+        const anyVisible = Array.from(og.querySelectorAll('option')).some(function (o) {
+            return o.style.display !== 'none';
+        });
+        og.style.display = anyVisible ? '' : 'none';
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     const select = document.getElementById('device-type-select');
     if (select) {
@@ -288,6 +321,12 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     toggleSnapshotSection();
     togglePcSpecSection();
+
+    const ipSearch = document.getElementById('ip-address-search');
+    const ipSelect = document.getElementById('ip-address-select');
+    if (ipSearch && ipSelect) {
+        ipSearch.addEventListener('input', filterIpOptions);
+    }
 });
 </script>
 @endpush

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\IpAddress;
 use App\Models\ItAsset;
 use App\Models\ItNotification;
 use App\Models\ItPingLog;
@@ -345,10 +346,13 @@ class ItAssetController extends Controller
      */
     public function create(): View
     {
+        $itAsset = new ItAsset(['status' => 'active', 'device_type' => 'PC']);
+
         return view('it-assets.form', [
-            'itAsset'          => new ItAsset(['status' => 'active', 'device_type' => 'PC']),
+            'itAsset'          => $itAsset,
             'deviceTypes'      => self::DEVICE_TYPES,
             'deviceTypeLabels' => $this->deviceTypeLabels(),
+            'ipGroups'         => $this->ipOptionsGroups($itAsset),
         ]);
     }
 
@@ -361,10 +365,12 @@ class ItAssetController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $this->validateForm($request);
+        $this->validateIpPool($validated['ip_address'] ?? null, null);
         $validated['data_source'] = 'manual';
         $validated['imported_at'] = now();
 
-        ItAsset::create($validated);
+        $asset = ItAsset::create($validated);
+        $this->syncIpAssignment($asset);
 
         return $this->redirectToItAssetList()
             ->with('success', 'Perangkat IT berhasil ditambahkan.');
@@ -382,6 +388,7 @@ class ItAssetController extends Controller
             'itAsset'          => $itAsset,
             'deviceTypes'      => self::DEVICE_TYPES,
             'deviceTypeLabels' => $this->deviceTypeLabels(),
+            'ipGroups'         => $this->ipOptionsGroups($itAsset),
         ]);
     }
 
@@ -394,7 +401,10 @@ class ItAssetController extends Controller
      */
     public function update(Request $request, ItAsset $itAsset): RedirectResponse
     {
-        $itAsset->update($this->validateForm($request));
+        $validated = $this->validateForm($request);
+        $this->validateIpPool($validated['ip_address'] ?? null, $itAsset);
+        $itAsset->update($validated);
+        $this->syncIpAssignment($itAsset);
 
         return $this->redirectToItAssetList()
             ->with('success', 'Perangkat IT berhasil diperbarui.');
@@ -409,6 +419,12 @@ class ItAssetController extends Controller
      */
     public function destroy(ItAsset $itAsset): RedirectResponse
     {
+        IpAddress::where('it_asset_id', $itAsset->id)
+            ->update([
+                'status'     => IpAddress::STATUS_AVAILABLE,
+                'it_asset_id' => null,
+            ]);
+
         $itAsset->delete();
 
         return $this->redirectToItAssetList()
@@ -425,6 +441,104 @@ class ItAssetController extends Controller
     private function redirectToItAssetList(): RedirectResponse
     {
         return redirect()->route('it-assets.index', session('it_assets.list_query', []));
+    }
+
+    /**
+     * Susun daftar IP untuk dropdown form perangkat: semua IP berstatus
+     * available, ditambah IP milik perangkat yang sedang diedit (agar tetap
+     * terpilih). Dikelompokkan per subnet.
+     *
+     * @param  ItAsset  $itAsset
+     * @return array<int, array{label: string, ips: array<int, array{address: string, selected: bool}>}>
+     */
+    private function ipOptionsGroups(ItAsset $itAsset): array
+    {
+        $ips = IpAddress::query()
+            ->with('network')
+            ->where('status', IpAddress::STATUS_AVAILABLE)
+            ->orderBy('address')
+            ->get();
+
+        if ($itAsset->exists && $itAsset->ip_address) {
+            $current = IpAddress::with('network')
+                ->where('address', $itAsset->ip_address)
+                ->first();
+
+            if ($current) {
+                $ips = $ips->merge([$current])->unique('id');
+            }
+        }
+
+        $groups = [];
+        foreach ($ips as $ip) {
+            $key = $ip->ip_network_id;
+            $groups[$key] ??= [
+                'label' => $ip->network?->label() ?? 'Subnet',
+                'ips'   => [],
+            ];
+            $groups[$key]['ips'][] = [
+                'address'  => $ip->address,
+                'selected' => (bool) ($itAsset->ip_address === $ip->address),
+            ];
+        }
+
+        return array_values($groups);
+    }
+
+    /**
+     * Pastikan IP yang dipilih berasal dari pool dan belum dipakai perangkat
+     * lain (kecuali perangkat itu sendiri saat edit).
+     *
+     * @param  string|null  $ip
+     * @param  ItAsset|null  $current
+     * @return void
+     */
+    private function validateIpPool(?string $ip, ?ItAsset $current): void
+    {
+        if ($ip === null || $ip === '') {
+            return;
+        }
+
+        $row = IpAddress::where('address', $ip)->first();
+
+        if (!$row) {
+            throw ValidationException::withMessages([
+                'ip_address' => 'IP tidak terdaftar di pool IP. Generate dulu subnet-nya lewat menu Daftar IP.',
+            ]);
+        }
+
+        if ($row->status === IpAddress::STATUS_ASSIGNED && (!$current || $row->it_asset_id !== $current->id)) {
+            throw ValidationException::withMessages([
+                'ip_address' => 'IP tersebut sudah dipakai perangkat lain.',
+            ]);
+        }
+    }
+
+    /**
+     * Klaim IP yang dipakai perangkat ke status assigned, dan lepaskan IP yang
+     * tidak lagi dipakai (mis. saat diubah/dihapus) kembali ke available.
+     *
+     * @param  ItAsset  $itAsset
+     * @return void
+     */
+    private function syncIpAssignment(ItAsset $itAsset): void
+    {
+        IpAddress::where('it_asset_id', $itAsset->id)
+            ->update([
+                'status'     => IpAddress::STATUS_AVAILABLE,
+                'it_asset_id' => null,
+            ]);
+
+        if ($itAsset->ip_address) {
+            $row = IpAddress::where('address', $itAsset->ip_address)->first();
+
+            if ($row) {
+                $row->update([
+                    'status'     => IpAddress::STATUS_ASSIGNED,
+                    'it_asset_id' => $itAsset->id,
+                ]);
+            }
+        }
     }
 
     /**
