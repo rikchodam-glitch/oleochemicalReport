@@ -41,7 +41,10 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
+            // URL relatif (tanpa host) supaya gambar/berkas tetap tampil saat
+            // aplikasi diakses dari host/IP mana pun (mis. 192.168.x.x:8000),
+            // bukan hanya dari domain APP_URL.
+            'url' => '/storage',
             'visibility' => 'public',
             'throw' => false,
             'report' => false,
@@ -55,7 +58,8 @@ return [
         'telegram_photos' => [
             'driver' => 'local',
             'root' => storage_path('app/public/telegram-photos'),
-            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage/telegram-photos',
+            // URL relatif (lihat catatan di disk 'public').
+            'url' => '/storage/telegram-photos',
             'visibility' => 'public',
             'throw' => false,
             'report' => false,
@@ -69,7 +73,8 @@ return [
         'cctv_snapshots' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
+            // URL relatif (lihat catatan di disk 'public').
+            'url' => '/storage',
             'visibility' => 'public',
             'throw' => false,
             'report' => false,
