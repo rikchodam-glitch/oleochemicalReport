@@ -104,6 +104,19 @@
                         </select>
                     </div>
                     <div>
+                        <label class="block text-xs text-slate-500 mb-1">Teknisi</label>
+                        <select name="technician_id"
+                                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">Semua Teknisi</option>
+                            @foreach($technicians as $technician)
+                                <option value="{{ $technician->id }}"
+                                    {{ (string) request('technician_id') === (string) $technician->id ? 'selected' : '' }}>
+                                    {{ $technician->name }}{{ $technician->nik ? ' (' . $technician->nik . ')' : '' }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
                         <label class="block text-xs text-slate-500 mb-1">Tipe</label>
                         <select name="report_type"
                                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -334,7 +347,7 @@
                                         <p class="text-sm font-medium text-slate-500">Belum ada laporan ditemukan</p>
                                         <p class="text-xs text-slate-400 mt-1">Coba ubah atau reset filter pencarian</p>
                                     </div>
-                                    @if(request()->hasAny(['search','report_code','asset_code','date_from','date_to','area_id','report_type','jenis_pekerjaan','work_classification']))
+                                    @if(request()->hasAny(['search','report_code','asset_code','date_from','date_to','area_id','technician_id','report_type','jenis_pekerjaan','work_classification']))
                                         <a href="{{ route('reports.index') }}"
                                            class="mt-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 border border-blue-200 hover:bg-blue-50 rounded-lg transition-colors">
                                             Reset filter
@@ -389,6 +402,7 @@ function reportIndex() {
             request('date_from'),
             request('date_to'),
             request('area_id'),
+            request('technician_id'),
             request('report_type'),
             request('jenis_pekerjaan'),
             request('work_classification'),
@@ -402,6 +416,7 @@ function reportIndex() {
             request('date_from'),
             request('date_to'),
             request('area_id'),
+            request('technician_id'),
             request('report_type'),
             request('jenis_pekerjaan'),
             request('work_classification'),

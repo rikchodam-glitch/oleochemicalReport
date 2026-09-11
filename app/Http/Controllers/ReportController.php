@@ -7,6 +7,7 @@ use App\Models\Area;
 use App\Models\Asset;
 use App\Models\FunctionalLocation;
 use App\Models\Report;
+use App\Models\Technician;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Storage;
@@ -104,8 +105,10 @@ class ReportController extends Controller
         $countFabrikasi = (clone $summaryQuery)->where('jenis_pekerjaan', 'Fabrikasi')->count();
         $countSipil     = (clone $summaryQuery)->where('jenis_pekerjaan', 'Sipil')->count();
 
+        $technicians = Technician::orderBy('name')->get(['id', 'name', 'nik']);
+
         return view('reports.index', compact(
-            'reports', 'areas',
+            'reports', 'areas', 'technicians',
             'totalLaporan', 'countEI', 'countMekanik', 'countCmPm', 'countFabrikasi', 'countSipil'
         ));
     }
