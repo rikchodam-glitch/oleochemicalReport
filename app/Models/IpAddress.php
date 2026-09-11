@@ -40,7 +40,7 @@ class IpAddress extends Model
      */
     public function asset(): BelongsTo
     {
-        return $this->belongsTo(ItAsset::class);
+        return $this->belongsTo(ItAsset::class, 'it_asset_id');
     }
 
     /**

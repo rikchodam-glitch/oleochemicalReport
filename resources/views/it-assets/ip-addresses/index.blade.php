@@ -148,18 +148,78 @@
                 placeholder.classList.add('hidden');
                 list.classList.remove('hidden');
                 list.dataset.loaded = '1';
+                // data.ips sudah urut numerik dari server.
                 list.innerHTML = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">'
-                    + data.ips.map(function (ip) {
-                        return '<div class="flex items-center justify-between gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs">'
+                    + data.ips.map(function (ip, idx) {
+                        return '<button type="button" data-idx="' + idx + '" class="ip-cell text-left flex items-center justify-between gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs hover:border-blue-300 hover:bg-blue-50 transition-colors">'
                             + '<span class="font-mono text-slate-800">' + escapeHtml(ip.address) + '</span>'
-                            + '<span class="flex items-center gap-2">' + ipStatusBadge(ip.status)
-                            + (ip.asset ? '<span class="text-slate-500">' + escapeHtml(ip.asset) + '</span>' : '')
-                            + '</span></div>';
+                            + '<span class="flex items-center gap-2 min-w-0">' + ipStatusBadge(ip.status)
+                            + (ip.asset ? '<span class="text-slate-500 truncate max-w-[120px]">' + escapeHtml(ip.asset.tag_name) + '</span>' : '')
+                            + '</span></button>';
                     }).join('') + '</div>';
+                list.querySelectorAll('.ip-cell').forEach(function (cell) {
+                    cell.addEventListener('click', function () {
+                        showIpPopup(data.ips[parseInt(cell.dataset.idx, 10)], cell);
+                    });
+                });
             })
             .catch(function () {
                 placeholder.textContent = 'Gagal memuat daftar IP.';
             });
+    }
+
+    function showIpPopup(ip, anchor) {
+        closeIpPopup();
+        const a = ip.asset;
+        let body;
+
+        if (a) {
+            const loc = [a.plant, a.department, a.location].filter(Boolean).join(' - ');
+            const ping = a.last_ping_status
+                ? '<div class="text-xs mt-1">Status ping: <strong>' + escapeHtml(a.last_ping_status) + '</strong>'
+                    + (a.last_ping_latency != null ? ' (' + a.last_ping_latency + 'ms)' : '') + '</div>'
+                : '';
+            body = '<div class="font-semibold text-slate-900">' + escapeHtml(a.tag_name) + '</div>'
+                + '<div class="text-slate-500">' + escapeHtml(a.device_type_label || a.device_type || 'Perangkat') + '</div>'
+                + (a.name && a.name !== a.tag_name ? '<div class="text-xs text-slate-500 mt-0.5">' + escapeHtml(a.name) + '</div>' : '')
+                + '<div class="mt-1">IP: <code class="text-xs">' + escapeHtml(ip.address) + '</code> ' + ipStatusBadge(ip.status) + '</div>'
+                + (loc ? '<div class="text-xs text-slate-500 mt-0.5">' + escapeHtml(loc) + '</div>' : '')
+                + ping
+                + '<a href="' + escapeHtml(a.url) + '" class="inline-block mt-2 text-xs text-blue-600 hover:text-blue-700 font-medium">Detail perangkat &rarr;</a>';
+        } else {
+            body = '<div class="font-semibold text-slate-900 font-mono">' + escapeHtml(ip.address) + '</div>'
+                + '<div class="mt-1">' + ipStatusBadge(ip.status) + '</div>'
+                + '<div class="text-xs text-slate-500 mt-1">Belum dipakai perangkat.</div>';
+        }
+
+        const rect = anchor.getBoundingClientRect();
+        const pop = document.createElement('div');
+        pop.id = 'ipPopup';
+        pop.className = 'fixed bg-white rounded-lg border border-slate-200 shadow-lg text-sm p-3 whitespace-normal';
+        pop.style.maxWidth = '280px';
+        pop.style.zIndex = '9999';
+        pop.style.left = (rect.left + rect.width / 2) + 'px';
+        pop.style.top = (rect.top - 6) + 'px';
+        pop.style.transform = 'translate(-50%, -100%)';
+        pop.innerHTML = body;
+        document.body.appendChild(pop);
+
+        const pr = pop.getBoundingClientRect();
+        const margin = 8;
+        if (pr.left < margin) {
+            pop.style.left = (parseFloat(pop.style.left) + (margin - pr.left)) + 'px';
+        } else if (pr.right > window.innerWidth - margin) {
+            pop.style.left = (parseFloat(pop.style.left) - (pr.right - (window.innerWidth - margin))) + 'px';
+        }
+        if (pr.top < margin) {
+            pop.style.top = (rect.bottom + 8) + 'px';
+            pop.style.transform = 'translate(-50%, 0)';
+        }
+    }
+
+    function closeIpPopup() {
+        const p = document.getElementById('ipPopup');
+        if (p) p.remove();
     }
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -179,6 +239,14 @@
                 }
             });
         });
+
+        document.addEventListener('click', function (e) {
+            const p = document.getElementById('ipPopup');
+            if (p && !p.contains(e.target) && !e.target.closest('.ip-cell')) {
+                closeIpPopup();
+            }
+        });
+        window.addEventListener('scroll', closeIpPopup, { passive: true });
     });
     </script>
     @endpush

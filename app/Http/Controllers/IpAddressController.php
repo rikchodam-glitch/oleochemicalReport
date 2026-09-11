@@ -120,13 +120,29 @@ class IpAddressController extends Controller
     {
         $ips = $network->addresses()
             ->with('asset')
-            ->orderBy('address')
+            ->orderByRaw('INET_ATON(address)')
             ->get()
-            ->map(fn (IpAddress $ip) => [
-                'address' => $ip->address,
-                'status'  => $ip->status,
-                'asset'   => $ip->asset?->displayName(),
-            ]);
+            ->map(function (IpAddress $ip) {
+                $asset = $ip->asset;
+
+                return [
+                    'address' => $ip->address,
+                    'status'  => $ip->status,
+                    'asset'   => $asset ? [
+                        'tag_name'          => $asset->displayName(),
+                        'name'              => $asset->name,
+                        'device_type'       => $asset->device_type,
+                        'device_type_label' => $asset->deviceLabel(),
+                        'plant'             => $asset->plant,
+                        'department'        => $asset->department,
+                        'location'          => $asset->location,
+                        'ip_address'        => $asset->ip_address,
+                        'last_ping_status'  => $asset->last_ping_status,
+                        'last_ping_latency' => $asset->last_ping_latency,
+                        'url'               => route('it-assets.show', $asset),
+                    ] : null,
+                ];
+            });
 
         return response()->json([
             'network' => $network->label(),
