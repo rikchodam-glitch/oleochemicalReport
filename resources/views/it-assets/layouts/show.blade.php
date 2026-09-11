@@ -65,6 +65,10 @@
 
     <div class="flex-1 space-y-3">
         <div id="denahWrap" class="relative rounded-xl border border-slate-200 bg-white overflow-hidden select-none" style="min-height:420px; cursor:grab;">
+            {{-- Bar tipis progres render denah (PDF.js / gambar) --}}
+            <div id="renderBar" class="hidden absolute top-0 left-0 w-full h-1 z-40 bg-blue-100/70 overflow-hidden">
+                <div id="renderBarFill" class="h-full bg-blue-500" style="width:0%; transition: width 150ms ease-out;"></div>
+            </div>
             <div id="stage" class="relative w-full" style="transform-origin:0 0;">
                 <div id="bgBox" class="pointer-events-none"></div>
                 <svg id="svgLinks" class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
@@ -326,17 +330,47 @@
         });
         document.addEventListener('pointerup', () => { panCtx = null; });
 
+        let renderBarTimer = null;
+
+        function showRenderBar() {
+            const bar = document.getElementById('renderBar');
+            if (!bar) return;
+            clearTimeout(renderBarTimer);
+            bar.classList.remove('hidden');
+            setRenderProgress(0.08);
+        }
+
+        function setRenderProgress(fraction) {
+            const fill = document.getElementById('renderBarFill');
+            if (!fill) return;
+            const pct = Math.max(2, Math.min(100, Math.round((fraction || 0) * 100)));
+            fill.style.width = pct + '%';
+        }
+
+        function hideRenderBar() {
+            const bar = document.getElementById('renderBar');
+            if (!bar) return;
+            setRenderProgress(1);
+            clearTimeout(renderBarTimer);
+            renderBarTimer = setTimeout(function () {
+                bar.classList.add('hidden');
+                const fill = document.getElementById('renderBarFill');
+                if (fill) fill.style.width = '0%';
+            }, 250);
+        }
+
         function renderBackground() {
             bgBox.innerHTML = '';
             svgLinks.innerHTML = '';
             markersLayer.innerHTML = '';
 
             if (LAYOUT.file_type === 'image') {
+                showRenderBar();
                 const img = document.createElement('img');
                 img.src = LAYOUT.file_url;
                 img.className = 'block w-full h-auto';
-                img.onload = () => { loading.style.display = 'none'; };
-                img.onerror = () => { loading.style.display = 'none'; };
+                img.onload = () => { loading.style.display = 'none'; hideRenderBar(); };
+                img.onerror = () => { loading.style.display = 'none'; hideRenderBar(); };
                 bgBox.appendChild(img);
                 return;
             }
@@ -347,29 +381,41 @@
                 return;
             }
 
+            showRenderBar();
             pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
-            pdfjsLib.getDocument(LAYOUT.file_url).promise
+            const loadTask = pdfjsLib.getDocument(LAYOUT.file_url);
+            // Progres unduh dokumen (0-40%).
+            loadTask.onProgress = function (p) {
+                setRenderProgress(p && p.total ? 0.4 * (p.loaded / p.total) : 0.15);
+            };
+            loadTask.promise
                 .then(pdf => { pdfDoc = pdf; return pdf.getPage(Math.min(LAYOUT.page || 1, pdf.numPages)); })
                 .then(page => {
                     pdfPage = page;
                     pdfBaseVp = page.getViewport({ scale: 1 });
                     pdfBaseScale = 1600 / pdfBaseVp.width;
-                    return renderPageCanvas(page, pdfScaleForContainer());
+                    // Progres render halaman (40-100%).
+                    return renderPageCanvas(page, pdfScaleForContainer(), function (f) { setRenderProgress(0.4 + 0.6 * f); });
                 })
-                .then(canvas => { setBgCanvas(canvas); loading.style.display = 'none'; })
+                .then(canvas => { setBgCanvas(canvas); loading.style.display = 'none'; hideRenderBar(); })
                 .catch(err => {
                     bgBox.innerHTML = '<div class="text-red-600 text-sm p-4">Gagal memuat denah: ' + escapeHtml(err.message) + '</div>';
                     loading.style.display = 'none';
+                    hideRenderBar();
                 });
         }
 
-        function renderPageCanvas(page, scale) {
+        function renderPageCanvas(page, scale, onProgress) {
             const viewport = page.getViewport({ scale: scale });
             const canvas = document.createElement('canvas');
             canvas.width = viewport.width;
             canvas.height = viewport.height;
             canvas.className = 'block w-full h-auto';
-            return page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise.then(() => canvas);
+            const task = page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport });
+            if (typeof onProgress === 'function') {
+                task.onProgress = function (p) { onProgress(p && p.total ? p.loaded / p.total : 0); };
+            }
+            return task.promise.then(() => canvas);
         }
 
         function setBgCanvas(canvas) {
@@ -391,8 +437,10 @@
             const maxWidth = 8000;
             let scale = pdfScaleForContainer();
             if (pdfBaseVp.width * scale > maxWidth) scale = maxWidth / pdfBaseVp.width;
-            renderPageCanvas(pdfPage, scale).then(canvas => {
+            showRenderBar();
+            renderPageCanvas(pdfPage, scale, function (f) { setRenderProgress(f); }).then(canvas => {
                 if (pdfPage && seq === pdfRenderSeq) setBgCanvas(canvas);
+                if (seq === pdfRenderSeq) hideRenderBar();
             });
         }
 
