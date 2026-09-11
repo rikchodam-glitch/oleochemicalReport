@@ -80,6 +80,27 @@
             </div>
             <div id="loading" class="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">Memuat denah&hellip;</div>
         </div>
+
+        {{-- Control bar di bawah denah: mode tampilan + filter jenis alat --}}
+        <div id="denahControls" class="bg-white rounded-xl border border-slate-200 p-3 space-y-3">
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide mr-1">Mode:</span>
+                <button type="button" id="modeBtnNormal" data-mode="normal"
+                        class="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors">Biasa</button>
+                <button type="button" id="modeBtnNetwork" data-mode="network"
+                        class="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors">Jaringan</button>
+                <span id="modeInfo" class="text-xs text-slate-400 ml-2"></span>
+            </div>
+            <div class="flex flex-wrap items-start gap-2 pt-2 border-t border-slate-100">
+                <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide mt-1 mr-1">Tampilkan alat:</span>
+                <div id="deviceFilter" class="flex flex-wrap gap-2"></div>
+                <div class="flex items-center gap-3 ml-auto mt-1">
+                    <button type="button" id="filterAllBtn" class="text-xs text-blue-600 hover:text-blue-700 font-medium">Semua</button>
+                    <button type="button" id="filterNoneBtn" class="text-xs text-slate-400 hover:text-red-500 font-medium">Kosongkan</button>
+                </div>
+            </div>
+        </div>
+
         <p id="modeHint" class="text-sm text-slate-600"></p>
     </div>
 </div>
@@ -175,6 +196,9 @@
         const state = { mode: 'idle', placingAssetId: null, linkFrom: null, linkTo: null };
         const itemsMap = {};
         const pathEls = {};
+        const linkEntries = {};
+        let viewMode = 'normal';
+        const hiddenTypes = new Set();
         let zoom = 1;
         let pan = { x: 0, y: 0 };
         let panned = false;
@@ -407,6 +431,7 @@
             });
             svgLinks.appendChild(poly);
             pathEls[link.id] = poly;
+            linkEntries[link.id] = { link, poly };
             return poly;
         }
 
@@ -603,9 +628,11 @@
                 if (link && (link.from_asset_id === assetId || link.to_asset_id === assetId)) {
                     pathEls[id].remove();
                     delete pathEls[id];
+                    delete linkEntries[id];
                 }
             });
             renderPlaced();
+            refreshView();
         }
 
         const PLACE_URL = '{{ route('it-assets.layouts.place', $layout) }}';
@@ -644,7 +671,9 @@
                 pathEls[linkId].remove();
                 delete pathEls[linkId];
             }
+            delete linkEntries[linkId];
             linksData = linksData.filter(l => l.id != linkId);
+            applyViewFilter();
         }
 
         async function removePlacement(assetId) {
@@ -725,6 +754,7 @@
             }
             linksData.push(data.link);
             drawLink(data.link);
+            applyViewFilter();
             closeLinkModal();
         });
 
@@ -755,6 +785,7 @@
                 return;
             }
             addMarker(data.item);
+            refreshView();
             UNPLACED.splice(UNPLACED.findIndex(a => a.id === assetId), 1);
             renderUnplaced();
             setMode('idle');
@@ -918,6 +949,80 @@
             });
         }
 
+        function placedTypes() {
+            const set = new Set();
+            Object.values(itemsMap).forEach(function (entry) { set.add(entry.item.asset.device_type); });
+            return Array.from(set).sort();
+        }
+
+        function renderDeviceFilter() {
+            const box = document.getElementById('deviceFilter');
+            if (!box) return;
+            const types = placedTypes();
+            box.innerHTML = '';
+            if (!types.length) {
+                box.innerHTML = '<span class="text-xs text-slate-400">Belum ada alat di denah.</span>';
+                return;
+            }
+            types.forEach(function (type) {
+                const checked = hiddenTypes.has(type) ? '' : 'checked';
+                const label = document.createElement('label');
+                label.className = 'inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-50 text-xs text-slate-700 select-none';
+                label.innerHTML = '<input type="checkbox" data-type="' + escapeHtml(type) + '" ' + checked + ' class="df-check">'
+                    + '<span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:' + colorFor(type) + '"></span>'
+                    + escapeHtml(deviceLabels[type] || type);
+                box.appendChild(label);
+            });
+            box.querySelectorAll('.df-check').forEach(function (cb) {
+                cb.addEventListener('change', function () {
+                    if (cb.checked) { hiddenTypes.delete(cb.dataset.type); } else { hiddenTypes.add(cb.dataset.type); }
+                    applyViewFilter();
+                });
+            });
+        }
+
+        function applyViewFilter() {
+            // Marker: sembunyikan jenis yang di-hide.
+            Object.values(itemsMap).forEach(function (entry) {
+                entry.el.style.display = hiddenTypes.has(entry.item.asset.device_type) ? 'none' : '';
+            });
+            // Jalur kabel hanya tampil di mode Jaringan, dan hanya bila kedua
+            // ujungnya sedang tampil.
+            const showLinks = viewMode === 'network';
+            svgLinks.style.display = showLinks ? '' : 'none';
+            Object.values(linkEntries).forEach(function (entry) {
+                let visible = showLinks;
+                if (visible) {
+                    const a = itemsMap[entry.link.from_asset_id];
+                    const b = itemsMap[entry.link.to_asset_id];
+                    visible = !!(a && b && a.el.style.display !== 'none' && b.el.style.display !== 'none');
+                }
+                entry.poly.style.display = visible ? '' : 'none';
+            });
+        }
+
+        function setViewMode(mode) {
+            viewMode = (mode === 'network') ? 'network' : 'normal';
+            const on = 'px-3 py-1.5 text-xs font-medium rounded-lg border border-blue-600 bg-blue-600 text-white transition-colors';
+            const off = 'px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors';
+            const normal = document.getElementById('modeBtnNormal');
+            const network = document.getElementById('modeBtnNetwork');
+            if (normal) normal.className = viewMode === 'normal' ? on : off;
+            if (network) network.className = viewMode === 'network' ? on : off;
+            const info = document.getElementById('modeInfo');
+            if (info) {
+                info.textContent = viewMode === 'network'
+                    ? 'Jaringan: menampilkan jalur kabel antar alat yang tampil.'
+                    : 'Biasa: hanya menampilkan alat (tanpa jalur kabel).';
+            }
+            applyViewFilter();
+        }
+
+        function refreshView() {
+            renderDeviceFilter();
+            applyViewFilter();
+        }
+
         function init() {
             applyStage();
             renderBackground();
@@ -934,6 +1039,21 @@
             }
             renderUnplaced();
             renderPlaced();
+
+            // Mode tampilan (Biasa/Jaringan) + filter jenis alat.
+            setViewMode('normal');
+            const modeNormalBtn = document.getElementById('modeBtnNormal');
+            const modeNetworkBtn = document.getElementById('modeBtnNetwork');
+            if (modeNormalBtn) modeNormalBtn.addEventListener('click', function () { setViewMode('normal'); });
+            if (modeNetworkBtn) modeNetworkBtn.addEventListener('click', function () { setViewMode('network'); });
+            const filterAllBtn = document.getElementById('filterAllBtn');
+            const filterNoneBtn = document.getElementById('filterNoneBtn');
+            if (filterAllBtn) filterAllBtn.addEventListener('click', function () { hiddenTypes.clear(); refreshView(); });
+            if (filterNoneBtn) filterNoneBtn.addEventListener('click', function () {
+                placedTypes().forEach(function (t) { hiddenTypes.add(t); });
+                refreshView();
+            });
+            refreshView();
         }
 
         init();
