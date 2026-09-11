@@ -838,14 +838,60 @@
                 li.className = 'flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs text-slate-700';
                 li.innerHTML = '<span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:' + colorFor(asset.device_type) + '"></span>'
                     + '<span class="min-w-0 truncate">' + escapeHtml(displayName(asset)) + '<span class="text-slate-400"> · ' + escapeHtml(deviceLabels[asset.device_type] || asset.device_type) + '</span></span>';
-                li.addEventListener('click', () => {
+                li.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showUnplacedPopup(asset, li);
+                });
+                list.appendChild(li);
+            });
+        }
+
+        function showUnplacedPopup(asset, anchorEl) {
+            const typeLabel = deviceLabels[asset.device_type] || asset.device_type || 'Perangkat';
+            const rows = [];
+            rows.push(['Tipe', typeLabel]);
+            if (asset.ip_address) rows.push(['IP', asset.ip_address]);
+            if (asset.plant) rows.push(['Plant', asset.plant]);
+            if (asset.department) rows.push(['Department', asset.department]);
+            if (asset.location) rows.push(['Lokasi', asset.location]);
+            if (asset.last_ping_status) rows.push(['Status ping', asset.last_ping_status]);
+            if (asset.spec_items) {
+                Object.keys(asset.spec_items).forEach(function (k) {
+                    const v = asset.spec_items[k];
+                    if (v !== null && v !== undefined && v !== '') rows.push([k, v]);
+                });
+            }
+
+            let table = '<table class="w-full text-xs mt-2">';
+            rows.forEach(function (r) {
+                table += '<tr>'
+                    + '<td class="py-0.5 pr-2 text-slate-400 align-top whitespace-nowrap">' + escapeHtml(r[0]) + '</td>'
+                    + '<td class="py-0.5 text-slate-800 break-words">' + escapeHtml(r[1]) + '</td>'
+                    + '</tr>';
+            });
+            table += '</table>';
+
+            const snap = asset.snapshot_url
+                ? '<img src="' + escapeHtml(asset.snapshot_url) + '" alt="Snapshot" class="block w-full rounded-lg border border-slate-200 mt-2">'
+                : '';
+
+            const html = '<div class="font-semibold text-slate-900">' + escapeHtml(displayName(asset)) + '</div>'
+                + '<div class="text-slate-500">' + escapeHtml(typeLabel) + '</div>'
+                + table + snap
+                + '<button type="button" data-act="place" class="mt-3 w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg">Tempatkan di denah</button>';
+
+            showPopup(html, anchorEl);
+
+            const placeBtn = document.querySelector('#tempPopup [data-act="place"]');
+            if (placeBtn) {
+                placeBtn.addEventListener('click', function () {
                     state.placingAssetId = asset.id;
                     setMode('place');
                     denahWrap.style.cursor = 'crosshair';
                     setHint('Klik lokasi "' + displayName(asset) + '" di denah.');
+                    closePopup();
                 });
-                list.appendChild(li);
-            });
+            }
         }
 
         function renderLegends() {

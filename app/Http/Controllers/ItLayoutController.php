@@ -394,6 +394,7 @@ class ItLayoutController extends Controller
             'snapshot_url'     => $asset->supportsSnapshot() && $asset->last_snapshot_path
                 ? Storage::disk(config('cctv.snapshot_disk'))->url($asset->last_snapshot_path)
                 : null,
+            'spec_items'       => $asset->specDisplayItems(),
         ];
     }
 

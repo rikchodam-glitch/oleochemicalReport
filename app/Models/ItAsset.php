@@ -322,4 +322,32 @@ class ItAsset extends Model
 
         return implode(' · ', $parts);
     }
+
+    /**
+     * Daftar label => nilai spesifikasi untuk tampilan generik (mis. popup
+     * denah). Menyesuaikan tipe perangkat: PC memakai pcSpecItems(), CCTV
+     * memakai cctvSpecItems(), tipe lain memakai kunci spec datar.
+     *
+     * @return array<string, string>
+     */
+    public function specDisplayItems(): array
+    {
+        if ($this->device_type === 'PC') {
+            return $this->pcSpecItems();
+        }
+
+        if ($this->device_type === 'CCTV') {
+            return $this->cctvSpecItems();
+        }
+
+        $items = [];
+        foreach (($this->spec ?? []) as $key => $value) {
+            if (is_array($value) || $value === null || $value === '') {
+                continue;
+            }
+            $items[ucwords(str_replace('_', ' ', (string) $key))] = $value;
+        }
+
+        return $items;
+    }
 }
