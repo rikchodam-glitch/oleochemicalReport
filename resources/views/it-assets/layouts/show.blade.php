@@ -251,6 +251,40 @@
             if (prev) applyMarkerOpacity(prev);
         }
 
+        // Indikator status ping perangkat pada marker (cincin luar).
+        const PING_ONLINE_COLOR = '#22c55e';
+        const PING_OFFLINE_COLOR = '#ef4444';
+        const PING_UNKNOWN_COLOR = '#94a3b8';
+
+        /**
+         * Label status ping perangkat dalam Bahasa Indonesia.
+         */
+        function pingStatusLabel(asset) {
+            const status = String((asset || {}).last_ping_status || '').toLowerCase();
+            if (status === 'online') return 'Online';
+            if (status === 'offline') return 'Offline';
+            return 'Status belum diketahui';
+        }
+
+        /**
+         * Warna cincin indikator status ping: hijau saat online, merah saat
+         * offline, abu-abu bila status belum pernah dicek.
+         */
+        function pingRingColor(asset) {
+            const status = String((asset || {}).last_ping_status || '').toLowerCase();
+            if (status === 'online') return PING_ONLINE_COLOR;
+            if (status === 'offline') return PING_OFFLINE_COLOR;
+            return PING_UNKNOWN_COLOR;
+        }
+
+        /**
+         * Bayangan marker: cincin status + bayangan kedalaman.
+         */
+        function markerRingShadow(asset) {
+            return '0 0 0 3px ' + pingRingColor(asset) + ', 0 1px 4px rgba(0,0,0,.45)';
+        }
+
+
 
 
         function escapeHtml(value) {
@@ -675,6 +709,10 @@
                 el.style.borderStyle = 'solid';
                 el.style.borderColor = '#fff';
             }
+            // Cincin indikator status perangkat: hijau online, merah offline.
+            el.style.boxShadow = markerRingShadow(asset);
+            el.title = displayName(asset) + ' - ' + pingStatusLabel(asset);
+
         }
 
         function bindMarkerEvents(entry) {
