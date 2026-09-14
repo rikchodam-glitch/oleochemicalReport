@@ -23,7 +23,7 @@ return [
 
     'gs_path' => env('GHOSTSCRIPT_PATH'),
 
-    'preview_dpi' => (int) env('DENAH_PREVIEW_DPI', 300),
+    'preview_dpi' => (int) env('DENAH_PREVIEW_DPI', 400),
 
     'preview_folder' => 'layout-previews',
 

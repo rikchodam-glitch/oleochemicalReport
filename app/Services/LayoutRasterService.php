@@ -40,9 +40,13 @@ class LayoutRasterService
 
         $dpi = (int) config('denah.preview_dpi', 200);
 
+        // -dTextAlphaBits/-dGraphicsAlphaBits = anti-aliasing supaya garis &
+        // teks teknik tidak bergerigi (kualitas cetak), sesuai permintaan.
         $command = escapeshellarg($binary)
             . ' -dSAFER -dBATCH -dNOPAUSE -dQUIET'
             . ' -sDEVICE=png16m -r' . $dpi
+            . ' -dTextAlphaBits=4 -dGraphicsAlphaBits=4'
+            . ' -dDownScaleFactor=1'
             . ' -dFirstPage=1 -dLastPage=1'
             . ' -sOutputFile=' . escapeshellarg($target)
             . ' ' . escapeshellarg($source);
