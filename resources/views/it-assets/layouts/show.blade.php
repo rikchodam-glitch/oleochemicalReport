@@ -255,6 +255,9 @@
         const PING_ONLINE_COLOR = '#22c55e';
         const PING_OFFLINE_COLOR = '#ef4444';
         const PING_UNKNOWN_COLOR = '#94a3b8';
+        // Ukuran elemen cincin status; disamakan dengan ukuran marker (26px).
+        const MARKER_RING_SIZE = 26;
+
 
         /**
          * Label status ping perangkat dalam Bahasa Indonesia.
@@ -346,6 +349,8 @@
             const s = 1 / zoom;
             Object.values(itemsMap).forEach(entry => {
                 entry.el.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
+                if (entry.ring) entry.ring.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
+
             });
         }
 
@@ -680,12 +685,24 @@
             el.title = displayName(asset);
             el.style.opacity = String(MARKER_IDLE_OPACITY);
             el.style.transition = 'opacity .15s ease';
+            el.style.transform = 'translate(-50%, -50%) scale(' + (1 / zoom) + ')';
+
 
 
             const entry = { item, el };
             entry.hovered = false;
 
             markersLayer.appendChild(el);
+            // Cincin status dibuat sebagai elemen terpisah supaya tidak ikut
+            // transparan (opacity milik marker memengaruhi bayangannya juga).
+            const ringEl = document.createElement('div');
+            ringEl.className = 'pointer-events-none absolute rounded-full';
+            ringEl.style.width = MARKER_RING_SIZE + 'px';
+            ringEl.style.height = MARKER_RING_SIZE + 'px';
+            ringEl.style.boxShadow = markerRingShadow(asset);
+            markersLayer.appendChild(ringEl);
+            entry.ring = ringEl;
+
             itemsMap[asset.id] = entry;
 
             refreshMarker(entry);
@@ -712,6 +729,13 @@
             // Cincin indikator status perangkat: hijau online, merah offline.
             el.style.boxShadow = markerRingShadow(asset);
             el.title = displayName(asset) + ' - ' + pingStatusLabel(asset);
+
+            if (entry.ring) {
+                entry.ring.style.left = item.x + '%';
+                entry.ring.style.top = item.y + '%';
+                entry.ring.style.transform = 'translate(-50%, -50%) scale(' + (1 / zoom) + ')';
+                entry.ring.style.boxShadow = markerRingShadow(asset);
+            }
 
         }
 
@@ -764,6 +788,8 @@
         function removeMarker(assetId) {
             const entry = itemsMap[assetId];
             if (entry) entry.el.remove();
+            if (entry && entry.ring) entry.ring.remove();
+
             if (activeMarkerEntry === entry) activeMarkerEntry = null;
 
             delete itemsMap[assetId];
@@ -1138,6 +1164,8 @@
             // Marker: sembunyikan jenis yang di-hide.
             Object.values(itemsMap).forEach(function (entry) {
                 entry.el.style.display = hiddenTypes.has(entry.item.asset.device_type) ? 'none' : '';
+                if (entry.ring) entry.ring.style.display = hiddenTypes.has(entry.item.asset.device_type) ? 'none' : '';
+
             });
             // Jalur kabel hanya tampil di mode Jaringan, dan hanya bila kedua
             // ujungnya sedang tampil.
