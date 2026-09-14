@@ -171,6 +171,7 @@ Route::middleware('admin')->group(function () {
     Route::get('/it-assets/layouts', [ItLayoutController::class, 'index'])->name('it-assets.layouts.index');
     Route::get('/it-assets/layouts/create', [ItLayoutController::class, 'create'])->name('it-assets.layouts.create');
     Route::post('/it-assets/layouts', [ItLayoutController::class, 'store'])->name('it-assets.layouts.store');
+    Route::get('/it-assets/layouts/{layout}/preview', [ItLayoutController::class, 'preview'])->name('it-assets.layouts.preview');
     Route::get('/it-assets/layouts/{layout}', [ItLayoutController::class, 'show'])->name('it-assets.layouts.show');
     Route::delete('/it-assets/layouts/{layout}', [ItLayoutController::class, 'destroy'])->name('it-assets.layouts.destroy');
     Route::post('/it-assets/layouts/{layout}/place', [ItLayoutController::class, 'placeAsset'])->name('it-assets.layouts.place');

@@ -83,4 +83,39 @@ class ItLayout extends Model
 
         return parse_url($full, PHP_URL_PATH);
     }
+
+    /**
+     * Path relatif gambar hasil pra-render PDF di disk 'public'.
+     *
+     * @return string
+     */
+    public function previewRelativePath(): string
+    {
+        return config('denah.preview_folder', 'layout-previews') . '/' . $this->id . '.png';
+    }
+
+    /**
+     * Apakah gambar hasil pra-render sudah tersedia (khusus denah PDF).
+     *
+     * @return bool
+     */
+    public function hasPreview(): bool
+    {
+        if ($this->file_type !== 'pdf') {
+            return false;
+        }
+
+        return Storage::disk(config('denah.disk', 'public'))->exists($this->previewRelativePath());
+    }
+
+    /**
+     * Tipe file untuk ditampilkan di halaman denah: bila PDF sudah
+     * dipra-render, tampilkan sebagai gambar supaya tidak perlu render PDF.js.
+     *
+     * @return string
+     */
+    public function displayFileType(): string
+    {
+        return $this->hasPreview() ? 'image' : $this->file_type;
+    }
 }

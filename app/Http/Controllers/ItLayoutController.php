@@ -6,6 +6,7 @@ use App\Models\ItAsset;
 use App\Models\ItLayout;
 use App\Models\ItLayoutItem;
 use App\Models\NetworkLink;
+use App\Services\LayoutRasterService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -92,7 +93,7 @@ class ItLayoutController extends Controller
 
         $maxSort = ItLayout::max('sort_order') ?? 0;
 
-        ItLayout::create([
+        $layout = ItLayout::create([
             'name'        => $validated['name'],
             'label'       => $validated['label'] ?? null,
             'description' => $validated['description'] ?? null,
@@ -103,6 +104,9 @@ class ItLayoutController extends Controller
             'height'      => $height,
             'sort_order'  => $maxSort + 1,
         ]);
+
+        // Pra-render PDF menjadi gambar sekali agar denah terbuka cepat.
+        app(LayoutRasterService::class)->generate($layout);
 
         return redirect()
             ->route('it-assets.layouts.index')
@@ -129,13 +133,19 @@ class ItLayoutController extends Controller
             ->get()
             ->map(fn (ItAsset $asset) => $this->serializeAsset($asset));
 
+        // Bila PDF sudah dipra-render, tampilkan sebagai gambar (cepat) lewat
+        // route ber-cache kuat; kalau belum, fallback ke file asli (PDF.js).
+        $hasPreview = $layout->hasPreview();
+
         $layoutData = [
             'id'          => $layout->id,
             'name'        => $layout->name,
             'label'       => $layout->label,
             'description' => $layout->description,
-            'file_type'   => $layout->file_type,
-            'file_url'    => $layout->fileUrlRelative(),
+            'file_type'   => $layout->displayFileType(),
+            'file_url'    => $hasPreview
+                ? route('it-assets.layouts.preview', $layout) . '?v=' . Storage::disk(config('denah.disk', 'public'))->lastModified($layout->previewRelativePath())
+                : $layout->fileUrlRelative(),
             'page'        => $layout->page,
             'width'       => $layout->width,
             'height'      => $layout->height,
@@ -149,6 +159,26 @@ class ItLayoutController extends Controller
             'unplaced'           => $unplaced,
             'deviceTypeColors'   => self::DEVICE_TYPE_COLORS,
             'allLayouts'         => ItLayout::orderBy('sort_order')->orderBy('name')->get(),
+        ]);
+    }
+
+    /**
+     * Sajikan gambar hasil pra-render denah dengan header cache kuat, supaya
+     * browser tidak mengunduh ulang pada kunjungan berikutnya.
+     *
+     * @param  ItLayout  $layout
+     * @return \Symfony\Component\HttpFoundation\BinaryFileResponse
+     */
+    public function preview(ItLayout $layout)
+    {
+        if (!$layout->hasPreview()) {
+            abort(404);
+        }
+
+        $path = Storage::disk(config('denah.disk', 'public'))->path($layout->previewRelativePath());
+
+        return response()->file($path, [
+            'Cache-Control' => 'public, max-age=604800, immutable',
         ]);
     }
 
