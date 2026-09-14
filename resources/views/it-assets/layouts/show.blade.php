@@ -624,6 +624,16 @@
                 actions = '<button type="button" data-act="lock" class="px-2 py-1 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded">Kunci</button>'
                     + '<button type="button" data-act="remove" class="px-2 py-1 text-xs font-medium text-red-600 hover:text-red-800">Hapus</button>';
             }
+            // Tombol aksi cepat di popup: Ping (bila perangkat punya IP) dan
+            // Ambil Snapshot (khusus perangkat CCTV/NVR).
+            let tools = '';
+            if (asset.ip_address) {
+                tools += '<button type="button" data-act="ping" class="px-2 py-1 text-xs font-medium rounded bg-teal-600 hover:bg-teal-700 text-white">Ping</button>';
+            }
+            if (asset.device_type === 'CCTV' || asset.device_type === 'NVR') {
+                tools += '<button type="button" data-act="snapshot" class="px-2 py-1 text-xs font-medium rounded bg-teal-600 hover:bg-teal-700 text-white">Ambil Snapshot</button>';
+            }
+
             const html = '<div class="font-semibold">' + escapeHtml(displayName(asset)) + '</div>'
                 + '<div class="text-slate-500">' + escapeHtml(deviceLabels[asset.device_type] || asset.device_type || 'Perangkat') + '</div>'
                 + (item.is_locked ? '<div class="text-xs text-amber-600 mt-1">Status: Terkunci</div>' : '')
@@ -631,6 +641,11 @@
                 + (loc ? '<div class="text-xs text-slate-500">' + escapeHtml(loc) + '</div>' : '')
                 + (asset.last_ping_status ? '<div class="text-xs mt-1">Status: ' + escapeHtml(asset.last_ping_status) + '</div>' : '')
                 + snap
+                + '<div class="mt-1 text-xs" data-result="ping"></div>'
+                + '<div class="mt-1 text-xs text-red-600" data-result="snapshot"></div>'
+                + '<div data-snapshot-box></div>'
+                + (tools ? '<div class="mt-2 flex flex-wrap gap-2">' + tools + '</div>' : '')
+
                 + '<div class="mt-2 flex gap-2">' + actions + '</div>';
             showPopup(html, el);
 
@@ -638,7 +653,118 @@
             if (lockBtn) lockBtn.addEventListener('click', () => toggleLockItem(item.it_asset_id));
             const removeBtn = document.querySelector('#tempPopup [data-act="remove"]');
             if (removeBtn) removeBtn.addEventListener('click', () => removePlacement(item.it_asset_id));
+            // Aksi cepat dari popup: ping dan/atau snapshot.
+            const pingBtn = document.querySelector('#tempPopup [data-act="ping"]');
+            if (pingBtn) pingBtn.addEventListener('click', () => pingMarkerAsset(asset.id, pingBtn));
+            const snapshotBtn = document.querySelector('#tempPopup [data-act="snapshot"]');
+            if (snapshotBtn) snapshotBtn.addEventListener('click', () => snapshotMarkerAsset(asset.id, snapshotBtn));
+
         }
+
+        /**
+         * Ping satu perangkat dari popup denah dan tampilkan hasilnya di
+         * dalam popup, tanpa menutup popup atau memuat ulang halaman. Status
+         * terbaru juga langsung dipakai untuk memperbarui cincin marker.
+         *
+         * @param {number} assetId
+         * @param {HTMLButtonElement} button
+         */
+        async function pingMarkerAsset(assetId, button) {
+            const resultEl = document.querySelector('#tempPopup [data-result="ping"]');
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Ping...';
+            if (resultEl) resultEl.innerHTML = '<span class="text-slate-400">Menghubungi perangkat...</span>';
+
+            try {
+                const res = await fetch(ASSET_PING_URL.replace('__ID__', assetId), {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                });
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    if (resultEl) {
+                        resultEl.innerHTML = '<span class="text-red-600">' + escapeHtml(data.message || 'Gagal melakukan ping.') + '</span>';
+                    }
+                    return;
+                }
+
+                // Simpan status terbaru ke data denah + perbarui cincin marker.
+                const entry = itemsMap[assetId];
+                if (entry) {
+                    entry.item.asset.last_ping_status = data.status;
+                    refreshMarker(entry);
+                }
+
+                const latency = (data.latency_ms === null || data.latency_ms === undefined)
+                    ? ''
+                    : ' (' + data.latency_ms + ' ms)';
+
+                if (resultEl) {
+                    resultEl.innerHTML = data.status === 'online'
+                        ? '<span class="text-green-600 font-medium">Online' + latency + '</span>'
+                        : '<span class="text-red-600 font-medium">Offline</span>';
+                }
+            } catch (err) {
+                if (resultEl) resultEl.innerHTML = '<span class="text-red-600">Error: ' + escapeHtml(err.message) + '</span>';
+            } finally {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+
+        /**
+         * Ambil snapshot terbaru perangkat CCTV/NVR dari popup denah lalu
+         * tampilkan gambarnya langsung di dalam popup.
+         *
+         * @param {number} assetId
+         * @param {HTMLButtonElement} button
+         */
+        async function snapshotMarkerAsset(assetId, button) {
+            const resultEl = document.querySelector('#tempPopup [data-result="snapshot"]');
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Mengambil...';
+            if (resultEl) resultEl.textContent = '';
+
+            try {
+                const res = await fetch(ASSET_SNAPSHOT_URL.replace('__ID__', assetId), {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                });
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    if (resultEl) resultEl.textContent = 'Gagal: ' + (data.message || 'tidak diketahui');
+                    return;
+                }
+
+                // Ganti gambar lama (bila ada) dengan hasil capture terbaru.
+                // Cache-buster dipakai supaya browser tidak memakai gambar lama.
+                const oldImg = document.querySelector('#tempPopup > img');
+                if (oldImg) oldImg.remove();
+
+                const box = document.querySelector('#tempPopup [data-snapshot-box]');
+                if (box) {
+                    box.innerHTML = '<img src="' + data.snapshot_url + '?t=' + Date.now()
+                        + '" class="block w-full rounded-lg border border-slate-200 mt-2" alt="Snapshot">'
+                        + '<p class="text-xs text-slate-400 mt-1">Diambil: ' + escapeHtml(data.captured_at) + '</p>';
+                }
+
+                const entry = itemsMap[assetId];
+                if (entry) {
+                    entry.item.asset.snapshot_url = data.snapshot_url;
+                    entry.item.asset.last_snapshot_at = data.captured_at;
+                }
+            } catch (err) {
+                if (resultEl) resultEl.textContent = 'Error: ' + err.message;
+            } finally {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+
 
         async function toggleLockItem(assetId) {
             const entry = itemsMap[assetId];
@@ -804,6 +930,9 @@
             renderPlaced();
             refreshView();
         }
+
+        const ASSET_PING_URL = '{{ route('it-assets.ping', ['itAsset' => '__ID__']) }}';
+        const ASSET_SNAPSHOT_URL = '{{ route('it-assets.snapshot', ['itAsset' => '__ID__']) }}';
 
         const PLACE_URL = '{{ route('it-assets.layouts.place', $layout) }}';
         const STORE_LINK_URL = '{{ route('it-assets.layouts.store-link', $layout) }}';
