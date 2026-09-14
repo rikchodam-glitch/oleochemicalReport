@@ -147,8 +147,8 @@
         [x-cloak] { display: none !important; }
 
         /* Kerangka sidebar: logo dan blok user tetap, daftar menu yang di-scroll. */
-        #appSidebar { display: flex; flex-direction: column; transition: transform .2s ease; }
-        .sidebar-brand { flex: 0 0 auto; }
+        #appSidebar { display: flex; flex-direction: column; width: 16rem; transition: width .2s ease; }
+        .sidebar-brand { flex: 0 0 auto; display: flex; flex-direction: column; }
         .sidebar-nav { flex: 1 1 auto; overflow-y: auto; padding-bottom: 1rem; scrollbar-width: thin; scrollbar-color: #475569 transparent; }
         .sidebar-user {
             flex: 0 0 auto;
@@ -157,10 +157,17 @@
             padding: 1rem;
         }
 
-        /* Panel sidebar bisa disembunyikan; konten utama ikut melebar penuh. */
+        /* Panel sidebar bisa diciutkan jadi rel tipis; konten utama ikut melebar. */
         #appMain { transition: margin-left .2s ease; }
-        body.sidebar-hidden #appSidebar { transform: translateX(-100%); }
-        body.sidebar-hidden #appMain { margin-left: 0; }
+        body.sidebar-hidden #appSidebar { width: 4.5rem; }
+        body.sidebar-hidden #appSidebar .sidebar-brand { align-items: center; padding-left: 0; padding-right: 0; }
+        body.sidebar-hidden #appSidebar .sidebar-brand-text,
+        body.sidebar-hidden #appSidebar .sidebar-nav,
+        body.sidebar-hidden #appSidebar .sidebar-user { display: none; }
+        body.sidebar-hidden #appSidebar .sidebar-logo-mark { display: inline-flex; }
+
+
+        body.sidebar-hidden #appMain { margin-left: 4.5rem; }
 
         /* Tombol buka/tutup panel yang ada di header. */
         .sidebar-toggle-btn {
@@ -178,6 +185,25 @@
             cursor: pointer;
         }
         .sidebar-toggle-btn:hover { background: #f1f5f9; color: #0f172a; }
+        /* Logo ringkas yang tampil saat panel diciutkan. */
+        .sidebar-logo-mark {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 2.5rem;
+            height: 2.5rem;
+            border: 0;
+            border-radius: .75rem;
+            background: #2563eb;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: .875rem;
+            letter-spacing: .02em;
+            cursor: pointer;
+        }
+        .sidebar-logo-mark:hover { background: #1d4ed8; }
+
+
 
         /* Grup menu yang bisa diciutkan (accordion). */
         .sidebar-group-toggle {
@@ -199,11 +225,16 @@
 <body class="bg-slate-50 text-slate-900 antialiased">
 
     <!-- Sidebar -->
-    <aside id="appSidebar" class="fixed top-0 left-0 z-40 w-64 h-screen bg-slate-800 sidebar-scroll">
+    <aside id="appSidebar" class="fixed top-0 left-0 z-40 h-screen bg-slate-800 sidebar-scroll">
         <!-- Logo -->
         <div class="px-4 pt-6 pb-4 border-b border-slate-700 sidebar-brand">
+            <button type="button" id="sidebarLogoBtn" class="sidebar-logo-mark" title="Perluas menu" aria-label="Perluas menu">OP</button>
+            <div class="sidebar-brand-text">
+
             <h2 class="text-white font-bold text-lg tracking-tight">Oleochemical Pro</h2>
             <p class="text-slate-400 text-xs mt-0.5">Maintenance System</p>
+            </div>
+
         </div>
 
         <!-- Menu -->
@@ -565,6 +596,16 @@
                     saveHidden(hidden);
                 });
             }
+
+            // Klik logo saat panel diciutkan akan membuka panel kembali.
+            var logoBtn = document.getElementById('sidebarLogoBtn');
+            if (logoBtn) {
+                logoBtn.addEventListener('click', function () {
+                    applyHidden(false);
+                    saveHidden(false);
+                });
+            }
+
 
             var groupToggles = document.querySelectorAll('[data-sidebar-group-toggle]');
             Array.prototype.forEach.call(groupToggles, function (btn) {
