@@ -214,6 +214,44 @@
         let pdfBaseScale = 1;
         let pdfTimer = null;
         let pdfRenderSeq = 0;
+        // Marker alat: default semi-transparan agar denah tidak terlalu ramai;
+        // saat di-hover atau diklik (dipilih) tampil normal.
+        let activeMarkerEntry = null;
+        const MARKER_IDLE_OPACITY = 0.45;
+        const MARKER_HOVER_OPACITY = 0.85;
+
+        /**
+         * Hitung ulang opacity sebuah marker berdasarkan status hover/aktif.
+         */
+        function applyMarkerOpacity(entry) {
+            if (!entry || !entry.el) return;
+            if (entry === activeMarkerEntry) {
+                entry.el.style.opacity = '1';
+                return;
+            }
+            entry.el.style.opacity = String(entry.hovered ? MARKER_HOVER_OPACITY : MARKER_IDLE_OPACITY);
+        }
+
+        /**
+         * Tandai satu marker sebagai marker terpilih sehingga tampil normal.
+         */
+        function setActiveMarker(entry) {
+            const prev = activeMarkerEntry;
+            activeMarkerEntry = entry || null;
+            if (prev && prev !== activeMarkerEntry) applyMarkerOpacity(prev);
+            if (activeMarkerEntry) applyMarkerOpacity(activeMarkerEntry);
+        }
+
+        /**
+         * Batalkan marker terpilih sehingga kembali semi-transparan.
+         */
+        function clearActiveMarker() {
+            const prev = activeMarkerEntry;
+            activeMarkerEntry = null;
+            if (prev) applyMarkerOpacity(prev);
+        }
+
+
 
         function escapeHtml(value) {
             return String(value ?? '')
@@ -529,6 +567,8 @@
         function closePopup() {
             const existing = document.getElementById('tempPopup');
             if (existing) existing.remove();
+            clearActiveMarker();
+
         }
 
         function showMarkerPopup(item, el) {
@@ -604,8 +644,13 @@
             el.style.boxShadow = '0 1px 4px rgba(0,0,0,.4)';
             el.style.color = '#fff';
             el.title = displayName(asset);
+            el.style.opacity = String(MARKER_IDLE_OPACITY);
+            el.style.transition = 'opacity .15s ease';
+
 
             const entry = { item, el };
+            entry.hovered = false;
+
             markersLayer.appendChild(el);
             itemsMap[asset.id] = entry;
 
@@ -637,6 +682,8 @@
             const asset = item.asset;
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
+                setActiveMarker(entry);
+
                 if (state.mode === 'link') {
                     handleLinkMarkerClick(asset, item);
                 } else {
@@ -665,11 +712,22 @@
                 document.addEventListener('pointermove', onMove);
                 document.addEventListener('pointerup', onUp);
             });
+            el.addEventListener('mouseenter', () => {
+                entry.hovered = true;
+                applyMarkerOpacity(entry);
+            });
+            el.addEventListener('mouseleave', () => {
+                entry.hovered = false;
+                applyMarkerOpacity(entry);
+            });
+
         }
 
         function removeMarker(assetId) {
             const entry = itemsMap[assetId];
             if (entry) entry.el.remove();
+            if (activeMarkerEntry === entry) activeMarkerEntry = null;
+
             delete itemsMap[assetId];
             Object.keys(pathEls).forEach(id => {
                 const link = linksData.find(l => l.id == id);
@@ -868,6 +926,15 @@
                     + (locked ? '' : '<button type="button" class="placed-remove text-slate-400 hover:text-red-600 px-1" title="Keluarkan dari denah">&times;</button>');
                 const removeBtn = li.querySelector('.placed-remove');
                 if (removeBtn) removeBtn.addEventListener('click', () => removePlacement(asset.id));
+                li.addEventListener('mouseenter', function () {
+                    const marker = itemsMap[asset.id];
+                    if (marker) { marker.hovered = true; applyMarkerOpacity(marker); }
+                });
+                li.addEventListener('mouseleave', function () {
+                    const marker = itemsMap[asset.id];
+                    if (marker) { marker.hovered = false; applyMarkerOpacity(marker); }
+                });
+
                 list.appendChild(li);
             });
         }
