@@ -99,15 +99,54 @@ PS;
     }
 
     /**
+     * Cache hasil deteksi drive: satu kali per request supaya hasilnya
+     * konsisten (report, dropdown, dan pemeriksaan kesiapan memakai data yang
+     * sama) sekaligus menghindari pemanggilan PowerShell berulang.
+     */
+    private ?array $disksCache = null;
+
+    /**
      * Daftar drive pada PC: kapasitas, sisa ruang, jenis (SSD/HDD), model.
      *
      * @return array<int, array<string, mixed>>
      */
     public function disks(): array
     {
+        if ($this->disksCache !== null) {
+            return $this->disksCache;
+        }
+
+        $rows = $this->normalizeDiskRows($this->physicalDisks());
+
+        if ($rows === []) {
+            // Cadangan: PowerShell bisa gagal/tidak tersedia. Drive tetap
+            // dideteksi lewat fungsi PHP agar tabel drive tidak pernah kosong
+            // (jenis SSD/HDD ditandai tidak diketahui).
+            $rows = $this->normalizeDiskRows($this->disksFromPhp());
+
+            if ($rows !== []) {
+                Log::warning('StorageService: daftar drive diambil lewat cadangan PHP karena PowerShell tidak berhasil.');
+            }
+        }
+
+        usort($rows, static fn ($a, $b) => strcmp($a['letter'], $b['letter']));
+
+        $this->disksCache = $rows;
+
+        return $rows;
+    }
+
+    /**
+     * Rapikan data drive (dari PowerShell maupun cadangan PHP) ke bentuk baku.
+     *
+     * @param  array<int, array<string, mixed>>  $source
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeDiskRows(array $source): array
+    {
         $rows = [];
 
-        foreach ($this->physicalDisks() as $row) {
+        foreach ($source as $row) {
             $letter = strtoupper((string) ($row['letter'] ?? ''));
 
             if ($letter === '') {
@@ -117,7 +156,7 @@ PS;
             $size = (int) ($row['size'] ?? 0);
             $free = (int) ($row['free'] ?? 0);
 
-            // Cadangan: bila PowerShell tidak memberi ukuran, pakai fungsi PHP.
+            // Cadangan: bila ukuran tidak diberikan, baca lewat fungsi PHP.
             if ($size === 0) {
                 $size = (int) @disk_total_space($letter . ':\\');
                 $free = (int) @disk_free_space($letter . ':\\');
@@ -142,7 +181,34 @@ PS;
             ];
         }
 
-        usort($rows, static fn ($a, $b) => strcmp($a['letter'], $b['letter']));
+        return $rows;
+    }
+
+    /**
+     * Deteksi drive tanpa PowerShell: periksa drive A-Z lewat fungsi PHP.
+     * Kapasitas dan sisa ruang tetap akurat; jenis SSD/HDD tidak terbaca
+     * sehingga ditandai 'Tidak diketahui'.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function disksFromPhp(): array
+    {
+        $rows = [];
+
+        foreach (range('A', 'Z') as $letter) {
+            $total = @disk_total_space($letter . ':\\');
+
+            if ($total === false || $total <= 0) {
+                continue;
+            }
+
+            $rows[] = [
+                'letter' => $letter,
+                'size'   => (int) $total,
+                'free'   => (int) @disk_free_space($letter . ':\\'),
+                'media'  => 'unknown',
+            ];
+        }
 
         return $rows;
     }
@@ -169,32 +235,85 @@ PS;
 
     /**
      * Jalankan skrip PowerShell lalu kembalikan hasilnya sebagai array.
+     * Dua kali percobaan karena pemanggilan PowerShell bisa gagal sesaat.
      *
      * @return array<int, array<string, mixed>>
      */
     private function physicalDisks(): array
     {
-        $process = new Process(['powershell', '-NoProfile', '-NonInteractive', '-Command', self::DISK_SCRIPT]);
-        $process->setTimeout(25);
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
+            $decoded = $this->runDiskScript();
+
+            if (is_array($decoded)) {
+                // ConvertTo-Json mengembalikan objek (bukan array) bila hanya satu drive.
+                return isset($decoded['letter']) ? [$decoded] : array_values($decoded);
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Jalankan skrip pembaca drive lewat PowerShell (null bila gagal).
+     *
+     * @return array<mixed>|null
+     */
+    private function runDiskScript(): ?array
+    {
+        $process = new Process([
+            $this->powershellPath(),
+            '-NoProfile',
+            '-NonInteractive',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-Command',
+            self::DISK_SCRIPT,
+        ]);
+        $process->setTimeout(30);
 
         try {
             $process->run();
         } catch (\Throwable $e) {
-            return [];
+            return null;
         }
 
         if (!$process->isSuccessful()) {
-            return [];
+            return null;
         }
 
         $decoded = json_decode(trim($process->getOutput()), true);
 
-        if (!is_array($decoded)) {
-            return [];
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
+     * Lokasi executable PowerShell. Path absolut dicoba lebih dulu supaya
+     * tetap ditemukan walau PATH milik web server tidak lengkap (penyebab
+     * daftar drive kosong ketika panel dibuka dari browser).
+     *
+     * @return string
+     */
+    private function powershellPath(): string
+    {
+        foreach ((array) config('storage.powershell_paths', []) as $candidate) {
+            $candidate = (string) $candidate;
+
+            if ($candidate === '') {
+                continue;
+            }
+
+            if (str_contains($candidate, '\\') || str_contains($candidate, '/')) {
+                if (is_file($candidate)) {
+                    return $candidate;
+                }
+
+                continue;
+            }
+
+            return $candidate; // nama saja, biarkan PATH yang mencari
         }
 
-        // ConvertTo-Json mengembalikan objek (bukan array) bila hanya satu drive.
-        return isset($decoded['letter']) ? [$decoded] : array_values($decoded);
+        return 'powershell';
     }
 
     /**
@@ -648,19 +767,31 @@ PS;
     {
         if ($fresh) {
             Cache::forget(self::CACHE_KEY);
+        } else {
+            $cached = Cache::get(self::CACHE_KEY);
+
+            if (is_array($cached) && ($cached['disks'] ?? []) !== []) {
+                return $cached;
+            }
         }
 
-        return Cache::remember(self::CACHE_KEY, now()->addMinutes(5), function () {
-            return [
-                'disks'        => $this->disks(),
-                'folders'      => $this->folderSizes(),
-                'databases'    => $this->databaseSizes(),
-                'snapshots'    => $this->snapshotStats(),
-                'targets'      => $this->storageTargets(),
-                'warn_free'    => (int) config('storage.warn_free_bytes', 0),
-                'generated_at' => now()->toDateTimeString(),
-            ];
-        });
+        $report = [
+            'disks'        => $this->disks(),
+            'folders'      => $this->folderSizes(),
+            'databases'    => $this->databaseSizes(),
+            'snapshots'    => $this->snapshotStats(),
+            'targets'      => $this->storageTargets(),
+            'warn_free'    => (int) config('storage.warn_free_bytes', 0),
+            'generated_at' => now()->toDateTimeString(),
+        ];
+
+        // Hanya simpan ke cache bila deteksi drive berhasil: ringkasan tanpa
+        // data drive tidak boleh tersimpan lalu tampil terus selama masa cache.
+        if ($report['disks'] !== []) {
+            Cache::put(self::CACHE_KEY, $report, now()->addMinutes(5));
+        }
+
+        return $report;
     }
 
     /**

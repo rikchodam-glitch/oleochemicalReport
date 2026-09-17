@@ -286,6 +286,18 @@ class StorageController extends Controller
 
         $binDir = $this->storage->mysqlBinDir();
 
+        // Jenis SSD/HDD hanya bisa dibaca lewat PowerShell; bila gagal, daftar
+        // drive tetap ada (cadangan PHP) tetapi jenis disk ditandai tidak
+        // diketahui - ini ditampilkan supaya tidak diam-diam salah.
+        $mediaDetected = false;
+
+        foreach ($disks as $disk) {
+            if (($disk['media'] ?? 'Tidak diketahui') !== 'Tidak diketahui') {
+                $mediaDetected = true;
+                break;
+            }
+        }
+
         return [
             [
                 'label'  => 'Sistem operasi',
@@ -295,7 +307,10 @@ class StorageController extends Controller
             [
                 'label'  => 'Deteksi drive',
                 'ok'     => $disks !== [],
-                'detail' => count($disks) . ' drive terbaca: ' . implode(', ', array_column($disks, 'letter')) . ':',
+                'detail' => count($disks) . ' drive terbaca: ' . implode(', ', array_column($disks, 'letter')) . ':'
+                    . ($mediaDetected
+                        ? ' (jenis SSD/HDD terbaca)'
+                        : ' (jenis SSD/HDD tidak terbaca - PowerShell tidak tersedia; kapasitas dan sisa ruang tetap akurat)'),
             ],
             [
                 'label'  => 'Tautan public/storage',

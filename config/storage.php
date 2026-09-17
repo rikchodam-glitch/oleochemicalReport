@@ -32,6 +32,13 @@ return [
 
     'warn_free_bytes' => (int) env('STORAGE_WARN_FREE_BYTES', 20 * 1024 * 1024 * 1024),
 
+    // Lokasi PowerShell yang dicoba berurutan. Path absolut dipakai lebih dulu
+    // supaya deteksi drive tetap jalan walau PATH milik web server terbatas.
+    'powershell_paths' => array_filter(array_map('trim', explode(',', (string) env(
+        'STORAGE_POWERSHELL_PATHS',
+        'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe,C:/Windows/SysWOW64/WindowsPowerShell/v1.0/powershell.exe,powershell'
+    )))),
+
     'data_root' => env('STORAGE_DATA_ROOT'),
 
     // Nama folder bawaan untuk data besar di drive tujuan, mis. bila drive
