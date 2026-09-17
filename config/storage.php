@@ -39,6 +39,9 @@ return [
     // D:\oleochemical-data. Dipakai sebagai nilai awal di panel Storage.
     'data_folder' => env('STORAGE_DATA_FOLDER', 'oleochemical-data'),
 
+    // Nama folder bawaan untuk data MySQL di drive tujuan (panel Storage).
+    'database_folder' => env('STORAGE_DATABASE_FOLDER', 'oleochemical-mysql'),
+
     'mysql_ini_paths' => array_filter(array_map('trim', explode(',', (string) env(
         'STORAGE_MYSQL_INI_PATHS',
         'C:/laragon/bin/mysql/*/my.ini'

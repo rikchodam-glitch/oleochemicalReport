@@ -125,6 +125,15 @@
             <div class="value">{{ $activeDb ? number_format($activeDb['bytes'] / 1048576, 1) . ' MB' : '-' }}</div>
             <div class="sub">{{ $activeDb['name'] ?? '-' }} &middot; {{ $activeDb['tables'] ?? 0 }} tabel</div>
         </div>
+        <div class="storage-card">
+            <div class="label">Performa (OPcache)</div>
+            <div class="value">{{ $opcache['enabled'] ? 'Aktif' : 'Nonaktif' }}</div>
+            <div class="sub">
+                {{ $opcache['enabled']
+                    ? number_format($opcache['cached_scripts']) . ' skrip ter-cache, ' . number_format($opcache['hits']) . ' hit, memori ' . number_format($opcache['memory_used'] / 1048576, 1) . ' MB'
+                    : 'Aktifkan lewat zend_extension=opcache di php.ini lalu restart Apache' }}
+            </div>
+        </div>
     </div>
 
     <div class="storage-section">
@@ -260,6 +269,84 @@
             <button type="submit" name="mode" value="force" class="storage-btn btn-danger"
                     onclick="return confirm('Hapus permanen semua snapshot yang lebih tua dari batas retensi?')">Hapus sekarang</button>
         </form>
+    </div>
+
+    <div class="storage-section">
+        <h2>Data MySQL &amp; pemindahan ke HDD</h2>
+        <table class="storage-table">
+            <tbody>
+                <tr>
+                    <td>Folder data (datadir)</td>
+                    <td class="storage-mono">{{ $targets['mysql_datadir'] ?? 'tidak ditemukan' }}</td>
+                </tr>
+                <tr>
+                    <td>Berkas my.ini</td>
+                    <td class="storage-mono">{{ $targets['mysql_ini'] ?? 'tidak ditemukan' }}</td>
+                </tr>
+                <tr>
+                    <td>Status server</td>
+                    <td>
+                        @if ($mysqlRunning)
+                            <span class="storage-badge badge-teal">berjalan</span>
+                        @else
+                            <span class="storage-badge badge-other">berhenti</span>
+                        @endif
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        @if ($databasePlan)
+            <div class="storage-alert {{ $databasePlan['ok'] ? 'alert-ok' : 'alert-fail' }}" style="margin-top: .75rem;">
+                <strong>Pemeriksaan kelayakan pemindahan data MySQL ({{ $databasePlan['ok'] ? 'siap dijalankan' : 'belum bisa dijalankan' }})</strong>
+                <div class="storage-mono">Datadir sekarang: {{ $databasePlan['datadir'] ?? '-' }}</div>
+                <div class="storage-mono">Tujuan: {{ $databasePlan['target'] }}</div>
+                <div>Ukuran data: {{ number_format($databasePlan['datadir_bytes'] / 1073741824, 2) }} GB ({{ number_format($databasePlan['datadir_files']) }} berkas), sisa ruang tujuan {{ number_format($databasePlan['target_free'] / 1073741824, 1) }} GB.</div>
+                @foreach ($databasePlan['problems'] as $problem)
+                    <div>- {{ $problem }}</div>
+                @endforeach
+                @foreach (($databasePlan['notes'] ?? []) as $note)
+                    <div>- {{ $note }}</div>
+                @endforeach
+            </div>
+        @endif
+
+        <p class="storage-hint">
+            Pemindahan akan menghentikan MySQL sebentar, menyalin seluruh folder datadir ke drive tujuan, memperbarui
+            datadir di my.ini, lalu menjalankan MySQL kembali. Bila verifikasi gagal, my.ini dikembalikan dan MySQL
+            dijalankan dari lokasi lama (data lama tidak dihapus).
+        </p>
+
+        <form method="POST" action="{{ route('storage.database.relocate') }}" class="storage-form">
+            @csrf
+            <div class="storage-field">
+                <label for="database-drive">Drive tujuan</label>
+                <select id="database-drive" name="db_drive">
+                    @forelse ($relocateDrives as $disk)
+                        <option value="{{ $disk['letter'] }}" @selected(old('db_drive', $disk['letter']) === $disk['letter'])>{{ $disk['letter'] }}: {{ $disk['media'] }}, sisa {{ number_format($disk['free'] / 1073741824, 1) }} GB</option>
+                    @empty
+                        <option value="">Tidak ada drive lain yang tersedia</option>
+                    @endforelse
+                </select>
+            </div>
+            <div class="storage-field">
+                <label for="database-folder">Nama folder</label>
+                <input type="text" id="database-folder" name="db_folder" value="{{ old('db_folder', $databaseFolder) }}"
+                       placeholder="oleochemical-mysql" maxlength="60" required style="min-width: 200px;">
+            </div>
+            <div class="storage-field">
+                <label for="database-keep-old">
+                    <input type="checkbox" id="database-keep-old" name="keep_old" value="1"> Jangan hapus data lama
+                </label>
+            </div>
+            <button type="submit" name="mode" value="plan" class="storage-btn btn-ghost">Periksa kelayakan</button>
+            <button type="submit" name="mode" value="force" class="storage-btn btn-danger"
+                    onclick="return confirm('Pindahkan data MySQL ke drive tujuan sekarang? MySQL akan berhenti sekitar 15-60 detik.')">Pindahkan data MySQL</button>
+        </form>
+        <div class="storage-hint">
+            Setelah pemindahan, jalankan ulang queue worker dan scheduler agar koneksi database-nya segar. Bila data lama
+            dihapus, folder datadir lama tetap dibuat kosong supaya Laragon masih bisa menulis berkas log MySQL di sana.
+        </div>
     </div>
 
     <div class="storage-section">

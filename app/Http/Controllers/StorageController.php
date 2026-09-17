@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\MySqlRelocationService;
 use App\Services\StorageRelocationService;
 use App\Services\StorageService;
 use Illuminate\Http\RedirectResponse;
@@ -22,6 +23,7 @@ class StorageController extends Controller
     public function __construct(
         private readonly StorageService $storage,
         private readonly StorageRelocationService $relocation,
+        private readonly MySqlRelocationService $mysql,
     ) {
     }
 
@@ -36,9 +38,13 @@ class StorageController extends Controller
         return view('storage.index', [
             'report'         => $this->storage->report($request->boolean('fresh')),
             'plan'           => session('storage_plan'),
+            'databasePlan'   => session('database_plan'),
             'relocateDrives' => $this->relocateDrives(),
             'projectDrive'   => $this->projectDrive(),
             'folderName'     => $this->defaultFolderName(),
+            'databaseFolder' => (string) config('storage.database_folder', 'oleochemical-mysql'),
+            'mysqlRunning'   => $this->mysql->isRunning(),
+            'opcache'        => $this->opcacheStatus(),
         ]);
     }
 
@@ -187,5 +193,93 @@ class StorageController extends Controller
         }
 
         return (string) config('storage.data_folder', 'oleochemical-data');
+    }
+
+    /**
+     * Periksa kelayakan (mode plan) atau jalankan pemindahan data MySQL.
+     *
+     * @param  Request  $request
+     * @return RedirectResponse
+     */
+    public function relocateDatabase(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'db_drive' => ['required', 'string', 'size:1', 'alpha'],
+            'db_folder' => ['required', 'string', 'max:60', 'regex:/^[A-Za-z0-9][A-Za-z0-9 ._-]*$/'],
+            'mode'     => ['required', 'in:plan,force'],
+            'keep_old' => ['nullable', 'in:1'],
+        ], [
+            'db_drive.size'  => 'Pilih drive tujuan terlebih dahulu.',
+            'db_folder.regex' => 'Nama folder hanya boleh berisi huruf, angka, spasi, titik, garis bawah, atau tanda hubung.',
+        ]);
+
+        $drive = strtoupper((string) $data['db_drive']);
+        $folder = rtrim(trim((string) $data['db_folder']), '. ');
+
+        if ($data['mode'] === 'plan') {
+            $plan = $this->mysql->plan($drive, $folder);
+
+            return back()
+                ->withInput()
+                ->with('database_plan', $plan)
+                ->with('storage_status', $plan['ok'] ? 'ok' : 'fail')
+                ->with('storage_title', 'Hasil pemeriksaan kelayakan pemindahan data MySQL');
+        }
+
+        // Pemindahan menyalin seluruh berkas data MySQL (bisa beberapa menit),
+        // jadi batas waktu eksekusi PHP dilepas khusus untuk proses ini.
+        @set_time_limit(0);
+
+        $log = [];
+        $result = $this->mysql->relocate(
+            $drive,
+            $folder,
+            !$request->boolean('keep_old'),
+            function (string $line) use (&$log): void {
+                $log[] = $line;
+            }
+        );
+
+        $this->storage->report(true); // segarkan cache laporan penyimpanan
+
+        return back()
+            ->with('storage_log', $log)
+            ->with('storage_status', $result['success'] ? 'ok' : 'fail')
+            ->with('storage_title', $result['success']
+                ? 'Data MySQL berhasil dipindahkan'
+                : 'Pemindahan data MySQL gagal')
+            ->with('storage_error', $result['error'] ?? null);
+    }
+
+    /**
+     * Status OPcache pada SAPI web untuk dipantau di panel penyimpanan.
+     *
+     * @return array<string, mixed>
+     */
+    private function opcacheStatus(): array
+    {
+        if (!function_exists('opcache_get_status')) {
+            return [
+                'available'      => false,
+                'enabled'        => false,
+                'cached_scripts' => 0,
+                'hits'           => 0,
+                'memory_used'    => 0,
+                'memory_free'    => 0,
+                'sapi'           => PHP_SAPI,
+            ];
+        }
+
+        $status = opcache_get_status(false);
+
+        return [
+            'available'      => true,
+            'enabled'        => (bool) ($status['opcache_enabled'] ?? false),
+            'cached_scripts' => (int) ($status['opcache_statistics']['num_cached_scripts'] ?? 0),
+            'hits'           => (int) ($status['opcache_statistics']['hits'] ?? 0),
+            'memory_used'    => (int) ($status['memory_usage']['used_memory'] ?? 0),
+            'memory_free'    => (int) ($status['memory_usage']['free_memory'] ?? 0),
+            'sapi'           => PHP_SAPI,
+        ];
     }
 }
