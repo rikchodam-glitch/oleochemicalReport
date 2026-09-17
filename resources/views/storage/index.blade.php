@@ -76,6 +76,15 @@
         </div>
     @endif
 
+    @if ($errors->any())
+        <div class="storage-alert alert-fail">
+            <strong>Data yang dikirim belum benar:</strong>
+            @foreach ($errors->all() as $error)
+                <div>- {{ $error }}</div>
+            @endforeach
+        </div>
+    @endif
+
     @if (session('storage_log'))
         <pre class="storage-log">@foreach (session('storage_log') as $line){{ $line }}
 @endforeach</pre>
@@ -286,29 +295,65 @@
         <form method="POST" action="{{ route('storage.relocate') }}" class="storage-form">
             @csrf
             <div class="storage-field">
-                <label for="relocate-target">Folder induk tujuan</label>
-                <input type="text" id="relocate-target" name="target" value="{{ $target }}"
-                       placeholder="D:/oleochemical-data" list="storage-drives" style="min-width: 320px;">
-                <datalist id="storage-drives">
-                    @foreach ($report['disks'] as $disk)
-                        @if ($disk['letter'] !== $storageDrive)
-                            <option value="{{ $disk['letter'] }}:/oleochemical-data">
-                                {{ $disk['letter'] }}: ({{ $disk['media'] }}, sisa {{ number_format($disk['free'] / 1073741824, 1) }} GB)
-                            </option>
-                        @endif
-                    @endforeach
-                </datalist>
+                <label for="relocate-drive">Drive tujuan</label>
+                <select id="relocate-drive" name="drive">
+                    @forelse ($relocateDrives as $disk)
+                        <option value="{{ $disk['letter'] }}" @selected(old('drive', $storageDrive) === $disk['letter'])>{{ $disk['letter'] }}: {{ $disk['media'] }}, sisa {{ number_format($disk['free'] / 1073741824, 1) }} GB{{ $disk['letter'] === $storageDrive ? ' - lokasi data saat ini' : '' }}</option>
+                    @empty
+                        <option value="">Tidak ada drive lain yang tersedia</option>
+                    @endforelse
+                </select>
+            </div>
+            <div class="storage-field">
+                <label for="relocate-folder">Nama folder</label>
+                <input type="text" id="relocate-folder" name="folder" value="{{ old('folder', $folderName) }}"
+                       placeholder="oleochemical-data" maxlength="60" required style="min-width: 200px;">
             </div>
             <button type="submit" name="mode" value="plan" class="storage-btn btn-ghost">Periksa kelayakan</button>
             <button type="submit" name="mode" value="force" class="storage-btn btn-teal"
                     onclick="return confirm('Pindahkan seluruh data penyimpanan aplikasi ke drive tujuan sekarang?')">Pindahkan sekarang</button>
         </form>
         <div class="storage-hint">
-            Setelah selesai, kartu di atas otomatis menunjuk ke drive baru. Perintah yang sama bisa dijalankan ulang kapan pun
-            saat mengganti atau menambah HDD, termasuk lewat terminal: php artisan storage:relocate &lt;tujuan&gt; --force
+            Folder tujuan: <span class="storage-mono" id="relocate-preview">-</span> (dibuat otomatis bila belum ada).
+            Drive {{ $projectDrive }}: tidak ditawarkan karena dipakai sistem dan berkas project.
+            Perintah terminal: php artisan storage:relocate &lt;drive&gt;:/&lt;nama-folder&gt; --force
         </div>
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+    (function () {
+        'use strict';
+
+        var driveSelect = document.getElementById('relocate-drive');
+        var folderInput = document.getElementById('relocate-folder');
+        var preview = document.getElementById('relocate-preview');
+
+        if (!driveSelect || !folderInput || !preview) {
+            return;
+        }
+
+        /**
+         * Perbarui contoh path tujuan sesuai pilihan drive dan nama folder.
+         *
+         * @return {void}
+         */
+        function refresh() {
+            var drive = driveSelect.value;
+            var folder = folderInput.value.trim();
+
+            preview.textContent = (drive !== '' && folder !== '')
+                ? drive + ':\\' + folder
+                : '-';
+        }
+
+        driveSelect.addEventListener('change', refresh);
+        folderInput.addEventListener('input', refresh);
+        refresh();
+    })();
+</script>
+@endpush
 
 

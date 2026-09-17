@@ -6,6 +6,7 @@ use App\Services\StorageRelocationService;
 use App\Services\StorageService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
@@ -33,9 +34,11 @@ class StorageController extends Controller
     public function index(Request $request): View
     {
         return view('storage.index', [
-            'report' => $this->storage->report($request->boolean('fresh')),
-            'plan'   => session('storage_plan'),
-            'target' => (string) old('target', (string) config('storage.data_root', '')),
+            'report'         => $this->storage->report($request->boolean('fresh')),
+            'plan'           => session('storage_plan'),
+            'relocateDrives' => $this->relocateDrives(),
+            'projectDrive'   => $this->projectDrive(),
+            'folderName'     => $this->defaultFolderName(),
         ]);
     }
 
@@ -88,12 +91,20 @@ class StorageController extends Controller
      */
     public function relocate(Request $request): RedirectResponse
     {
+        $allowedDrives = array_column($this->relocateDrives(), 'letter');
+
         $data = $request->validate([
-            'target' => ['required', 'string', 'max:190'],
+            'drive'  => ['required', 'string', Rule::in($allowedDrives)],
+            'folder' => ['required', 'string', 'max:60', 'regex:/^[A-Za-z0-9][A-Za-z0-9 ._-]*$/'],
             'mode'   => ['required', 'in:plan,force'],
+        ], [
+            'drive.in'     => 'Drive tujuan tidak tersedia. Pilih salah satu drive pada daftar.',
+            'folder.regex' => 'Nama folder hanya boleh berisi huruf, angka, spasi, titik, garis bawah, atau tanda hubung.',
         ]);
 
-        $target = (string) $data['target'];
+        // Nama folder dirapikan dari spasi/titik di ujung, lalu digabung dengan
+        // drive terpilih menjadi folder tujuan (dibuat otomatis bila belum ada).
+        $target = strtoupper($data['drive']) . ':/' . rtrim(trim($data['folder']), '. ');
 
         if ($data['mode'] === 'plan') {
             $plan = $this->relocation->plan($target);
@@ -127,5 +138,54 @@ class StorageController extends Controller
             ->with('storage_status', $result['success'] ? 'ok' : 'fail')
             ->with('storage_title', $result['success'] ? 'Pemindahan selesai' : 'Pemindahan gagal')
             ->with('storage_error', $result['error'] ?? null);
+    }
+
+    /**
+     * Huruf drive tempat aplikasi ini berjalan (drive sistem/berkas project).
+     *
+     * @return string
+     */
+    private function projectDrive(): string
+    {
+        return strtoupper(substr(storage_path('app'), 0, 1));
+    }
+
+    /**
+     * Daftar drive yang ditawarkan sebagai tujuan pemindahan: seluruh drive
+     * data kecuali drive tempat project berjalan, supaya pemindahan tidak
+     * diarahkan ke drive sistem.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function relocateDrives(): array
+    {
+        $projectDrive = $this->projectDrive();
+
+        return array_values(array_filter(
+            $this->storage->disks(),
+            static fn (array $disk): bool => $disk['letter'] !== $projectDrive
+        ));
+    }
+
+    /**
+     * Nama folder bawaan untuk tujuan pemindahan. Bila data sudah pernah
+     * dipindah, nama folder yang sedang dipakai dijadikan bawaan supaya
+     * pemindahan ke drive baru tetap memakai nama yang sama.
+     *
+     * @return string
+     */
+    private function defaultFolderName(): string
+    {
+        $real = $this->storage->storageTargets()['app_real_path'];
+
+        if ($real !== null) {
+            $parent = basename(dirname($real));
+
+            if ($parent !== '' && $parent !== '.' && $parent !== '\\' && $parent !== '/') {
+                return $parent;
+            }
+        }
+
+        return (string) config('storage.data_folder', 'oleochemical-data');
     }
 }

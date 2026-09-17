@@ -34,6 +34,11 @@ return [
 
     'data_root' => env('STORAGE_DATA_ROOT'),
 
+    // Nama folder bawaan untuk data besar di drive tujuan, mis. bila drive
+    // D: dipilih dan nama diisi 'oleochemical-data' maka datanya berada di
+    // D:\oleochemical-data. Dipakai sebagai nilai awal di panel Storage.
+    'data_folder' => env('STORAGE_DATA_FOLDER', 'oleochemical-data'),
+
     'mysql_ini_paths' => array_filter(array_map('trim', explode(',', (string) env(
         'STORAGE_MYSQL_INI_PATHS',
         'C:/laragon/bin/mysql/*/my.ini'
