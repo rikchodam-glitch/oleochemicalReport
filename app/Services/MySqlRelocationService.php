@@ -41,10 +41,14 @@ class MySqlRelocationService
 
         $ini = $this->storage->mysqlIniPath();
         $datadir = $this->storage->mysqlDataDir();
-        $binDir = $this->mysqlBinDir();
+        $binDir = $this->storage->mysqlBinDir();
 
         $problems = [];
         $notes = [];
+
+        if (!$this->storage->databaseIsMySql()) {
+            $problems[] = 'Koneksi database aplikasi bukan MySQL/MariaDB, sehingga pemindahan data MySQL tidak berlaku di PC ini.';
+        }
 
         if ($ini === null) {
             $problems[] = 'File my.ini MySQL tidak ditemukan.';
@@ -101,30 +105,6 @@ class MySqlRelocationService
             'notes'         => $notes,
             'ok'            => $problems === [],
         ];
-    }
-
-    /**
-     * Folder bin MySQL (berisi mysqld.exe dan mysqladmin.exe).
-     *
-     * @return string|null
-     */
-    private function mysqlBinDir(): ?string
-    {
-        $ini = $this->storage->mysqlIniPath();
-
-        if ($ini !== null) {
-            $candidate = dirname($ini) . '\\bin';
-
-            if (is_file($candidate . '\\mysqld.exe')) {
-                return $candidate;
-            }
-        }
-
-        foreach ((array) glob('C:/laragon/bin/mysql/*/bin/mysqld.exe') as $file) {
-            return str_replace('/', '\\', dirname($file));
-        }
-
-        return null;
     }
 
     /**

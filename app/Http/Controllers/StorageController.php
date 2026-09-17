@@ -7,6 +7,7 @@ use App\Services\StorageRelocationService;
 use App\Services\StorageService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -44,6 +45,7 @@ class StorageController extends Controller
             'folderName'     => $this->defaultFolderName(),
             'databaseFolder' => (string) config('storage.database_folder', 'oleochemical-mysql'),
             'mysqlRunning'   => $this->mysql->isRunning(),
+            'readiness'      => $this->readinessChecks(),
             'opcache'        => $this->opcacheStatus(),
         ]);
     }
@@ -249,6 +251,96 @@ class StorageController extends Controller
                 ? 'Data MySQL berhasil dipindahkan'
                 : 'Pemindahan data MySQL gagal')
             ->with('storage_error', $result['error'] ?? null);
+    }
+
+    /**
+     * Pemeriksaan kesiapan lingkungan: supaya panel tetap informatif ketika
+     * aplikasi dipindah ke PC lain (drive, tautan storage, database, MySQL,
+     * dan performa). Semua dihitung ulang setiap halaman dibuka.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function readinessChecks(): array
+    {
+        $targets = $this->storage->storageTargets();
+        $disks = $this->storage->disks();
+        $opcache = $this->opcacheStatus();
+
+        $publicLink = (string) ($targets['public_target'] ?? '');
+        $linkOk = str_contains(strtolower($publicLink), strtolower('storage\\app\\public'));
+
+        $probe = storage_path('app') . '\\.readiness-check.txt';
+        $writable = @file_put_contents($probe, 'ok') !== false;
+        @unlink($probe);
+
+        $connection = (array) config('database.connections.' . config('database.default'));
+        $databaseDetail = 'driver ' . ($connection['driver'] ?? '-') . ', database ' . ($connection['database'] ?? '-');
+        $databaseOk = false;
+
+        try {
+            DB::select('select 1');
+            $databaseOk = true;
+        } catch (\Throwable $e) {
+            $databaseDetail .= ' - gagal konek: ' . $e->getMessage();
+        }
+
+        $binDir = $this->storage->mysqlBinDir();
+
+        return [
+            [
+                'label'  => 'Sistem operasi',
+                'ok'     => PHP_OS_FAMILY === 'Windows',
+                'detail' => PHP_OS_FAMILY . ', PHP ' . PHP_VERSION . ' (' . PHP_SAPI . ')',
+            ],
+            [
+                'label'  => 'Deteksi drive',
+                'ok'     => $disks !== [],
+                'detail' => count($disks) . ' drive terbaca: ' . implode(', ', array_column($disks, 'letter')) . ':',
+            ],
+            [
+                'label'  => 'Tautan public/storage',
+                'ok'     => $linkOk,
+                'detail' => $linkOk
+                    ? $publicLink
+                    : 'belum menunjuk ke storage/app/public - jalankan: php artisan storage:link',
+            ],
+            [
+                'label'  => 'Folder data bisa ditulis',
+                'ok'     => $writable,
+                'detail' => storage_path('app')
+                    . ($targets['app_is_linked']
+                        ? ' (junction ke ' . ($targets['app_real_path'] ?? '-') . ')'
+                        : ' (di dalam folder project)'),
+            ],
+            [
+                'label'  => 'Folder snapshot CCTV',
+                'ok'     => is_dir($this->storage->snapshotRoot()),
+                'detail' => $this->storage->snapshotRoot(),
+            ],
+            [
+                'label'  => 'Koneksi database',
+                'ok'     => $databaseOk,
+                'detail' => $databaseDetail,
+            ],
+            [
+                'label'  => 'my.ini MySQL',
+                'ok'     => $targets['mysql_ini'] !== null,
+                'detail' => $targets['mysql_ini']
+                    ?? 'tidak ditemukan otomatis - isi STORAGE_MYSQL_INI_PATHS bila MySQL ada di lokasi lain',
+            ],
+            [
+                'label'  => 'Program MySQL (bin)',
+                'ok'     => $binDir !== null,
+                'detail' => $binDir ?? 'mysqld.exe/mysqladmin.exe tidak ditemukan otomatis',
+            ],
+            [
+                'label'  => 'OPcache',
+                'ok'     => $opcache['enabled'],
+                'detail' => $opcache['enabled']
+                    ? 'aktif, ' . number_format($opcache['cached_scripts']) . ' skrip ter-cache'
+                    : 'nonaktif - tambahkan zend_extension=opcache di php.ini lalu restart Apache',
+            ],
+        ];
     }
 
     /**

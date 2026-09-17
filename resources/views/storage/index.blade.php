@@ -104,6 +104,40 @@
         </div>
     @endif
 
+    <div class="storage-section">
+        <h2>Kesiapan sistem (dideteksi otomatis)</h2>
+        <table class="storage-table">
+            <thead>
+                <tr>
+                    <th>Pemeriksaan</th>
+                    <th>Status</th>
+                    <th>Keterangan</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach ($readiness as $check)
+                    <tr>
+                        <td>{{ $check['label'] }}</td>
+                        <td>
+                            @if ($check['ok'])
+                                <span class="storage-badge badge-teal">siap</span>
+                            @else
+                                <span class="storage-badge badge-other">perlu perhatian</span>
+                            @endif
+                        </td>
+                        <td class="storage-mono">{{ $check['detail'] }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+        <div class="storage-hint">
+            Pemeriksaan ini dihitung ulang setiap halaman dibuka, jadi ketika aplikasi dipindah ke PC lain panel
+            langsung menampilkan drive yang terdeteksi beserta bagian yang masih perlu disiapkan (tautan storage,
+            lokasi MySQL, dan lain-lain). Lokasi MySQL di luar pola pada config/storage.php bisa ditambahkan
+            lewat STORAGE_MYSQL_INI_PATHS di .env.
+        </div>
+    </div>
+
     <div class="storage-cards">
         <div class="storage-card">
             <div class="label">Data aplikasi</div>

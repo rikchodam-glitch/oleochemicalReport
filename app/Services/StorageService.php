@@ -249,7 +249,45 @@ PS;
      *
      * @return string|null
      */
+    /**
+     * Cache hasil deteksi my.ini & mysqld (satu kali per request).
+     */
+    private bool $mysqlIniResolved = false;
+
+    private ?string $mysqlIniCache = null;
+
+    private bool $mysqldResolved = false;
+
+    private ?string $mysqldCache = null;
+
+    /**
+     * Lokasi file my.ini MySQL.
+     *
+     * @return string|null
+     */
     public function mysqlIniPath(): ?string
+    {
+        if ($this->mysqlIniResolved) {
+            return $this->mysqlIniCache;
+        }
+
+        $this->mysqlIniResolved = true;
+        $this->mysqlIniCache = $this->detectMysqlIni();
+
+        return $this->mysqlIniCache;
+    }
+
+    /**
+     * Deteksi my.ini tanpa bergantung pada path tetap, supaya panel tetap
+     * bekerja setelah aplikasi dipindah ke PC lain:
+     *   1. pola pada config/storage.php (Laragon, XAMPP, Program Files, dsb),
+     *   2. folder program mysqld yang sedang berjalan - MySQL membaca my.ini
+     *      dari folder instalasinya, sehingga cara ini berlaku di PC mana pun,
+     *   3. nama my.ini/my.cnf di folder bin dan folder induknya.
+     *
+     * @return string|null
+     */
+    private function detectMysqlIni(): ?string
     {
         foreach ((array) config('storage.mysql_ini_paths', []) as $pattern) {
             foreach ((array) glob((string) $pattern) as $file) {
@@ -259,11 +297,95 @@ PS;
             }
         }
 
+        $mysqld = $this->runningMysqldPath();
+
+        if ($mysqld !== null) {
+            $bin = str_replace('/', '\\', dirname($mysqld));
+
+            foreach ([$bin, dirname($bin)] as $folder) {
+                foreach (['my.ini', 'my.cnf'] as $name) {
+                    if (is_file($folder . '\\' . $name)) {
+                        return $folder . '\\' . $name;
+                    }
+                }
+            }
+        }
+
         return null;
     }
 
     /**
-     * Datadir MySQL (folder data) sesuai isi my.ini.
+     * Path mysqld.exe yang sedang berjalan (bila ada) dibaca dari Windows.
+     *
+     * @return string|null
+     */
+    public function runningMysqldPath(): ?string
+    {
+        if ($this->mysqldResolved) {
+            return $this->mysqldCache;
+        }
+
+        $this->mysqldResolved = true;
+        $this->mysqldCache = null;
+
+        $script = "Get-CimInstance Win32_Process -Filter \"Name='mysqld.exe'\" | Select-Object -First 1 -ExpandProperty ExecutablePath";
+        $process = new Process(['powershell', '-NoProfile', '-NonInteractive', '-Command', $script]);
+        $process->setTimeout(20);
+
+        try {
+            $process->run();
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        $path = trim($process->getOutput());
+
+        if ($path !== '' && is_file($path)) {
+            $this->mysqldCache = str_replace('/', '\\', $path);
+        }
+
+        return $this->mysqldCache;
+    }
+
+    /**
+     * Folder bin MySQL (berisi mysqld.exe dan mysqladmin.exe).
+     *
+     * @return string|null
+     */
+    public function mysqlBinDir(): ?string
+    {
+        $ini = $this->mysqlIniPath();
+
+        if ($ini !== null) {
+            $folder = dirname($ini);
+
+            foreach ([$folder . '\\bin', $folder] as $candidate) {
+                if (is_file($candidate . '\\mysqld.exe') && is_file($candidate . '\\mysqladmin.exe')) {
+                    return $candidate;
+                }
+            }
+        }
+
+        $mysqld = $this->runningMysqldPath();
+
+        if ($mysqld !== null) {
+            return str_replace('/', '\\', dirname($mysqld));
+        }
+
+        foreach ((array) config('storage.mysql_bin_paths', []) as $pattern) {
+            foreach ((array) glob((string) $pattern) as $file) {
+                if (is_file($file)) {
+                    return str_replace('/', '\\', dirname($file));
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Datadir MySQL diambil dari my.ini; bila my.ini tidak ditemukan, dipakai
+     * nilai @@datadir dari server yang sedang melayani aplikasi.
      *
      * @return string|null
      */
@@ -271,18 +393,36 @@ PS;
     {
         $ini = $this->mysqlIniPath();
 
-        if ($ini === null) {
-            return null;
-        }
-
-        foreach ((array) @file($ini) as $line) {
-            if (preg_match('/^\s*datadir\s*=\s*"?([^"\r\n]+)"?\s*$/i', (string) $line, $match) === 1) {
-                return str_replace('/', '\\', trim($match[1]));
+        if ($ini !== null) {
+            foreach ((array) @file($ini) as $line) {
+                if (preg_match('/^\s*datadir\s*=\s*"?([^"\r\n]+)"?\s*$/i', (string) $line, $match) === 1) {
+                    return str_replace('/', '\\', trim($match[1]));
+                }
             }
         }
 
-        return null;
+        try {
+            $datadir = (string) DB::selectOne('select @@datadir as datadir')->datadir;
+
+            return $datadir !== '' ? str_replace('/', '\\', rtrim($datadir, '/\\')) : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
+
+    /**
+     * Benar bila koneksi database aplikasi memakai MySQL atau MariaDB.
+     *
+     * @return bool
+     */
+    public function databaseIsMySql(): bool
+    {
+        $connection = (string) config('database.default');
+        $driver = (string) config('database.connections.' . $connection . '.driver', '');
+
+        return in_array($driver, ['mysql', 'mariadb'], true);
+    }
+
 
 
     /**
