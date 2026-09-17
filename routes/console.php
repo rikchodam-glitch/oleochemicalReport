@@ -29,3 +29,12 @@ if ((bool) config('it.snapshot.enabled', true)) {
         ->withoutOverlapping();
 }
 
+// Pembersih otomatis snapshot CCTV lama supaya pemakaian disk tidak tumbuh
+// terus (retensi hari diatur di config/storage.php, default 30 hari).
+if ((int) config('storage.snapshot_retention_days', 30) > 0) {
+    Schedule::command('storage:clean --force')
+        ->dailyAt('02:30')
+        ->withoutOverlapping();
+}
+
+
