@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ItAsset;
+use App\Support\WindowsProcess;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -104,7 +105,7 @@ class CctvSnapshotService
      */
     private function captureFromRtsp(string $rtspUrl): string
     {
-        $process = new Process([
+        $process = WindowsProcess::make([
             $this->ffmpegPath,
             '-rtsp_transport', 'tcp',
             '-y',
@@ -113,9 +114,7 @@ class CctvSnapshotService
             '-q:v', '4',
             '-f', 'image2',
             'pipe:1',
-        ]);
-
-        $process->setTimeout($this->ffmpegTimeout);
+        ], $this->ffmpegTimeout);
 
         try {
             $process->mustRun();

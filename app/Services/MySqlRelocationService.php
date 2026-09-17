@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
-use Symfony\Component\Process\Process;
+use App\Support\WindowsProcess;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * MySqlRelocationService
@@ -91,6 +93,29 @@ class MySqlRelocationService
         $notes[] = 'MySQL akan dihentikan sementara (sekitar 15-60 detik) lalu dijalankan kembali otomatis.';
         $notes[] = 'Setelah pemindahan, jalankan ulang queue worker dan scheduler agar koneksi database-nya segar.';
 
+        // Pemeriksaan awal sebelum mengubah apa pun:
+        // 1. koneksi aplikasi ke MySQL (wajib, karena penghentian memakai
+        //    perintah SQL SHUTDOWN dari koneksi ini),
+        // 2. uji mysqladmin (opsional, hanya cadangan) - bila gagal karena
+        //    lingkungan proses terbatas, penghentian tetap berjalan lewat SQL.
+        $running = $this->isRunning();
+        $connectionCheck = $this->verify();
+        $serverCheck = ($binDir !== null && $running) ? $this->serverCheck($binDir) : null;
+
+        if (!$connectionCheck['connected']) {
+            $problems[] = 'Tidak bisa terhubung ke MySQL dari aplikasi: ' . $connectionCheck['error'];
+        }
+
+        if ($serverCheck !== null && $serverCheck['ok']) {
+            $notes[] = 'Uji mysqladmin berhasil: ' . $serverCheck['output'];
+        }
+
+        if ($serverCheck !== null && !$serverCheck['ok']) {
+            $notes[] = 'mysqladmin belum bisa dipakai dari konteks ini ('
+                . ($serverCheck['error'] !== '' ? $serverCheck['error'] : 'tanpa pesan galat')
+                . '), sehingga penghentian MySQL memakai perintah SQL SHUTDOWN - tetap aman.';
+        }
+
         return [
             'drive'         => $drive,
             'target'        => $target,
@@ -100,7 +125,8 @@ class MySqlRelocationService
             'datadir_files' => $usage['files'],
             'bin_dir'       => $binDir,
             'target_free'   => $free,
-            'running'       => $this->isRunning(),
+            'running'       => $running,
+            'server_check'  => $serverCheck,
             'problems'      => $problems,
             'notes'         => $notes,
             'ok'            => $problems === [],
@@ -187,7 +213,8 @@ class MySqlRelocationService
 
             if (!$stop['ok']) {
                 return ['success' => false, 'steps' => $steps, 'plan' => $plan,
-                    'error' => 'MySQL tidak bisa dihentikan; tidak ada data yang diubah.'];
+                    'error' => 'MySQL tidak bisa dihentikan, jadi tidak ada data yang diubah. Silakan hentikan MySQL dari Laragon '
+                        . '(tombol Stop pada MySQL), lalu jalankan pemindahan ini sekali lagi.'];
             }
         } else {
             $steps[] = 'MySQL sedang tidak berjalan, lanjut menyalin data.';
@@ -292,13 +319,115 @@ class MySqlRelocationService
 
 
     /**
-     * Hentikan server MySQL secara graceful memakai mysqladmin, lalu tunggu
-     * sampai port benar-benar bebas.
+     * Uji koneksi mysqladmin ke server MySQL tanpa mengubah apa pun.
      *
-     * @param  string  $binDir
+     * @param  string|null  $binDir  Folder bin MySQL (opsional)
+     * @return array{ok: bool, output: string, error: string}
+     */
+    public function serverCheck(?string $binDir = null): array
+    {
+        $binDir = $binDir ?? $this->storage->mysqlBinDir();
+
+        if ($binDir === null) {
+            return ['ok' => false, 'output' => '', 'error' => 'Program mysqladmin.exe tidak ditemukan.'];
+        }
+
+        $process = WindowsProcess::make($this->adminArgs($binDir, 'status'), 30);
+
+        try {
+            $process->run();
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'output' => '', 'error' => $e->getMessage()];
+        }
+
+        return [
+            'ok'     => $process->isSuccessful(),
+            'output' => trim($process->getOutput()),
+            'error'  => trim($process->getErrorOutput()),
+        ];
+    }
+
+    /**
+     * Hentikan server MySQL: lewat perintah SQL SHUTDOWN lebih dulu, lalu
+     * mysqladmin sebagai cadangan.
+     *
+     * @param  string|null  $binDir  Folder bin MySQL (opsional)
      * @return array{ok: bool, message: string}
      */
-    private function stopServer(string $binDir): array
+    public function stopServer(?string $binDir = null): array
+    {
+        // Cara utama: SHUTDOWN lewat koneksi aplikasi sendiri. Tidak memakai
+        // proses anak, sehingga tetap bekerja walau lingkungan proses terbatas
+        // (mis. mysqladmin gagal inisialisasi socket dengan error 10106).
+        if ($this->stopViaSql()) {
+            return ['ok' => true, 'message' => 'MySQL dihentikan dengan aman lewat perintah SQL SHUTDOWN.'];
+        }
+
+        $binDir = $binDir ?? $this->storage->mysqlBinDir();
+
+        if ($binDir === null) {
+            return ['ok' => false, 'message' => 'MySQL belum berhenti dan program mysqladmin.exe tidak ditemukan.'];
+        }
+
+        $process = WindowsProcess::make($this->adminArgs($binDir, 'shutdown'), 60);
+
+        try {
+            $process->run();
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'message' => 'Gagal menjalankan mysqladmin: ' . $e->getMessage()];
+        }
+
+        for ($second = 0; $second < 60; $second++) {
+            if (!$this->isRunning()) {
+                return ['ok' => true, 'message' => 'MySQL dihentikan lewat mysqladmin (port bebas setelah ' . $second . ' detik).'];
+            }
+
+            sleep(1);
+        }
+
+        return [
+            'ok'      => false,
+            'message' => 'MySQL belum berhenti setelah 60 detik: '
+                . trim($process->getErrorOutput() . $process->getOutput()),
+        ];
+    }
+
+    /**
+     * Hentikan MySQL lewat perintah SQL SHUTDOWN (tanpa proses anak).
+     *
+     * @return bool  Benar bila server berhasil berhenti
+     */
+    private function stopViaSql(): bool
+    {
+        try {
+            DB::statement('SHUTDOWN');
+        } catch (\Throwable $e) {
+            // Umumnya koneksi memang terputus saat server berhenti; dicatat
+            // hanya untuk keperluan diagnosa.
+            Log::info('MySqlRelocationService: SHUTDOWN - ' . $e->getMessage());
+        }
+
+        // MySQL perlu waktu menutup berkas dan melakukan flush (bisa lebih dari
+        // 30 detik pada datadir besar), jadi tunggu sampai 90 detik.
+        for ($second = 0; $second < 90; $second++) {
+            if (!$this->isRunning()) {
+                return true;
+            }
+
+            sleep(1);
+        }
+
+        return false;
+    }
+
+    /**
+     * Argumen mysqladmin untuk server yang dipakai aplikasi.
+     *
+     * @param  string  $binDir
+     * @param  string  $command  Mis. 'status' atau 'shutdown'
+     * @return array<int, string>
+     */
+    private function adminArgs(string $binDir, string $command): array
     {
         $connection = (array) config('database.connections.mysql');
 
@@ -314,30 +443,9 @@ class MySqlRelocationService
             $args[] = '--password=' . $connection['password'];
         }
 
-        $args[] = 'shutdown';
+        $args[] = $command;
 
-        $process = new Process($args);
-        $process->setTimeout(60);
-
-        try {
-            $process->run();
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'message' => 'Gagal menjalankan mysqladmin: ' . $e->getMessage()];
-        }
-
-        for ($second = 0; $second < 30; $second++) {
-            if (!$this->isRunning()) {
-                return ['ok' => true, 'message' => 'MySQL dihentikan dengan aman (port bebas setelah ' . $second . ' detik).'];
-            }
-
-            sleep(1);
-        }
-
-        return [
-            'ok'      => false,
-            'message' => 'MySQL belum berhenti setelah 30 detik: '
-                . trim($process->getErrorOutput() . $process->getOutput()),
-        ];
+        return $args;
     }
 
     /**
@@ -348,7 +456,7 @@ class MySqlRelocationService
      * @param  string  $logFile
      * @return array{ok: bool, message: string}
      */
-    private function startServer(string $binDir, string $ini, string $logFile): array
+    public function startServer(string $binDir, string $ini, string $logFile): array
     {
         $command = 'start "" /B "' . $binDir . '\\mysqld.exe" --defaults-file="' . $ini . '" --log-error="' . $logFile . '"';
 
@@ -357,6 +465,14 @@ class MySqlRelocationService
         for ($second = 0; $second < 60; $second++) {
             if ($this->isRunning()) {
                 sleep(1);
+
+                // Koneksi aplikasi ikut terputus saat MySQL dihentikan tadi;
+                // sambungkan ulang supaya permintaan berikutnya lancar.
+                try {
+                    DB::reconnect();
+                } catch (\Throwable $e) {
+                    // Diabaikan: koneksi akan dibuat lagi saat dibutuhkan.
+                }
 
                 return ['ok' => true, 'message' => 'MySQL dijalankan kembali (port aktif setelah ' . $second . ' detik).'];
             }
@@ -452,11 +568,10 @@ class MySqlRelocationService
      */
     private function copyTree(string $source, string $target): array
     {
-        $process = new Process([
+        $process = WindowsProcess::make([
             'robocopy', $source, $target,
             '/E', '/COPY:DAT', '/DCOPY:DAT', '/R:2', '/W:2', '/NFL', '/NDL', '/NP', '/NJH', '/NJS',
-        ]);
-        $process->setTimeout(3600);
+        ], 3600);
 
         try {
             $process->run();
@@ -483,8 +598,7 @@ class MySqlRelocationService
     private function emptyFolder(string $path): bool
     {
         if (is_dir($path)) {
-            $process = new Process(['cmd', '/c', 'rmdir', '/s', '/q', $path]);
-            $process->setTimeout(1800);
+            $process = WindowsProcess::make(['cmd', '/c', 'rmdir', '/s', '/q', $path], 1800);
 
             try {
                 $process->run();

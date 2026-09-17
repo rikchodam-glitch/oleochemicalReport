@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use Symfony\Component\Process\Process;
+use App\Support\WindowsProcess;
 
 /**
  * StorageRelocationService
@@ -384,11 +384,10 @@ class StorageRelocationService
      */
     private function copyTree(string $source, string $target): array
     {
-        $process = new Process([
+        $process = WindowsProcess::make([
             'robocopy', $source, $target,
             '/E', '/COPY:DAT', '/DCOPY:DAT', '/R:2', '/W:2', '/NFL', '/NDL', '/NP', '/NJH', '/NJS',
-        ]);
-        $process->setTimeout(3600);
+        ], 3600);
 
         try {
             $process->run();
@@ -415,8 +414,7 @@ class StorageRelocationService
             return true;
         }
 
-        $process = new Process(['cmd', '/c', 'rmdir', '/s', '/q', $path]);
-        $process->setTimeout(1800);
+        $process = WindowsProcess::make(['cmd', '/c', 'rmdir', '/s', '/q', $path], 1800);
 
         try {
             $process->run();
@@ -440,8 +438,7 @@ class StorageRelocationService
             return false;
         }
 
-        $process = new Process(['cmd', '/c', 'mklink', '/J', $link, $target]);
-        $process->setTimeout(120);
+        $process = WindowsProcess::make(['cmd', '/c', 'mklink', '/J', $link, $target], 120);
 
         try {
             $process->run();

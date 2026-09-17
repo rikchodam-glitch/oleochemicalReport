@@ -2,12 +2,12 @@
 
 namespace App\Services;
 
+use App\Support\WindowsProcess;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 use Illuminate\Support\Facades\Storage;
-use Symfony\Component\Process\Process;
 
 /**
  * StorageService
@@ -260,7 +260,7 @@ PS;
      */
     private function runDiskScript(): ?array
     {
-        $process = new Process([
+        $process = WindowsProcess::make([
             $this->powershellPath(),
             '-NoProfile',
             '-NonInteractive',
@@ -268,8 +268,7 @@ PS;
             'Bypass',
             '-Command',
             self::DISK_SCRIPT,
-        ]);
-        $process->setTimeout(30);
+        ], 30);
 
         try {
             $process->run();
@@ -448,8 +447,7 @@ PS;
         $this->mysqldCache = null;
 
         $script = "Get-CimInstance Win32_Process -Filter \"Name='mysqld.exe'\" | Select-Object -First 1 -ExpandProperty ExecutablePath";
-        $process = new Process(['powershell', '-NoProfile', '-NonInteractive', '-Command', $script]);
-        $process->setTimeout(20);
+        $process = WindowsProcess::make(['powershell', '-NoProfile', '-NonInteractive', '-Command', $script], 20);
 
         try {
             $process->run();
