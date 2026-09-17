@@ -319,7 +319,7 @@ PS;
      * @param  string  $path
      * @return array{bytes: int, files: int}
      */
-    private function directoryUsage(string $path): array
+    public function directoryUsage(string $path): array
     {
         if (!is_dir($path)) {
             return ['bytes' => 0, 'files' => 0];
