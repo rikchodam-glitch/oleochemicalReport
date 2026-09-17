@@ -14,6 +14,7 @@ use App\Http\Controllers\ItLayoutController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\StorageController;
 use App\Http\Controllers\TechnicianController;
 use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\WorkOrderController;
@@ -204,6 +205,15 @@ Route::middleware('admin')->group(function () {
     Route::post('/bot/polling/start', [BotController::class, 'startPolling'])->name('bot.polling.start');
     Route::post('/bot/polling/stop', [BotController::class, 'stopPolling'])->name('bot.polling.stop');
     Route::get('/bot/polling/status', [BotController::class, 'pollingStatus'])->name('bot.polling.status');
+
+    // Panel penyimpanan: deteksi drive/folder/database, pembersih snapshot
+    // otomatis, dan pemindahan data ke HDD lewat junction.
+    // Catatan: TIDAK memakai path '/storage' karena folder fisik
+    // public/storage (symlink ke storage/app/public) lebih dulu ditangani
+    // Apache, sehingga rute Laravel di path itu tidak pernah tercapai.
+    Route::get('/system/storage', [StorageController::class, 'index'])->name('storage.index');
+    Route::post('/system/storage/clean', [StorageController::class, 'clean'])->name('storage.clean');
+    Route::post('/system/storage/relocate', [StorageController::class, 'relocate'])->name('storage.relocate');
 });
 
 // Redirect root to dashboard
