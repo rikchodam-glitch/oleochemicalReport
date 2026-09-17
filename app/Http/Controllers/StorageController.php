@@ -40,6 +40,7 @@ class StorageController extends Controller
             'report'         => $this->storage->report($request->boolean('fresh')),
             'plan'           => session('storage_plan'),
             'databasePlan'   => session('database_plan'),
+            'restorePlan'    => $this->relocation->restorePlan(),
             'relocateDrives' => $this->relocateDrives(),
             'projectDrive'   => $this->projectDrive(),
             'folderName'     => $this->defaultFolderName(),
@@ -195,6 +196,43 @@ class StorageController extends Controller
         }
 
         return (string) config('storage.data_folder', 'oleochemical-data');
+    }
+
+    /**
+     * Kembalikan penyimpanan aplikasi ke folder project (kondisi default).
+     *
+     * @param  Request  $request
+     * @return RedirectResponse
+     */
+    public function restore(Request $request): RedirectResponse
+    {
+        // Proses ini menyalin seluruh data ke folder project, jadi batas waktu
+        // eksekusi PHP dilepas khusus untuk pemanggilan ini.
+        @set_time_limit(0);
+
+        $log = [];
+        $result = $this->relocation->restoreToProject(
+            !$request->boolean('keep_old'),
+            function (string $line) use (&$log): void {
+                $log[] = $line;
+            }
+        );
+
+        $this->storage->report(true); // segarkan cache laporan penyimpanan
+
+        $title = 'Pengembalian ke folder project gagal';
+
+        if ($result['success']) {
+            $title = ($result['noop'] ?? false)
+                ? 'Penyimpanan sudah berada di folder project'
+                : 'Penyimpanan kembali ke folder project';
+        }
+
+        return back()
+            ->with('storage_log', $log)
+            ->with('storage_status', $result['success'] ? 'ok' : 'fail')
+            ->with('storage_title', $title)
+            ->with('storage_error', $result['error'] ?? null);
     }
 
     /**

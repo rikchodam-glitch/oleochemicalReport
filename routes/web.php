@@ -215,6 +215,7 @@ Route::middleware('admin')->group(function () {
     Route::post('/system/storage/clean', [StorageController::class, 'clean'])->name('storage.clean');
     Route::post('/system/storage/relocate', [StorageController::class, 'relocate'])->name('storage.relocate');
     Route::post('/system/storage/database', [StorageController::class, 'relocateDatabase'])->name('storage.database.relocate');
+    Route::post('/system/storage/restore', [StorageController::class, 'restore'])->name('storage.restore');
 });
 
 // Redirect root to dashboard

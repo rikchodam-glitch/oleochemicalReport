@@ -211,6 +211,171 @@ class StorageRelocationService
 
 
     /**
+     * Periksa kelayakan pengembalian penyimpanan ke folder project (default).
+     *
+     * @return array<string, mixed>
+     */
+    public function restorePlan(): array
+    {
+        $target = storage_path('app');
+        $targets = $this->storage->storageTargets();
+        $source = $targets['app_real_path'];
+        $linked = (bool) $targets['app_is_linked'];
+
+        $usage = $this->storage->directoryUsage($source ?? $target);
+        $drive = strtoupper(substr($target, 0, 1));
+        $free = (int) @disk_free_space($drive . ':\\');
+
+        $problems = [];
+        $notes = [];
+
+        if (!$linked) {
+            $notes[] = 'Penyimpanan sudah berada di folder project (kondisi default), tidak ada yang perlu dikembalikan.';
+        }
+
+        if ($source === null || !is_dir($source)) {
+            $problems[] = 'Folder penyimpanan saat ini tidak ditemukan: ' . ($source ?? '-');
+        }
+
+        if ($free > 0 && $usage['bytes'] > 0 && $free < (int) ($usage['bytes'] * 1.15)) {
+            $problems[] = 'Ruang di ' . $drive . ': tidak cukup untuk menampung data kembali (butuh sekitar '
+                . number_format($usage['bytes'] / 1073741824, 1) . ' GB, tersedia '
+                . number_format($free / 1073741824, 1) . ' GB).';
+        }
+
+        $notes[] = 'Data disalin ke folder project lebih dulu; junction baru dilepas setelah salinan terverifikasi, '
+            . 'sehingga data di drive lama tetap aman.';
+
+        return [
+            'source'          => $source ?? $target,
+            'target'          => $target,
+            'bytes'           => $usage['bytes'],
+            'files'           => $usage['files'],
+            'drive'           => $drive,
+            'drive_free'      => $free,
+            'is_linked'       => $linked,
+            'already_default' => !$linked,
+            'problems'        => $problems,
+            'notes'           => $notes,
+            'ok'              => $problems === [],
+        ];
+    }
+
+    /**
+     * Kembalikan penyimpanan aplikasi ke folder project (kondisi default).
+     *
+     * @param  bool           $removeOld  Hapus salinan di drive lama setelah berhasil
+     * @param  callable|null  $log        Dipanggil tiap langkah: fn(string $pesan)
+     * @return array<string, mixed>
+     */
+    public function restoreToProject(bool $removeOld = false, ?callable $log = null): array
+    {
+        $notify = static function (string $message) use ($log): void {
+            if ($log !== null) {
+                $log($message);
+            }
+        };
+
+        $plan = $this->restorePlan();
+
+        if ($plan['already_default']) {
+            return ['success' => true, 'steps' => $plan['notes'], 'plan' => $plan, 'noop' => true];
+        }
+
+        if (!$plan['ok']) {
+            return ['success' => false, 'steps' => $plan['problems'], 'plan' => $plan];
+        }
+
+        $source = (string) $plan['source'];
+        $target = (string) $plan['target'];
+        $staging = dirname($target) . '\\app-restore-' . now()->format('YmdHis');
+        $steps = [];
+
+        // 1. Salin ke folder sementara di drive project (sumber tetap utuh).
+        $copy = $this->copyTree($source, $staging);
+        $steps[] = 'Salin ke folder sementara ' . $staging . ' selesai (exit ' . $copy['exit'] . ').';
+        $notify(end($steps));
+
+        if (!$copy['ok']) {
+            return ['success' => false, 'steps' => $steps, 'plan' => $plan,
+                'error' => 'robocopy gagal: ' . $copy['output']];
+        }
+
+        // 2. Bandingkan jumlah berkas sebelum melepas junction.
+        $sourceUsage = $this->storage->directoryUsage($source);
+        $stagingUsage = $this->storage->directoryUsage($staging);
+        $steps[] = 'Bandingkan berkas: drive lama ' . number_format($sourceUsage['files'])
+            . ', salinan ' . number_format($stagingUsage['files']) . '.';
+        $notify(end($steps));
+
+        if ($stagingUsage['files'] < $sourceUsage['files']) {
+            return ['success' => false, 'steps' => $steps, 'plan' => $plan,
+                'error' => 'Jumlah berkas salinan lebih sedikit. Junction tidak diubah; salinan sementara di '
+                    . $staging . ' boleh dihapus manual.'];
+        }
+
+
+        // 3. Hapus junction. rmdir pada junction hanya menghapus link-nya,
+        //    isi folder di drive lama tetap utuh (sumber aman).
+        if (!@rmdir($target)) {
+            return ['success' => false, 'steps' => $steps, 'plan' => $plan,
+                'error' => 'Gagal melepas junction ' . $target . '. Salinan sementara di ' . $staging . ' dibiarkan.'];
+        }
+
+        $steps[] = 'Junction dilepas: ' . $target . ' (isi folder lama tetap ada).';
+        $notify(end($steps));
+
+        // 4. Jadikan salinan sebagai folder storage/app yang sebenarnya.
+        if (!@rename($staging, $target)) {
+            $this->createJunction($target, $source);
+
+            return ['success' => false, 'steps' => $steps, 'plan' => $plan,
+                'error' => 'Gagal memindahkan salinan menjadi ' . $target . '; junction dikembalikan.'];
+        }
+
+        $steps[] = 'Folder project kembali dipakai: ' . $target;
+        $notify(end($steps));
+
+        // 5. Uji tulis/baca pada folder project.
+        $probe = $target . '\\.restore-check.txt';
+
+        if (@file_put_contents($probe, 'ok') === false || trim((string) @file_get_contents($probe)) !== 'ok') {
+            @unlink($probe);
+            @rename($target, $staging);
+            $this->createJunction($target, $source);
+
+            return ['success' => false, 'steps' => $steps, 'plan' => $plan,
+                'error' => 'Uji tulis pada folder project gagal; penyimpanan dikembalikan ke drive lama.'];
+        }
+
+        @unlink($probe);
+        $steps[] = 'Uji tulis/baca pada folder project: OK.';
+        $notify(end($steps));
+
+        // 6. Opsional: hapus salinan di drive lama.
+        $removed = false;
+
+        if ($removeOld) {
+            $removed = $this->deleteTree($source);
+            $steps[] = $removed
+                ? 'Salinan di drive lama dihapus: ' . $source
+                : 'Salinan di drive lama TIDAK terhapus (' . $source . ') - hapus manual bila perlu.';
+            $notify(end($steps));
+        } else {
+            $steps[] = 'Salinan di drive lama dibiarkan sebagai cadangan: ' . $source;
+            $notify(end($steps));
+        }
+
+        return [
+            'success' => true,
+            'steps'   => $steps,
+            'plan'    => $plan,
+            'removed' => $removed,
+            'moved'   => (int) $stagingUsage['bytes'],
+        ];
+    }
+
+    /**
      * Salin folder secara rekursif memakai robocopy.
      *
      * @param  string  $source

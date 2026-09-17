@@ -439,6 +439,49 @@
             Drive {{ $projectDrive }}: tidak ditawarkan karena dipakai sistem dan berkas project.
             Perintah terminal: php artisan storage:relocate &lt;drive&gt;:/&lt;nama-folder&gt; --force
         </div>
+
+        <h2 style="margin-top: 1.5rem;">Kembalikan ke folder project (kondisi default)</h2>
+        <p class="storage-hint">
+            Saat aplikasi baru dipasang atau dipindah ke PC lain, penyimpanan berada di dalam folder project.
+            Tombol di bawah mengembalikan ke kondisi itu: data disalin ke folder project lebih dulu, junction baru
+            dilepas setelah salinan terverifikasi, sehingga data di drive lama tetap aman.
+        </p>
+        <table class="storage-table">
+            <tbody>
+                <tr>
+                    <td>Kondisi sekarang</td>
+                    <td class="storage-mono">{{ $restorePlan['source'] }}{{ $restorePlan['is_linked'] ? ' (dipindah ke drive lain)' : ' (sudah default)' }}</td>
+                </tr>
+                <tr>
+                    <td>Akan kembali ke</td>
+                    <td class="storage-mono">{{ $restorePlan['target'] }}</td>
+                </tr>
+                <tr>
+                    <td>Kebutuhan ruang</td>
+                    <td>{{ number_format($restorePlan['bytes'] / 1073741824, 2) }} GB, sisa drive {{ $restorePlan['drive'] }}: {{ number_format($restorePlan['drive_free'] / 1073741824, 1) }} GB</td>
+                </tr>
+            </tbody>
+        </table>
+        @foreach ($restorePlan['problems'] as $problem)
+            <div class="storage-alert alert-fail" style="margin-top: .75rem;">{{ $problem }}</div>
+        @endforeach
+        @if ($restorePlan['already_default'])
+            <div class="storage-alert alert-ok" style="margin-top: .75rem;">
+                Penyimpanan sudah berada di folder project (kondisi default), tidak ada yang perlu dikembalikan.
+            </div>
+        @else
+            <form method="POST" action="{{ route('storage.restore') }}" class="storage-form">
+                @csrf
+                <div class="storage-field">
+                    <label for="restore-keep-old">
+                        <input type="checkbox" id="restore-keep-old" name="keep_old" value="1"> Jangan hapus salinan di drive lama
+                    </label>
+                </div>
+                <button type="submit" class="storage-btn btn-teal"
+                        onclick="return confirm('Kembalikan penyimpanan ke folder project sekarang? Data akan disalin lebih dulu ke C:.')">Kembalikan ke folder project</button>
+            </form>
+            <div class="storage-hint">Perintah terminal: php artisan storage:restore --force</div>
+        @endif
     </div>
 </div>
 @endsection
