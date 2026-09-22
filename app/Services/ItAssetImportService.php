@@ -276,26 +276,34 @@ class ItAssetImportService
     /**
      * Petakan baris sheet NVR ke kolom inti it_assets dan kolom spec.
      *
+     * Header sheet NVR sebenarnya bernama "Type" (bukan "Model") dan "Chanel"
+     * (typo pada file sumber, bukan "Channel"), sehingga pemetaan memakai key
+     * hasil normalisasi header yang sebenarnya: 'type' dan 'chanel'.
+     * Kolom Plant, Location, dan Func Lock ikut diambil karena tersedia di
+     * sheet sumber (Plant -> plant, Location -> location, Func Lock -> department),
+     * begitu juga Connect to, Play Back, Remark, dan Header sebagai spec.
+     *
      * @param  array<string, string|null>  $mapped
      * @return array{0: array<string, mixed>, 1: array<string, mixed>}
      */
     private function transformNvrRow(array $mapped): array
     {
-        // Header sheet NVR sebenarnya bernama "Type" (bukan "Model") dan
-        // "Chanel" (typo pada file sumber, bukan "Channel"). Pemetaan
-        // sebelumnya memakai key 'model' dan 'channel' yang tidak pernah
-        // cocok dengan hasil normalisasi header asli, sehingga kedua kolom
-        // selalu tersimpan null. Diperbaiki memakai key hasil normalisasi
-        // header yang sebenarnya: 'type' dan 'chanel'.
         $core = [
             'tag_name'   => $mapped['tagname'] ?? null,
             'brand'      => $mapped['brand'] ?? null,
             'model'      => $mapped['type'] ?? null,
             'ip_address' => $mapped['ip'] ?? null,
+            'plant'      => $mapped['plant'] ?? null,
+            'location'   => $mapped['location'] ?? null,
+            'department' => $mapped['funclock'] ?? null,
         ];
 
         $spec = $this->filterSpec([
-            'channel' => $mapped['chanel'] ?? null,
+            'channel'    => $mapped['chanel'] ?? null,
+            'connect_to' => $mapped['connectto'] ?? null,
+            'playback'   => $mapped['playback'] ?? null,
+            'remark'     => $mapped['remark'] ?? null,
+            'header'     => $mapped['header'] ?? null,
         ]);
 
         return [$core, $spec];
@@ -496,7 +504,13 @@ class ItAssetImportService
         $model    = $core['model'] ?? null;
         $location = $core['location'] ?? null;
 
-        if (!empty($model) && !empty($location)) {
+        // Fallback model + lokasi HANYA untuk perangkat tanpa identitas sama
+        // sekali (mis. WIFI: tanpa IP, serial, dan tag). Bila tag_name ada
+        // tetapi tidak ditemukan, baris dianggap perangkat BARU. Tanpa syarat
+        // ini, perangkat berbeda yang kebetulan sama model dan lokasinya akan
+        // saling menimpa - contoh nyata: NVR EPE MO1, MO2, MO3 hanya tersimpan
+        // sebagai satu baris.
+        if (empty($tagName) && !empty($model) && !empty($location)) {
             return ItAsset::where('device_type', $deviceType)
                 ->where('model', $model)
                 ->where('location', $location)
