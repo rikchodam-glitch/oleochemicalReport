@@ -158,6 +158,7 @@
                 data.ips.forEach(function (ip) {
                     ip.networkId = btn.dataset.network;
                     ip.assignUrl = IP_ASSIGN_URL.replace('__ID__', ip.id);
+                    ip.deviceUrl = IP_DEVICE_URL.replace('__ID__', ip.id);
                 });
                 list.innerHTML = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">'
                     + data.ips.map(function (ip, idx) {
@@ -265,12 +266,16 @@
         });
 
         document.addEventListener('click', function (e) {
-            // Klik pada tombol aksi popup sudah menangani dirinya sendiri:
-            // popup bisa sudah diganti isinya saat handler ini berjalan,
-            // sehingga tombolnya terlepas dari DOM dan pemeriksaan contains()
-            // akan salah menutup popup. Karena itu klik semacam ini dilewati.
-            if (e.target.closest && e.target.closest('[data-ip-action]')) {
-                return;
+            // Klik dari dalam popup tidak boleh menutup popup. Isi popup bisa
+            // sudah diganti saat handler ini berjalan (tombol yang diklik jadi
+            // terlepas dari DOM), sehingga pemeriksaan contains() saja tidak
+            // cukup - composedPath() mencatat jejak elemen saat klik terjadi.
+            const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+
+            for (let i = 0; i < path.length; i++) {
+                if (path[i] && path[i].id === 'ipPopup') {
+                    return;
+                }
             }
 
             const p = document.getElementById('ipPopup');
@@ -296,18 +301,32 @@
 
                 results.innerHTML = assets.map(function (asset) {
                     const info = [asset.device_type, asset.plant, asset.location].filter(Boolean).join(' - ');
-                    return '<button type="button" data-asset="' + asset.id + '" '
-                        + 'class="ip-asset-hit w-full text-left px-2 py-1.5 rounded border-b border-slate-100">'
+                    const tukar = asset.ip_address
+                        ? '<button type="button" data-swap="' + asset.id + '" class="px-2 py-0.5 text-[11px] font-medium bg-white border border-slate-300 text-slate-600 rounded">Tukar IP</button>'
+                        : '';
+
+                    return '<div class="flex items-center justify-between gap-2 py-1.5 border-b border-slate-100">'
+                        + '<button type="button" data-asset="' + asset.id + '" class="ip-asset-hit text-left flex-1 min-w-0 rounded px-1 py-0.5">'
                         + '<div class="text-xs font-medium text-slate-800">' + escapeHtml(asset.tag_name) + '</div>'
                         + (info ? '<div class="text-[11px] text-slate-500">' + escapeHtml(info) + '</div>' : '')
                         + (asset.ip_address ? '<div class="text-[11px] text-amber-600">IP sekarang: '
                             + escapeHtml(asset.ip_address) + '</div>' : '')
-                        + '</button>';
+                        + '</button>'
+                        + tukar
+                        + '</div>';
                 }).join('');
 
                 results.querySelectorAll('[data-asset]').forEach(function (button) {
                     button.addEventListener('click', function () {
-                        assignIp(currentPickerIp, parseInt(button.dataset.asset, 10));
+                        assignIp(currentPickerIp, parseInt(button.dataset.asset, 10), false);
+                    });
+                });
+
+                results.querySelectorAll('[data-swap]').forEach(function (button) {
+                    button.addEventListener('click', function () {
+                        if (confirm('Tukar IP? Perangkat ini akan memakai IP ini, dan perangkat yang sekarang memakainya menerima IP lama perangkat tersebut.')) {
+                            assignIp(currentPickerIp, parseInt(button.dataset.swap, 10), true);
+                        }
                     });
                 });
             })
@@ -319,7 +338,7 @@
     /**
      * Simpan penetapan perangkat untuk sebuah IP (assetId null = kosongkan).
      */
-    function assignIp(ip, assetId) {
+    function assignIp(ip, assetId, swap) {
         if (!ip || !ip.assignUrl) {
             return;
         }
@@ -331,20 +350,9 @@
                 'Accept': 'application/json',
                 'X-CSRF-TOKEN': CSRF_TOKEN
             },
-            body: JSON.stringify({ it_asset_id: assetId })
+            body: JSON.stringify({ it_asset_id: assetId, swap: !!swap })
         })
-            .then(function (res) {
-                return res.text().then(function (text) {
-                    let body = null;
-                    try {
-                        body = JSON.parse(text);
-                    } catch (e) {
-                        body = null;
-                    }
-
-                    return { ok: res.ok && body !== null, body: body };
-                });
-            })
+            .then(readJson)
             .then(function (result) {
                 if (!result.ok) {
                     const error = document.getElementById('ipAssetError');
@@ -390,6 +398,8 @@
     const CSRF_TOKEN = csrfMeta ? csrfMeta.content : '';
     const ASSET_SEARCH_URL = '{{ route('it-assets.ip-addresses.asset-search') }}';
     const IP_ASSIGN_URL = '{{ route('it-assets.ip-addresses.assign', ['ipAddress' => '__ID__']) }}';
+    const IP_DEVICE_URL = '{{ route('it-assets.ip-addresses.store-device', ['ipAddress' => '__ID__']) }}';
+    const DEVICE_TYPES = @json($deviceTypes);
 
     let currentPickerIp = null;
 
@@ -416,20 +426,55 @@
     }
 
     /**
-     * Ubah isi popup menjadi form pencarian perangkat.
+     * Ubah isi popup menjadi pilihan perangkat: memakai perangkat yang sudah
+     * ada, atau membuat perangkat baru langsung dari sini.
      */
-    function renderAssetPicker(ip, pop) {
+    function renderAssetPicker(ip, pop, mode) {
         currentPickerIp = ip;
-        pop.style.maxWidth = '320px';
+        pop.style.maxWidth = '340px';
         pop.innerHTML = '<div class="font-semibold text-slate-900 font-mono">' + escapeHtml(ip.address) + '</div>'
             + '<div class="text-xs text-slate-500 mt-0.5">'
             + (ip.asset ? 'Ganti perangkat pemakai IP ini' : 'Tambahkan perangkat pemakai IP ini') + '</div>'
-            + '<input type="text" id="ipAssetSearch" placeholder="Cari tag, nama, atau IP perangkat..." autocomplete="off" '
-            + 'class="mt-2 w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500">'
+            + '<div class="flex items-center gap-1 mt-2">'
+            + pickerTab('existing', 'Perangkat yang ada', mode !== 'new')
+            + pickerTab('new', 'Tambah perangkat baru', mode === 'new')
+            + '</div>'
+            + '<div id="ipPickerBody" class="mt-2"></div>';
+
+        pop.querySelectorAll('[data-picker-tab]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                renderAssetPicker(ip, pop, button.dataset.pickerTab);
+            });
+        });
+
+        if (mode === 'new') {
+            renderNewDeviceForm(ip, pop);
+            return;
+        }
+
+        renderExistingDeviceSearch(ip, pop);
+    }
+
+    /**
+     * Tombol tab pemilih mode (perangkat yang ada / perangkat baru).
+     */
+    function pickerTab(mode, label, active) {
+        return '<button type="button" data-picker-tab="' + mode + '" class="px-2 py-1 text-xs rounded '
+            + (active ? 'bg-slate-900 text-white' : 'ip-asset-hit bg-white border border-slate-300 text-slate-600')
+            + '">' + label + '</button>';
+    }
+
+    /**
+     * Mode "perangkat yang ada": kolom pencarian + daftar hasil.
+     */
+    function renderExistingDeviceSearch(ip, pop) {
+        const body = document.getElementById('ipPickerBody');
+        body.innerHTML = '<input type="text" id="ipAssetSearch" placeholder="Cari tag, nama, atau IP perangkat..." autocomplete="off" '
+            + 'class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500">'
             + '<div id="ipAssetResults" class="mt-2 overflow-y-auto" style="max-height: 13rem;"></div>'
             + '<div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">'
             + '<span id="ipAssetError" class="text-[11px] text-red-600"></span>'
-            + '<button type="button" id="ipAssetCancel" class="px-2 py-1 text-xs font-medium bg-white border border-slate-300 text-slate-600 rounded hover:bg-slate-50">Batal</button>'
+            + '<button type="button" id="ipAssetCancel" class="px-2 py-1 text-xs font-medium bg-white border border-slate-300 text-slate-600 rounded">Batal</button>'
             + '</div>';
 
         const input = document.getElementById('ipAssetSearch');
@@ -443,6 +488,110 @@
             timer = setTimeout(function () { searchAssets(input.value.trim(), results); }, 250);
         });
         document.getElementById('ipAssetCancel').addEventListener('click', closeIpPopup);
+    }
+
+    /**
+     * Mode "tambah perangkat baru": form ringkas yang langsung memakai IP ini.
+     */
+    function renderNewDeviceForm(ip, pop) {
+        const body = document.getElementById('ipPickerBody');
+        const options = DEVICE_TYPES.map(function (type) {
+            return '<option value="' + escapeHtml(type) + '">' + escapeHtml(type.replace(/_/g, ' ')) + '</option>';
+        }).join('');
+
+        body.innerHTML = '<div class="flex flex-col gap-1">'
+            + '<label class="text-[11px] text-slate-500">Tipe perangkat *</label>'
+            + '<select id="newDeviceType" class="w-full px-2 py-1 text-xs border border-slate-300 rounded">' + options + '</select>'
+            + deviceField('newDeviceTag', 'Tag perangkat *', 'mis. PC-CES-01')
+            + deviceField('newDeviceName', 'Nama / pengguna', 'mis. Novila')
+            + deviceField('newDevicePlant', 'Plant', 'mis. CES')
+            + deviceField('newDeviceDepartment', 'Departemen', '')
+            + deviceField('newDeviceLocation', 'Lokasi', '')
+            + '<div class="text-[11px] text-slate-500 mt-1">IP yang dipakai: <code>' + escapeHtml(ip.address) + '</code></div>'
+            + '<div class="mt-1 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">'
+            + '<span id="ipDeviceError" class="text-[11px] text-red-600"></span>'
+            + '<span class="flex gap-1">'
+            + '<button type="button" id="ipDeviceCancel" class="px-2 py-1 text-xs font-medium bg-white border border-slate-300 text-slate-600 rounded">Batal</button>'
+            + '<button type="button" id="ipDeviceSave" class="px-2 py-1 text-xs font-medium bg-blue-600 text-white rounded">Simpan dan pakai IP</button>'
+            + '</span></div></div>';
+
+        document.getElementById('ipDeviceCancel').addEventListener('click', closeIpPopup);
+        document.getElementById('ipDeviceSave').addEventListener('click', function () {
+            createDevice(ip);
+        });
+    }
+
+    /**
+     * Satu field teks pada form perangkat baru.
+     */
+    function deviceField(id, label, placeholder) {
+        return '<label class="text-[11px] text-slate-500">' + label + '</label>'
+            + '<input type="text" id="' + id + '" placeholder="' + placeholder + '" '
+            + 'class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500">';
+    }
+
+    /**
+     * Simpan perangkat baru dari form popup, lalu pakai IP ini untuknya.
+     */
+    function createDevice(ip) {
+        const error = document.getElementById('ipDeviceError');
+        const payload = {
+            device_type: document.getElementById('newDeviceType').value,
+            tag_name: document.getElementById('newDeviceTag').value.trim(),
+            name: document.getElementById('newDeviceName').value.trim(),
+            plant: document.getElementById('newDevicePlant').value.trim(),
+            department: document.getElementById('newDeviceDepartment').value.trim(),
+            location: document.getElementById('newDeviceLocation').value.trim()
+        };
+
+        if (payload.tag_name === '') {
+            error.textContent = 'Tag perangkat wajib diisi.';
+            return;
+        }
+
+        error.textContent = '';
+
+        fetch(ip.deviceUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': CSRF_TOKEN
+            },
+            body: JSON.stringify(payload)
+        })
+            .then(readJson)
+            .then(function (result) {
+                if (!result.ok) {
+                    error.textContent = (result.body && result.body.message)
+                        ? result.body.message
+                        : 'Gagal menyimpan perangkat.';
+                    return;
+                }
+
+                showIpToast(result.body.message);
+                closeIpPopup();
+                reloadNetworkGrid(ip.networkId);
+            })
+            .catch(function () {
+                error.textContent = 'Gagal menghubungi server.';
+            });
+    }
+
+    /**
+     * Baca balasan sebagai JSON; balasan non-JSON dianggap gagal.
+     */
+    function readJson(res) {
+        return res.text().then(function (text) {
+            let body = null;
+            try {
+                body = JSON.parse(text);
+            } catch (e) {
+                body = null;
+            }
+
+            return { ok: res.ok && body !== null, body: body };
+        });
     }
 
     </script>

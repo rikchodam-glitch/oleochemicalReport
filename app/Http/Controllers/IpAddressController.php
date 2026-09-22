@@ -10,6 +10,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -32,7 +33,8 @@ class IpAddressController extends Controller
             ->get();
 
         return view('it-assets.ip-addresses.index', [
-            'networks' => $networks,
+            'networks'    => $networks,
+            'deviceTypes' => ItAsset::DEVICE_TYPES,
         ]);
     }
 
@@ -239,24 +241,134 @@ class IpAddressController extends Controller
         $previousAsset = $ipAddress->asset;
         $address = (string) $ipAddress->address;
 
-        DB::transaction(function () use ($ipAddress, $asset, $previousAsset, $address): void {
-            // Perangkat lama dilepas dari IP ini (saat diganti atau dikosongkan).
-            if ($previousAsset !== null && ($asset === null || $previousAsset->id !== $asset->id)) {
-                if ($previousAsset->ip_address === $address) {
+        if ($asset === null) {
+            DB::transaction(function () use ($ipAddress, $previousAsset, $address): void {
+                if ($previousAsset !== null && $previousAsset->ip_address === $address) {
                     $previousAsset->update(['ip_address' => null]);
                 }
-            }
 
-            if ($asset === null) {
                 $ipAddress->update([
                     'it_asset_id' => null,
                     'status'      => IpAddress::STATUS_AVAILABLE,
                 ]);
+            });
 
-                return;
+            return response()->json([
+                'ok'      => true,
+                'status'  => IpAddress::STATUS_AVAILABLE,
+                'message' => 'IP ' . $address . ' dikembalikan ke status tersedia.',
+            ]);
+        }
+
+        $exchanged = $this->applyAssignment($ipAddress, $asset, $request->boolean('swap'));
+
+        return response()->json([
+            'ok'      => true,
+            'status'  => IpAddress::STATUS_ASSIGNED,
+            'message' => 'IP ' . $address . ' sekarang dipakai ' . $asset->displayName()
+                . ($exchanged !== null
+                    ? ' (ditukar: IP ' . $exchanged . ' pindah ke ' . ($previousAsset?->displayName() ?? 'perangkat sebelumnya') . ').'
+                    : '.'),
+        ]);
+    }
+
+    /**
+     * Buat perangkat IT baru langsung dari popup Daftar IP, lalu pakai IP ini
+     * untuk perangkat tersebut. Field yang disediakan sengaja ringkas; detail
+     * lain (spesifikasi, kredensial snapshot, dsb) dapat dilengkapi kemudian
+     * lewat form perangkat IT.
+     *
+     * @param  Request    $request
+     * @param  IpAddress  $ipAddress
+     * @return JsonResponse
+     */
+    public function storeDevice(Request $request, IpAddress $ipAddress): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'device_type' => ['required', 'string', Rule::in(ItAsset::DEVICE_TYPES)],
+            'tag_name'    => ['required', 'string', 'max:255'],
+            'name'        => ['nullable', 'string', 'max:255'],
+            'plant'       => ['nullable', 'string', 'max:255'],
+            'department'  => ['nullable', 'string', 'max:255'],
+            'location'    => ['nullable', 'string', 'max:255'],
+        ], [
+            'device_type.required' => 'Tipe perangkat wajib dipilih.',
+            'device_type.in'       => 'Tipe perangkat tidak dikenali.',
+            'tag_name.required'    => 'Tag perangkat wajib diisi.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'ok'      => false,
+                'message' => (string) $validator->errors()->first(),
+            ], 422);
+        }
+
+        $data = $validator->validated();
+
+        $asset = ItAsset::query()->create([
+            'device_type' => $data['device_type'],
+            'tag_name'    => $data['tag_name'],
+            'name'        => $data['name'] ?? null,
+            'plant'       => $data['plant'] ?? null,
+            'department'  => $data['department'] ?? null,
+            'location'    => $data['location'] ?? null,
+            'status'      => 'active',
+            'data_source' => 'manual',
+        ]);
+
+        $this->applyAssignment($ipAddress, $asset, false);
+
+        return response()->json([
+            'ok'      => true,
+            'status'  => IpAddress::STATUS_ASSIGNED,
+            'message' => 'Perangkat ' . $asset->displayName() . ' dibuat dan memakai IP ' . $ipAddress->address . '.',
+        ]);
+    }
+
+    /**
+     * Terapkan penetapan sebuah IP ke perangkat, dengan opsi menukar IP.
+     *
+     * Aturan: satu perangkat satu IP, sehingga IP lain milik perangkat tersebut
+     * dilepas. Bila swap = true dan perangkat baru sudah memakai IP lain,
+     * perangkat yang sekarang memakai IP ini menerima IP lama tersebut,
+     * sehingga kedua perangkat tetap punya IP.
+     *
+     * @param  IpAddress  $ipAddress
+     * @param  ItAsset    $asset
+     * @param  bool       $swap
+     * @return string|null  Alamat IP lama yang ditukarkan (null bila bukan penukaran)
+     */
+    private function applyAssignment(IpAddress $ipAddress, ItAsset $asset, bool $swap = false): ?string
+    {
+        $address = (string) $ipAddress->address;
+        $previousAsset = $ipAddress->asset;
+        $exchanged = null;
+
+        DB::transaction(function () use ($ipAddress, $asset, $swap, $address, $previousAsset, &$exchanged): void {
+            $oldRow = IpAddress::query()
+                ->where('it_asset_id', $asset->id)
+                ->whereKeyNot($ipAddress->getKey())
+                ->orderBy('address')
+                ->first();
+
+            $canSwap = $swap && $oldRow !== null && $previousAsset !== null && $previousAsset->id !== $asset->id;
+
+            if ($canSwap) {
+                // Tukar: perangkat lama menerima IP lama perangkat baru.
+                $oldRow->update([
+                    'it_asset_id' => $previousAsset->id,
+                    'status'      => IpAddress::STATUS_ASSIGNED,
+                ]);
+                $previousAsset->update(['ip_address' => $oldRow->address]);
+                $exchanged = (string) $oldRow->address;
+            } elseif ($previousAsset !== null
+                && $previousAsset->id !== $asset->id
+                && $previousAsset->ip_address === $address) {
+                $previousAsset->update(['ip_address' => null]);
             }
 
-            // Satu perangkat satu IP: baris lain milik perangkat ini dilepas.
+            // Lepas sisa baris lain milik perangkat ini (satu perangkat satu IP).
             IpAddress::query()
                 ->where('it_asset_id', $asset->id)
                 ->whereKeyNot($ipAddress->getKey())
@@ -273,13 +385,7 @@ class IpAddressController extends Controller
             $asset->update(['ip_address' => $address]);
         });
 
-        return response()->json([
-            'ok'      => true,
-            'status'  => $asset === null ? IpAddress::STATUS_AVAILABLE : IpAddress::STATUS_ASSIGNED,
-            'message' => $asset === null
-                ? 'IP ' . $address . ' dikembalikan ke status tersedia.'
-                : 'IP ' . $address . ' sekarang dipakai ' . $asset->displayName() . '.',
-        ]);
+        return $exchanged;
     }
 
     /**

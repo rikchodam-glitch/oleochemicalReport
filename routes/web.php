@@ -188,6 +188,7 @@ Route::middleware('admin')->group(function () {
     // route {network} supaya 'asset-search' tidak ditangkap wildcard tersebut.
     Route::get('/it-assets/ip-addresses/asset-search', [IpAddressController::class, 'assetSearch'])->name('it-assets.ip-addresses.asset-search');
     Route::patch('/it-assets/ip-addresses/address/{ipAddress}', [IpAddressController::class, 'assign'])->name('it-assets.ip-addresses.assign');
+    Route::post('/it-assets/ip-addresses/address/{ipAddress}/device', [IpAddressController::class, 'storeDevice'])->name('it-assets.ip-addresses.store-device');
     Route::get('/it-assets/ip-addresses/{network}', [IpAddressController::class, 'show'])->name('it-assets.ip-addresses.show');
     Route::delete('/it-assets/ip-addresses/{network}', [IpAddressController::class, 'destroy'])->name('it-assets.ip-addresses.destroy');
     Route::get('/it-assets/{itAsset}', [ItAssetController::class, 'show'])->name('it-assets.show');

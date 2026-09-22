@@ -15,6 +15,17 @@ class ItAsset extends Model
      *
      * @var array<int, string>
      */
+    /**
+     * Daftar tipe perangkat IT yang dikenali sistem. Dipakai form perangkat IT
+     * dan juga form cepat penambahan perangkat dari halaman Daftar IP, supaya
+     * pilihannya selalu sama.
+     */
+    public const DEVICE_TYPES = [
+        'PC', 'LAPTOP', 'PRINTER', 'CCTV', 'NVR', 'ACCESS_DOOR',
+        'WIFI', 'NETWORK', 'SWITCH_MANAGED', 'SWITCH_POE_UNMANAGED',
+        'ACCESS_POINT', 'HUB', 'UPS', 'OTHER',
+    ];
+
     public const SNAPSHOT_CAPABLE_TYPES = ['CCTV', 'NVR'];
 
     protected $fillable = [

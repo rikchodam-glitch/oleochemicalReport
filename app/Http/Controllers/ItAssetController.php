@@ -26,11 +26,9 @@ class ItAssetController extends Controller
      *
      * @var array<int, string>
      */
-    private const DEVICE_TYPES = [
-        'PC', 'LAPTOP', 'PRINTER', 'CCTV', 'NVR', 'ACCESS_DOOR',
-        'WIFI', 'NETWORK', 'SWITCH_MANAGED', 'SWITCH_POE_UNMANAGED',
-        'ACCESS_POINT', 'HUB', 'UPS', 'OTHER',
-    ];
+    // Daftar tipe perangkat mengikuti sumber tunggal di model ItAsset supaya
+    // tidak ada dua daftar yang bisa berbeda.
+    private const DEVICE_TYPES = ItAsset::DEVICE_TYPES;
 
     protected ItAssetImportService $importService;
 
