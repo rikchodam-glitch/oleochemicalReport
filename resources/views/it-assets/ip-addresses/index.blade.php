@@ -265,6 +265,14 @@
         });
 
         document.addEventListener('click', function (e) {
+            // Klik pada tombol aksi popup sudah menangani dirinya sendiri:
+            // popup bisa sudah diganti isinya saat handler ini berjalan,
+            // sehingga tombolnya terlepas dari DOM dan pemeriksaan contains()
+            // akan salah menutup popup. Karena itu klik semacam ini dilewati.
+            if (e.target.closest && e.target.closest('[data-ip-action]')) {
+                return;
+            }
+
             const p = document.getElementById('ipPopup');
             if (p && !p.contains(e.target) && !e.target.closest('.ip-cell')) {
                 closeIpPopup();
