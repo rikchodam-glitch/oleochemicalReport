@@ -184,6 +184,10 @@ Route::middleware('admin')->group(function () {
     // Daftar IP — subnet VLAN + CIDR dengan generate otomatis (ala Netbox).
     Route::get('/it-assets/ip-addresses', [IpAddressController::class, 'index'])->name('it-assets.ip-addresses.index');
     Route::post('/it-assets/ip-addresses', [IpAddressController::class, 'store'])->name('it-assets.ip-addresses.store');
+    // Pencarian perangkat & penetapan IP untuk popup Daftar IP. WAJIB sebelum
+    // route {network} supaya 'asset-search' tidak ditangkap wildcard tersebut.
+    Route::get('/it-assets/ip-addresses/asset-search', [IpAddressController::class, 'assetSearch'])->name('it-assets.ip-addresses.asset-search');
+    Route::patch('/it-assets/ip-addresses/address/{ipAddress}', [IpAddressController::class, 'assign'])->name('it-assets.ip-addresses.assign');
     Route::get('/it-assets/ip-addresses/{network}', [IpAddressController::class, 'show'])->name('it-assets.ip-addresses.show');
     Route::delete('/it-assets/ip-addresses/{network}', [IpAddressController::class, 'destroy'])->name('it-assets.ip-addresses.destroy');
     Route::get('/it-assets/{itAsset}', [ItAssetController::class, 'show'])->name('it-assets.show');

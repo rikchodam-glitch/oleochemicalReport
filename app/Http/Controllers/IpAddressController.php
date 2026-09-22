@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\IpAddress;
 use App\Models\IpNetwork;
+use App\Models\ItAsset;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -31,6 +32,42 @@ class IpAddressController extends Controller
 
         return view('it-assets.ip-addresses.index', [
             'networks' => $networks,
+        ]);
+    }
+
+    /**
+     * Pencarian perangkat untuk popup Daftar IP (autocomplete). Dipakai saat
+     * menambahkan atau mengganti perangkat yang memakai sebuah IP.
+     *
+     * @param  Request  $request
+     * @return JsonResponse
+     */
+    public function assetSearch(Request $request): JsonResponse
+    {
+        $term = trim((string) $request->query('q', ''));
+
+        $assets = ItAsset::query()
+            ->when($term !== '', function ($query) use ($term): void {
+                $query->where(function ($inner) use ($term): void {
+                    $inner->where('tag_name', 'like', '%' . $term . '%')
+                        ->orWhere('name', 'like', '%' . $term . '%')
+                        ->orWhere('ip_address', 'like', '%' . $term . '%');
+                });
+            })
+            ->orderBy('tag_name')
+            ->limit(20)
+            ->get();
+
+        return response()->json([
+            'assets' => $assets->map(static fn (ItAsset $asset): array => [
+                'id'          => $asset->id,
+                'tag_name'    => $asset->displayName(),
+                'name'        => $asset->name,
+                'device_type' => $asset->deviceLabel(),
+                'ip_address'  => $asset->ip_address,
+                'plant'       => $asset->plant,
+                'location'    => $asset->location,
+            ])->all(),
         ]);
     }
 
@@ -126,6 +163,7 @@ class IpAddressController extends Controller
                 $asset = $ip->asset;
 
                 return [
+                    'id'      => $ip->id,
                     'address' => $ip->address,
                     'status'  => $ip->status,
                     'asset'   => $asset ? [
@@ -147,6 +185,78 @@ class IpAddressController extends Controller
         return response()->json([
             'network' => $network->label(),
             'ips'     => $ips,
+        ]);
+    }
+
+    /**
+     * Tetapkan, ganti, atau lepaskan perangkat yang memakai sebuah IP.
+     *
+     * Aturan yang dipakai sama dengan sisi perangkat (lihat
+     * ItAssetController::syncIpAssignment): satu perangkat hanya memakai satu
+     * IP, sehingga IP lain milik perangkat tersebut otomatis dilepas.
+     * it_asset_id null berarti IP dikembalikan ke status tersedia.
+     *
+     * @param  Request    $request
+     * @param  IpAddress  $ipAddress
+     * @return JsonResponse
+     */
+    public function assign(Request $request, IpAddress $ipAddress): JsonResponse
+    {
+        $validated = $request->validate([
+            'it_asset_id' => ['nullable', 'integer', 'exists:it_assets,id'],
+        ]);
+
+        // Kunci boleh tidak dikirim sama sekali (artinya melepas IP), sehingga
+        // dibaca dengan aman tanpa asumsi kunci selalu ada.
+        $assetId = $validated['it_asset_id'] ?? null;
+
+        $asset = $assetId !== null
+            ? ItAsset::query()->findOrFail((int) $assetId)
+            : null;
+
+        $previousAsset = $ipAddress->asset;
+        $address = (string) $ipAddress->address;
+
+        DB::transaction(function () use ($ipAddress, $asset, $previousAsset, $address): void {
+            // Perangkat lama dilepas dari IP ini (saat diganti atau dikosongkan).
+            if ($previousAsset !== null && ($asset === null || $previousAsset->id !== $asset->id)) {
+                if ($previousAsset->ip_address === $address) {
+                    $previousAsset->update(['ip_address' => null]);
+                }
+            }
+
+            if ($asset === null) {
+                $ipAddress->update([
+                    'it_asset_id' => null,
+                    'status'      => IpAddress::STATUS_AVAILABLE,
+                ]);
+
+                return;
+            }
+
+            // Satu perangkat satu IP: baris lain milik perangkat ini dilepas.
+            IpAddress::query()
+                ->where('it_asset_id', $asset->id)
+                ->whereKeyNot($ipAddress->getKey())
+                ->update([
+                    'it_asset_id' => null,
+                    'status'      => IpAddress::STATUS_AVAILABLE,
+                ]);
+
+            $ipAddress->update([
+                'it_asset_id' => $asset->id,
+                'status'      => IpAddress::STATUS_ASSIGNED,
+            ]);
+
+            $asset->update(['ip_address' => $address]);
+        });
+
+        return response()->json([
+            'ok'      => true,
+            'status'  => $asset === null ? IpAddress::STATUS_AVAILABLE : IpAddress::STATUS_ASSIGNED,
+            'message' => $asset === null
+                ? 'IP ' . $address . ' dikembalikan ke status tersedia.'
+                : 'IP ' . $address . ' sekarang dipakai ' . $asset->displayName() . '.',
         ]);
     }
 
