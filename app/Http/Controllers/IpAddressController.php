@@ -207,6 +207,9 @@ class IpAddressController extends Controller
         // lewat fetch dari popup, sehingga balasan redirect tidak berguna).
         $validator = Validator::make($request->all(), [
             'it_asset_id' => ['nullable', 'integer', 'exists:it_assets,id'],
+        ], [
+            'it_asset_id.exists'  => 'Perangkat yang dipilih tidak ditemukan.',
+            'it_asset_id.integer' => 'Perangkat yang dipilih tidak valid.',
         ]);
 
         if ($validator->fails()) {

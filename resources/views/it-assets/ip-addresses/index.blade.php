@@ -120,6 +120,10 @@
         </div>
     </div>
 
+    <style>
+        .ip-asset-hit:hover { background-color: #eff6ff; }
+    </style>
+
     @push('scripts')
     <script>
     function escapeHtml(value) {
@@ -285,7 +289,7 @@
                 results.innerHTML = assets.map(function (asset) {
                     const info = [asset.device_type, asset.plant, asset.location].filter(Boolean).join(' - ');
                     return '<button type="button" data-asset="' + asset.id + '" '
-                        + 'class="w-full text-left px-2 py-1.5 rounded hover:bg-blue-50 border-b border-slate-100">'
+                        + 'class="ip-asset-hit w-full text-left px-2 py-1.5 rounded border-b border-slate-100">'
                         + '<div class="text-xs font-medium text-slate-800">' + escapeHtml(asset.tag_name) + '</div>'
                         + (info ? '<div class="text-[11px] text-slate-500">' + escapeHtml(info) + '</div>' : '')
                         + (asset.ip_address ? '<div class="text-[11px] text-amber-600">IP sekarang: '
@@ -414,7 +418,7 @@
             + (ip.asset ? 'Ganti perangkat pemakai IP ini' : 'Tambahkan perangkat pemakai IP ini') + '</div>'
             + '<input type="text" id="ipAssetSearch" placeholder="Cari tag, nama, atau IP perangkat..." autocomplete="off" '
             + 'class="mt-2 w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500">'
-            + '<div id="ipAssetResults" class="mt-2 max-h-52 overflow-y-auto"></div>'
+            + '<div id="ipAssetResults" class="mt-2 overflow-y-auto" style="max-height: 13rem;"></div>'
             + '<div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">'
             + '<span id="ipAssetError" class="text-[11px] text-red-600"></span>'
             + '<button type="button" id="ipAssetCancel" class="px-2 py-1 text-xs font-medium bg-white border border-slate-300 text-slate-600 rounded hover:bg-slate-50">Batal</button>'
