@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -202,17 +203,35 @@ class IpAddressController extends Controller
      */
     public function assign(Request $request, IpAddress $ipAddress): JsonResponse
     {
-        $validated = $request->validate([
+        // Validasi manual supaya balasannya selalu JSON (endpoint ini dipanggil
+        // lewat fetch dari popup, sehingga balasan redirect tidak berguna).
+        $validator = Validator::make($request->all(), [
             'it_asset_id' => ['nullable', 'integer', 'exists:it_assets,id'],
         ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'ok'      => false,
+                'message' => (string) $validator->errors()->first('it_asset_id'),
+            ], 422);
+        }
+
+        $validated = $validator->validated();
 
         // Kunci boleh tidak dikirim sama sekali (artinya melepas IP), sehingga
         // dibaca dengan aman tanpa asumsi kunci selalu ada.
         $assetId = $validated['it_asset_id'] ?? null;
 
         $asset = $assetId !== null
-            ? ItAsset::query()->findOrFail((int) $assetId)
+            ? ItAsset::query()->find((int) $assetId)
             : null;
+
+        if ($assetId !== null && $asset === null) {
+            return response()->json([
+                'ok'      => false,
+                'message' => 'Perangkat tidak ditemukan.',
+            ], 422);
+        }
 
         $previousAsset = $ipAddress->asset;
         $address = (string) $ipAddress->address;

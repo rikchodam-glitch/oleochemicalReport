@@ -322,7 +322,16 @@
             body: JSON.stringify({ it_asset_id: assetId })
         })
             .then(function (res) {
-                return res.json().then(function (body) { return { ok: res.ok, body: body }; });
+                return res.text().then(function (text) {
+                    let body = null;
+                    try {
+                        body = JSON.parse(text);
+                    } catch (e) {
+                        body = null;
+                    }
+
+                    return { ok: res.ok && body !== null, body: body };
+                });
             })
             .then(function (result) {
                 if (!result.ok) {
