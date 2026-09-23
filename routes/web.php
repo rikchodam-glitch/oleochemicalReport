@@ -12,6 +12,7 @@ use App\Http\Controllers\IpAddressController;
 use App\Http\Controllers\ItAssetController;
 use App\Http\Controllers\ItLayoutController;
 use App\Http\Controllers\LoginController;
+use App\Http\Controllers\PanelRuanganController;
 use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\StorageController;
@@ -221,6 +222,17 @@ Route::middleware('admin')->group(function () {
     Route::post('/system/storage/relocate', [StorageController::class, 'relocate'])->name('storage.relocate');
     Route::post('/system/storage/database', [StorageController::class, 'relocateDatabase'])->name('storage.database.relocate');
     Route::post('/system/storage/restore', [StorageController::class, 'restore'])->name('storage.restore');
+
+    // Monitoring Ruang Panel: pendataan ruangan panel dan pembacaan suhu
+    // serta kelembapan dari perangkat sensor (mode tarik / pull, jadi tidak
+    // memerlukan aturan port masuk di firewall komputer ini).
+    Route::get('/panel', [PanelRuanganController::class, 'index'])->name('panel.index');
+    Route::get('/panel/data', [PanelRuanganController::class, 'data'])->name('panel.data');
+    Route::post('/panel/ruangan', [PanelRuanganController::class, 'store'])->name('panel.ruangan.store');
+    Route::post('/panel/ruangan/{panelRuangan}/uji-koneksi', [PanelRuanganController::class, 'ujiKoneksi'])->name('panel.ruangan.uji-koneksi');
+    Route::post('/panel/ruangan/{panelRuangan}/tarik', [PanelRuanganController::class, 'tarik'])->name('panel.ruangan.tarik');
+    Route::put('/panel/ruangan/{panelRuangan}', [PanelRuanganController::class, 'update'])->name('panel.ruangan.update');
+    Route::delete('/panel/ruangan/{panelRuangan}', [PanelRuanganController::class, 'destroy'])->name('panel.ruangan.destroy');
 });
 
 // Redirect root to dashboard

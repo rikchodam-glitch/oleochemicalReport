@@ -37,4 +37,14 @@ if ((int) config('storage.snapshot_retention_days', 30) > 0) {
         ->withoutOverlapping();
 }
 
+// Penarik data sensor ruang panel (suhu/kelembapan) tiap menit. Server yang
+// menarik data dari perangkat, sehingga tidak ada port masuk yang perlu
+// dibuka di firewall. Interval tarik saat halaman sedang dibuka diatur di
+// config/panel.php bagian pull.cache_detik.
+if ((bool) config('panel.pull.enabled', true)) {
+    Schedule::command('panel:tarik')
+        ->everyMinute()
+        ->withoutOverlapping();
+}
+
 
