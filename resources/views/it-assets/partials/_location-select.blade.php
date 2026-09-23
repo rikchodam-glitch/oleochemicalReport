@@ -27,6 +27,10 @@
             <optgroup label="{{ $pt }}">
                 @foreach ($items as $item)
                     <option value="{{ $item['id'] }}"
+                        data-plant="{{ $item['plant'] ?? '' }}"
+                        data-department="{{ $item['department'] ?? '' }}"
+                        data-code="{{ $item['code'] ?? '' }}"
+                        data-name="{{ $item['name'] ?? '' }}"
                         @selected((int) old('funcloc_id', $itAsset->funcloc_id) === (int) $item['id'])>
                         {{ $item['label'] }}
                     </option>
@@ -50,37 +54,91 @@
     </p>
 </div>
 
-{{-- Connect To: hanya relevan untuk CCTV/NVR, jadi dibungkus container yang
-     visibilitasnya mengikuti pilihan Tipe Perangkat pada form. --}}
-<div id="connectToWrapper" class="{{ in_array($itAsset->device_type, ['CCTV', 'NVR', 'SWITCH_MANAGED', 'SWITCH_POE_UNMANAGED', 'ACCESS_POINT'], true) ? '' : 'hidden' }}">
+{{-- Connect To + spesifikasi terstruktur + slot channel: lihat partial masing-masing. --}}
+<div id="connectToWrapper" class="{{ in_array($itAsset->device_type, ['CCTV', 'NVR', 'SWITCH_MANAGED', 'SWITCH_POE_UNMANAGED', 'ACCESS_POINT', 'ACCESS_DOOR'], true) ? '' : 'hidden' }}">
     @include('it-assets.partials._connect-to-select')
 </div>
+
+<div id="channelSlotSection" class="{{ in_array($itAsset->device_type, ['CCTV'], true) ? '' : 'hidden' }}">
+    @include('it-assets.partials._cctv-channel-slots')
+</div>
+
+@include('it-assets.partials._spec-fields')
 
 <script>
 (function () {
     /**
-     * Tampilkan atau sembunyikan blok Connect To mengikuti Tipe Perangkat
-     * yang dipilih, supaya field ini tidak membingungkan untuk tipe lain.
+     * Tampilkan atau sembunyikan blok Connect To dan slot Channel mengikuti
+     * Tipe Perangkat yang dipilih, supaya field ini tidak membingungkan untuk
+     * tipe lain.
      */
-    function syncConnectToVisibility() {
+    function syncSectionVisibility() {
         const tipe = document.getElementById('device-type-select');
-        const wrapper = document.getElementById('connectToWrapper');
 
-        if (!tipe || !wrapper) {
+        if (!tipe) {
             return;
         }
 
-        const relevan = ['CCTV', 'NVR', 'SWITCH_MANAGED', 'SWITCH_POE_UNMANAGED', 'ACCESS_POINT'].indexOf(tipe.value) !== -1;
-        wrapper.classList.toggle('hidden', !relevan);
+        const wrapper = document.getElementById('connectToWrapper');
+        if (wrapper) {
+            wrapper.classList.toggle(
+                'hidden',
+                ['CCTV', 'NVR', 'SWITCH_MANAGED', 'SWITCH_POE_UNMANAGED', 'ACCESS_POINT', 'ACCESS_DOOR'].indexOf(tipe.value) === -1
+            );
+        }
+
+        const slot = document.getElementById('channelSlotSection');
+        if (slot) {
+            slot.classList.toggle('hidden', tipe.value !== 'CCTV');
+        }
+    }
+
+    /**
+     * Isi Plant, Department, dan Lokasi mengikuti Functional Location yang
+     * dipilih, sehingga user cukup memilih satu kali di Lokasi FuncLoc.
+     * Hanya berjalan saat pilihan funcloc diubah (bukan saat halaman dibuka)
+     * agar detail lokasi yang sudah diketik manual tidak tertimpa.
+     */
+    function syncFieldLokasi() {
+        const select = document.querySelector('select[name="funcloc_id"]');
+
+        if (!select || !select.value) {
+            return;
+        }
+
+        const opsi = select.options[select.selectedIndex];
+
+        if (!opsi) {
+            return;
+        }
+
+        const isi = function (nama, nilai) {
+            const input = document.querySelector('[name="' + nama + '"]');
+
+            if (input && nilai) {
+                input.value = nilai;
+            }
+        };
+
+        isi('plant', opsi.dataset.plant || '');
+        isi('department', opsi.dataset.department || '');
+        isi('location', opsi.dataset.code || '');
     }
 
     document.addEventListener('DOMContentLoaded', function () {
         const tipe = document.getElementById('device-type-select');
+
         if (tipe) {
-            tipe.addEventListener('change', syncConnectToVisibility);
+            tipe.addEventListener('change', syncSectionVisibility);
         }
 
-        syncConnectToVisibility();
+        const funcloc = document.querySelector('select[name="funcloc_id"]');
+
+        if (funcloc) {
+            funcloc.addEventListener('change', syncFieldLokasi);
+        }
+
+        syncSectionVisibility();
     });
 })();
 </script>

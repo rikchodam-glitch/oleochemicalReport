@@ -273,6 +273,23 @@ ulang.
     menggantikan file asli — kalau prosesnya sudah dua kali meleset, HENTIKAN
     dan laporkan ke user (biar diedit manual) daripada lanjut menebak.**
 
+13. **Diulanginya pelanggaran aturan 7: menulis file `.blade.php` lewat
+    PowerShell `(Get-Content -Raw) -replace ... | Set-Content`.** Pada
+    `resources/views/it-assets/partials/_location-select.blade.php`
+    (23/09/2026), penambahan nilai ke daftar tipe perangkat dilakukan lewat
+    PowerShell karena dianggap cepat. Akibatnya: pola pengganti memuat `\\]`
+    sehingga hasilnya menyisipkan backslash liar
+    (`'ACCESS_DOOR'\], true)`) dan blade itu RUSAK sampai diperbaiki manual
+    dengan tool editor. Ini persis pola pelanggaran yang sudah dilarang di
+    Aturan Wajib Edit File poin 7. **Pelajaran: larangan menulis isi file
+    `.php`/`.blade.php` lewat terminal bersifat MUTLAK — tidak ada pengecualian
+    "karena cuma satu pola sederhana". Untuk penambahan nilai pada satu baris,
+    pakai tool editor (`find_and_replace` satu baris unik) atau masukkan logika
+    ke partial baru yang seluruhnya ditulis dengan tool editor. Selalu jalankan
+    `php artisan view:cache` setelah menyentuh blade untuk memastikan tidak ada
+    sisa karakter rusak.**
+
+
 
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
 

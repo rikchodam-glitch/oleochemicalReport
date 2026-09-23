@@ -406,6 +406,8 @@ class ItAssetController extends Controller
             'nvrOptions'       => ItAsset::where('device_type', 'NVR')->orderBy('tag_name')->get(),
             'funclocGroups'    => $this->funclocOptionsGroups(),
             'connectToGroups'  => $this->connectToOptionsGroups(),
+            'nvrKapasitas'     => $this->nvrChannelOptions()['kapasitas'],
+            'nvrPemakaian'     => $this->nvrChannelOptions()['pemakaian'],
         ]);
     }
 
@@ -446,6 +448,8 @@ class ItAssetController extends Controller
             'nvrOptions'       => ItAsset::where('device_type', 'NVR')->orderBy('tag_name')->get(),
             'funclocGroups'    => $this->funclocOptionsGroups(),
             'connectToGroups'  => $this->connectToOptionsGroups(),
+            'nvrKapasitas'     => $this->nvrChannelOptions($itAsset)['kapasitas'],
+            'nvrPemakaian'     => $this->nvrChannelOptions($itAsset)['pemakaian'],
         ]);
     }
 
@@ -490,6 +494,43 @@ class ItAssetController extends Controller
     }
 
     /**
+     * Gabungkan field spesifikasi terstruktur dari form (nama input
+     * spec_fields[<kunci>]) ke dalam spec perangkat. Field ini adalah pengganti
+     * textarea JSON, sehingga user tidak perlu menyunting JSON sama sekali.
+     * Kunci yang dikosongkan user dihapus dari spec, dan kunci lain yang belum
+     * punya field sendiri tetap dipertahankan dari JSON yang tersembunyi.
+     *
+     * @param  Request              $request
+     * @param  array<string, mixed>|null  $base  Spec hasil parse JSON
+     * @return array<string, mixed>|null
+     */
+    private function mergeSpecFields(Request $request, ?array $base): ?array
+    {
+        $spec   = $base ?? [];
+        $fields = (array) $request->input('spec_fields', []);
+
+        foreach ($fields as $kunci => $nilai) {
+            $kunci = trim((string) $kunci);
+
+            if ($kunci === '' || in_array($kunci, ['cpu', 'monitor'], true)) {
+                continue;
+            }
+
+            $nilai = trim((string) $nilai);
+
+            if ($nilai === '') {
+                unset($spec[$kunci]);
+
+                continue;
+            }
+
+            $spec[$kunci] = $nilai;
+        }
+
+        return $spec === [] ? null : $spec;
+    }
+
+    /**
      * Susun daftar Functional Location untuk dropdown form perangkat, dikelompok
      * per PT (segmen pertama kode funcloc). Hanya node di bawah level PT yang
      * ditampilkan, karena node PT sendiri tidak dipakai sebagai lokasi alat.
@@ -505,15 +546,59 @@ class ItAssetController extends Controller
                 continue;
             }
 
-            $pt = explode('-', $funcloc->code)[0] ?? 'LAINNYA';
+            $pt       = explode('-', $funcloc->code)[0] ?? 'LAINNYA';
+            $segmen   = explode('-', $funcloc->code);
 
             $groups[$pt][] = [
-                'id'    => (int) $funcloc->id,
-                'label' => $funcloc->code . ' - ' . $funcloc->name,
+                'id'         => (int) $funcloc->id,
+                'label'      => $funcloc->code . ' - ' . $funcloc->name,
+                'plant'      => $pt,
+                'department' => $segmen[1] ?? '',
+                'code'       => $funcloc->code,
+                'name'       => (string) $funcloc->name,
             ];
         }
 
         return $groups;
+    }
+
+    /**
+     * Data channel NVR untuk pemilih slot Channel pada form CCTV: kapasitas
+     * tiap NVR (dari spec.channel perangkat NVR) dan slot yang sudah terpakai
+     * oleh kamera lain (slot milik kamera yang sedang diedit tidak dihitung
+     * terpakai agar tetap bisa dipilih).
+     *
+     * @param  ItAsset|null  $current  Perangkat yang sedang diedit, null saat tambah baru
+     * @return array{kapasitas: array<string, int>, pemakaian: array<string, array<string, string>>}
+     */
+    private function nvrChannelOptions(?ItAsset $current = null): array
+    {
+        $kapasitas = [];
+
+        foreach (ItAsset::where('device_type', 'NVR')->get() as $nvr) {
+            $angka = (int) preg_replace('/\D/', '', (string) ($nvr->spec['channel'] ?? ''));
+
+            if (empty($nvr->tag_name)) {
+                continue;
+            }
+
+            $kapasitas[$nvr->tag_name] = $angka > 0 ? $angka : 32;
+        }
+
+        $pemakaian = [];
+
+        foreach (ItAsset::where('device_type', 'CCTV')->get() as $cctv) {
+            $tagNvr  = trim((string) ($cctv->spec['show'] ?? ''));
+            $channel = trim((string) ($cctv->spec['channel'] ?? ''));
+
+            if ($tagNvr === '' || $channel === '' || ($current !== null && $current->id === $cctv->id)) {
+                continue;
+            }
+
+            $pemakaian[$tagNvr][$channel] = (string) $cctv->tag_name;
+        }
+
+        return ['kapasitas' => $kapasitas, 'pemakaian' => $pemakaian];
     }
 
     /**
@@ -709,6 +794,8 @@ class ItAssetController extends Controller
             'spec_cctv_show'        => ['nullable', 'string', 'max:255'],
             'spec_cctv_channel'     => ['nullable', 'string', 'max:50'],
             'spec_cctv_connect_to'  => ['nullable', 'string', 'max:255'],
+            'spec_fields'           => ['nullable', 'array'],
+            'spec_fields.*'         => ['nullable', 'string', 'max:255'],
         ], [
             'snapshot_url.regex' => 'URL snapshot harus diawali rtsp://, http://, atau https://.',
             'ip_address.ip'      => 'Alamat IP tidak valid.',
@@ -716,6 +803,22 @@ class ItAssetController extends Controller
 
         // Kolom spec diisi sebagai JSON opsional di form; diparse ulang.
         $validated['spec'] = $this->parseSpecJson($validated['spec'] ?? null);
+
+        // Field spesifikasi terstruktur (pengganti textarea JSON) menimpa nilai
+        // JSON yang tersembunyi, sehingga user tidak perlu menyunting JSON.
+        $validated['spec'] = $this->mergeSpecFields($request, $validated['spec'] ?? null);
+
+        // Plant dan Department mengikuti Functional Location yang dipilih agar
+        // konsisten dengan aturan pemetaan lokasi dan baris cermin di assets.
+        if (!empty($validated['funcloc_id'])) {
+            $funcloc = FunctionalLocation::find($validated['funcloc_id']);
+
+            if ($funcloc !== null) {
+                $segmen                  = explode('-', (string) $funcloc->code);
+                $validated['plant']      = $segmen[0] ?? ($validated['plant'] ?? null);
+                $validated['department'] = $segmen[1] ?? ($validated['department'] ?? null);
+            }
+        }
 
         // Untuk tipe PC, spec dibangun dari field terstruktur (monitor, CPU,
         // RAM, penyimpanan) yang diisi lewat form, bukan lewat JSON mentah.

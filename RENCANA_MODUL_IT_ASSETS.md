@@ -435,9 +435,31 @@ php artisan it:sync-assets             # petakan + sinkronkan ke tabel assets
 6. Catatan: dropdown Connect To dirender lewat partial `_location-select`
    (yang sudah di-include di form) agar tidak perlu menyunting
    `form.blade.php`; letaknya di blok identitas/lokasi dan hanya tampil untuk
-   tipe CCTV/NVR. Bila ingin dipindah ke dalam kotak spesifikasi CCTV, cukup
-   tambahkan satu baris `@include('it-assets.partials._connect-to-select')` di
-   dalam `#cctvSpecSection` dan hapus blok `connectToWrapper`.
+   tipe CCTV/NVR/Switch/AP/Access Door. Bila ingin dipindah ke dalam kotak
+   spesifikasi CCTV, cukup tambahkan satu baris
+   `@include('it-assets.partials._connect-to-select')` di dalam
+   `#cctvSpecSection` dan hapus blok `connectToWrapper`.
+7. Plant dan Department mengikuti Functional Location yang dipilih: JS mengisi
+   ketiganya saat dropdown funcloc diubah, dan controller menormalkan
+   `plant` (kode PT) + `department` (segmen kedua funcloc, mis. HRGA/MTCE)
+   setiap kali disimpan. Nilai `location` bebas tetap dipertahankan bila user
+   tidak mengubah funcloc.
+8. Field "Spesifikasi (JSON opsional)" tidak perlu dipakai lagi: seluruh kunci
+   spec berbentuk nilai tunggal (header, pic, playback, group, dst) tampil
+   sebagai input terpisah dengan nama `spec_fields[<kunci>]` melalui partial
+   `_spec-fields.blade.php`, dan textarea JSON disembunyikan (tetap ikut
+   terkirim agar data yang belum punya field sendiri tidak hilang).
+   Kunci `cpu`/`monitor` tetap ditangani bagian Spesifikasi PC terstruktur.
+9. Channel untuk CCTV: partial `_cctv-channel-slots.blade.php` menampilkan
+   pemilih slot D1..Dn sesuai kapasitas NVR yang dipilih (dari `spec.channel`
+   perangkat NVR, default 32), menandai slot yang sudah dipakai kamera lain
+   beserta nama kameranya, dan slot milik kamera yang sedang diedit tetap bisa
+   dipilih. Input Channel asli dimatikan oleh JS saat pemilih slot aktif.
+10. Catatan data: kolom `header` pada CCTV TIDAK sama dengan Tag Name
+    (mis. tag `CCTV-EPE-1` vs header `EPE1-D1-N1`), sehingga header tetap
+    ditampilkan sebagai field tersendiri dan tag_name tidak diubah otomatis
+    (menunggu konfirmasi user).
+
 
 ### Catatan sisa pekerjaan
 
