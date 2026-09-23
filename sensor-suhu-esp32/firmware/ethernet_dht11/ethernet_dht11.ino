@@ -47,8 +47,16 @@
 #include <Ethernet.h>
 #include <DHT.h>
 
-#define VERSI_FIRMWARE "1.0.0"
+#define VERSI_FIRMWARE "1.0.1"
 #define NAMA_PERANGKAT "sensor-suhu-01"
+
+// Mode kirim mandiri (PUSH) ke server.py pada port 5000.
+//   0 = nonaktif (bawaan saat ini). Data sepenuhnya ditarik oleh aplikasi
+//       (Laravel) lewat port 80 perangkat. Ini yang dipakai sekarang supaya
+//       loop perangkat tidak tertahan menunggu koneksi ke port yang diblokir
+//       firewall, sehingga permintaan penarikan selalu cepat dilayani.
+//   1 = aktifkan kembali bila ingin memakai dashboard Flask (server.py).
+#define AKTIFKAN_PUSH 0
 
 // ---------------------------------------------------------------------------
 // KONFIGURASI JARINGAN
@@ -82,7 +90,7 @@ static const uint32_t INTERVAL_KIRIM_MS = 10000;     // coba kirim tiap 10 detik
 static const uint32_t INTERVAL_CEK_LINK_MS = 30000;  // cek link/status tiap 30 detik
 static const uint32_t INTERVAL_HEARTBEAT_MS = 300000; // heartbeat bila sensor gagal, 5 menit
 static const uint32_t MAKS_KIRIM_PER_SIKLUS = 3;     // backfill maksimum 3 data per siklus
-static const uint16_t UKURAN_BUFFER = 60;            // simpan 60 pembacaan terakhir
+static const uint16_t UKURAN_BUFFER = 360;           // simpan 360 pembacaan terakhir (1 jam pada pengambilan 10 detik)
 
 // Satu pembacaan sensor beserta metadata pengiriman.
 struct Pembacaan {
@@ -194,7 +202,11 @@ static void cetakHeader() {
   Serial.print(F(" Server    : "));
   Serial.print(IP_SERVER);
   Serial.print(F(":"));
-  Serial.println(PORT_SERVER);
+  Serial.print(PORT_SERVER);
+  Serial.println(AKTIFKAN_PUSH ? F(" (PUSH aktif)") : F(" (tidak dipakai, PUSH nonaktif)"));
+  Serial.print(F(" Buffer    : "));
+  Serial.print(UKURAN_BUFFER);
+  Serial.println(F(" pembacaan terakhir disimpan di perangkat"));
   Serial.println(F(" Wiring    : W5500 SCK=18 MISO=19 MOSI=23 CS=5 VCC=3V3, DHT11 OUT=4"));
   Serial.println(F("===================================================="));
 }
@@ -412,8 +424,14 @@ static String jsonStatusPerangkat() {
   hasil += ",\"id_terakhir\":" + String(idTerakhir);
   hasil += ",\"id_tertua_di_buffer\":" + String(idTertuaDiBuffer());
   hasil += ",\"jumlah_gagal_baca\":" + String(jumlahGagalBaca);
+  // Statistik pengiriman hanya dilaporkan saat PUSH aktif. Saat PUSH
+  // nonaktif, data sepenuhnya ditarik server lewat /api/buffer.
+  if (AKTIFKAN_PUSH) {
+
   hasil += ",\"jumlah_kirim_sukses\":" + String(jumlahKirimSukses);
   hasil += ",\"jumlah_kirim_gagal\":" + String(jumlahKirimGagal);
+  }
+
   hasil += ",\"kapasitas_buffer\":" + String(UKURAN_BUFFER);
   hasil += "}";
   return hasil;
@@ -744,7 +762,7 @@ void loop() {
     bacaSensor();
   }
 
-  if ((sekarang - waktuTerakhirKirim) >= INTERVAL_KIRIM_MS) {
+  if (AKTIFKAN_PUSH && (sekarang - waktuTerakhirKirim) >= INTERVAL_KIRIM_MS) {
     waktuTerakhirKirim = sekarang;
     kirimDataBelumTerkirim();
   }

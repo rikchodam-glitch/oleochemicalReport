@@ -117,7 +117,7 @@ Seluruh pengaturan ada di `config/panel.php` dan bisa ditimpa lewat `.env`:
 | `panel.tampilan.interval_polling_detik` | 5 | Interval polling halaman |
 | `panel.tampilan.jumlah_titik_grafik` | 60 | Jumlah titik pada grafik |
 | `panel.tampilan.jumlah_baris_riwayat` | 20 | Jumlah baris tabel riwayat |
-| `panel.maks_pembacaan_per_tarik` | 120 | Batas pembacaan yang disimpan per penarikan |
+| `panel.maks_pembacaan_per_tarik` | 400 | Batas pembacaan yang diambil per penarikan (dibuat lebih besar dari buffer perangkat) |
 
 Catatan: jeda `jeda_gagal_detik` penting saat perangkat belum terpasang. Tanpa
 jeda itu, setiap polling halaman akan menunggu batas waktu HTTP (3 detik) untuk
@@ -181,6 +181,8 @@ jawaban firmware ESP32.
 | Jadwal otomatis | `panel:tarik` muncul di `schedule:list` sebagai `* * * * *` |
 | Perilaku saat perangkat mati | Aman: suhu kosong, kondisi `tanpa-data`, status offline, catatan waktu kegagalan |
 | Pengaman perangkat offline | Panggilan pertama 3,15 detik, panggilan berikutnya 0,01 detik (dilewati) |
+| Tumpukan data (server sempat mati) | Batas 2 per penarikan: 6 pembacaan tersimpan berurutan id 1-6, tidak ada nomor terlewat |
+| Kompilasi firmware 1.0.1 | 292.153 byte (22%) flash, 29.856 byte (9%) RAM, tanpa error |
 
 Data awal yang sudah disiapkan: satu ruangan **Ruang Panel EPE 1**
 (`192.168.41.240`, port 80, ambang 18 sampai 30 C, aktif). Ruangan ini akan
@@ -195,9 +197,12 @@ langsung terisi data begitu perangkat ESP32 terpasang dan firmware di-upload.
 - **Menambah ruangan baru**: cukup tambah baris di halaman panel dengan IP
   perangkat yang berbeda. Firmware saat ini memakai IP statis, jadi tiap
   perangkat perlu disetel `IPAddress ip(...)` yang berbeda sebelum di-upload.
-- **Jalur kirim data dari perangkat (push)**: belum dipakai. Bila kelak
-  diperlukan, tambahkan rute pengiriman data yang dikecualikan dari CSRF dan
-  dilindungi token; kolom `sumber` pada `panel_pembacaan` sudah menyiapkannya.
+- **Jalur kirim data dari perangkat (push)**: tidak dipakai. Firmware versi
+  1.0.1 mematikan pengiriman mandiri lewat `#define AKTIFKAN_PUSH 0` sekaligus
+  memperbesar buffer perangkat dari 60 menjadi 360 pembacaan (1 jam) supaya data
+  tidak hilang saat aplikasi atau scheduler sempat mati. Bila kelak ingin
+  menambah jalur push, tambahkan rute penerima data yang dikecualikan dari CSRF
+  dan dilindungi token; kolom `sumber` pada `panel_pembacaan` sudah menyiapkan.
 - **Retensi data**: pembacaan tersimpan terus bertambah. Bila nanti diperlukan,
   bisa ditambahkan perintah pembersih berkala (misalnya menyimpan 12 bulan
   terakhir) dengan pola yang sama seperti `storage:clean`.

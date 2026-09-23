@@ -151,6 +151,16 @@ tujuan, dan port server.
 Urutan ini penting: server dijalankan lebih dulu supaya langkah pemeriksaan
 "server.py berjalan" ikut berhasil.
 
+Catatan sejak firmware 1.0.1: pengiriman mandiri (PUSH) ke server.py dimatikan
+secara bawaan lewat `#define AKTIFKAN_PUSH 0`, dan buffer perangkat diperbesar
+dari 60 menjadi 360 pembacaan (1 jam pada pengambilan 10 detik). Alasannya:
+yang dipakai sehari-hari adalah aplikasi Laravel pada repo induk yang menarik
+data dari perangkat lewat port 80 (lihat bagian 13). Dengan PUSH mati, loop
+perangkat tidak lagi tertahan menunggu koneksi ke port 5000 yang diblokir
+firewall, sehingga permintaan penarikan selalu cepat dilayani. Langkah 6 sampai
+8 di atas tetap berlaku bila ingin memakai dashboard Flask: ubah
+`AKTIFKAN_PUSH` menjadi 1 lalu upload ulang firmware.
+
 ## 7. Endpoint yang tersedia
 
 Pada server (port 5000):
@@ -202,7 +212,7 @@ disetujui lewat UAC), atau minta bagian TI menambahkan aturan masuk TCP 5000.
 | Tidak bisa ping 192.168.41.240 | IP bentrok, beda subnet, atau perangkat belum boot | Cek Serial Monitor, pastikan IP perangkat .240 dan netmask 255.255.255.0 |
 | Serial Monitor: "Gagal baca DHT11" terus | Wiring DHT11 salah, modul rusak, atau jarak kabel terlalu panjang | Cek OUT=GPIO4, coba sensor lain, pendekkan kabel |
 | Dashboard kosong padahal ESP32 hidup | Port 5000 diblokir firewall sehingga PUSH gagal, dan IP di `config.json` belum sesuai | Jalankan `tools\test_receiver.py` untuk memastikan jalur PUSH, atau andalkan PULL dengan IP yang benar |
-| Baris "PUSH" tidak muncul di log server | PUSH memang terblokir firewall | Pakai jalur PULL, atau buka port 5000 |
+| Baris "PUSH" tidak muncul di log server | Sejak firmware 1.0.1 pengiriman mandiri memang dimatikan (`AKTIFKAN_PUSH 0`) | Tidak perlu tindakan. Aplikasi Laravel menarik data lewat port 80. Ubah `AKTIFKAN_PUSH` ke 1 bila ingin memakai dashboard Flask |
 | Server tidak bisa dijalankan, port terpakai | Ada proses lain di port 5000 | Cek `netstat -ano | findstr :5000`, ubah `server.port` bila perlu |
 | Simulator gagal start | Port 8099/8080 sudah dipakai | Pakai `--port` lain, misalnya `--port 8181` |
 | Data tidak bertambah setelah ESP32 mati dan hidup lagi | Belum menunggu siklus pull berikutnya | Tunggu maksimal `interval_pull_detik`, atau refresh dashboard |
@@ -267,3 +277,47 @@ Bagian ini penting supaya tidak salah langkah saat mengubah kode nanti.
 - Grafik terpisah per perangkat bila jumlah perangkat sudah lebih dari satu.
 
 Ekspor CSV sudah tersedia lewat tautan "Unduh CSV" di dashboard.
+
+## 13. Integrasi dengan aplikasi Laravel (repo induk)
+
+Perangkat ini dipakai oleh modul **Monitoring Ruang Panel** pada aplikasi
+Laravel di repo induk. Halaman tersebut menampilkan suhu dan kelembapan tiap
+ruangan panel, lengkap dengan grafik, riwayat, ambang peringatan, dan tombol uji
+koneksi.
+
+Bagaimana datanya mengalir:
+
+- Aplikasi Laravel menjalankan `php artisan panel:tarik` tiap menit, dan juga
+  menarik data saat halaman panel sedang dibuka.
+- Penarikan memakai port 80 perangkat: `/api/status` lalu
+  `/api/buffer?since=ID`. Karena server yang menghubungi perangkat, tidak ada
+  port masuk yang perlu dibuka di firewall komputer ini.
+- Waktu pengukuran dihitung dari selisih uptime perangkat, jadi jam pada
+  perangkat tidak perlu disetel.
+- Data tidak akan tersimpan dobel karena ada kunci unik (ruangan, sesi boot,
+  nomor pembacaan).
+
+Yang perlu disamakan antara perangkat dan aplikasi:
+
+| Item | Nilai | Di mana mengubahnya |
+|---|---|---|
+| Alamat IP perangkat | 192.168.41.240 | `IP_PERANGKAT` di firmware, dan alamat IP ruangan di halaman panel |
+| Port HTTP perangkat | 80 | `PORT_HTTP_LOKAL` di firmware, dan port ruangan di halaman panel |
+| Nama perangkat | sensor-suhu-01 | `NAMA_PERANGKAT` di firmware (dipakai bila kelak ada jalur push) |
+
+Tahap pemeriksaan yang disarankan:
+
+1. Upload firmware, buka Serial Monitor, pastikan muncul "Modul W5500
+   terdeteksi", "Kabel LAN terhubung (link ON)", dan "IP perangkat:
+   192.168.41.240".
+2. Buka `http://192.168.41.240/` dari browser di jaringan yang sama: harus tampil
+   suhu dan kelembapan. Ini bukti perangkat sehat tanpa perlu aplikasi.
+3. Buka halaman Monitoring Ruang Panel, klik Uji Koneksi pada kartu ruangan:
+   hasilnya menampilkan ping, status modul, dan pembacaan terakhir.
+4. Tunggu maksimal 1 menit (siklus penarikan otomatis) atau klik Tarik Sekarang,
+   lalu pastikan angka suhu muncul di kartu dan pada grafik.
+
+Nomor versi firmware pada Serial Monitor bisa dicocokkan dengan yang tampil di
+kotak Uji Koneksi halaman panel, sehingga diketahui pasti versi firmware yang
+sedang berjalan di perangkat.
+
