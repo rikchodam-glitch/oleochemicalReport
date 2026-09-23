@@ -134,6 +134,7 @@ class ItAssetController extends Controller
             // per PT (plant) lalu per "Connect To" (lokasi switch). Paginasi
             // tidak dipakai di mode ini karena tujuannya melihat keseluruhan.
             $cctvGroups = (clone $query)
+                ->with('functionalLocation')
                 ->ofType('CCTV')
                 ->orderBy('plant')
                 ->orderBy('tag_name')
@@ -145,7 +146,8 @@ class ItAssetController extends Controller
 
             $itAssets = collect();
         } else {
-            $itAssets = $query->orderBy('device_type')
+            $itAssets = $query->with('functionalLocation')
+                ->orderBy('device_type')
                 ->orderBy('tag_name')
                 ->paginate(20)
                 ->withQueryString();

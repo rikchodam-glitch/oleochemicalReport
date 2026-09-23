@@ -285,6 +285,7 @@
                     @if($itAsset->location)
                         <p class="text-xs text-slate-400 mt-1.5 truncate">{{ $itAsset->location }}</p>
                     @endif
+                    <p class="text-[11px] mt-1 truncate"><span class="text-slate-400">Loc:</span> <a href="{{ route('it-assets.edit', $itAsset) }}" class="font-mono {{ $itAsset->functionalLocation ? 'text-blue-600 hover:text-blue-700' : 'text-amber-600 hover:text-amber-700' }}" title="Functional Location perangkat - klik untuk mengubah">{{ $itAsset->functionalLocation?->code ?? 'belum dipetakan' }}</a></p>
                     @if(($itAsset->spec['connect_to'] ?? null))
                         <p class="text-[11px] text-slate-400 mt-0.5 truncate">Switch: {{ $itAsset->spec['connect_to'] }}</p>
                     @endif
@@ -384,6 +385,7 @@
 
                             <td class="px-5 py-3.5">
                                 <p class="text-slate-600 text-xs">{{ $itAsset->location ?? '-' }}</p>
+                                <p class="text-[11px] mt-0.5"><span class="text-slate-400">Loc:</span> <a href="{{ route('it-assets.edit', $itAsset) }}" class="font-mono {{ $itAsset->functionalLocation ? 'text-blue-600 hover:text-blue-700' : 'text-amber-600 hover:text-amber-700' }}" title="Functional Location perangkat - klik untuk mengubah">{{ $itAsset->functionalLocation?->code ?? 'belum dipetakan' }}</a></p>
                                 @if($itAsset->plant || $itAsset->department)
                                     <p class="text-[11px] text-slate-400 mt-0.5">
                                         {{ collect([$itAsset->plant, $itAsset->department])->filter()->implode(' / ') }}
@@ -555,4 +557,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 @endpush
+
+@include('it-assets.partials._collapse-state')
 
