@@ -52,7 +52,7 @@
 
 {{-- Connect To: hanya relevan untuk CCTV/NVR, jadi dibungkus container yang
      visibilitasnya mengikuti pilihan Tipe Perangkat pada form. --}}
-<div id="connectToWrapper" class="{{ in_array($itAsset->device_type, ['CCTV', 'NVR'], true) ? '' : 'hidden' }}">
+<div id="connectToWrapper" class="{{ in_array($itAsset->device_type, ['CCTV', 'NVR', 'SWITCH_MANAGED', 'SWITCH_POE_UNMANAGED', 'ACCESS_POINT'], true) ? '' : 'hidden' }}">
     @include('it-assets.partials._connect-to-select')
 </div>
 
@@ -70,7 +70,7 @@
             return;
         }
 
-        const relevan = ['CCTV', 'NVR'].indexOf(tipe.value) !== -1;
+        const relevan = ['CCTV', 'NVR', 'SWITCH_MANAGED', 'SWITCH_POE_UNMANAGED', 'ACCESS_POINT'].indexOf(tipe.value) !== -1;
         wrapper.classList.toggle('hidden', !relevan);
     }
 

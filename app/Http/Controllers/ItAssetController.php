@@ -729,6 +729,15 @@ class ItAssetController extends Controller
             $validated['spec'] = $this->buildCctvSpec($request, $validated['spec'] ?? null);
         }
 
+        // Perangkat jaringan (Switch/AP) juga memakai field Connect To untuk
+        // mencatat uplink-nya; nilainya disimpan ke spec perangkat tersebut.
+        $connectTo = trim((string) $request->input('spec_cctv_connect_to'));
+        if ($connectTo !== '' && in_array($validated['device_type'] ?? null, ['SWITCH_MANAGED', 'SWITCH_POE_UNMANAGED', 'ACCESS_POINT'], true)) {
+            $spec                = $validated['spec'] ?? [];
+            $spec['connect_to']  = $connectTo;
+            $validated['spec']   = $spec;
+        }
+
         // Password snapshot hanya diisi saat diinput ulang (mengikuti cast
         // 'encrypted' dan tidak menimpa yang lama saat diedit).
         if (empty($validated['snapshot_password'])) {
