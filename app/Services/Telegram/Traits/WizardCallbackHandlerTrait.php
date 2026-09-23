@@ -798,6 +798,7 @@ trait WizardCallbackHandlerTrait
         // Tombol "Kembali ke Lokasi": tampilkan ulang daftar area.
         if ($callbackData === 'type_area_back') {
             $areaCounts = Asset::where('equipment_type', $type)
+                ->when($this->isItPool($state), fn ($query) => $query->where('data_source', 'it_sync'))
                 ->whereNotNull('tech_ident_no')
                 ->selectRaw('area_id, count(*) as total')
                 ->groupBy('area_id')
@@ -810,7 +811,7 @@ trait WizardCallbackHandlerTrait
         $areaId = str_replace('type_area:', '', $callbackData);
         $areaId = $areaId === 'null' ? null : (int) $areaId;
 
-        return $this->buildTypeAreaAssetsKeyboard($type, $areaId);
+        return $this->buildTypeAreaAssetsKeyboard($type, $areaId, $this->isItPool($state));
     }
 
     /**

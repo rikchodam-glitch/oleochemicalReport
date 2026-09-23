@@ -413,12 +413,21 @@ php artisan it:sync-assets             # petakan + sinkronkan ke tabel assets
    `ReportController::update()` (klasifikasi IT yang sudah ada tidak dihapus bila
    form menyimpan nilai kosong). Menambah opsi di file itu butuh overwrite penuh
    sesuai aturan edit file blade.
-2. Pada wizard, baru pencarian **tagname** yang difilter ke data IT. Pencarian
-   lewat hierarki Functional Location dan lewat tipe alat masih satu pool dengan
-   asset industri.
-3. `resources/views/assets/show.blade.php` masih menampilkan `data_source`
-   selain `import_excel` sebagai "Manual" (termasuk `it_sync`).
-4. 23 perangkat IT tanpa funcloc menunggu kelengkapan data plant/departemen.
+2. Filter pool IT sekarang berlaku di SEMUA jalur pencarian: tagname
+   (`TechIdentSearchService`), hierarki Functional Location
+   (`assetsUnderNode`/`countAssetsUnderNode`), dan pencarian jenis alat
+   (`startTypeSearch`/`buildTypeAreaAssetsKeyboard`/`type_area_back`).
+   EI dan Mekanik tetap melihat seluruh asset (termasuk perangkat IT).
+3. `resources/views/assets/show.blade.php` sudah menampilkan label
+   "Sinkron IT Assets" untuk `data_source = 'it_sync'`.
+4. Import PRINTER dan MODUL JARINGAN kini menerima baris tanpa IP
+   (`requireIp: false`) — perangkat tetap dicatat selama tagname/lokasinya ada.
+5. 23 perangkat IT tanpa funcloc menunggu kelengkapan data plant/departemen
+   (daftar tagname: 4 laptop `WS-EPE-ACC-ALVIN`, `WS-EPE-PRO-YATNO`,
+   `WS-EPE-QC-DIAN`, `WS-NPA-PRO-CCR`; 7 `MCFA *`; 3 `PABX`;
+   `SERVER-FIRE-ALARM`; `WS-EPE-MTC-IT`; `WS-KAS-MTC-STEAM`;
+   6 `WS-EPE--Spare`/`WS-NPA--Spare`).
+
 
 
 

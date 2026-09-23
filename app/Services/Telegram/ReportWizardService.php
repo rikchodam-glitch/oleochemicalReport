@@ -970,6 +970,7 @@ class ReportWizardService
     protected function startTypeSearch(string $chatId, array $state, string $type): ?array
     {
         $areaCounts = Asset::where('equipment_type', $type)
+            ->when($this->isItPool($state), fn ($query) => $query->where('data_source', 'it_sync'))
             ->whereNotNull('tech_ident_no')
             ->selectRaw('area_id, count(*) as total')
             ->groupBy('area_id')
@@ -985,7 +986,7 @@ class ReportWizardService
         $this->saveState($chatId, $state);
 
         if ($areaCounts->count() === 1) {
-            return $this->buildTypeAreaAssetsKeyboard($type, $areaCounts->first()->area_id);
+            return $this->buildTypeAreaAssetsKeyboard($type, $areaCounts->first()->area_id, $this->isItPool($state));
         }
 
         return $this->buildTypeAreaKeyboard($areaCounts, $state, $type);
@@ -1047,11 +1048,13 @@ class ReportWizardService
      *
      * @param  string    $type   Nilai equipment_type
      * @param  int|null  $areaId ID Area, null berarti tanpa lokasi
+     * @param  bool      $itOnly true = hanya perangkat IT (data_source 'it_sync')
      * @return array Respons dengan keyboard daftar kode alat
      */
-    protected function buildTypeAreaAssetsKeyboard(string $type, ?int $areaId): array
+    protected function buildTypeAreaAssetsKeyboard(string $type, ?int $areaId, bool $itOnly = false): array
     {
         $assets = Asset::where('equipment_type', $type)
+            ->when($itOnly, fn ($query) => $query->where('data_source', 'it_sync'))
             ->whereNotNull('tech_ident_no')
             ->where('area_id', $areaId)
             ->orderBy('tech_ident_no')

@@ -323,7 +323,7 @@ trait WizardFuncLocPickerTrait
         // Equipment langsung di bawah node yang sedang dilihat (hanya mode equipment).
         $equipmentCount = 0;
         if ($mode === 'equipment' && $parentId) {
-            $equipmentCount = $this->countAssetsUnderNode($parentId);
+            $equipmentCount = $this->countAssetsUnderNode($parentId, $this->isItPool($state));
         }
 
         if (empty($options) && $equipmentCount === 0) {
@@ -506,12 +506,14 @@ trait WizardFuncLocPickerTrait
      * Hanya asset yang punya equipment_type (dan tech_ident_no) yang dihitung,
      * karena asset tanpa type tidak ditampilkan di hierarki pemilihan equipment.
      *
-     * @param  int $funclocId ID FunctionalLocation
+     * @param  int   $funclocId ID FunctionalLocation
+     * @param  bool  $itOnly    true = hanya perangkat IT (data_source 'it_sync')
      * @return int
      */
-    protected function countAssetsUnderNode(int $funclocId): int
+    protected function countAssetsUnderNode(int $funclocId, bool $itOnly = false): int
     {
         return Asset::where('funcloc_id', $funclocId)
+            ->when($itOnly, fn ($query) => $query->where('data_source', 'it_sync'))
             ->whereNotNull('tech_ident_no')
             ->whereNotNull('equipment_type')
             ->count();
@@ -521,12 +523,14 @@ trait WizardFuncLocPickerTrait
      * Ambil koleksi asset di bawah node FuncLoc, diurutkan berdasarkan TechIdentNo.
      * Asset tanpa equipment_type dikecualikan dari hasil.
      *
-     * @param  int        $funclocId ID FunctionalLocation
+     * @param  int   $funclocId ID FunctionalLocation
+     * @param  bool  $itOnly    true = hanya perangkat IT (data_source 'it_sync')
      * @return Collection
      */
-    protected function assetsUnderNode(int $funclocId): Collection
+    protected function assetsUnderNode(int $funclocId, bool $itOnly = false): Collection
     {
         return Asset::where('funcloc_id', $funclocId)
+            ->when($itOnly, fn ($query) => $query->where('data_source', 'it_sync'))
             ->whereNotNull('tech_ident_no')
             ->whereNotNull('equipment_type')
             ->orderBy('tech_ident_no')
@@ -556,7 +560,7 @@ trait WizardFuncLocPickerTrait
             return $this->errorResponse('Lokasi tidak ditemukan atau sudah tidak aktif.');
         }
 
-        $assets = $this->assetsUnderNode($funclocId);
+        $assets = $this->assetsUnderNode($funclocId, $this->isItPool($state));
 
         if ($assets->isEmpty()) {
             return [
@@ -599,7 +603,7 @@ trait WizardFuncLocPickerTrait
             return $this->errorResponse('Lokasi tidak ditemukan atau sudah tidak aktif.');
         }
 
-        $assets = $this->assetsUnderNode($funclocId)
+        $assets = $this->assetsUnderNode($funclocId, $this->isItPool($state))
             ->filter(fn (Asset $asset) => $this->equipmentTypeOf($asset) === $type)
             ->values();
 

@@ -30,12 +30,12 @@ class ItAssetImportService
         return [
             'PC'          => $this->importSheet($sheetsByName->get('PC'), 'PC', fn (array $mapped) => $this->transformPcRow($mapped), headerRowOffset: 2, requireIp: false),
             'LAPTOP'      => $this->importSheet($sheetsByName->get('LAPTOP'), 'LAPTOP', fn (array $mapped) => $this->transformLaptopRow($mapped)),
-            'PRINTER'     => $this->importSheet($sheetsByName->get('PRINTER'), 'PRINTER', fn (array $mapped) => $this->transformPrinterRow($mapped)),
+            'PRINTER'     => $this->importSheet($sheetsByName->get('PRINTER'), 'PRINTER', fn (array $mapped) => $this->transformPrinterRow($mapped), requireIp: false),
             'CCTV'        => $this->importSheet($sheetsByName->get('CCTV'), 'CCTV', fn (array $mapped) => $this->transformCctvRow($mapped)),
             'NVR'         => $this->importSheet($sheetsByName->get('NVR'), 'NVR', fn (array $mapped) => $this->transformNvrRow($mapped)),
             'ACCESS_DOOR' => $this->importSheet($sheetsByName->get('Access Door & Absensi'), 'ACCESS_DOOR', fn (array $mapped) => $this->transformAccessDoorRow($mapped)),
             'WIFI'        => $this->importSheet($sheetsByName->get('WIFI'), 'WIFI', fn (array $mapped) => $this->transformWifiRow($mapped), requireIp: false, skipFirstDataRows: 1),
-            'NETWORK'     => $this->importSheet($sheetsByName->get('MODUL JARINGAN'), 'NETWORK', fn (array $mapped) => $this->transformNetworkRow($mapped)),
+            'NETWORK'     => $this->importSheet($sheetsByName->get('MODUL JARINGAN'), 'NETWORK', fn (array $mapped) => $this->transformNetworkRow($mapped), requireIp: false),
             'UPS'         => $this->importSheet($sheetsByName->get('UPS'), 'UPS', fn (array $mapped) => $this->transformUpsRow($mapped), requireIp: false),
         ];
     }

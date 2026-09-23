@@ -495,6 +495,20 @@ trait WizardUtilityTrait
         };
     }
 
+    /**
+     * Apakah laporan ini berjenis pekerjaan IT. Dipakai untuk membatasi pool
+     * pencarian equipment ke perangkat IT saja (baris cermin di tabel assets
+     * dengan data_source 'it_sync'), sehingga teknisi IT TIDAK melihat asset
+     * industri dan sebaliknya EI/Mekanik tetap bisa melihat semuanya.
+     *
+     * @param  array  $state State wizard saat ini
+     * @return bool
+     */
+    protected function isItPool(array $state): bool
+    {
+        return ($state['jenis_pekerjaan'] ?? null) === 'IT';
+    }
+
     // =========================================================
     // STATE AWAL & RESPONS ERROR
     // =========================================================
