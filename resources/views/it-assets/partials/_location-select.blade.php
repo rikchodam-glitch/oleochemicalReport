@@ -143,3 +143,92 @@
 })();
 </script>
 
+<style>
+    /* Textarea "Spesifikasi (JSON opsional)" tidak dipakai lagi: nilainya
+       sudah ditampilkan sebagai field terstruktur (lihat _spec-fields). */
+    #specJsonSection {
+        display: none !important;
+    }
+</style>
+
+<script>
+(function () {
+    /**
+     * Rapikan form: pindahkan blok "Channel & Jaringan CCTV" dan "Connect To"
+     * ke dalam kartu Spesifikasi CCTV supaya semua field CCTV berada pada satu
+     * tempat, serta pindahkan field Spesifikasi Tambahan ke posisi kartu JSON
+     * yang disembunyikan.
+     *
+     * Pemindahan dilakukan lewat DOM (bukan mengubah form.blade.php) agar
+     * perubahan kecil ini tidak berisiko merusak file blade besar tersebut.
+     */
+    function pindahkanBlok() {
+        const cctvSection = document.getElementById('cctvSpecSection');
+        const kisiCctv    = cctvSection ? cctvSection.querySelector('.grid') : null;
+
+        if (kisiCctv) {
+            const slot = document.getElementById('channelSlotWrapper');
+            const connect = document.getElementById('connectToWrapper');
+
+            if (slot) {
+                kisiCctv.appendChild(slot);
+            }
+
+            if (connect) {
+                kisiCctv.appendChild(connect);
+            }
+        }
+
+        // Kartu pembungkus asal (kini kosong) disembunyikan.
+        const kartuSlot = document.getElementById('channelSlotSection');
+        if (kartuSlot) {
+            kartuSlot.classList.add('hidden');
+        }
+
+        // Field spesifikasi tambahan diletakkan tepat setelah kartu JSON.
+        const kartuJson = document.getElementById('specJsonSection');
+        const specFields = document.getElementById('specFieldsWrapper');
+
+        if (kartuJson && specFields) {
+            kartuJson.insertAdjacentElement('afterend', specFields);
+        }
+    }
+
+    /**
+     * Isi Plant, Department, dan Lokasi dari Functional Location yang sudah
+     * terpilih saat halaman dibuka, khusus untuk field yang masih kosong
+     * supaya catatan lokasi manual tidak tertimpa.
+     */
+    function lengkapiFieldLokasi() {
+        const select = document.querySelector('select[name="funcloc_id"]');
+
+        if (!select || !select.value) {
+            return;
+        }
+
+        const opsi = select.options[select.selectedIndex];
+
+        if (!opsi) {
+            return;
+        }
+
+        const isiBilaKosong = function (nama, nilai) {
+            const input = document.querySelector('[name="' + nama + '"]');
+
+            if (input && nilai && input.value.trim() === '') {
+                input.value = nilai;
+            }
+        };
+
+        isiBilaKosong('plant', opsi.dataset.plant || '');
+        isiBilaKosong('department', opsi.dataset.department || '');
+        isiBilaKosong('location', opsi.dataset.code || '');
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        pindahkanBlok();
+        lengkapiFieldLokasi();
+    });
+})();
+</script>
+

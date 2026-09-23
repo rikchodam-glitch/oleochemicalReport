@@ -97,8 +97,9 @@ class ItSeedNetworkDevicesCommand extends Command
         $sinkron  = $sync->syncAll();
 
         $this->info(sprintf(
-            'Pemetaan funcloc: %d dipetakan, %d sudah sesuai, %d belum bisa dipetakan.',
+            'Pemetaan funcloc: %d dipetakan, %d plant/department diselaraskan, %d sudah sesuai, %d belum bisa dipetakan.',
             $pemetaan['mapped'],
+            $pemetaan['aligned'],
             $pemetaan['already'],
             $pemetaan['unmapped']
         ));

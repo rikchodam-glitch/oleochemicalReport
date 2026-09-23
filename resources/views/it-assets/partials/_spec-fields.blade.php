@@ -40,14 +40,16 @@
     ];
 @endphp
 
-<div id="specFieldsWrapper">
+<div id="specFieldsWrapper" class="bg-white rounded-xl border border-slate-200 overflow-hidden">
     @if ($specDatar !== [])
-        <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-medium text-slate-500">Spesifikasi Tambahan</span>
-            <span class="text-[11px] text-slate-400">Nilai lama dari file import, bisa diubah langsung</span>
+        <div class="px-6 py-4 border-b border-slate-100">
+            <h3 class="text-sm font-semibold text-slate-900">Spesifikasi Tambahan</h3>
+            <p class="text-[11px] text-slate-400 mt-1">
+                Nilai dari file import, bisa diubah langsung di sini tanpa menyentuh JSON.
+            </p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             @foreach ($specDatar as $kunci => $nilai)
                 <div>
                     <label class="block text-xs font-medium text-slate-500 mb-1.5">
@@ -64,9 +66,9 @@
 <script>
 (function () {
     /**
-     * Sembunyikan textarea JSON asli (tetap terkirim, jadi data yang belum
-     * punya field sendiri tidak hilang). Nilainya ditimpa oleh field
-     * terstruktur di controller.
+     * Sembunyikan textarea JSON asli sebagai cadangan kedua (CSS di
+     * _location-select sudah menyembunyikannya). Nilainya tetap terkirim
+     * sehingga data yang belum punya field sendiri tidak hilang.
      */
     function gantiTextareaJson() {
         const section = document.getElementById('specJsonSection');

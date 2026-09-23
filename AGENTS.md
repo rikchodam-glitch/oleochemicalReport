@@ -289,6 +289,20 @@ ulang.
     `php artisan view:cache` setelah menyentuh blade untuk memastikan tidak ada
     sisa karakter rusak.**
 
+14. **`insert_line` pada file blade berisi `<script>` menyisipkan di TENGAH
+    blok script, bukan di akhir file.** Pada
+    `resources/views/it-assets/partials/_cctv-channel-slots.blade.php`
+    (23/09/2026), nomor baris disusun dari perkiraan (file dianggap sekitar 140
+    baris) padahal file sebenarnya 154 baris; akibatnya `<script>` baru masuk di
+    tengah IIFE script pertama sehingga JavaScript-nya rusak. Pemulihan dilakukan
+    dengan `git checkout HEAD -- <file>` (versi bersih terakhir), lalu penyisipan
+    diulang pada baris `jumlah baris + 1` setelah menghitung ulang jumlah baris.
+    **Pelajaran: SEBELUM memakai `insert_line`, hitung jumlah baris file saat itu
+    (`(Get-Content file).Count`) dan pastikan titik sisip = jumlah baris + 1
+    untuk menambah di akhir file. JANGAN mengandalkan perkiraan jumlah baris.
+    Setelah menyisipkan, baca ulang sekitar titik sambungan dan periksa pasangan
+    `<script>`/`</script>` supaya tetap seimbang.**
+
 
 
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->

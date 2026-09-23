@@ -29,8 +29,9 @@ class ItMapFunclocCommand extends Command
         }
 
         $this->info(sprintf(
-            'Pemetaan funcloc selesai: %d dipetakan, %d sudah sesuai, %d belum bisa dipetakan.',
+            'Pemetaan funcloc selesai: %d dipetakan, %d plant/department diselaraskan, %d sudah sesuai, %d belum bisa dipetakan.',
             $hasil['mapped'],
+            $hasil['aligned'],
             $hasil['already'],
             $hasil['unmapped']
         ));

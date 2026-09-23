@@ -462,7 +462,7 @@ class ItAssetController extends Controller
      */
     public function update(Request $request, ItAsset $itAsset): RedirectResponse
     {
-        $validated = $this->validateForm($request);
+        $validated = $this->validateForm($request, $itAsset);
         $this->validateIpPool($validated['ip_address'] ?? null, $itAsset);
         $itAsset->update($validated);
         $this->syncIpAssignment($itAsset);
@@ -591,7 +591,18 @@ class ItAssetController extends Controller
             $tagNvr  = trim((string) ($cctv->spec['show'] ?? ''));
             $channel = trim((string) ($cctv->spec['channel'] ?? ''));
 
-            if ($tagNvr === '' || $channel === '' || ($current !== null && $current->id === $cctv->id)) {
+            if ($tagNvr === '') {
+                continue;
+            }
+
+            // Nama NVR pada data lama bisa berbeda dari tag perangkat NVR yang
+            // terdaftar (mis. "NVR 4" vs "NVR EPE 4"); tetap didaftarkan dengan
+            // kapasitas bawaan agar pemilih slot channel tetap berfungsi.
+            if (!array_key_exists($tagNvr, $kapasitas)) {
+                $kapasitas[$tagNvr] = 32;
+            }
+
+            if ($channel === '' || ($current !== null && $current->id === $cctv->id)) {
                 continue;
             }
 
@@ -763,7 +774,7 @@ class ItAssetController extends Controller
      * @param  Request  $request
      * @return array<string, mixed>
      */
-    private function validateForm(Request $request): array
+    private function validateForm(Request $request, ?ItAsset $current = null): array
     {
         $validated = $request->validate([
             'device_type'        => ['required', 'string', Rule::in(self::DEVICE_TYPES)],
@@ -830,6 +841,7 @@ class ItAssetController extends Controller
         // dengan spec JSON lama (connect_to, pic, dst).
         if (($validated['device_type'] ?? null) === 'CCTV') {
             $validated['spec'] = $this->buildCctvSpec($request, $validated['spec'] ?? null);
+            $this->validateChannelSlot($validated['spec'] ?? null, $current);
         }
 
         // Perangkat jaringan (Switch/AP) juga memakai field Connect To untuk
@@ -848,6 +860,43 @@ class ItAssetController extends Controller
         }
 
         return $validated;
+    }
+
+    /**
+     * Pastikan satu slot channel pada sebuah NVR hanya dipakai satu kamera.
+     * Aturan bisnis: channel pada NVR tidak boleh dipakai dua CCTV sekaligus.
+     *
+     * @param  array<string, mixed>|null  $spec     Spec yang akan disimpan
+     * @param  ItAsset|null               $current  Perangkat yang sedang diedit
+     * @return void
+     *
+     * @throws ValidationException
+     */
+    private function validateChannelSlot(?array $spec, ?ItAsset $current): void
+    {
+        $tagNvr  = trim((string) ($spec['show'] ?? ''));
+        $channel = trim((string) ($spec['channel'] ?? ''));
+
+        if ($tagNvr === '' || $channel === '') {
+            return;
+        }
+
+        $bentrok = ItAsset::where('device_type', 'CCTV')
+            ->when($current !== null, fn ($query) => $query->where('id', '!=', $current->id))
+            ->where('spec->show', $tagNvr)
+            ->where('spec->channel', $channel)
+            ->first();
+
+        if ($bentrok !== null) {
+            throw ValidationException::withMessages([
+                'spec_cctv_channel' => sprintf(
+                    'Channel %s pada %s sudah dipakai kamera %s. Pilih slot channel lain.',
+                    $channel,
+                    $tagNvr,
+                    (string) $bentrok->tag_name
+                ),
+            ]);
+        }
     }
 
     /**

@@ -152,3 +152,48 @@
     });
 })();
 </script>
+
+<script>
+(function () {
+    /**
+     * Perbaikan tampilan untuk kasus data lama:
+     * 1. Nilai NVR yang belum terdaftar (mis. "NVR 4") ditambahkan sebagai opsi
+     *    cadangan pada dropdown Show (NVR) supaya field tidak tampak kosong,
+     *    lalu pilihan slot channel dihitung ulang.
+     * 2. Kolom Channel asli pada kartu Spesifikasi CCTV disembunyikan karena
+     *    sudah digantikan pemilih slot channel.
+     */
+    document.addEventListener('DOMContentLoaded', function () {
+        const nvrWrapper = document.getElementById('channelSlotWrapper');
+        const selectNvr  = document.querySelector('select[name="spec_cctv_show"]');
+
+        if (!nvrWrapper || !selectNvr) {
+            return;
+        }
+
+        const nilai    = nvrWrapper.dataset.nvrSaatIni || '';
+        const sudahAda = Array.prototype.some.call(selectNvr.options, function (option) {
+            return option.value === nilai;
+        });
+
+        if (nilai !== '' && !sudahAda) {
+            const option = document.createElement('option');
+            option.value = nilai;
+            option.textContent = nilai + ' (belum terdaftar di daftar NVR)';
+            option.selected = true;
+            selectNvr.appendChild(option);
+
+            // Bangun ulang daftar slot memakai nama NVR tersebut.
+            selectNvr.dispatchEvent(new Event('change'));
+        }
+
+        document.querySelectorAll('input[name="spec_cctv_channel"]').forEach(function (input) {
+            const kolom = input.closest('div');
+            if (kolom) {
+                kolom.classList.add('hidden');
+            }
+        });
+    });
+})();
+</script>
+

@@ -41,6 +41,7 @@ class ItAssetSyncService
         $funclocByCode = FunctionalLocation::all()->keyBy('code');
 
         $mapped   = 0;
+        $aligned  = 0;
         $already  = 0;
         $unmapped = [];
 
@@ -58,21 +59,39 @@ class ItAssetSyncService
                 continue;
             }
 
-            if ((int) $asset->funcloc_id === (int) $target->id) {
+            // Plant dan Department mengikuti funcloc (satu sumber kebenaran),
+            // sehingga field di form selalu terisi konsisten.
+            $segmen   = explode('-', (string) $target->code);
+            $plantBaru = $segmen[0] ?? $asset->plant;
+            $deptBaru  = $segmen[1] ?? $asset->department;
+
+            $funclocSama = (int) $asset->funcloc_id === (int) $target->id;
+            $fieldSama   = $asset->plant === $plantBaru && $asset->department === $deptBaru;
+
+            if ($funclocSama && $fieldSama) {
                 $already++;
 
                 continue;
             }
 
             if (!$dryRun) {
-                $asset->update(['funcloc_id' => $target->id]);
+                $asset->update([
+                    'funcloc_id' => $target->id,
+                    'plant'      => $plantBaru,
+                    'department' => $deptBaru,
+                ]);
             }
 
-            $mapped++;
+            if ($funclocSama) {
+                $aligned++;
+            } else {
+                $mapped++;
+            }
         }
 
         return [
             'mapped'        => $mapped,
+            'aligned'       => $aligned,
             'already'       => $already,
             'unmapped'      => count($unmapped),
             'unmapped_list' => $unmapped,

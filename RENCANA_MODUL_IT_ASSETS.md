@@ -461,7 +461,25 @@ php artisan it:sync-assets             # petakan + sinkronkan ke tabel assets
     (menunggu konfirmasi user).
 
 
-### Catatan sisa pekerjaan
+### Sesi 14 — Perapian form IT Assets (Plant/Dept/Lokasi, spesifikasi, channel)
+
+1. Plant + Department diselaraskan dari Functional Location di seluruh data:
+   `ItAssetSyncService::mapAllFunclocs()` kini juga menulis `plant` (kode PT) dan
+   `department` (segmen kedua funcloc) sehingga field form tidak kosong lagi.
+   Hasil: 269 baris diselaraskan; sisa 23 perangkat tanpa funcloc.
+2. Nama NVR pada data lama (mis. `NVR 4`) yang belum terdaftar sebagai perangkat
+   NVR tetap ditampilkan sebagai opsi cadangan pada field Show (NVR), dan tetap
+   mendapat 32 slot channel, supaya form tidak tampak kosong.
+3. Kolom Channel asli digantikan pemilih slot agar tidak ada dua field channel:
+   JS memindahkan blok channel + Connect To ke dalam kartu Spesifikasi CCTV,
+   menyembunyikan kolom lama, dan menyembunyikan kartu JSON.
+4. Aturan bisnis ditegakkan di server: satu slot channel pada sebuah NVR hanya
+   boleh dipakai satu kamera (`ItAssetController::validateChannelSlot()`),
+   sehingga penyimpanan ditolak walaupun JS dimatikan.
+5. Kartu "Spesifikasi Tambahan" (header/pic/playback/group) menggantikan textarea
+   JSON dan ditata sebagai kartu tersendiri.
+
+### Catatan sisa pekerjaan (diperbarui sesi 14)
 
 1. `resources/views/reports/edit.blade.php` belum memuat pilihan `IT` pada peta
    opsi JS `syncJenisPekerjaan()`. Pengaman sementara ada di
