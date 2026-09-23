@@ -479,6 +479,33 @@ php artisan it:sync-assets             # petakan + sinkronkan ke tabel assets
 5. Kartu "Spesifikasi Tambahan" (header/pic/playback/group) menggantikan textarea
    JSON dan ditata sebagai kartu tersendiri.
 
+### Sesi 15 — Pencarian tipe alat + lokasi dari kalimat bebas
+
+Tujuan: laporan seperti "Perbaikan CCTV Unloading EPE" bisa menemukan kode alat
+tanpa teknisi menyebut tagname, dan berlaku untuk semua tipe alat (termasuk
+seluruh perangkat IT).
+
+1. Pass baru `tipe_lokasi` pada `TechIdentSearchService`, dijalankan sebelum
+   partial match supaya tidak membanjiri kandidat dengan semua perangkat
+   bertipe sama.
+2. Cara kerja: (a) tipe alat dikenali dari `equipment_type` pada data lalu dari
+   `TYPE_ALIASES` (mis. KAMERA -> CCTV, POMPA -> PUMP); (b) PT dikenali dari
+   kata EPE/NPA/CES; (c) sisa kata bermakna dipakai sebagai penanda lokasi dan
+   dicocokkan ke tagname + deskripsi + kode funcloc, dengan toleransi typo satu
+   huruf (mis. "Uloading" vs "Unloading"); (d) kata tipe dan kata umum
+   (`LOCATION_STOPWORDS`) tidak dihitung sebagai lokasi.
+3. Kandidat dengan skor tertinggi menang. Auto-accept hanya bila penanda lokasi
+   kuat (semua kata cocok dan katanya lebih dari satu atau panjang); selain itu
+   ditampilkan sebagai pilihan agar teknisi mengonfirmasi.
+4. Bila PT disebut tetapi lokasi tidak cocok dengan perangkat mana pun, kandidat
+   dibatasi ke tipe + PT tersebut (pass `tipe_pt`, keyakinan 70) supaya teknisi
+   tidak diarahkan ke PT lain.
+5. Hasil uji: "Perbaikan CCTV Unloading EPE" -> CCTV-EPE-19/10/11/51;
+   "Perbaikan switch Unloading EPE" -> Switch Unloading (auto-accept);
+   "Perbaikan CCTV Laboratorium NPA" -> dibatasi ke CCTV NPA;
+   "Perbaikan pompa utility EPE" -> P306/P401/P402/P403. Pencarian berbasis kode
+   alat tetap auto-accept 100% di pass 1 (tidak ada regresi).
+
 ### Catatan sisa pekerjaan (diperbarui sesi 14)
 
 1. `resources/views/reports/edit.blade.php` belum memuat pilihan `IT` pada peta

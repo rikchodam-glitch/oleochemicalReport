@@ -63,6 +63,56 @@ class TechIdentSearchService
     public const TYPE_CONFIRM_THRESHOLD = 5;
 
     /**
+     * Alias kata untuk mengenali tipe alat dari kalimat bebas teknisi. Kunci
+     * dicocokkan terhadap nilai equipment_type pada data, isinya adalah kata
+     * lain yang biasa dipakai teknisi untuk tipe tersebut.
+     *
+     * @var array<string, array<int, string>>
+     */
+    protected const TYPE_ALIASES = [
+        'CCTV'                 => ['CCTV', 'KAMERA', 'CAMERA'],
+        'NVR'                  => ['NVR', 'DVR', 'PEREKAM'],
+        'PC'                   => ['PC', 'KOMPUTER', 'DESKTOP', 'WORKSTATION'],
+        'LAPTOP'               => ['LAPTOP', 'NOTEBOOK'],
+        'PRINTER'              => ['PRINTER', 'PENCETAK'],
+        'SWITCH MANAGED'       => ['SWITCH'],
+        'SWITCH POE'           => ['SWITCH', 'POE'],
+        'ACCESS POINT'         => ['ACCESS POINT', 'AP', 'RADIO', 'WIFI'],
+        'ACCESS DOOR'          => ['ACCESS DOOR', 'ABSENSI', 'FINGERPRINT'],
+        'UPS'                  => ['UPS'],
+        'HUB'                  => ['HUB'],
+        'NETWORK'              => ['NETWORK', 'JARINGAN', 'ROUTER'],
+        'WIFI'                 => ['WIFI'],
+        'LAINNYA'              => ['LAINNYA'],
+        // Alias tipe industri yang umum dipakai teknisi sehari-hari.
+        'PUMP'                 => ['POMPA'],
+        'TANK'                 => ['TANGKI'],
+        'MOTOR'                => ['MOTOR', 'ELEKTROMOTOR'],
+        'COMPRESSOR'           => ['KOMPRESOR'],
+        'Fan/Blower'           => ['BLOWER', 'KIPAS', 'FAN'],
+        'CONTROL VALVE'        => ['CONTROL VALVE', 'KATUP'],
+        'HEAT EXCHANGER (HE)'  => ['HEAT EXCHANGER', 'PENUKAR PANAS'],
+    ];
+
+    /**
+     * Kata yang tidak dipakai sebagai petunjuk lokasi saat menebak dari
+     * kalimat bebas, supaya tidak memicu kandidat palsu.
+     *
+     * @var array<int, string>
+     */
+    protected const LOCATION_STOPWORDS = [
+        'PERBAIKAN', 'PEMELIHARAAN', 'PEMAINTENANCE', 'MAINTENANCE', 'SERVICE',
+        'LAPORAN', 'PENGECEKAN', 'PEMERIKSAAN', 'CEK', 'CHECK', 'REPORT',
+        'KERUSAKAN', 'RUSAK', 'ERROR', 'MASALAH', 'GANGGUAN', 'TROUBLE',
+        'AREA', 'UNIT', 'ALAT', 'HELPER', 'TYPE', 'TIPE', 'JENIS',
+        'YANG', 'PADA', 'UNTUK', 'DARI', 'DAN', 'DENGAN', 'DI', 'KE',
+        'TIDAK', 'SUDAH', 'BELUM', 'AKAN', 'SEDANG', 'ADALAH', 'INI', 'ITU',
+        'EPE', 'NPA', 'CES', 'PT', 'CCTV', 'KAMERA', 'CAMERA', 'NVR', 'DVR',
+        'PC', 'LAPTOP', 'NOTEBOOK', 'PRINTER', 'PENCETAK', 'SWITCH', 'POE',
+        'AP', 'RADIO', 'WIFI', 'UPS', 'HUB', 'NETWORK', 'JARINGAN', 'ROUTER',
+    ];
+
+    /**
      * Jalankan pencarian 3-pass terhadap teks mentah dari teknisi.
      *
      * @param  string   $rawText Teks laporan awal dari teknisi
@@ -240,6 +290,17 @@ class TechIdentSearchService
                     return $this->confirmOrTypeConfirm($prefixMatches, 'pass3b', 80);
                 }
             }
+        }
+
+        // Pass 5: tipe alat + lokasi dari kalimat bebas
+        // (mis. "Perbaikan CCTV Unloading EPE" -> CCTV di area Unloading PT EPE).
+        // Dijalankan SEBELUM partial match supaya tidak membanjiri kandidat
+        // dengan seluruh perangkat bertipe sama. Berlaku untuk semua tipe alat,
+        // termasuk perangkat IT hasil sinkronisasi.
+        $tipeLokasi = $this->searchByTypeAndLocation($assets, $rawText);
+
+        if ($tipeLokasi !== null) {
+            return $tipeLokasi;
         }
 
         // Pass 4: partial/prefix match — teknisi hanya mengetik sebagian kode
@@ -551,5 +612,246 @@ class TechIdentSearchService
             'functional_loc' => $a->functional_loc,
             'equipment_type' => $a->equipment_type,
         ])->all();
+    }
+
+    /**
+     * Pass tambahan: tebak perangkat dari kalimat bebas yang menyebut TIPE ALAT
+     * dan LOKASI tanpa kode alat, mis. "Perbaikan CCTV Unloading EPE" atau
+     * "Printer Lab NPA". Pool kandidat tetap mengikuti aturan pemanggil
+     * (termasuk pembatasan khusus perangkat IT saat jenis pekerjaan IT).
+     *
+     * Cara kerja:
+     * 1. Tipe alat dikenali dari equipment_type pada data atau alias katanya.
+     * 2. PT dikenali dari kata EPE/NPA/CES pada teks (dicek lewat kode funcloc).
+     * 3. Kata lokasi diambil dari sisa kata bermakna pada teks.
+     * 4. Setiap kandidat diskor dari jumlah kata lokasi yang cocok pada
+     *    tagname + deskripsi + kode funcloc (toleransi typo 1 huruf, mis.
+     *    "Uloading" vs "Unloading"). Kandidat dengan skor tertinggi menang.
+     *
+     * @param  Collection  $assets  Pool kandidat dari candidateAssets()
+     * @param  string      $rawText Teks laporan teknisi
+     * @return array|null           Hasil pencarian, atau null bila tidak ada pola tipe+lokasi
+     */
+    protected function searchByTypeAndLocation(Collection $assets, string $rawText): ?array
+    {
+        $tipe = $this->detectEquipmentTypeFromText($assets, $rawText);
+
+        if ($tipe === null) {
+            return null;
+        }
+
+        $teks        = $this->normalizeForLocationMatch($rawText);
+        $plant       = $this->detectPlantFromText($teks);
+        $kataTipe    = $this->typeWords($tipe);
+        $tokenLokasi = array_values(array_filter(
+            explode(' ', $teks),
+            fn ($kata) => strlen($kata) >= 3
+                && !in_array($kata, self::LOCATION_STOPWORDS, true)
+                && !in_array($kata, $kataTipe, true)
+        ));
+
+        if ($tokenLokasi === []) {
+            return null;
+        }
+
+        $kandidat = $assets->filter(fn ($a) => strcasecmp((string) $a->equipment_type, $tipe) === 0);
+
+        if ($plant !== null) {
+            $kandidat = $kandidat->filter(
+                fn ($a) => str_starts_with(strtoupper((string) $a->functional_loc), $plant)
+            );
+        }
+
+        $skor = [];
+
+        foreach ($kandidat as $asset) {
+            $kolom    = $this->normalizeForLocationMatch(
+                ($asset->tech_ident_no ?? '') . ' ' . ($asset->description ?? '') . ' ' . ($asset->functional_loc ?? '')
+            );
+            $katakata = array_unique(array_filter(explode(' ', $kolom)));
+            $cocok    = 0;
+
+            foreach ($tokenLokasi as $token) {
+                if ($this->locationTokenMatches($token, $kolom, $katakata)) {
+                    $cocok++;
+                }
+            }
+
+            if ($cocok > 0) {
+                $skor[] = ['asset' => $asset, 'cocok' => $cocok];
+            }
+        }
+
+        if ($skor === []) {
+            // PT sudah disebut tetapi kata lokasi tidak cocok dengan perangkat
+            // mana pun: kembalikan kandidat bertipe sama DI PT tersebut supaya
+            // teknisi tidak diarahkan ke PT lain.
+            if ($plant !== null && $kandidat->isNotEmpty()) {
+                return $this->confirm('tipe_pt', 70, $kandidat->take(4)->all());
+            }
+
+            return null;
+        }
+
+        $maks  = max(array_column($skor, 'cocok'));
+        $kuat  = array_values(array_filter($skor, fn ($baris) => $baris['cocok'] === $maks));
+        $hasil = collect($kuat)->map(fn ($baris) => $baris['asset'])->values();
+        $conf  = $maks >= count($tokenLokasi) ? 90 : 82;
+
+        // Auto-accept hanya bila penanda lokasinya kuat: semua kata lokasi cocok
+        // DAN (katanya lebih dari satu ATAU katanya cukup panjang). Satu kata
+        // pendek seperti "POS" masih ditampilkan sebagai pilihan.
+        $bolehAuto = $maks >= count($tokenLokasi)
+            && (count($tokenLokasi) >= 2 || strlen($tokenLokasi[0]) >= 5);
+
+        if ($hasil->count() === 1 && $bolehAuto) {
+            return $this->autoAccept('tipe_lokasi', $conf, [$hasil->first()]);
+        }
+
+        return $this->confirm('tipe_lokasi', $conf - 5, $hasil->take(4)->all());
+    }
+
+    /**
+     * Kenali tipe alat yang disebut pada teks: dicocokkan dulu ke nilai
+     * equipment_type yang benar-benar ada pada pool kandidat, lalu ke alias
+     * katanya. Tipe terpanjang yang cocok menang supaya "ACCESS POINT" tidak
+     * kalah oleh kata pendek.
+     *
+     * @param  Collection  $assets
+     * @param  string      $rawText
+     * @return string|null Nilai equipment_type yang dikenali, null bila tidak ada
+     */
+    protected function detectEquipmentTypeFromText(Collection $assets, string $rawText): ?string
+    {
+        $padat    = ' ' . $this->normalizeForLocationMatch($rawText) . ' ';
+        $tipeData = $assets->pluck('equipment_type')->filter()->unique()->values();
+
+        // 1. Cocokkan langsung ke nilai equipment_type pada data.
+        foreach ($tipeData as $tipe) {
+            if ($this->teksMengandung($padat, (string) $tipe)) {
+                return (string) $tipe;
+            }
+        }
+
+        // 2. Cocokkan lewat alias kata; hanya dipakai bila tipe itu ada di pool.
+        $alias = self::TYPE_ALIASES;
+        uksort($alias, fn ($a, $b) => strlen($b) <=> strlen($a));
+
+        foreach ($alias as $tipe => $daftar) {
+            foreach ($daftar as $kata) {
+                if (! $this->teksMengandung($padat, $kata)) {
+                    continue;
+                }
+
+                $adaDiPool = $tipeData->first(fn ($nilai) => strcasecmp((string) $nilai, $tipe) === 0);
+
+                if ($adaDiPool !== null) {
+                    return (string) $adaDiPool;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Daftar kata yang membentuk nama tipe alat beserta alias katanya, dipakai
+     * untuk mengeluarkan kata tipe dari penanda lokasi (mis. "ACCESS DOOR"
+     * jangan dianggap petunjuk lokasi).
+     *
+     * @param  string  $tipe  Nilai equipment_type yang dikenali
+     * @return array<int, string>
+     */
+    protected function typeWords(string $tipe): array
+    {
+        $kata = explode(' ', $this->normalizeForLocationMatch($tipe));
+
+        foreach (self::TYPE_ALIASES as $namaTipe => $daftarAlias) {
+            if (strcasecmp($namaTipe, $tipe) !== 0) {
+                continue;
+            }
+
+            foreach ($daftarAlias as $alias) {
+                foreach (explode(' ', $this->normalizeForLocationMatch($alias)) as $potong) {
+                    $kata[] = $potong;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($kata)));
+    }
+
+    /**
+     * Deteksi PT yang disebut pada teks (EPE/NPA/CES) sebagai kata utuh.
+     *
+     * @param  string  $teks  Teks yang sudah dinormalisasi
+     * @return string|null    Kode PT, null bila tidak disebut
+     */
+    protected function detectPlantFromText(string $teks): ?string
+    {
+        foreach (['EPE', 'NPA', 'CES'] as $pt) {
+            if (str_contains(' ' . $teks . ' ', ' ' . $pt . ' ')) {
+                return $pt;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Normalisasi teks untuk pencocokan lokasi: huruf besar, semua karakter
+     * selain huruf/angka diubah menjadi spasi, spasi ganda dirapikan.
+     *
+     * @param  string  $teks
+     * @return string
+     */
+    protected function normalizeForLocationMatch(string $teks): string
+    {
+        $bersih = preg_replace('/[^A-Za-z0-9]+/', ' ', strtoupper($teks)) ?? '';
+
+        return trim(preg_replace('/\s+/', ' ', $bersih) ?? '');
+    }
+
+    /**
+     * Apakah sebuah kata (frasa) muncul pada teks yang sudah dinormalisasi.
+     *
+     * @param  string  $teksPadat  Teks normalisasi dengan spasi pengapit
+     * @param  string  $kata
+     * @return bool
+     */
+    protected function teksMengandung(string $teksPadat, string $kata): bool
+    {
+        $kata = $this->normalizeForLocationMatch($kata);
+
+        return $kata !== '' && str_contains($teksPadat, ' ' . $kata . ' ');
+    }
+
+    /**
+     * Cocokkan satu kata lokasi dari laporan dengan teks kandidat: cocok sebagai
+     * bagian teks, atau mirip (jarak Levenshtein maksimal 1) dengan salah satu
+     * kata pada kandidat, mis. "Uloading" vs "Unloading".
+     *
+     * @param  string              $token    Kata lokasi dari laporan
+     * @param  string              $kolom    Teks kandidat yang sudah dinormalisasi
+     * @param  array<int, string>  $katakata Kata-kata pada teks kandidat
+     * @return bool
+     */
+    protected function locationTokenMatches(string $token, string $kolom, array $katakata): bool
+    {
+        if (str_contains($kolom, $token)) {
+            return true;
+        }
+
+        foreach ($katakata as $kata) {
+            if (abs(strlen($kata) - strlen($token)) > 2) {
+                continue;
+            }
+
+            if (levenshtein($token, $kata) <= 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
