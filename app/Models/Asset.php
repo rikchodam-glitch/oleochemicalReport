@@ -17,6 +17,7 @@ class Asset extends Model
         'equipment_type',
         'functional_loc',
         'funcloc_id',
+        'it_asset_id',
         'company_id',
         'department_id',
         'area_id',
@@ -65,6 +66,18 @@ class Asset extends Model
     public function functionalLocation(): BelongsTo
     {
         return $this->belongsTo(FunctionalLocation::class, 'funcloc_id');
+    }
+
+    /**
+     * Perangkat IT sumber baris ini (diisi hanya bila baris berasal dari modul
+     * IT Assets, ditandai data_source = 'it_sync'). Halaman IT Assets adalah
+     * tempat pengelolaan perangkat tersebut.
+     *
+     * @return BelongsTo<ItAsset, Asset>
+     */
+    public function itAsset(): BelongsTo
+    {
+        return $this->belongsTo(ItAsset::class, 'it_asset_id');
     }
 
     public function technicians(): BelongsToMany

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -28,6 +29,55 @@ class ItAsset extends Model
 
     public const SNAPSHOT_CAPABLE_TYPES = ['CCTV', 'NVR'];
 
+    /**
+     * Pemetaan device_type ke kode object_type standar (konvensi kode ZPM yang
+     * sudah dipakai tabel assets). Dipakai saat perangkat IT disinkronkan ke
+     * tabel assets supaya kode tipe alat konsisten dengan data SAP.
+     *
+     * @var array<string, string>
+     */
+    public const DEVICE_OBJECT_TYPES = [
+        'PC'                   => 'ZPM-COM',
+        'LAPTOP'               => 'ZPM-LAP',
+        'PRINTER'              => 'ZPM-PRT',
+        'CCTV'                 => 'ZPM-CTV',
+        'NVR'                  => 'ZPM-NVR',
+        'ACCESS_DOOR'          => 'ZPM-ACD',
+        'WIFI'                 => 'ZPM-WIF',
+        'NETWORK'              => 'ZPM-NET',
+        'SWITCH_MANAGED'       => 'ZPM-SWT',
+        'SWITCH_POE_UNMANAGED' => 'ZPM-SWU',
+        'ACCESS_POINT'         => 'ZPM-AP',
+        'HUB'                  => 'ZPM-HUB',
+        'UPS'                  => 'ZPM-UPS',
+        'OTHER'                => 'ZPM-OTH',
+    ];
+
+    /**
+     * Pemetaan device_type ke label Tipe Equipment yang ditampilkan di bot
+     * (kolom assets.equipment_type). Hanya asset yang punya equipment_type yang
+     * muncul di hierarki pemilihan equipment wizard, jadi perangkat IT wajib
+     * punya label di sini.
+     *
+     * @var array<string, string>
+     */
+    public const DEVICE_EQUIPMENT_TYPES = [
+        'PC'                   => 'PC',
+        'LAPTOP'               => 'LAPTOP',
+        'PRINTER'              => 'PRINTER',
+        'CCTV'                 => 'CCTV',
+        'NVR'                  => 'NVR',
+        'ACCESS_DOOR'          => 'ACCESS DOOR',
+        'WIFI'                 => 'WIFI',
+        'NETWORK'              => 'NETWORK',
+        'SWITCH_MANAGED'       => 'SWITCH MANAGED',
+        'SWITCH_POE_UNMANAGED' => 'SWITCH POE',
+        'ACCESS_POINT'         => 'ACCESS POINT',
+        'HUB'                  => 'HUB',
+        'UPS'                  => 'UPS',
+        'OTHER'                => 'LAINNYA',
+    ];
+
     protected $fillable = [
         'device_type',
         'tag_name',
@@ -39,6 +89,7 @@ class ItAsset extends Model
         'plant',
         'department',
         'location',
+        'funcloc_id',
         'application',
         'status',
         'spec',
@@ -126,6 +177,49 @@ class ItAsset extends Model
     public function layoutItem(): HasOne
     {
         return $this->hasOne(ItLayoutItem::class, 'it_asset_id');
+    }
+
+    /**
+     * Functional Location (lokasi) perangkat IT — memakai hierarki yang sama
+     * dengan asset industri, sehingga report Telegram dan pencarian lokasi
+     * memakai satu sumber data.
+     *
+     * @return BelongsTo<FunctionalLocation, ItAsset>
+     */
+    public function functionalLocation(): BelongsTo
+    {
+        return $this->belongsTo(FunctionalLocation::class, 'funcloc_id');
+    }
+
+    /**
+     * Baris cermin perangkat ini di tabel assets (dibuat oleh
+     * ItAssetSyncService). Satu perangkat IT hanya punya satu baris cermin.
+     *
+     * @return HasOne<Asset, ItAsset>
+     */
+    public function assetMirror(): HasOne
+    {
+        return $this->hasOne(Asset::class, 'it_asset_id');
+    }
+
+    /**
+     * Kode object_type untuk baris cermin di tabel assets.
+     *
+     * @return string
+     */
+    public function objectTypeCode(): string
+    {
+        return self::DEVICE_OBJECT_TYPES[$this->device_type] ?? 'ZPM-OTH';
+    }
+
+    /**
+     * Label Tipe Equipment (kolom assets.equipment_type) untuk baris cermin.
+     *
+     * @return string
+     */
+    public function equipmentTypeLabel(): string
+    {
+        return self::DEVICE_EQUIPMENT_TYPES[$this->device_type] ?? 'LAINNYA';
     }
 
     /**
