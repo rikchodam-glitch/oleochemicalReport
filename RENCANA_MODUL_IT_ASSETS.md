@@ -426,7 +426,13 @@ php artisan it:sync-assets             # petakan + sinkronkan ke tabel assets
    `Radio - Switch Utility` (2 kamera) dan `Radio - Switch Unloading`
    (4 kamera) — sengaja dibiarkan karena informasinya menyatakan kamera
    terhubung lewat radio.
-5. Catatan: dropdown Connect To dirender lewat partial `_location-select`
+5. Pemetaan radio ke switch (konfirmasi user 23/09/2026): radio NPA
+   (termasuk `RADIO-NPA`) terhubung ke **Switch Unloading NPA**, radio Utility
+   EPE (`Radio Utility EPE`, `Radio Utility Pojok EPE`) terhubung ke
+   **Switch Utility**. Nilainya disimpan di `spec.connect_to` perangkat radio
+   dan diselaraskan ulang setiap `it:seed-network` dijalankan. Belum ditentukan
+   (menunggu data lapangan): `Radio CCR EPE`, `Radio Gudang Belakang`.
+6. Catatan: dropdown Connect To dirender lewat partial `_location-select`
    (yang sudah di-include di form) agar tidak perlu menyunting
    `form.blade.php`; letaknya di blok identitas/lokasi dan hanya tampil untuk
    tipe CCTV/NVR. Bila ingin dipindah ke dalam kotak spesifikasi CCTV, cukup

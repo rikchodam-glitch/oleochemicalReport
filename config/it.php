@@ -108,7 +108,7 @@ return [
     'network_devices' => [
         // Switch Managed
         ['tag_name' => 'Switch Pos 1',                  'device_type' => 'SWITCH_MANAGED', 'plant' => 'EPE', 'department' => 'GA',  'location' => 'Pos 1 EPE'],
-        ['tag_name' => 'Switch Jembatan Timbang(Baru)', 'device_type' => 'SWITCH_MANAGED', 'plant' => 'EPE', 'department' => 'LOG', 'location' => 'Jembatan Timbang EPE'],
+        ['tag_name' => 'Switch Jembatan Timbang (Baru)', 'device_type' => 'SWITCH_MANAGED', 'plant' => 'EPE', 'department' => 'LOG', 'location' => 'Jembatan Timbang EPE'],
         ['tag_name' => 'Switch Ruang Serbaguna',        'device_type' => 'SWITCH_MANAGED', 'plant' => 'EPE', 'department' => 'GA',  'location' => 'Ruang Serbaguna'],
         ['tag_name' => 'Switch Unloading',              'device_type' => 'SWITCH_MANAGED', 'plant' => 'EPE', 'department' => 'LOG', 'location' => 'Unloading EPE'],
         ['tag_name' => 'Switch BD 1 (CCR)',             'device_type' => 'SWITCH_MANAGED', 'plant' => 'EPE', 'department' => 'PRO', 'location' => 'CCR BD 1'],
@@ -127,15 +127,23 @@ return [
         ['tag_name' => 'Switch Pos 1 NPA',              'device_type' => 'SWITCH_MANAGED', 'plant' => 'NPA', 'department' => 'GA',  'location' => 'Pos 1 NPA'],
         ['tag_name' => 'Switch Lab NPA',                'device_type' => 'SWITCH_MANAGED', 'plant' => 'NPA', 'department' => 'QC',  'location' => 'Laboratorium NPA'],
 
-        // Radio (dipetakan sebagai Access Point)
-        ['tag_name' => 'Radio POS 1 NPA',               'device_type' => 'ACCESS_POINT',   'plant' => 'NPA', 'department' => 'GA',  'location' => 'Pos 1 NPA',           'ip_address' => '192.168.50.100', 'model' => 'Nanostation LocoM5'],
-        ['tag_name' => 'Radio Timbang NPA',             'device_type' => 'ACCESS_POINT',   'plant' => 'NPA', 'department' => 'LOG', 'location' => 'Jembatan Timbang NPA', 'ip_address' => '192.168.50.101', 'model' => 'Nanostation LocoM5'],
-        ['tag_name' => 'Radio (Station) Unloading NPA', 'device_type' => 'ACCESS_POINT',   'plant' => 'NPA', 'department' => 'LOG', 'location' => 'Unloading NPA',       'ip_address' => '192.168.50.102', 'model' => 'Nanostation LocoM5'],
-        ['tag_name' => 'Radio (AP) Unloading NPA',      'device_type' => 'ACCESS_POINT',   'plant' => 'NPA', 'department' => 'LOG', 'location' => 'Unloading NPA',       'ip_address' => '192.168.50.103', 'model' => 'Nanostation LocoM5'],
-        ['tag_name' => 'Radio Belakang NPA',            'device_type' => 'ACCESS_POINT',   'plant' => 'NPA', 'department' => 'LOG', 'location' => 'Area Belakang NPA',   'ip_address' => '192.168.50.104', 'model' => 'Nanostation LocoM5'],
-        ['tag_name' => 'Radio (AP) Server',             'device_type' => 'ACCESS_POINT',   'plant' => 'NPA', 'department' => 'PRO', 'location' => 'Server Room NPA',     'ip_address' => '192.168.50.105', 'model' => 'Nanostation LocoM5'],
-        ['tag_name' => 'Radio Utility Pojok EPE',       'device_type' => 'ACCESS_POINT',   'plant' => 'EPE', 'department' => 'MTC', 'location' => 'Utility Pojok EPE',   'ip_address' => '192.168.50.70',  'model' => 'Ubiquiti NS-5AC NanoStation 5AC'],
+        // Radio (dipetakan sebagai Access Point). connect_to = switch tempat
+        // radio ini terhubung (konfirmasi user 23/09/2026: radio NPA terhubung
+        // ke Switch Unloading NPA, radio Utility EPE ke Switch Utility).
+        ['tag_name' => 'Radio POS 1 NPA',               'device_type' => 'ACCESS_POINT',   'plant' => 'NPA', 'department' => 'GA',  'location' => 'Pos 1 NPA',           'ip_address' => '192.168.50.100', 'model' => 'Nanostation LocoM5', 'connect_to' => 'Switch Unloading NPA'],
+        ['tag_name' => 'Radio Timbang NPA',             'device_type' => 'ACCESS_POINT',   'plant' => 'NPA', 'department' => 'LOG', 'location' => 'Jembatan Timbang NPA', 'ip_address' => '192.168.50.101', 'model' => 'Nanostation LocoM5', 'connect_to' => 'Switch Unloading NPA'],
+        ['tag_name' => 'Radio (Station) Unloading NPA', 'device_type' => 'ACCESS_POINT',   'plant' => 'NPA', 'department' => 'LOG', 'location' => 'Unloading NPA',       'ip_address' => '192.168.50.102', 'model' => 'Nanostation LocoM5', 'connect_to' => 'Switch Unloading NPA'],
+        ['tag_name' => 'Radio (AP) Unloading NPA',      'device_type' => 'ACCESS_POINT',   'plant' => 'NPA', 'department' => 'LOG', 'location' => 'Unloading NPA',       'ip_address' => '192.168.50.103', 'model' => 'Nanostation LocoM5', 'connect_to' => 'Switch Unloading NPA'],
+        ['tag_name' => 'Radio Belakang NPA',            'device_type' => 'ACCESS_POINT',   'plant' => 'NPA', 'department' => 'LOG', 'location' => 'Area Belakang NPA',   'ip_address' => '192.168.50.104', 'model' => 'Nanostation LocoM5', 'connect_to' => 'Switch Unloading NPA'],
+        ['tag_name' => 'Radio (AP) Server',             'device_type' => 'ACCESS_POINT',   'plant' => 'NPA', 'department' => 'PRO', 'location' => 'Server Room NPA',     'ip_address' => '192.168.50.105', 'model' => 'Nanostation LocoM5', 'connect_to' => 'Switch Unloading NPA'],
+        ['tag_name' => 'Radio Utility Pojok EPE',       'device_type' => 'ACCESS_POINT',   'plant' => 'EPE', 'department' => 'MTC', 'location' => 'Utility Pojok EPE',   'ip_address' => '192.168.50.70',  'model' => 'Ubiquiti NS-5AC NanoStation 5AC', 'connect_to' => 'Switch Utility'],
         ['tag_name' => 'Radio Gudang Belakang',         'device_type' => 'ACCESS_POINT',   'plant' => 'EPE', 'department' => 'LOG', 'location' => 'Belakang Gudang EPE', 'ip_address' => '192.168.50.71',  'model' => 'Ubiquiti NS-5AC NanoStation 5AC'],
+
+        // Radio yang sudah tercatat lebih dulu di it_assets (bukan dari sheet
+        // MODUL JARINGAN). Disertakan di sini agar nilai Connect To-nya juga
+        // diselaraskan setiap kali `it:seed-network` dijalankan.
+        ['tag_name' => 'RADIO-NPA',                     'device_type' => 'ACCESS_POINT',   'plant' => 'NPA', 'department' => 'GA',  'location' => 'CCR NPA',             'ip_address' => '192.168.49.107', 'connect_to' => 'Switch Unloading NPA'],
+        ['tag_name' => 'Radio Utility EPE',             'device_type' => 'ACCESS_POINT',   'plant' => 'EPE', 'department' => 'MTC', 'location' => 'MTC EPE',             'ip_address' => '192.168.49.106', 'connect_to' => 'Switch Utility'],
     ],
 
 ];

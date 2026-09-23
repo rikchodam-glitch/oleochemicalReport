@@ -28,6 +28,7 @@ class ItSeedNetworkDevicesCommand extends Command
         $daftar  = (array) config('it.network_devices', []);
         $dibuat  = 0;
         $dilewati = 0;
+        $diselaraskan = 0;
 
         if ($dryRun) {
             $this->warn('Mode dry-run: tidak ada perubahan yang disimpan.');
@@ -40,8 +41,23 @@ class ItSeedNetworkDevicesCommand extends Command
                 continue;
             }
 
-            if (ItAsset::where('tag_name', $tag)->exists()) {
+            $asset = ItAsset::where('tag_name', $tag)->first();
+
+            if ($asset !== null) {
                 $dilewati++;
+
+                // Perangkat yang sudah ada tetap diselaraskan nilai Connect To
+                // dari config (mis. pemetaan radio -> switch), tanpa menyentuh
+                // kolom lain agar perubahan manual tidak ikut tertimpa.
+                if (!$dryRun && !empty($baris['connect_to'])) {
+                    $spec = $asset->spec ?? [];
+
+                    if (($spec['connect_to'] ?? null) !== $baris['connect_to']) {
+                        $spec['connect_to'] = $baris['connect_to'];
+                        $asset->update(['spec' => $spec]);
+                        $diselaraskan++;
+                    }
+                }
 
                 continue;
             }
@@ -67,9 +83,10 @@ class ItSeedNetworkDevicesCommand extends Command
         }
 
         $this->info(sprintf(
-            'Perangkat jaringan: %d ditambahkan, %d sudah ada (dilewati).',
+            'Perangkat jaringan: %d ditambahkan, %d sudah ada, %d nilai Connect To diselaraskan.',
             $dibuat,
-            $dilewati
+            $dilewati,
+            $diselaraskan
         ));
 
         if ($dryRun) {
