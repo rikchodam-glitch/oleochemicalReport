@@ -1,0 +1,14 @@
+# Berkas yang tidak perlu ikut masuk git
+.venv/
+__pycache__/
+*.pyc
+
+# Database SQLite dan berkas pendampingnya (dibuat otomatis saat server jalan)
+data_sensor.db
+data_sensor.db-shm
+data_sensor.db-wal
+
+# Berkas bantu sementara
+*.log
+*.tmp
+_tmp_*

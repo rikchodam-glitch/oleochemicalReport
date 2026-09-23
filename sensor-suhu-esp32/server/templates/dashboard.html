@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ nama_server }}</title>
+  <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+  <style>
+    :root {
+      --teal: #0E9E8E;
+      --teal-gelap: #0b7f72;
+      --teks: #0f172a;
+      --teks-lembut: #64748b;
+      --garis: #e2e8f0;
+      --latar: #f6f8fb;
+      --merah: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: var(--latar);
+      color: var(--teks);
+      padding: 24px;
+    }
+    header { max-width: 1100px; margin: 0 auto 18px; }
+    h1 { font-size: 22px; margin: 0 0 6px; color: var(--teal); }
+    .sub { color: var(--teks-lembut); font-size: 13px; }
+    main { max-width: 1100px; margin: 0 auto; display: grid; gap: 16px; }
+    .kartu {
+      background: #fff;
+      border: 1px solid var(--garis);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .baris-kartu { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    .label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--teks-lembut); }
+    .nilai { font-size: 40px; font-weight: 700; line-height: 1.1; margin-top: 6px; }
+    .nilai kecil { font-size: 18px; font-weight: 600; color: var(--teks-lembut); }
+    .nilai-sedang { font-size: 22px; font-weight: 700; margin-top: 6px; }
+    .kelembapan { color: var(--teal); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--garis); }
+    th { color: var(--teks-lembut); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .pil { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .pil-online { background: #e6f6f3; color: var(--teal-gelap); }
+    .pil-offline { background: #fdecec; color: var(--merah); }
+    .pil-subuh { background: #eef2f7; color: var(--teks-lembut); }
+    .peringatan {
+      background: #fdecec; color: var(--merah); border: 1px solid #f6c9c9;
+      border-radius: 10px; padding: 12px 14px; font-size: 13px; display: none;
+    }
+    .kaki { max-width: 1100px; margin: 18px auto 0; color: var(--teks-lembut); font-size: 12px; }
+    a { color: var(--teal-gelap); }
+    .grafik { position: relative; height: 320px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>{{ nama_server }}</h1>
+    <div class="sub">
+      Server: {{ ip_server }}:{{ port_server }} &middot;
+      Mode tarik data (pull): {{ 'aktif' if mode_pull else 'nonaktif' }} &middot;
+      Refresh dashboard tiap {{ interval_tampilan }} detik
+    </div>
+  </header>
+
+  <main>
+    <div class="peringatan" id="peringatan"></div>
+
+    <div class="baris-kartu">
+      <div class="kartu">
+        <div class="label">Suhu terkini</div>
+        <div class="nilai" id="nilai-suhu">--<kecil> &deg;C</kecil></div>
+        <div class="sub" id="waktu-suhu">Belum ada data</div>
+      </div>
+      <div class="kartu">
+        <div class="label">Kelembapan terkini</div>
+        <div class="nilai kelembapan" id="nilai-kelembapan">--<kecil> %</kecil></div>
+        <div class="sub" id="waktu-kelembapan">Belum ada data</div>
+      </div>
+      <div class="kartu">
+        <div class="label">Status perangkat</div>
+        <div class="nilai-sedang" id="status-perangkat">--</div>
+        <div class="sub" id="rincian-perangkat">Belum ada perangkat terhubung</div>
+      </div>
+    </div>
+
+    <div class="kartu">
+      <div class="label">Grafik {{ batas_grafik }} pembacaan terakhir</div>
+      <div class="grafik"><canvas id="grafik"></canvas></div>
+    </div>
+
+    <div class="kartu">
+      <div class="label">Daftar perangkat</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Perangkat</th><th>IP</th><th>MAC</th><th>Firmware</th>
+            <th>Uptime</th><th>Data terakhir</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="tabel-perangkat">
+          <tr><td colspan="7" class="sub">Memuat data...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="kartu">
+      <div class="label">Akses cepat</div>
+      <div style="margin-top:10px; display:flex; gap:16px; flex-wrap:wrap; font-size:13px;">
+        <a href="/api/latest">/api/latest</a>
+        <a href="/api/data?limit=100">/api/data?limit=100</a>
+        <a href="/api/perangkat">/api/perangkat</a>
+        <a href="/api/health">/api/health</a>
+        <a href="/api/export.csv?limit=5000">Unduh CSV</a>
+        <a href="/">Muat ulang</a>
+      </div>
+    </div>
+  </main>
+
+  <div class="kaki">
+    Data disimpan di SQLite pada komputer server. Perangkat ESP32 mengirim data
+    tiap 10 detik; bila pengiriman lewat port 5000 terblokir firewall, server
+    tetap mengambil data sendiri lewat mode pull.
+  </div>
+
+  <script>
+    // Konfigurasi dari server (nilai diisi template Flask).
+    var INTERVAL_MS = {{ interval_tampilan }} * 1000;
+    var BATAS_GRAFIK = {{ batas_grafik }};
+
+    var elSuhu = document.getElementById('nilai-suhu');
+    var elKelembapan = document.getElementById('nilai-kelembapan');
+    var elWaktuSuhu = document.getElementById('waktu-suhu');
+    var elWaktuKelembapan = document.getElementById('waktu-kelembapan');
+    var elStatusPerangkat = document.getElementById('status-perangkat');
+    var elRincianPerangkat = document.getElementById('rincian-perangkat');
+    var elTabelPerangkat = document.getElementById('tabel-perangkat');
+    var elPeringatan = document.getElementById('peringatan');
+
+    var grafik = null;
+
+    /** Inisialisasi objek grafik Chart.js dengan dua dataset. */
+    function siapkanGrafik() {
+      var ctx = document.getElementById('grafik').getContext('2d');
+      grafik = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Suhu (C)',
+              data: [],
+              borderColor: '#e07a5f',
+              backgroundColor: 'rgba(224, 122, 95, 0.12)',
+              borderWidth: 2,
+              pointRadius: 0,
+              tension: 0.3,
+              fill: true,
+              yAxisID: 'y'
+            },
+            {
+              label: 'Kelembapan (%)',
+              data: [],
+              borderColor: '#0E9E8E',
+              backgroundColor: 'rgba(14, 158, 142, 0.12)',
+              borderWidth: 2,
+              pointRadius: 0,
+              tension: 0.3,
+              fill: true,
+              yAxisID: 'y1'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'bottom' } },
+          scales: {
+            x: { ticks: { maxTicksLimit: 8, autoSkip: true } },
+            y: {
+              position: 'left',
+              title: { display: true, text: 'Suhu (C)' },
+              grid: { color: '#eef2f7' }
+            },
+            y1: {
+              position: 'right',
+              title: { display: true, text: 'Kelembapan (%)' },
+              grid: { drawOnChartArea: false }
+            }
+          }
+        }
+      });
+    }
+
+    /**
+     * Ubah jumlah detik menjadi teks durasi yang mudah dibaca.
+     * @param {number} detik Jumlah detik.
+     * @returns {string} Teks durasi.
+     */
+    function teksDurasi(detik) {
+      if (!detik && detik !== 0) { return '-'; }
+      var hari = Math.floor(detik / 86400);
+      var jam = Math.floor((detik % 86400) / 3600);
+      var menit = Math.floor((detik % 3600) / 60);
+      if (hari > 0) { return hari + ' hari ' + jam + ' jam'; }
+      if (jam > 0) { return jam + ' jam ' + menit + ' menit'; }
+      return menit + ' menit';
+    }
+
+    /**
+     * Tampilkan pesan galat di bagian atas dashboard.
+     * @param {string} pesan Pesan yang ditampilkan.
+     */
+    function tampilkanPeringatan(pesan) {
+      elPeringatan.textContent = pesan;
+      elPeringatan.style.display = 'block';
+    }
+
+    /** Sembunyikan pesan galat. */
+    function sembunyikanPeringatan() {
+      elPeringatan.style.display = 'none';
+    }
+
+    /**
+     * Isi tabel status perangkat.
+     * @param {Array} daftar Daftar status perangkat dari API.
+     */
+    function perbaruiTabelPerangkat(daftar) {
+      if (!daftar || daftar.length === 0) {
+        elTabelPerangkat.innerHTML = '<tr><td colspan="7" class="sub">Belum ada perangkat yang pernah mengirim data.</td></tr>';
+        return;
+      }
+
+      var baris = '';
+      for (var i = 0; i < daftar.length; i++) {
+        var p = daftar[i];
+        var pil = p.online
+          ? '<span class="pil pil-online">ONLINE</span>'
+          : '<span class="pil pil-offline">OFFLINE</span>';
+        baris += '<tr>'
+          + '<td><strong>' + (p.nama || '-') + '</strong></td>'
+          + '<td>' + (p.ip || '-') + '</td>'
+          + '<td>' + (p.mac || '-') + '</td>'
+          + '<td>' + (p.firmware || '-') + '</td>'
+          + '<td>' + teksDurasi(p.uptime_s) + '</td>'
+          + '<td>' + (p.terakhir_terlihat || p.terakhir_heartbeat || '-') + '</td>'
+          + '<td>' + pil + '</td>'
+          + '</tr>';
+      }
+      elTabelPerangkat.innerHTML = baris;
+    }
+
+    /**
+     * Perbarui kartu nilai terkini.
+     * @param {Object|null} data Pembacaan terakhir.
+     */
+    function perbaruiKartu(data) {
+      if (!data) {
+        elSuhu.innerHTML = '--<kecil> &deg;C</kecil>';
+        elKelembapan.innerHTML = '--<kecil> %</kecil>';
+        elWaktuSuhu.textContent = 'Belum ada data';
+        elWaktuKelembapan.textContent = 'Belum ada data';
+        return;
+      }
+
+      var suhu = (data.suhu === null || data.suhu === undefined) ? '--' : data.suhu.toFixed(1);
+      var kelembapan = (data.kelembapan === null || data.kelembapan === undefined) ? '--' : data.kelembapan.toFixed(1);
+
+      elSuhu.innerHTML = suhu + '<kecil> &deg;C</kecil>';
+      elKelembapan.innerHTML = kelembapan + '<kecil> %</kecil>';
+      elWaktuSuhu.textContent = 'Pembacaan #' + data.id_perangkat + ' pada ' + data.waktu;
+      elWaktuKelembapan.textContent = 'Sumber data: ' + data.sumber;
+    }
+
+    /**
+     * Perbarui ringkasan status perangkat pada kartu ketiga.
+     * @param {Array} daftar Daftar status perangkat.
+     */
+    function perbaruiStatusPerangkat(daftar) {
+      if (!daftar || daftar.length === 0) {
+        elStatusPerangkat.textContent = 'Belum ada perangkat';
+        elRincianPerangkat.textContent = 'Belum ada perangkat terhubung';
+        return;
+      }
+
+      var online = 0;
+      var nama = [];
+      for (var i = 0; i < daftar.length; i++) {
+        if (daftar[i].online) { online++; }
+        nama.push(daftar[i].nama);
+      }
+
+      elStatusPerangkat.innerHTML = online + ' / ' + daftar.length
+        + ' <span class="pil ' + (online > 0 ? 'pil-online' : 'pil-offline') + '">'
+        + (online > 0 ? 'ONLINE' : 'OFFLINE') + '</span>';
+      elRincianPerangkat.textContent = nama.join(', ');
+    }
+
+    /**
+     * Perbarui grafik dengan data terbaru.
+     * @param {Array} daftar Daftar pembacaan dari API.
+     */
+    function perbaruiGrafik(daftar) {
+      if (!grafik) { return; }
+
+      var label = [];
+      var suhu = [];
+      var kelembapan = [];
+      for (var i = 0; i < daftar.length; i++) {
+        label.push(daftar[i].waktu.substring(11, 19));
+        suhu.push(daftar[i].suhu);
+        kelembapan.push(daftar[i].kelembapan);
+      }
+
+      grafik.data.labels = label;
+      grafik.data.datasets[0].data = suhu;
+      grafik.data.datasets[1].data = kelembapan;
+      grafik.update('none');
+    }
+
+    /** Ambil data terbaru dari server lalu perbarui seluruh tampilan. */
+    function ambilData() {
+      fetch('/api/data?limit=' + BATAS_GRAFIK, { cache: 'no-store' })
+        .then(function (balasan) {
+          if (!balasan.ok) { throw new Error('HTTP ' + balasan.status); }
+          return balasan.json();
+        })
+        .then(function (hasil) {
+          sembunyikanPeringatan();
+          var daftar = hasil.data || [];
+          perbaruiKartu(daftar.length > 0 ? daftar[daftar.length - 1] : null);
+          perbaruiStatusPerangkat(hasil.perangkat || []);
+          perbaruiTabelPerangkat(hasil.perangkat || []);
+          perbaruiGrafik(daftar);
+        })
+        .catch(function (galat) {
+          tampilkanPeringatan('Gagal mengambil data dari server: ' + galat.message
+            + '. Pastikan server.py masih berjalan; halaman ini akan mencoba lagi otomatis.');
+        });
+    }
+
+    siapkanGrafik();
+    ambilData();
+    setInterval(ambilData, INTERVAL_MS);
+  </script>
+
+</body>
+</html>

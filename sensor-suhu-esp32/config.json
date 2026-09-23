@@ -1,0 +1,20 @@
+{
+  "perangkat": [
+    {
+      "nama": "sensor-suhu-01",
+      "ip": "192.168.41.240",
+      "port": 80,
+      "aktif": true
+    }
+  ],
+  "server": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "ip_lokal": "192.168.41.74"
+  },
+  "mode_pull": true,
+  "interval_pull_detik": 5,
+  "interval_tampilan_detik": 5,
+  "batas_data_grafik": 60,
+  "database": "data_sensor.db"
+}
