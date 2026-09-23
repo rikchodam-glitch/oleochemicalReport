@@ -51,8 +51,9 @@ return [
     ],
 
     // Jumlah pembacaan terakhir yang disimpan per penarikan. Perangkat
-    // menyimpan buffer 60 pembacaan di RAM, jadi nilai ini cukup untuk
-    // mengejar data yang tertinggal saat server sempat mati.
-    'maks_pembacaan_per_tarik' => (int) env('PANEL_MAKS_PER_TARIK', 120),
+    // menyimpan buffer 360 pembacaan di RAM (1 jam), jadi nilai ini dibuat
+    // lebih besar dari buffer supaya tumpukan data bisa dihabiskan dalam satu
+    // penarikan setelah server sempat mati.
+    'maks_pembacaan_per_tarik' => (int) env('PANEL_MAKS_PER_TARIK', 400),
 
 ];

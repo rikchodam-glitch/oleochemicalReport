@@ -84,12 +84,17 @@ class PanelSensorService
             $daftar = [];
         }
 
-        $maksimum = max(1, (int) config('panel.maks_pembacaan_per_tarik', 120));
+        // Ambil dari yang paling lama lebih dulu bila tumpukan data melebihi
+        // batas per penarikan. Cara ini memastikan tidak ada pembacaan yang
+        // terlewat: penarikan berikutnya melanjutkan dari nomor terakhir yang
+        // benar-benar sudah tersimpan, bukan lompat ke nomor terbaru.
+        $maksimum = max(1, (int) config('panel.maks_pembacaan_per_tarik', 400));
         if (count($daftar) > $maksimum) {
-            $daftar = array_slice($daftar, -$maksimum);
+            $daftar = array_slice($daftar, 0, $maksimum);
         }
 
         $jumlahBaru = 0;
+        $idTerproses = $sejak;
 
         foreach ($daftar as $item) {
             if (!is_array($item)) {
@@ -123,16 +128,21 @@ class PanelSensorService
             if ($pembacaan->wasRecentlyCreated) {
                 $jumlahBaru++;
             }
+
+            $idTerproses = max($idTerproses, $idPerangkat);
         }
 
-        $idTerakhirPerangkat = max($sejak, (int) ($status['id_terakhir'] ?? $sejak));
+        // Yang ditandai "sudah dimiliki server" adalah nomor tertinggi yang
+        // benar-benar diproses pada penarikan ini, bukan nomor terbaru di
+        // perangkat. Bila tumpukan data lebih banyak daripada batas per
+        // penarikan, sisanya tetap terambil pada penarikan berikutnya.
 
         $ruangan->update([
             'status_terakhir'        => 'online',
             'terakhir_ditarik'       => now(),
             'terakhir_terlihat'      => $jumlahBaru > 0 ? now() : $ruangan->terakhir_terlihat,
             'sesi_boot'              => $sesiBoot,
-            'id_pembacaan_terakhir'  => $idTerakhirPerangkat,
+            'id_pembacaan_terakhir'  => $idTerproses,
             'mac_address'            => $ruangan->mac_address ?: ($status['mac'] ?? null),
             'catatan'                => $jumlahBaru > 0 ? null : 'Terhubung, belum ada data baru.',
         ]);
