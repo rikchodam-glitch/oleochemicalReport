@@ -186,8 +186,8 @@
         }
 
         var options = {
-            'zpm1': [['EI', 'EI'], ['Mekanik', 'Mekanik']],
-            'zpm6': [['EI', 'EI'], ['Mekanik', 'Mekanik']],
+            'zpm1': [['EI', 'EI'], ['Mekanik', 'Mekanik'], ['IT', 'IT']],
+            'zpm6': [['EI', 'EI'], ['Mekanik', 'Mekanik'], ['IT', 'IT']],
             'zpm3': [['CM/PM', 'CM/PM']],
             'zpm5': [['Fabrikasi', 'Fabrikasi']],
             'zpm7': [['Sipil', 'Sipil']],

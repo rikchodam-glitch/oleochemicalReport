@@ -362,9 +362,10 @@ trait WizardCallbackHandlerTrait
     }
 
     /**
-     * Proses pilihan jenis pekerjaan EI vs Mekanik untuk klasifikasi ZPM 1/6.
-     * Simpan pilihan ke state, catat step ke riwayat, lalu lanjutkan wizard
-     * ke pencarian equipment.
+     * Proses pilihan jenis pekerjaan EI, Mekanik, atau IT untuk klasifikasi
+     * ZPM 1/6. Simpan pilihan ke state, catat step ke riwayat, lalu lanjutkan
+     * wizard ke pencarian equipment. Pilihan IT membatasi pool pencarian ke
+     * data IT Assets (lihat ReportWizardService::processEquipmentSearch).
      *
      * @param  string $chatId       Chat ID Telegram
      * @param  string $callbackData Data callback jenis_pekerjaan:<kode>
@@ -374,7 +375,7 @@ trait WizardCallbackHandlerTrait
     protected function handleJenisPekerjaanCallback(string $chatId, string $callbackData, array $state): array
     {
         $jenis   = str_replace('jenis_pekerjaan:', '', $callbackData);
-        $allowed = ['EI', 'Mekanik'];
+        $allowed = ['EI', 'Mekanik', 'IT'];
 
         if (!in_array($jenis, $allowed, true)) {
             return $this->errorResponse('Jenis pekerjaan tidak dikenali.');

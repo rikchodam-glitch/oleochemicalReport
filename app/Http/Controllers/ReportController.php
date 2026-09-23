@@ -143,7 +143,7 @@ class ReportController extends Controller
             'asset_id'                => 'nullable|exists:assets,id',
             'report_type'             => 'required|in:equipment_repair,area_work,general',
             'work_classification'     => 'nullable|in:zpm1,zpm3,zpm6,zpm5,zpm7',
-            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil',
+            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil,IT',
             'linked_finding_id'       => 'nullable|exists:cm_findings,id',
             'sesuai_rencana'          => 'nullable|in:ya,tidak',
             'tanggal_kejadian'        => 'nullable|date',
@@ -246,7 +246,7 @@ class ReportController extends Controller
             'funcloc_id'              => 'nullable|exists:functional_locations,id',
             'asset_id'                => 'nullable|exists:assets,id',
             'work_classification'     => 'nullable|in:zpm1,zpm3,zpm6,zpm5,zpm7',
-            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil',
+            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil,IT',
             'linked_finding_id'       => 'nullable|exists:cm_findings,id',
             'sesuai_rencana'          => 'nullable|in:ya,tidak',
             'tanggal_kejadian'        => 'nullable|date',
@@ -262,6 +262,13 @@ class ReportController extends Controller
         // Validasi non-dCM: null-kan sesuai_rencana
         if (($validated['jenis_pekerjaan'] ?? '') !== 'dCM') {
             $validated['sesuai_rencana'] = null;
+        }
+
+        // Form edit web belum menyediakan pilihan jenis pekerjaan IT (hanya di
+        // wizard Telegram), sehingga menyimpan lewat form ini tidak boleh
+        // menghapus klasifikasi IT yang sudah tercatat.
+        if (empty($validated['jenis_pekerjaan']) && $report->jenis_pekerjaan === 'IT') {
+            $validated['jenis_pekerjaan'] = 'IT';
         }
 
         $validated['is_manually_edited'] = true;

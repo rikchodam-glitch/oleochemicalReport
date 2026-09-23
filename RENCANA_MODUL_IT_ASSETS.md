@@ -360,4 +360,65 @@ Tujuan: tangkapan gambar terakhir CCTV/NVR ter-update otomatis.
    migration, dan test terisolasi untuk service (boleh file `.php` temp lalu hapus).
 9. Commit per sesi setelah verifikasi stabil (jangan menumpuk banyak sesi tanpa commit).
 
+---
+
+## 6. Sesi 12 — Sinkronisasi IT Assets ke tabel assets + pilihan IT di wizard
+
+Tujuan: lokasi perangkat IT memakai Functional Location yang sama dengan asset
+industri, dan wizard laporan Telegram mendapat pilihan jenis pekerjaan **IT**
+selain EI dan Mekanik (khusus klasifikasi ZPM 1 dan ZPM 6).
+
+### Skema
+
+1. `it_assets.funcloc_id` (FK nullable ke `functional_locations`) — lokasi
+   perangkat IT memakai hierarki PT -> Departemen -> Area -> Section.
+2. `assets.it_asset_id` (FK nullable ke `it_assets`, ON DELETE CASCADE) —
+   jembatan ke baris cermin. Baris cermin ditandai `data_source = 'it_sync'`.
+3. ENUM `assets.data_source` ditambah nilai `it_sync`; ENUM `assets.status`
+   ditambah nilai `spare`; ENUM `reports.jenis_pekerjaan` ditambah nilai `IT`.
+
+### Aturan pemetaan lokasi
+
+Aturan ada di `config/it.php` bagian `sync.funcloc_rules` (plant + kata kunci
+`department` -> funcloc level 1) dan `sync.device_fallback_rules` (cadangan per
+tipe perangkat bila departemen kosong). Perangkat yang belum bisa dipetakan
+TIDAK dipaksa masuk; barisnya tetap dikelola di halaman IT Assets.
+
+### Perintah
+
+```
+php artisan it:map-funcloc --dry-run   # lihat hasil pemetaan tanpa menyimpan
+php artisan it:map-funcloc             # simpan hasil pemetaan
+php artisan it:sync-assets --dry-run   # lihat rencana sinkronisasi
+php artisan it:sync-assets             # petakan + sinkronkan ke tabel assets
+```
+
+### Hasil verifikasi (23/09/2026)
+
+| Pemeriksaan | Hasil |
+|---|---|
+| Perangkat IT punya funcloc | 242 dari 265 |
+| Baris cermin di `assets` | 242 (219 baru, 23 CCTV adopsi baris lama sehingga `equipment_no` dan tautan laporan lama tetap utuh) |
+| Perangkat belum bisa dipetakan | 23 (CCTV/access door NPA tanpa dept sudah tertangani oleh aturan cadangan; sisa: 6 PC spare, 7 MCFA, 4 laptop tanpa plant, 3 PABX, 1 PC plant KAS, `SERVER-FIRE-ALARM`, `WS-EPE-MTC-IT`) |
+| Baris legacy dihapus dari `assets` | 43 (`PC-EPE-*`; 23 `CCTV-EPE-*` diadopsi, bukan dihapus) |
+| Cadangan sebelum penghapusan | `D:\storage\app\private\backup\legacy-it-assets-20260923-140908.json` |
+| Pencarian tagname IT di `TechIdentSearchService` | `CCTV-EPE-12`, `WS-CES-PRO-Novila`, `ALD-NPA-Packing` -> `auto_accept` pass1 confidence 100 |
+| Filter pool saat jenis IT dipilih | tag IT ditemukan, tag industri -> `no_match` |
+| Keyboard step jenis pekerjaan | EI, Mekanik, IT |
+
+### Catatan sisa pekerjaan
+
+1. `resources/views/reports/edit.blade.php` belum memuat pilihan `IT` pada peta
+   opsi JS `syncJenisPekerjaan()`. Pengaman sementara ada di
+   `ReportController::update()` (klasifikasi IT yang sudah ada tidak dihapus bila
+   form menyimpan nilai kosong). Menambah opsi di file itu butuh overwrite penuh
+   sesuai aturan edit file blade.
+2. Pada wizard, baru pencarian **tagname** yang difilter ke data IT. Pencarian
+   lewat hierarki Functional Location dan lewat tipe alat masih satu pool dengan
+   asset industri.
+3. `resources/views/assets/show.blade.php` masih menampilkan `data_source`
+   selain `import_excel` sebagai "Manual" (termasuk `it_sync`).
+4. 23 perangkat IT tanpa funcloc menunggu kelengkapan data plant/departemen.
+
+
 

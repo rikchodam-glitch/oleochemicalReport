@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FunctionalLocation;
 use App\Models\IpAddress;
 use App\Models\IpNetwork;
 use App\Models\ItAsset;
@@ -9,6 +10,7 @@ use App\Models\ItNotification;
 use App\Models\ItPingLog;
 use App\Services\CctvSnapshotService;
 use App\Services\ItAssetImportService;
+use App\Services\ItAssetSyncService;
 use App\Services\ItPingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -400,6 +402,7 @@ class ItAssetController extends Controller
             'deviceTypeLabels' => $this->deviceTypeLabels(),
             'ipGroups'         => $this->ipOptionsGroups($itAsset),
             'nvrOptions'       => ItAsset::where('device_type', 'NVR')->orderBy('tag_name')->get(),
+            'funclocGroups'    => $this->funclocOptionsGroups(),
         ]);
     }
 
@@ -418,6 +421,7 @@ class ItAssetController extends Controller
 
         $asset = ItAsset::create($validated);
         $this->syncIpAssignment($asset);
+        $this->syncMirrorAsset($asset);
 
         return $this->redirectToItAssetList()
             ->with('success', 'Perangkat IT berhasil ditambahkan.');
@@ -437,6 +441,7 @@ class ItAssetController extends Controller
             'deviceTypeLabels' => $this->deviceTypeLabels(),
             'ipGroups'         => $this->ipOptionsGroups($itAsset),
             'nvrOptions'       => ItAsset::where('device_type', 'NVR')->orderBy('tag_name')->get(),
+            'funclocGroups'    => $this->funclocOptionsGroups(),
         ]);
     }
 
@@ -453,6 +458,7 @@ class ItAssetController extends Controller
         $this->validateIpPool($validated['ip_address'] ?? null, $itAsset);
         $itAsset->update($validated);
         $this->syncIpAssignment($itAsset);
+        $this->syncMirrorAsset($itAsset);
 
         return $this->redirectToItAssetList()
             ->with('success', 'Perangkat IT berhasil diperbarui.');
@@ -477,6 +483,47 @@ class ItAssetController extends Controller
 
         return $this->redirectToItAssetList()
             ->with('success', 'Perangkat IT berhasil dihapus.');
+    }
+
+    /**
+     * Susun daftar Functional Location untuk dropdown form perangkat, dikelompok
+     * per PT (segmen pertama kode funcloc). Hanya node di bawah level PT yang
+     * ditampilkan, karena node PT sendiri tidak dipakai sebagai lokasi alat.
+     *
+     * @return array<string, array<int, array{id: int, label: string}>>
+     */
+    private function funclocOptionsGroups(): array
+    {
+        $groups = [];
+
+        foreach (FunctionalLocation::orderBy('code')->get() as $funcloc) {
+            if ((int) $funcloc->level === FunctionalLocation::LEVEL_SITE) {
+                continue;
+            }
+
+            $pt = explode('-', $funcloc->code)[0] ?? 'LAINNYA';
+
+            $groups[$pt][] = [
+                'id'    => (int) $funcloc->id,
+                'label' => $funcloc->code . ' - ' . $funcloc->name,
+            ];
+        }
+
+        return $groups;
+    }
+
+    /**
+     * Sinkronkan satu perangkat IT ke tabel assets (baris cermin) lewat
+     * ItAssetSyncService, supaya lokasi/tipe equipment-nya langsung bisa
+     * dipakai pencarian wizard laporan Telegram. Perangkat tanpa funcloc
+     * dilewati oleh service (baris cermin lama ikut dihapus bila ada).
+     *
+     * @param  ItAsset  $itAsset
+     * @return void
+     */
+    private function syncMirrorAsset(ItAsset $itAsset): void
+    {
+        app(ItAssetSyncService::class)->syncOne($itAsset);
     }
 
     /**
@@ -608,6 +655,7 @@ class ItAssetController extends Controller
             'plant'              => ['nullable', 'string', 'max:255'],
             'department'         => ['nullable', 'string', 'max:255'],
             'location'           => ['nullable', 'string', 'max:255'],
+            'funcloc_id'         => ['nullable', 'integer', 'exists:functional_locations,id'],
             'application'        => ['nullable', 'string'],
             'status'             => ['required', 'string', Rule::in(['active', 'inactive', 'needs_review'])],
             'snapshot_url'       => ['nullable', 'string', 'max:255', 'regex:/^(rtsp|https?):\/\//i'],
@@ -891,9 +939,25 @@ class ItAssetController extends Controller
 
             $summary = $this->importService->import($request->file('file'));
 
+            // Setelah import, lokasi perangkat dipetakan ulang dan hasilnya
+            // disinkronkan ke tabel assets supaya pencarian wizard laporan
+            // langsung mengenali perangkat baru.
+            $syncService = app(ItAssetSyncService::class);
+            $pemetaan     = $syncService->mapAllFunclocs();
+            $sinkron      = $syncService->syncAll();
+
+            $pesan = $this->buildSummaryMessage($summary) . sprintf(
+                ' | Lokasi: %d dipetakan, %d belum bisa dipetakan. Sinkron ke Asset: %d baru, %d adopsi, %d diperbarui.',
+                $pemetaan['mapped'],
+                $pemetaan['unmapped'],
+                $sinkron['created'],
+                $sinkron['adopted'],
+                $sinkron['updated']
+            );
+
             return redirect()
                 ->route('it-assets.index')
-                ->with('success', $this->buildSummaryMessage($summary));
+                ->with('success', $pesan);
         } catch (\Exception $e) {
             return redirect()
                 ->route('it-assets.import')

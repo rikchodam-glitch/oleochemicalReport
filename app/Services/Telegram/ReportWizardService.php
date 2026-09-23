@@ -359,7 +359,9 @@ class ReportWizardService
     {
         $text    = $state['text'];
         $areaId  = $state['area_id'] ?? null;
-        $results = $this->techIdentSearch->search($text, $areaId);
+        // Jenis pekerjaan IT membatasi pool pencarian ke perangkat IT saja.
+        $itOnly  = ($state['jenis_pekerjaan'] ?? null) === 'IT';
+        $results = $this->techIdentSearch->search($text, $areaId, $itOnly);
 
         Log::info("WizardService: TechIdentSearch result for chat {$chatId}", [
             'confidence'  => $results['confidence'] ?? 0,
@@ -1108,7 +1110,8 @@ class ReportWizardService
         $state['retype_attempts'] = $attempts;
 
         $areaId     = $state['area_id'] ?? null;
-        $results    = $this->techIdentSearch->search($text, $areaId);
+        $itOnly     = ($state['jenis_pekerjaan'] ?? null) === 'IT';
+        $results    = $this->techIdentSearch->search($text, $areaId, $itOnly);
         $confidence = $results['confidence'] ?? 0;
         $candidates = $results['candidates'] ?? [];
         $exactMatch = $results['exact_match'] ?? null;

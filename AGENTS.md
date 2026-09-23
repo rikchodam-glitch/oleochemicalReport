@@ -252,6 +252,28 @@ ulang.
     subjektif justru menghasilkan lebih banyak putaran gagal dan waktu
     yang hilang. Lihat Aturan Wajib Edit File poin 6 dan 10.**
 
+11. **Penyebab gagal `find_and_replace` di blade bisa sepele: indentasi salah
+    baca dari output `Select-String`.** Pada `resources/views/reports/edit.blade.php`
+    (23/09/2026), target pencarian disusun dari output `Select-String` yang
+    menampilkan baris sudah di-*trim* (spasi awal hilang), sehingga string
+    12-spasi tidak ketemu saat file aslinya memakai 8 spasi. Aturan poin 6
+    langsung berlaku (pindah ke overwrite penuh), dan menghentikan perubahan di
+    file itu adalah keputusan yang benar. **Pelajaran: untuk menyusun target
+    `find_and_replace`, JANGAN pakai output `Select-String` (ter-trim) — pakai
+    hasil baca file apa adanya, atau cetak ulang barisnya dengan panjang
+    karakter untuk memastikan indentasinya.**
+
+12. **Overwrite penuh file blade besar secara bertahap (`insert_line`) rawan
+    digeser sambungannya.** Saat menulis ulang `reports/edit.blade.php` (307
+    baris) dengan cara menambah potongan per `insert_line`, urutan baris di titik
+    sambungan bergeser (baris atribut `class` jatuh setelah blok berikutnya) dan
+    muncul baris kosong sisa. **Pelajaran: kalau memang harus overwrite penuh
+    file besar, tulis ke file BARU secara berurutan, verifikasi jumlah baris dan
+    titik sambungan TIAP potongan dengan `git diff --no-index` sebelum
+    menggantikan file asli — kalau prosesnya sudah dua kali meleset, HENTIKAN
+    dan laporkan ke user (biar diedit manual) daripada lanjut menebak.**
+
+
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
 
 ## ATURAN PENULISAN KODE

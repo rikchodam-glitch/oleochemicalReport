@@ -124,6 +124,8 @@
                            placeholder="Gedung / lantai / ruangan">
                 </div>
 
+                @include('it-assets.partials._location-select')
+
                 <div class="md:col-span-2">
                     <label class="block text-xs font-medium text-slate-500 mb-1.5">Aplikasi / Penggunaan</label>
                     <textarea name="application" rows="2"

@@ -79,6 +79,8 @@
                         <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Lokasi</dt>
                         <dd class="mt-1 text-sm text-slate-900">{{ $itAsset->location ?? '-' }}</dd>
                     </div>
+
+                    @include('it-assets.partials._location-info')
                     @if($itAsset->application)
                     <div class="md:col-span-3">
                         <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Application</dt>

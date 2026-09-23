@@ -67,11 +67,14 @@ class TechIdentSearchService
      *
      * @param  string   $rawText Teks laporan awal dari teknisi
      * @param  int|null $areaId  Batasi pencarian ke area tertentu jika sudah diketahui
+     * @param  bool     $itOnly  true = hanya perangkat yang berasal dari data IT Assets
+     *                           (baris cermin dengan data_source 'it_sync'), dipakai
+     *                           saat teknisi memilih jenis pekerjaan IT di wizard
      * @return array{status: string, pass: ?string, confidence: int, candidates: array}
      */
-    public function search(string $rawText, ?int $areaId = null): array
+    public function search(string $rawText, ?int $areaId = null, bool $itOnly = false): array
     {
-        $assets = $this->candidateAssets($areaId);
+        $assets = $this->candidateAssets($areaId, $itOnly);
         if ($assets->isEmpty()) {
             return $this->noMatch();
         }
@@ -268,14 +271,21 @@ class TechIdentSearchService
 
     /**
      * Ambil daftar asset kandidat, dibatasi ke area tertentu jika diketahui
-     * (mempersempit ruang pencarian dan menghindari hasil dari area lain).
+     * (mempersempit ruang pencarian dan menghindari hasil dari area lain), dan
+     * dibatasi ke perangkat IT bila $itOnly aktif.
      *
      * @param  int|null  $areaId ID area untuk filter, null berarti semua area
+     * @param  bool      $itOnly true = hanya baris cermin IT Assets (data_source 'it_sync')
      * @return Collection
      */
-    protected function candidateAssets(?int $areaId): Collection
+    protected function candidateAssets(?int $areaId, bool $itOnly = false): Collection
     {
         $query = Asset::whereNotNull('tech_ident_no');
+
+        if ($itOnly) {
+            $query->where('data_source', 'it_sync');
+        }
+
         if ($areaId) {
             $query->where('area_id', $areaId);
         }

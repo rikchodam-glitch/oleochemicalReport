@@ -116,19 +116,21 @@ trait WizardStepHandlerTrait
     }
 
     /**
-     * Bangun pesan prompt pilihan jenis pekerjaan EI vs Mekanik.
+     * Bangun pesan prompt pilihan jenis pekerjaan: EI, Mekanik, atau IT.
      * Ditampilkan setelah teknisi memilih klasifikasi ZPM 1 atau ZPM 6.
      * Callback_data mengikuti pola 'jenis_pekerjaan:<kode>', ditangani
-     * WizardCallbackHandlerTrait::handleJenisPekerjaanCallback().
+     * WizardCallbackHandlerTrait::handleJenisPekerjaanCallback(). Pilihan IT
+     * membatasi pencarian equipment ke perangkat IT (data_source 'it_sync').
      *
      * @param  array $state State wizard saat ini
-     * @return array Respons dengan message dan keyboard EI/Mekanik
+     * @return array Respons dengan message dan keyboard EI/Mekanik/IT
      */
     protected function buildJenisPekerjaanPrompt(array $state): array
     {
         $keyboard = [
             ['text' => 'EI', 'callback_data' => 'jenis_pekerjaan:EI'],
             ['text' => 'Mekanik', 'callback_data' => 'jenis_pekerjaan:Mekanik'],
+            ['text' => 'IT', 'callback_data' => 'jenis_pekerjaan:IT'],
         ];
 
         foreach ($this->navigationButtons($state) as $navButton) {
