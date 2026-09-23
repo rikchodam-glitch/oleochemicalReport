@@ -405,6 +405,7 @@ class ItAssetController extends Controller
             'ipGroups'         => $this->ipOptionsGroups($itAsset),
             'nvrOptions'       => ItAsset::where('device_type', 'NVR')->orderBy('tag_name')->get(),
             'funclocGroups'    => $this->funclocOptionsGroups(),
+            'connectToGroups'  => $this->connectToOptionsGroups(),
         ]);
     }
 
@@ -444,6 +445,7 @@ class ItAssetController extends Controller
             'ipGroups'         => $this->ipOptionsGroups($itAsset),
             'nvrOptions'       => ItAsset::where('device_type', 'NVR')->orderBy('tag_name')->get(),
             'funclocGroups'    => $this->funclocOptionsGroups(),
+            'connectToGroups'  => $this->connectToOptionsGroups(),
         ]);
     }
 
@@ -509,6 +511,38 @@ class ItAssetController extends Controller
                 'id'    => (int) $funcloc->id,
                 'label' => $funcloc->code . ' - ' . $funcloc->name,
             ];
+        }
+
+        return $groups;
+    }
+
+    /**
+     * Susun daftar perangkat jaringan untuk dropdown "Connect To" pada form
+     * CCTV/NVR, dikelompokkan per tipe: Switch Managed, Switch PoE Unmanaged,
+     * dan Access Point (termasuk Radio yang dipetakan sebagai Access Point).
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function connectToOptionsGroups(): array
+    {
+        $labels = [
+            'SWITCH_MANAGED'       => 'Switch Managed',
+            'SWITCH_POE_UNMANAGED' => 'Switch PoE Unmanaged',
+            'ACCESS_POINT'         => 'Access Point / Radio',
+        ];
+
+        $groups = [];
+
+        foreach ($labels as $deviceType => $label) {
+            $daftar = ItAsset::where('device_type', $deviceType)
+                ->whereNotNull('tag_name')
+                ->orderBy('tag_name')
+                ->pluck('tag_name')
+                ->all();
+
+            if ($daftar !== []) {
+                $groups[$label] = $daftar;
+            }
         }
 
         return $groups;
@@ -674,6 +708,7 @@ class ItAssetController extends Controller
             'spec_cctv_pointing'    => ['nullable', 'string', 'max:255'],
             'spec_cctv_show'        => ['nullable', 'string', 'max:255'],
             'spec_cctv_channel'     => ['nullable', 'string', 'max:50'],
+            'spec_cctv_connect_to'  => ['nullable', 'string', 'max:255'],
         ], [
             'snapshot_url.regex' => 'URL snapshot harus diawali rtsp://, http://, atau https://.',
             'ip_address.ip'      => 'Alamat IP tidak valid.',
@@ -808,9 +843,10 @@ class ItAssetController extends Controller
         $spec = $base ?? [];
 
         foreach ([
-            'pointing' => 'spec_cctv_pointing',
-            'show'     => 'spec_cctv_show',
-            'channel'  => 'spec_cctv_channel',
+            'pointing'   => 'spec_cctv_pointing',
+            'show'       => 'spec_cctv_show',
+            'channel'    => 'spec_cctv_channel',
+            'connect_to' => 'spec_cctv_connect_to',
         ] as $key => $field) {
             $value = trim((string) $request->input($field));
             if ($value === '') {

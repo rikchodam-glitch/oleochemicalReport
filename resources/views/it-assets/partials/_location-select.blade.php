@@ -1,14 +1,19 @@
 {{--
-    Partial: pilihan lokasi (Functional Location) dan informasi Tipe Equipment
-    untuk form tambah/edit perangkat IT.
+    Partial: pilihan lokasi (Functional Location), informasi Tipe Equipment, dan
+    dropdown Connect To untuk form tambah/edit perangkat IT.
 
     Dipakai form.blade.php lewat satu baris @include. Lokasi perangkat IT
     memakai hierarki yang sama dengan asset industri (PT -> Departemen -> Area
     -> Section) supaya perangkat ini bisa dipilih pada wizard laporan Telegram.
 
+    Dropdown Connect To hanya ditampilkan untuk perangkat CCTV/NVR (lihat
+    script kecil di bawah) dan isinya berasal dari partial
+    _connect-to-select.blade.php.
+
     Variabel yang dipakai:
-    - $itAsset      : instance ItAsset (bisa instance baru untuk form tambah)
-    - $funclocGroups: array<string, array<int, array{id: int, label: string}>>
+    - $itAsset         : instance ItAsset (bisa instance baru untuk form tambah)
+    - $funclocGroups   : array<string, array<int, array{id: int, label: string}>>
+    - $connectToGroups : array<string, array<int, string>>
 --}}
 
 <div>
@@ -44,3 +49,39 @@
         hierarki wizard laporan (lihat ItAsset::DEVICE_EQUIPMENT_TYPES).
     </p>
 </div>
+
+{{-- Connect To: hanya relevan untuk CCTV/NVR, jadi dibungkus container yang
+     visibilitasnya mengikuti pilihan Tipe Perangkat pada form. --}}
+<div id="connectToWrapper" class="{{ in_array($itAsset->device_type, ['CCTV', 'NVR'], true) ? '' : 'hidden' }}">
+    @include('it-assets.partials._connect-to-select')
+</div>
+
+<script>
+(function () {
+    /**
+     * Tampilkan atau sembunyikan blok Connect To mengikuti Tipe Perangkat
+     * yang dipilih, supaya field ini tidak membingungkan untuk tipe lain.
+     */
+    function syncConnectToVisibility() {
+        const tipe = document.getElementById('device-type-select');
+        const wrapper = document.getElementById('connectToWrapper');
+
+        if (!tipe || !wrapper) {
+            return;
+        }
+
+        const relevan = ['CCTV', 'NVR'].indexOf(tipe.value) !== -1;
+        wrapper.classList.toggle('hidden', !relevan);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const tipe = document.getElementById('device-type-select');
+        if (tipe) {
+            tipe.addEventListener('change', syncConnectToVisibility);
+        }
+
+        syncConnectToVisibility();
+    });
+})();
+</script>
+

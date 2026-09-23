@@ -406,6 +406,33 @@ php artisan it:sync-assets             # petakan + sinkronkan ke tabel assets
 | Filter pool saat jenis IT dipilih | tag IT ditemukan, tag industri -> `no_match` |
 | Keyboard step jenis pekerjaan | EI, Mekanik, IT |
 
+### Sesi 13 — Perangkat jaringan (Switch Managed, Access Point/Radio) dan Connect To
+
+1. Daftar perangkat jaringan ada di `config/it.php` bagian `network_devices`
+   (19 Switch Managed + 8 Radio sebagai Access Point), dijalankan lewat
+   `php artisan it:seed-network` (idempoten, aman diulang setelah config
+   direvisi). Perintah sekaligus memetakan funcloc dan menyinkronkan ke
+   `assets`.
+2. Radio dari sheet MODUL JARINGAN dipetakan sebagai `ACCESS_POINT`
+   (perangkat nirkabel), sehingga total Access Point menjadi 11.
+3. Form IT Assets kini punya dropdown **Connect To** (partial
+   `_connect-to-select.blade.php`) yang isinya perangkat bertipe Switch Managed,
+   Switch PoE Unmanaged, dan Access Point. Nilai lama hasil import yang belum
+   terdaftar tetap ditampilkan sebagai opsi cadangan `(belum terdaftar)` agar
+   tidak hilang saat form disimpan.
+4. Nilai `connect_to` pada CCTV yang mengandung baris baru (sisa sel Excel)
+   sudah dinormalkan: 12 baris diperbaiki, 95 kamera kini cocok dengan
+   perangkat jaringan terdaftar. Sisa yang masih berupa jalur radio:
+   `Radio - Switch Utility` (2 kamera) dan `Radio - Switch Unloading`
+   (4 kamera) — sengaja dibiarkan karena informasinya menyatakan kamera
+   terhubung lewat radio.
+5. Catatan: dropdown Connect To dirender lewat partial `_location-select`
+   (yang sudah di-include di form) agar tidak perlu menyunting
+   `form.blade.php`; letaknya di blok identitas/lokasi dan hanya tampil untuk
+   tipe CCTV/NVR. Bila ingin dipindah ke dalam kotak spesifikasi CCTV, cukup
+   tambahkan satu baris `@include('it-assets.partials._connect-to-select')` di
+   dalam `#cctvSpecSection` dan hapus blok `connectToWrapper`.
+
 ### Catatan sisa pekerjaan
 
 1. `resources/views/reports/edit.blade.php` belum memuat pilihan `IT` pada peta
