@@ -209,7 +209,27 @@ class PollTelegramUpdates extends Command
             // Tombol asisten informasi perangkat (prefix info:) berdiri sendiri:
             // tidak membutuhkan sesi wizard laporan sama sekali.
             if (str_starts_with($data, 'info:')) {
-                $respons = app(\App\Services\Telegram\ItInfoService::class)->handleCallback($data);
+                // Tombol "Buat Laporan" langsung membuka wizard dengan alat yang
+                // sudah terkunci, jadi teknisi tinggal mengisi jenis pekerjaan
+                // dan informasi lainnya.
+                if (str_starts_with($data, 'info:report:')) {
+                    $assetId = (int) substr($data, strlen('info:report:'));
+                    $asset   = \App\Models\Asset::find($assetId);
+
+                    if ($asset === null) {
+                        $this->editMessageTextSimple($chatId, $messageId, 'Alat tidak ditemukan. Silakan cari ulang dengan /info.');
+
+                        return;
+                    }
+
+                    $respons = $this->reportWizard->startWizardForAsset((string) $chatId, $asset);
+
+                    $this->editMessageText($chatId, $messageId, $respons['message'], $respons['keyboard']);
+
+                    return;
+                }
+
+                $respons = app(\App\Services\Telegram\AssetInfoService::class)->handleCallback($data);
 
                 if (!empty($respons['keyboard'])) {
                     $this->editMessageText($chatId, $messageId, $respons['message'], $respons['keyboard']);

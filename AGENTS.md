@@ -384,6 +384,34 @@ ulang.
 
 
 
+19. **Menulis `\\n` pada `new_text` menghasilkan teks LITERAL `\n` di file PHP
+    (bukan baris baru), dan itu TIDAK terdeteksi oleh test.** Pada 24/09/2026,
+    penulisan `App\Services\Telegram\AssetInfoService.php` memakai `\\n` di dalam
+    string PHP; file yang tersimpan berisi `\\n` (dua backslash) sehingga pesan
+    Telegram yang dikirim berisi tulisan "\n" sebagai teks, bukan baris baru.
+    Semua test unit/feature tetap HIJAU karena hanya memeriksa `toContain()`
+    penggalan kalimat, dan `php -l` juga lolos. Yang menemukan: **uji nyata
+    memakai data produksi** (memanggil service lalu mencetak pesan apa adanya).
+    **Pelajaran: (1) di tool editor, tulis `\n` (satu backslash) untuk baris baru
+    di dalam string PHP — `\\n` akan tersimpan sebagai teks literal; (2) setelah
+    menulis pesan/teks dinamis, WAJIB jalankan uji cetak nyata (bukan hanya test
+    yang mengecek `toContain`) supaya karakter escape yang salah ketahuan;
+    (3) periksa dengan mencetak baris lalu mengganti `\` menjadi penanda
+    (`(Get-Content file)[n].Replace('\','<BS>')`) untuk memastikan jumlah backslash.**
+
+20. **Kode fallback pada pengelompokan harus dipakai JUGA pada penyaringan, jika
+    tidak, hasil filter selalu kosong.** `FuncLocParser::groupBySectionAndType()`
+    memakai penanda `'0000'` (section tidak terurai) dan `'?'` (tipe tidak
+    terurai). Versi pertama `AssetInfoService` mengelompokkan dengan penanda itu
+    tetapi menyaring dengan `extractSectionCode() === $section` (nilai null),
+    sehingga tombol "Section 0000" selalu membuka daftar KOSONG — padahal 431
+    alat terdaftar di sana. **Pelajaran: setiap nilai fallback ('0000', '?')
+    wajib diterapkan identik di kedua sisi (pengelompokan dan penyaringan), dan
+    tombol yang menampilkan jumlah besar (431 alat) harus diuji benar-benar
+    membuka daftar alat, bukan hanya diuji lewat unit test.**
+
+
+
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
 
 ## ATURAN PENULISAN KODE

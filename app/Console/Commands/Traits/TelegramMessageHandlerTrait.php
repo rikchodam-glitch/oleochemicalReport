@@ -4,7 +4,7 @@ namespace App\Console\Commands\Traits;
 
 use App\Models\BotRegistration;
 use App\Models\Technician;
-use App\Services\Telegram\ItInfoService;
+use App\Services\Telegram\AssetInfoService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -216,7 +216,7 @@ trait TelegramMessageHandlerTrait
         $this->sendChatAction($chatId);
 
         try {
-            $respons = app(ItInfoService::class)->search($query);
+            $respons = app(AssetInfoService::class)->search($query);
         } catch (\Exception $e) {
             Log::error('Perintah /info gagal: ' . $e->getMessage());
             $this->sendMessage($chatId, 'Maaf, pencarian perangkat sedang bermasalah. Coba lagi sebentar.');
@@ -339,7 +339,7 @@ trait TelegramMessageHandlerTrait
         $existing = Technician::where('telegram_id', $telegramId)->first();
         if ($existing) {
             if ($existing->status === 'active') {
-                $this->sendMessage($chatId, "Halo $firstName! Akun kamu sudah aktif. Silakan kirim laporan harian.\n\nUntuk mencari perangkat, ketik /info. Contoh:\n/info PC Hafidz\n/info CCTV-CES-3\n/info 192.168.41.210");
+                $this->sendMessage($chatId, "Halo $firstName! Akun kamu sudah aktif. Silakan kirim laporan harian.\n\nUntuk mencari informasi alat, ketik /info. Contoh:\n/info PC <nama pemakai>\n/info <tag alat>\n/info 192.168.41.210\n/info (tanpa kata kunci) untuk menelusuri hirarki alat");
             } else {
                 $this->sendMessage($chatId, "Akun kamu masih menunggu persetujuan admin.");
             }

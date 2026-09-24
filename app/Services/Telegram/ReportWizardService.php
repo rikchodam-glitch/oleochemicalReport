@@ -232,6 +232,46 @@ class ReportWizardService
     }
 
     /**
+     * Mulai wizard laporan dengan equipment yang sudah dipilih lebih dulu.
+     *
+     * Dipakai oleh tombol "Buat Laporan" pada asisten informasi (/info): teknisi
+     * sudah melihat detail alat, jadi alat langsung dikunci dan wizard dimulai
+     * dari pemilihan klasifikasi/jenis pekerjaan - tidak perlu mencari alat lagi
+     * (processEquipmentSearch() otomatis dilewati karena equipment_id terisi).
+     *
+     * @param  string  $chatId  Chat ID Telegram
+     * @param  Asset   $asset   Aset yang sudah dipilih dari asisten informasi
+     * @return array   Respons berisi prompt klasifikasi pekerjaan
+     */
+    public function startWizardForAsset(string $chatId, Asset $asset): array
+    {
+        $this->destroyWizard($chatId);
+
+        $label = trim((string) ($asset->tech_ident_no ?? ''));
+        $teks  = 'Perbaikan ' . ($label !== '' ? $label : 'aset')
+            . ($asset->description ? ' - ' . $asset->description : '');
+
+        $state                     = $this->createInitialState($chatId, $teks);
+        $state['equipment_id']     = $asset->id;
+        $state['equipment_ident']  = $asset->tech_ident_no;
+        $state['equipment_funcloc'] = $asset->functional_loc;
+        $state['started_from_info'] = true;
+
+        if ($asset->area_id) {
+            $state['area_id']   = $asset->area_id;
+            $state['area_code'] = Area::find($asset->area_id)?->code;
+        }
+
+        $state['step'] = self::STEP_WORK_CLASSIFICATION;
+        $this->saveState($chatId, $state);
+
+        $respons    = $this->buildWorkClassificationPrompt($state);
+        $respons['message'] = "Laporan untuk *" . $label . "* dimulai.\n\n" . $respons['message'];
+
+        return $respons;
+    }
+
+    /**
      * Proses teks input dari teknisi di tengah wizard yang sedang berjalan.
      *
      * @param  string $chatId Chat ID Telegram
@@ -357,6 +397,13 @@ class ReportWizardService
      */
     protected function processEquipmentSearch(string $chatId, array $state): array
     {
+        // Equipment sudah terkunci sebelum pencarian dijalankan (mis. laporan
+        // dimulai dari tombol "Buat Laporan" pada asisten /info): lewati
+        // pencarian dan langsung lanjut ke step durasi kerja.
+        if (! empty($state['equipment_id'])) {
+            return $this->advanceToWorkDuration($chatId, $state);
+        }
+
         $text    = $state['text'];
         $areaId  = $state['area_id'] ?? null;
         // Jenis pekerjaan IT membatasi pool pencarian ke perangkat IT saja.

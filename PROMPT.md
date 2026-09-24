@@ -220,6 +220,20 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
 - Kolom provider terkait: `quota_*_per_minute`, `quota_checked_at`, `cooldown_until`, `quota_day`
 - `daily_token_limit`/`monthly_token_limit` hanya penjaga opt-in (`config('ai.quota.enforce_local_limit')`, bawaan false)
 
+### AssetInfoService (asisten /info di bot Telegram)
+- Berlaku untuk SEMUA aset (perangkat IT maupun aset industri), bukan hanya IT
+- Hirarki mengikuti wizard laporan: Plant -> Departemen -> Area -> Sub Area -> Section -> Tipe alat -> Alat
+  (level Section hanya muncul bila alat > 10, level Tipe selalu lebih dulu sebelum daftar alat)
+- Pintasan "Tanpa Area" untuk aset yang belum punya area (mis. sebagian perangkat IT)
+- Setiap keyboard punya tombol "Kembali" dan "Tutup" (`info:close`, tombol langsung dihapus dari pesan)
+- Detail aset industri: lokasi lengkap, teknisi terakhir, kerusakan/pekerjaan terakhir,
+  pengecekan PM terakhir, Condition Monitoring terakhir (`cm_readings.kondisi` + `max_vibration`/`max_temp`),
+  laporan terakhir, link web `/assets/{id}`
+- Tombol "Buat Laporan" (`info:report:<asset_id>`) membuka `ReportWizardService::startWizardForAsset()`
+  dengan alat sudah terkunci, sehingga `processEquipmentSearch()` dilewati dan teknisi langsung
+  mengisi klasifikasi/jenis pekerjaan serta data lainnya
+- Callback diarahkan di `PollTelegramUpdates::processCallbackQuery()` (prefix `info:`) sebelum wizard laporan
+
 ### TechIdentSearchService
 - Pencarian 3-pass: exact match → normalized → section+type
 - Input: teks laporan teknisi
