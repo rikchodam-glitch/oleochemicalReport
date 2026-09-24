@@ -38,6 +38,7 @@ class Technician extends Model
         'grub_a'  => 'Grub A',
         'grub_b'  => 'Grub B',
         'grub_c'  => 'Grub C',
+        'grub_d'  => 'Grub D',
     ];
 
     public const SECTIONS = [
