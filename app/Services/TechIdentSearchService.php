@@ -113,6 +113,17 @@ class TechIdentSearchService
     ];
 
     /**
+     * Sapaan/gelar yang tidak dihitung sebagai penanda nama atau lokasi, supaya
+     * "Perbaikan PC Pak Hafidz" tetap menemukan tag WS-EPE-GA-Hafidz.
+     *
+     * @var array<int, string>
+     */
+    protected const NAME_TITLES = [
+        'PAK', 'BAPAK', 'BU', 'IBU', 'MAS', 'MBAK', 'MBK', 'MR', 'MRS', 'MS',
+        'SDR', 'SDRI', 'KAK', 'BANG', 'USER', 'PUNYA', 'MILIK', 'ORANG', 'ORANGNYA',
+    ];
+
+    /**
      * Jalankan pencarian 3-pass terhadap teks mentah dari teknisi.
      *
      * @param  string   $rawText Teks laporan awal dari teknisi
@@ -325,6 +336,15 @@ class TechIdentSearchService
             if ($partialMatches->count() > 1) {
                 return $this->confirmOrTypeConfirm($partialMatches, 'pass4_partial', 80);
             }
+        }
+
+        // Pass 6 (fallback terakhir): pencocokan NAMA ORANG tanpa menyebut kode
+        // alat, mis. "Perbaikan PC Hafidz" atau "Perbaikan Hafidz". Nama yang
+        // muncul di lebih dari satu perangkat dikembalikan sebagai pilihan.
+        $namaPass = $this->searchByPersonName($assets, $rawText);
+
+        if ($namaPass !== null) {
+            return $namaPass;
         }
 
         return $this->noMatch();
@@ -647,6 +667,7 @@ class TechIdentSearchService
             explode(' ', $teks),
             fn ($kata) => strlen($kata) >= 3
                 && !in_array($kata, self::LOCATION_STOPWORDS, true)
+                && !in_array($kata, self::NAME_TITLES, true)
                 && !in_array($kata, $kataTipe, true)
         ));
 
@@ -709,6 +730,79 @@ class TechIdentSearchService
         }
 
         return $this->confirm('tipe_lokasi', $conf - 5, $hasil->take(4)->all());
+    }
+
+    /**
+     * Pass fallback: cari perangkat dari NAMA ORANG yang disebut teknisi tanpa
+     * kode alat, mis. "Perbaikan PC Hafidz", "Perbaikan PC Pak Hafidz", atau
+     * "Perbaikan Dian". Sapaan (Pak/Bu/Mas/...) tidak dihitung sebagai nama.
+     *
+     * Tahap 1 mencocokkan nama ke TAGNAME (paling kuat, karena nama pemakai
+     * tersimpan di tag seperti WS-EPE-GA-Hafidz). Bila tidak ada, tahap 2
+     * mencocokkan ke deskripsi perangkat. Bila nama yang sama dipakai lebih dari
+     * satu perangkat, hasilnya dikembalikan sebagai daftar pilihan.
+     *
+     * @param  Collection  $assets  Pool kandidat dari candidateAssets()
+     * @param  string      $rawText Teks laporan teknisi
+     * @return array|null           Hasil pencarian, atau null bila tidak ada nama yang cocok
+     */
+    protected function searchByPersonName(Collection $assets, string $rawText): ?array
+    {
+        $teks   = $this->normalizeForLocationMatch($rawText);
+        $tokens = array_values(array_filter(
+            explode(' ', $teks),
+            fn ($kata) => strlen($kata) >= 4
+                && !in_array($kata, self::LOCATION_STOPWORDS, true)
+                && !in_array($kata, self::NAME_TITLES, true)
+        ));
+
+        if ($tokens === []) {
+            return null;
+        }
+
+        // Tahap 1: tag name, lalu Tahap 2: tag name + deskripsi.
+        foreach ([['tag', 88], ['tag_deskripsi', 78]] as [$tahap, $keyakinan]) {
+            $cocok = [];
+
+            foreach ($assets as $asset) {
+                $bahan = (string) ($asset->tech_ident_no ?? '');
+
+                if ($tahap === 'tag_deskripsi') {
+                    $bahan .= ' ' . (string) ($asset->description ?? '');
+                }
+
+                $kolom    = $this->normalizeForLocationMatch($bahan);
+                $katakata = array_unique(array_filter(explode(' ', $kolom)));
+                $jumlah   = 0;
+
+                foreach ($tokens as $token) {
+                    if ($this->locationTokenMatches($token, $kolom, $katakata)) {
+                        $jumlah++;
+                    }
+                }
+
+                if ($jumlah > 0) {
+                    $cocok[] = ['asset' => $asset, 'jumlah' => $jumlah];
+                }
+            }
+
+            if ($cocok === []) {
+                continue;
+            }
+
+            $maks  = max(array_column($cocok, 'jumlah'));
+            $kuat  = array_values(array_filter($cocok, fn ($baris) => $baris['jumlah'] === $maks));
+            $hasil = collect($kuat)->map(fn ($baris) => $baris['asset'])->values();
+
+            if ($hasil->count() === 1 && $maks >= count($tokens)) {
+                return $this->autoAccept('nama', $keyakinan, [$hasil->first()]);
+            }
+
+            // Nama yang sama dipakai beberapa perangkat: tampilkan sebagai pilihan.
+            return $this->confirm('nama', $keyakinan - 10, $hasil->take(4)->all());
+        }
+
+        return null;
     }
 
     /**
@@ -838,8 +932,18 @@ class TechIdentSearchService
      */
     protected function locationTokenMatches(string $token, string $kolom, array $katakata): bool
     {
-        if (str_contains($kolom, $token)) {
+        // Cocok bila ada kata yang sama persis. Pencocokan dilakukan per kata
+        // (bukan substring) supaya "DIAN" tidak cocok dengan "OktaDIANto",
+        // sementara kata lokasi seperti "UNLOADING" tetap cocok apa adanya.
+        if (in_array($token, $katakata, true)) {
             return true;
+        }
+
+        // Toleransi typo hanya untuk kata panjang (mis. "Uloading" vs
+        // "Unloading"). Kata pendek seperti nama "DIAN" tidak boleh cocok dengan
+        // "RIAN"/"DIAH" supaya hasilnya tidak melebar ke perangkat lain.
+        if (strlen($token) < 7) {
+            return false;
         }
 
         foreach ($katakata as $kata) {

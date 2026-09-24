@@ -506,6 +506,29 @@ seluruh perangkat IT).
    "Perbaikan pompa utility EPE" -> P306/P401/P402/P403. Pencarian berbasis kode
    alat tetap auto-accept 100% di pass 1 (tidak ada regresi).
 
+### Sesi 16 — Pencarian lewat NAMA ORANG (tanpa kode alat)
+
+Tujuan: laporan seperti "Perbaikan PC Pak Hafidz" atau "Perbaikan PC Hafidz"
+cukup untuk menemukan `WS-EPE-GA-Hafidz`, dan bila nama itu dipakai beberapa
+perangkat maka teknisi diberi pilihan.
+
+1. Sapaan/gelar (`Pak`, `Bu`, `Mas`, `Mr`, `User`, dst.) ada di konstanta
+   `NAME_TITLES` dan tidak dihitung sebagai penanda nama maupun lokasi.
+2. Pass `nama` dijalankan sebagai fallback terakhir (setelah pass tipe+lokasi
+   dan partial): mencocokkan nama ke TAGNAME lebih dulu, lalu ke deskripsi.
+   Berlaku juga bila laporan tidak menyebut tipe alat, mis. "Perbaikan Hafidz".
+3. Bila namanya dipakai lebih dari satu perangkat, hasilnya dikembalikan sebagai
+   daftar pilihan (maksimal 4) — mis. "Perbaikan PC PPIC" -> 3 pilihan,
+   "Perbaikan PC SCADA" -> 4 pilihan, "Perbaikan PC Tablet" -> 2 pilihan.
+4. Pencocokan diubah menjadi PER KATA (bukan substring) supaya "DIAN" tidak
+   cocok dengan nama "Egastya PrayudA OktaDIANto". Toleransi typo (Levenshtein
+   maksimal 1) sekarang hanya berlaku untuk kata 7 huruf ke atas, karena
+   toleransi itu memang dibutuhkan untuk "Uloading" vs "Unloading".
+5. Hasil uji: "Perbaikan PC Pak Hafidz" -> auto-accept 90% -> `WS-EPE-GA-Hafidz`;
+   "Perbaikan Hafidz" -> pass `nama` 88%; "Perbaikan PC Dian" -> kandidat
+   `WS-EPE-MTC-Dian` (setelah `WS-EPE-QC-DIAN` dipetakan lokasinya, namanya akan
+   muncul sebagai dua pilihan).
+
 ### Catatan sisa pekerjaan (diperbarui sesi 14)
 
 1. `resources/views/reports/edit.blade.php` belum memuat pilihan `IT` pada peta
