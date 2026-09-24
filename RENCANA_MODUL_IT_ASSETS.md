@@ -588,3 +588,49 @@ Telegram, termasuk CCTV berdasarkan lokasi/deskripsi/NVR-channel.
 
 
 
+
+---
+
+### Sesi 18 — Asisten /info untuk SEMUA aset (hirarki wizard, tombol Tutup, tombol Laporan)
+
+Permintaan user: (1) hirarki /info mengikuti hirarki wizard laporan yang sudah matang,
+(2) perlu tombol batal/keluar, (3) contoh "PC Hafidz" diganti generik, (4) ada tombol
+Report saat informasi alat sudah tampil, (5) berlaku untuk semua aset (bukan hanya IT)
+dengan lokasi, teknisi terakhir, kerusakan, dan pengecekan terakhir.
+
+1. Service baru `App\Services\Telegram\AssetInfoService` menggantikan `ItInfoService`
+   (file lama dihapus, semua call site dialihkan: `PollTelegramUpdates` dan
+   `TelegramMessageHandlerTrait`). Berlaku untuk aset IT maupun aset industri.
+2. Hirarki mengikuti wizard: `Plant -> Departemen -> Area -> Sub Area -> Section ->
+   Tipe alat -> Alat`, memakai model yang sama dengan wizard (`Company`, `Department`,
+   `Area`, `SubArea`) dan `FuncLocParser::groupBySectionAndType()` untuk level
+   Section/Tipe. Level Section hanya disisipkan bila jumlah alat > 10 (selaras
+   `MAX_KEYBOARD_OPTIONS` di ClarificationService); level Tipe selalu lebih dulu
+   sebelum daftar alat.
+3. Pintasan "Tanpa Area (n alat)" muncul pada level Area untuk aset yang `area_id`-nya
+   masih kosong (302 aset, mayoritas perangkat IT).
+4. Tombol `Kembali` di setiap level dan tombol `Tutup` (`info:close`) di setiap keyboard.
+   `editMessageText` mengirim `inline_keyboard` kosong sehingga tombol langsung hilang.
+5. Contoh pencarian di pesan bantuan kini generik: `/info PC <nama pemakai>`,
+   `/info <tag alat>`, `/info <IP>`, `/info CCTV Unloading EPE` (tidak menyebut nama
+   orang tertentu); hint `/start` ikut disesuaikan.
+6. Detail aset industri: PT/Departemen/Area/Sub Area/FuncLoc, status, tipe (dari
+   TechIdentNo), teknisi terakhir, kerusakan/pekerjaan terakhir (laporan CM/dCM/ZPM 1,
+   fallback ke laporan terakhir yang punya root_cause/work_description), pengecekan PM
+   terakhir, Condition Monitoring terakhir (`cm_readings.kondisi` + `max_vibration` /
+   `max_temp`), daftar 3 laporan terakhir, dan link `/assets/{id}`. Perangkat IT tetap
+   memakai detail IT yang lama (NVR/channel, connect to, pointing, snapshot, spesifikasi
+   PC) plus riwayat laporan.
+7. Tombol `Buat Laporan` (`info:report:<asset_id>`) memanggil
+   `ReportWizardService::startWizardForAsset()`: alat langsung terkunci, wizard mulai
+   dari pemilihan klasifikasi (ZPM 1/3/6/5/7) lalu jenis pekerjaan (EI/Mekanik/IT).
+   `processEquipmentSearch()` diberi penjaga `equipment_id` sehingga pencarian alat
+   dilewati dan teknisi langsung mengisi durasi kerja serta data lain.
+8. Uji nyata dengan data produksi: hirarki EPE menampilkan PROD (2.917 alat) -> area
+   (BD01 756, TF01 441, dst) -> "Tanpa Area (32)" -> "Section tanpa kode (431)" ->
+   "Tipe tidak terurai (431)" -> daftar alat; detail `WS-CES-PRO-Novila` dan
+   `WT-L2H04B` tampil lengkap; tombol Laporan membawa `equipment_id` terisi di state.
+9. Test baru `tests/Feature/TelegramAssetInfoTest.php` (13 test) mencakup hirarki,
+   tombol Tutup/Kembali, level Tipe sebelum alat, contoh generik, detail IT dan industri
+   (termasuk riwayat + CM), serta alur tombol Laporan sampai step durasi kerja.
+
