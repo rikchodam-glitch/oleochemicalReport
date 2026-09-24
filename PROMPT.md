@@ -204,9 +204,13 @@ dan diakses via `Storage::disk('public')->url($path)`.
 ### AiModelDiscoveryService
 - Ambil daftar model yang BENAR-BENAR tersedia di akun provider (`GET {base}/models`)
 - `pickChatModel()` memilih model chat terbaik (model audio/penjaga prompt disaring)
-- `detectAndSave(AiProvider)` mengoreksi otomatis nama model yang sudah tidak valid
-- Dipakai panel AI (simpan provider tanpa isi model, tombol Deteksi Model, tombol Test)
-  dan `AiProviderCallerTrait::callGroq()` saat pemanggilan gagal karena nama model
+- `detectAndSave(AiProvider)` mengoreksi/menyinkronkan nama model secara otomatis
+
+**Catatan UI panel AI: field "Model" TIDAK ADA LAGI di form.** Admin hanya mengisi
+Nama, Tipe, API Key, Endpoint (opsional), prioritas, dan batas token. Model dan kuota
+diambil otomatis dari API provider saat provider disimpan atau diuji
+(`AiProviderController::syncProviderWithApi()`), lalu ditampilkan read-only pada
+kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut API)").
 
 ### AiQuotaService
 - Sumber kuota = header respons API (`x-ratelimit-*`), karena Groq TIDAK punya endpoint sisa kuota

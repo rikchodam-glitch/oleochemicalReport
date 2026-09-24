@@ -368,6 +368,22 @@ ulang.
 
 
 
+18. **Mengedit provider AI tanpa mengetik ulang API key MENGHAPUS key yang
+    tersimpan (bug senyap lama, ketahuan dari test).** Pada 24/09/2026,
+    `AiProviderController::update()` meneruskan `$validated['api_key_encrypted']`
+    apa adanya ke `$aiProvider->update()`. Karena form menyuruh "kosongkan jika
+    tidak ingin mengganti", request berisi string kosong (menjadi null lewat
+    `ConvertEmptyStringsToNull`) sehingga kolom key ditimpa NULL — provider
+    langsung kehilangan kredensialnya tanpa pesan apa pun (gejalanya: provider
+    berubah jadi `error`/tidak bisa dipakai sesudah diedit). Perbaikannya:
+    `if (empty($validated['api_key_encrypted'])) { unset($validated['api_key_encrypted']); }`.
+    **Pelajaran: untuk field rahasia bertipe "isi hanya bila ingin mengganti",
+    nilai kosong WAJIB dibuang dari array update — jangan pernah diteruskan apa
+    adanya ke `update()`. Semua bug ini ditemukan karena test memalsukan
+    (fake) respons API lalu memeriksa kolom database, bukan karena membaca kode.**
+
+
+
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
 
 ## ATURAN PENULISAN KODE

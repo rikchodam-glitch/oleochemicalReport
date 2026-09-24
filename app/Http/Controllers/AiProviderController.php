@@ -94,54 +94,19 @@ class AiProviderController extends Controller
             'status'              => 'required|in:healthy,exhausted,error,disabled',
         ]);
 
-        // Kolom model NOT NULL, jadi model yang tidak diisi user harus sudah
-        // terisi saat insert: deteksi dulu dari akun memakai endpoint + API key
-        // yang baru dikirim. Bila deteksi gagal, pakai model bawaan.
-        if (empty($validated['model'])) {
-            $model = $this->detectModelFromInput(
-                $validated['endpoint_url'] ?? null,
-                (string) $validated['provider_type'],
-                (string) ($validated['api_key_encrypted'] ?? '')
-            );
-
-            $validated['model'] = $model ?? AiModelDiscoveryService::DEFAULT_MODEL;
-        }
+        // Kolom model NOT NULL, jadi diisi placeholder dulu; sesudah baris
+        // tersimpan, model sebenarnya diambil dari daftar model akun (GET /models)
+        // sehingga nama model tidak pernah perlu diketik manual.
+        $validated['model'] = ($validated['model'] ?? null) ?: AiModelDiscoveryService::DEFAULT_MODEL;
 
         $provider = AiProvider::create($validated);
 
-        $catatan = $provider->model === AiModelDiscoveryService::DEFAULT_MODEL
-            ? ' Model belum bisa dideteksi otomatis, untuk sementara memakai model bawaan ' . AiModelDiscoveryService::DEFAULT_MODEL . '.'
-            : " Model terdeteksi otomatis: {$provider->model}.";
+        // Deteksi model + ambil kuota langsung dari API supaya keduanya tampil
+        // di panel tanpa aksi tambahan dari admin.
+        $catatan = $this->syncProviderWithApi($provider, true);
 
         return redirect()->route('ai-providers.index')
             ->with('success', 'Provider AI berhasil ditambahkan.' . $catatan);
-    }
-
-    /**
-     * Deteksi model dari API memakai endpoint + API key mentah dari form
-     * (dipakai sebelum provider disimpan, karena kolom model NOT NULL).
-     *
-     * @param  string|null $endpointUrl   URL endpoint dari form
-     * @param  string      $providerType  Jenis provider (groq/ollama/openai)
-     * @param  string      $apiKey        API key mentah dari form
-     * @return string|null  Nama model hasil deteksi, atau null bila gagal
-     */
-    private function detectModelFromInput(?string $endpointUrl, string $providerType, string $apiKey): ?string
-    {
-        $provider = new AiProvider([
-            'provider_type' => $providerType,
-            'endpoint_url'  => $endpointUrl,
-            'model'         => AiModelDiscoveryService::DEFAULT_MODEL,
-            'api_key_encrypted' => $apiKey,
-        ]);
-
-        $hasil = app(AiModelDiscoveryService::class)->availableModels($provider);
-
-        if (! $hasil['ok']) {
-            return null;
-        }
-
-        return app(AiModelDiscoveryService::class)->pickChatModel($hasil['models']);
     }
 
     /**
@@ -157,8 +122,8 @@ class AiProviderController extends Controller
             'name'                => 'required|string|max:255',
             'provider_type'       => 'required|in:groq,ollama,openai',
             'api_key_encrypted'   => 'nullable|string',
-            // Model boleh dikosongkan: sistem akan mendeteksi sendiri model yang
-            // tersedia di akun lewat endpoint /models.
+            // Model tidak lagi diisi manual (field-nya sudah dihapus dari form);
+            // nilainya selalu mengikuti daftar model akun lewat GET /models.
             'model'               => 'nullable|string',
             'endpoint_url'        => 'nullable|url',
             'priority'            => 'required|integer|min:1',
@@ -167,24 +132,83 @@ class AiProviderController extends Controller
             'status'              => 'required|in:healthy,exhausted,error,disabled',
         ]);
 
-        // Bila kolom model dikosongkan, jangan hapus model lama yang masih ada.
-        if (empty($validated['model'])) {
-            unset($validated['model']);
+        // Jangan pernah mengosongkan kolom model dari form.
+        unset($validated['model']);
+
+        // API key kosong berarti "jangan diganti" — tanpa ini, mengedit provider
+        // tanpa mengetik ulang kunci akan menghapus kunci yang sudah tersimpan.
+        if (empty($validated['api_key_encrypted'])) {
+            unset($validated['api_key_encrypted']);
         }
 
         $aiProvider->update($validated);
 
-        $catatan = '';
-        $model   = $this->syncModelFromApi($aiProvider);
-
-        if ($model !== null) {
-            $catatan = " Model terdeteksi otomatis: {$model}.";
-        } elseif (empty($aiProvider->model)) {
-            $catatan = ' Model belum bisa dideteksi otomatis, silakan klik Deteksi Model.';
-        }
+        $catatan = $this->syncProviderWithApi($aiProvider);
 
         return redirect()->route('ai-providers.index')
             ->with('success', 'Provider AI berhasil diperbarui.' . $catatan);
+    }
+
+    /**
+     * Sinkronkan model dan kuota provider dari API sesudah provider disimpan.
+     *
+     * Model selalu mengikuti daftar model yang benar-benar ada di akun
+     * (GET /models, tanpa biaya token). Ping ringan (max_tokens=1) dijalankan
+     * hanya bila diperlukan untuk mengisi kuota/status, yaitu saat diminta
+     * paksa, saat data kuota belum pernah ada, atau saat provider tidak sehat.
+     *
+     * @param  AiProvider  $provider
+     * @param  bool        $paksaPing  true untuk selalu melakukan ping
+     * @return string  Catatan singkat untuk pesan sukses (diawali spasi)
+     */
+    private function syncProviderWithApi(AiProvider $provider, bool $paksaPing = false): string
+    {
+        $catatan = [];
+
+        $model = app(AiModelDiscoveryService::class)->detectAndSave($provider);
+
+        if ($model !== null) {
+            $catatan[] = "model {$model}";
+        }
+
+        $perluPing = $paksaPing || $provider->quota_checked_at === null || $provider->status !== 'healthy';
+
+        if ($perluPing && $provider->api_key !== '') {
+            $hasil = $this->pingProvider($provider);
+
+            if ($hasil['success']) {
+                $provider->update([
+                    'last_health_check' => now(),
+                    'status'            => 'healthy',
+                ]);
+
+                app(AiQuotaService::class)->recordFromHeaders($provider, (array) ($hasil['headers'] ?? []));
+
+                $this->logUsage($provider, $hasil['response_time_ms'], 'health_check', 'success');
+            } elseif ($hasil['http_code'] === 429) {
+                app(AiQuotaService::class)->applyRateLimit($provider, (array) ($hasil['headers'] ?? []));
+            } else {
+                $provider->update([
+                    'last_health_check' => now(),
+                    'status'            => 'error',
+                ]);
+
+                $this->logUsage($provider, $hasil['response_time_ms'], 'health_check', 'error', $hasil['error']);
+                $catatan[] = 'provider belum bisa dihubungi (' . mb_substr((string) $hasil['error'], 0, 80) . ')';
+            }
+        }
+
+        $provider->refresh();
+
+        if ($provider->api_quota_text !== null) {
+            $catatan[] = 'kuota API ' . $provider->api_quota_text;
+        }
+
+        if ($provider->status !== 'healthy') {
+            $catatan[] = "status {$provider->status}";
+        }
+
+        return $catatan === [] ? '' : ' ' . ucfirst(implode('; ', $catatan)) . '.';
     }
 
     /**
@@ -618,27 +642,6 @@ class AiProviderController extends Controller
         $provider->update(['model' => $model]);
 
         return $model;
-    }
-
-    /**
-     * Isi kolom model dari API bila masih kosong (dipakai saat simpan provider).
-     *
-     * @param  AiProvider $provider
-     * @return string|null  Nama model hasil deteksi, atau null bila tidak berubah
-     */
-    private function syncModelFromApi(AiProvider $provider): ?string
-    {
-        if (! empty($provider->model)) {
-            return null;
-        }
-
-        $hasil = $this->discoverModels($provider);
-
-        if (! $hasil['ok']) {
-            return null;
-        }
-
-        return $this->pickAndSaveModel($provider, $hasil['models']);
     }
 
     /**

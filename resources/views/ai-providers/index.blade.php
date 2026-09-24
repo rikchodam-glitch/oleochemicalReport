@@ -462,14 +462,12 @@
                 </div>
             </div>
             <div class="space-y-1.5">
-                <label class="block text-sm font-medium text-slate-700">
-                    Model
-                    <span class="text-slate-400 font-normal text-xs ml-1">(opsional - otomatis dideteksi dari API bila kosong)</span>
-                </label>
-                <input type="text" name="model" id="edit_model" list="daftar-model-ai"
-                       placeholder="otomatis dideteksi dari API"
-                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                @include('ai-providers.partials._model-options')
+                <label class="block text-sm font-medium text-slate-700">Model (otomatis dari API)</label>
+                <p class="text-sm text-slate-700 font-mono" id="edit_model_info">-</p>
+                <p class="text-xs text-slate-400">
+                    Tidak perlu diisi. Model dan kuota diambil otomatis dari API provider
+                    (GET /models dan header x-ratelimit) saat disimpan atau diuji.
+                </p>
             </div>
             <div class="space-y-1.5">
                 <label class="block text-sm font-medium text-slate-700">
@@ -553,13 +551,13 @@
                 </div>
             </div>
             <div class="space-y-1.5">
-                <label class="block text-sm font-medium text-slate-700">
-                    Model
-                    <span class="text-slate-400 font-normal text-xs ml-1">(opsional - otomatis dideteksi dari API bila kosong)</span>
-                </label>
-                <input type="text" name="model" list="daftar-model-ai"
-                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       placeholder="otomatis dideteksi dari API">
+                <label class="block text-sm font-medium text-slate-700">Model dan Kuota (otomatis dari API)</label>
+                <p class="text-xs text-slate-400">
+                    Tidak ada yang perlu diisi. Setelah provider disimpan, sistem memanggil API-nya
+                    untuk mengambil model yang tersedia (GET /models) dan sisa kuota
+                    (header x-ratelimit), lalu menampilkan keduanya pada kartu provider di atas.
+                    Isi cukup Nama, Tipe, dan API Key.
+                </p>
             </div>
             <div class="space-y-1.5">
                 <label class="block text-sm font-medium text-slate-700">API Key</label>
@@ -682,7 +680,8 @@ function editProvider(id) {
 
     document.getElementById('edit_name').value                 = p.name                 || '';
     document.getElementById('edit_provider_type').value        = p.provider_type        || 'groq';
-    document.getElementById('edit_model').value                = p.model                || '';
+    // Model tidak diisi manual lagi - hanya ditampilkan (dideteksi otomatis dari API).
+    document.getElementById('edit_model_info').textContent      = p.model                || 'belum terdeteksi';
     document.getElementById('edit_endpoint_url').value         = p.endpoint_url         || '';
     document.getElementById('edit_priority').value             = p.priority             || 1;
     document.getElementById('edit_status').value               = p.status               || 'healthy';
