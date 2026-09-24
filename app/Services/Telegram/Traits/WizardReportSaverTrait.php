@@ -5,6 +5,7 @@ namespace App\Services\Telegram\Traits;
 use App\Models\Report;
 use App\Models\ReportAiSuggestion;
 use App\Models\Technician;
+use App\Services\CollaborationService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -192,10 +193,19 @@ trait WizardReportSaverTrait
             // ke report_ai_suggestions, sekarang setelah report_id tersedia.
             $this->persistAiSuggestions($report->id, $state);
 
-            // Buat laporan kolaborator jika ada NIK yang terdaftar di state
-            $collabNiks        = $state['collaborator_niks'] ?? [];
-            $collabNames       = $state['collaborator_names'] ?? [];
-            $jumlahKolaborator = 0;
+            // Buat laporan kolaborator: gabungan pilihan manual teknisi dengan
+            // rekan dari kelompok kolaborasi (mis. satu Grub shift). Penggabungan
+            // dijalankan lagi di sini sebagai jaring pengaman supaya rekan
+            // kelompok tetap ikut andil walau state belum sempat terisi.
+            $gabunganKolaborator = app(CollaborationService::class)->gabungKolaborator(
+                $technician,
+                $state['collaborator_niks'] ?? [],
+                $state['collaborator_names'] ?? []
+            );
+
+            $collabNiks          = $gabunganKolaborator['niks'];
+            $collabNames         = $gabunganKolaborator['names'];
+            $jumlahKolaborator   = 0;
             $kolaboratorBerhasil = [];
 
             foreach ($collabNiks as $index => $nik) {

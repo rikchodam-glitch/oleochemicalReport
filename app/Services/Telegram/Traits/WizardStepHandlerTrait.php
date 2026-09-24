@@ -3,6 +3,8 @@
 namespace App\Services\Telegram\Traits;
 
 use App\Models\Technician;
+use App\Services\CollaborationService;
+use Illuminate\Support\Facades\Log;
 
 /**
  * WizardStepHandlerTrait
@@ -566,8 +568,56 @@ trait WizardStepHandlerTrait
         // Dari hygiene → Step 8a kolaborator (opsional sebelum konfirmasi)
         $state          = $this->pushStepHistory($state, self::STEP_PHOTO_HYGIENE);
         $state['step']  = self::STEP_COLLABORATOR;
+        $state          = $this->terapkanTimOtomatis($chatId, $state);
         $this->saveState($chatId, $state);
         return $this->buildCollaboratorPrompt($state);
+    }
+
+    /**
+     * Isi kolaborator otomatis dari kelompok kolaborasi teknisi pengirim.
+     *
+     * Ketika teknisi yang tergabung dalam kelompok shift (mis. Grub D) membuat
+     * laporan, rekan satu kelompoknya langsung dicantumkan sebagai kolaborator
+     * tanpa perlu ditambahkan manual. Proses ini hanya dijalankan SEKALI saat
+     * pertama masuk Step 8a (ditandai collab_auto_applied) supaya nama yang
+     * sengaja dihapus lewat menu "Sesuaikan" tidak muncul kembali.
+     *
+     * @param  string  $chatId  Chat ID Telegram (untuk mengenali teknisi pengirim)
+     * @param  array   $state   State wizard saat ini
+     * @return array   State yang sudah dilengkapi kolaborator otomatis
+     */
+    protected function terapkanTimOtomatis(string $chatId, array $state): array
+    {
+        if (!empty($state['collab_auto_applied'])) {
+            return $state;
+        }
+
+        $pelapor = Technician::where('telegram_id', $chatId)->first();
+
+        if ($pelapor === null) {
+            return $state;
+        }
+
+        $gabungan = app(CollaborationService::class)->gabungKolaborator(
+            $pelapor,
+            $state['collaborator_niks'] ?? [],
+            $state['collaborator_names'] ?? []
+        );
+
+        $state['collaborator_niks']      = $gabungan['niks'];
+        $state['collaborator_names']     = $gabungan['names'];
+        $state['collaborator_auto_niks'] = $gabungan['auto_niks'];
+        $state['collab_auto_applied']    = true;
+
+        if ($gabungan['auto_niks'] !== []) {
+            Log::info('WizardService: tim kolaborasi otomatis dicantumkan', [
+                'chat_id'   => $chatId,
+                'teknisi'   => $pelapor->name,
+                'auto_niks' => $gabungan['auto_niks'],
+            ]);
+        }
+
+        return $state;
     }
 
     // =========================================================
@@ -596,13 +646,21 @@ trait WizardStepHandlerTrait
             }
             $labelList = implode(', ', $labels);
 
+            // Rekan dari kelompok kolaborasi sudah dicantumkan otomatis, jadi
+            // teknisi tidak perlu menambahkannya lagi.
+            $jumlahOtomatis = count($state['collaborator_auto_niks'] ?? []);
+            $catatanOtomatis = $jumlahOtomatis > 0
+                ? "Tim dari kelompok kolaborasi Anda sudah ikut andil otomatis ({$jumlahOtomatis} nama).\n\n"
+                : '';
+
             return [
-                'message'  => "*Step 8a/8* — Kolaborator\n\n" .
-                    "Kolaborator yang sudah ditambahkan: *{$labelList}*\n\n" .
-                    "Tambah kolaborator lain (ketik NIK atau nama), atau lanjut ke konfirmasi:",
+                'message'  => "*Step 8a/8* — Kolaborator\n\n" . $catatanOtomatis .
+                    "Kolaborator laporan ini: *{$labelList}*\n\n" .
+                    "Tambah kolaborator lain (ketik NIK atau nama), hapus lewat menu Sesuaikan, atau lanjut ke konfirmasi:",
                 'keyboard' => array_merge(
                     [
                         ['text' => 'Selesai, Lanjut Konfirmasi',      'callback_data' => 'wizard:confirm:collab_done'],
+                        ['text' => 'Sesuaikan (Hapus Satu Nama)',     'callback_data' => 'collab_adjust'],
                         ['text' => 'Lewati (Tanpa Kolaborator)',       'callback_data' => 'wizard:confirm:collab_skip'],
                         ['text' => 'Pilih dari Hierarki Dept/Section', 'callback_data' => 'collab_hierarchy:dept'],
                     ],

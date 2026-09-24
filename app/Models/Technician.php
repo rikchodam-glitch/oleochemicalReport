@@ -81,6 +81,24 @@ class Technician extends Model
         return $this->belongsTo(User::class, 'approved_by');
     }
 
+    /**
+     * Kelompok kolaborasi yang diikuti teknisi ini.
+     *
+     * Dipakai CollaborationService untuk menentukan rekan yang otomatis ikut
+     * andil ketika teknisi ini membuat laporan.
+     *
+     * @return BelongsToMany<CollaborationGroup>
+     */
+    public function collaborationGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            CollaborationGroup::class,
+            'collaboration_group_members',
+            'technician_id',
+            'collaboration_group_id'
+        )->withPivot(['sort_order'])->withTimestamps();
+    }
+
     // =========================================================
     // RELASI BARU — KOLABORASI
     // =========================================================

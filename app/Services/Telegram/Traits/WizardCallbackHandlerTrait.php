@@ -312,12 +312,139 @@ trait WizardCallbackHandlerTrait
             return $this->handleCollabHierarchyCallback($chatId, $callbackData, $state);
         }
 
+        // Menu "Sesuaikan" kolaborator (Step 8a): daftar nama yang bisa dihapus
+        // satu per satu, plus kembali ke prompt kolaborator.
+        if ($callbackData === 'collab_adjust'
+            || $callbackData === 'collab_adjust_selesai'
+            || str_starts_with($callbackData, 'collab_hapus:')) {
+            if ($state['step'] !== self::STEP_COLLABORATOR) {
+                return $this->errorResponse('Menu sesuaikan kolaborator tidak sesuai step aktif.');
+            }
+
+            return $this->handleCollabAdjustCallback($chatId, $callbackData, $state);
+        }
+
         // Callback dari ClarificationService saat hierarki aktif
         if ($state['step'] === self::STEP_EQUIPMENT_CLARIFY && !empty($state['using_clarification_service'])) {
             return $this->handleClarificationCallback($chatId, $callbackData, $state);
         }
 
         return $this->errorResponse('Callback tidak dikenali.');
+    }
+
+    /**
+     * Tangani menu "Sesuaikan" pada Step 8a: tampilkan daftar kolaborator yang
+     * bisa dihapus satu per satu, proses penghapusan, atau kembali ke prompt.
+     *
+     * @param  string  $chatId        Chat ID Telegram
+     * @param  string  $callbackData  collab_adjust | collab_adjust_selesai | collab_hapus:<index>
+     * @param  array   $state         State wizard saat ini
+     * @return array   Respons
+     */
+    protected function handleCollabAdjustCallback(string $chatId, string $callbackData, array $state): array
+    {
+        if ($callbackData === 'collab_adjust_selesai') {
+            return $this->buildCollaboratorPrompt($state);
+        }
+
+        if (! str_starts_with($callbackData, 'collab_hapus:')) {
+            return $this->buildCollabAdjustKeyboard($state);
+        }
+
+        $index  = (int) substr($callbackData, strlen('collab_hapus:'));
+        $hasil  = $this->hapusKolaboratorIndex($state, $index);
+        $state  = $hasil['state'];
+
+        $this->saveState($chatId, $state);
+
+        if (empty($state['collaborator_niks'])) {
+            return [
+                'message'  => "*{$hasil['nama']}* dihapus. Sekarang tidak ada kolaborator pada laporan ini.\n\n" .
+                    "Ketik NIK/nama rekan untuk menambahkan, atau lanjut ke konfirmasi:",
+                'keyboard' => array_merge(
+                    [
+                        ['text' => 'Selesai, Lanjut Konfirmasi',       'callback_data' => 'wizard:confirm:collab_done'],
+                        ['text' => 'Pilih dari Hierarki Dept/Section', 'callback_data' => 'collab_hierarchy:dept'],
+                    ],
+                    $this->navigationButtons($state)
+                ),
+            ];
+        }
+
+        $respons            = $this->buildCollabAdjustKeyboard($state);
+        $respons['message'] = "*{$hasil['nama']}* dihapus dari kolaborator laporan ini.\n\n" . $respons['message'];
+
+        return $respons;
+    }
+
+    /**
+     * Bangun keyboard daftar kolaborator yang bisa dihapus (menu Sesuaikan).
+     *
+     * @param  array  $state  State wizard saat ini
+     * @return array  Respons dengan tombol hapus per kolaborator
+     */
+    protected function buildCollabAdjustKeyboard(array $state): array
+    {
+        $niks  = $state['collaborator_niks'] ?? [];
+        $names = $state['collaborator_names'] ?? [];
+        $auto  = $state['collaborator_auto_niks'] ?? [];
+
+        $keyboard = [];
+
+        foreach ($niks as $index => $nik) {
+            $nama  = $names[$index] ?? '';
+            $label = 'Hapus: ' . ($nama !== '' ? $nama : $nik);
+
+            if (in_array($nik, $auto, true)) {
+                $label .= ' (tim)';
+            }
+
+            $keyboard[] = [
+                'text'          => mb_substr($label, 0, 60),
+                'callback_data' => 'collab_hapus:' . $index,
+            ];
+        }
+
+        $keyboard[] = ['text' => 'Kembali', 'callback_data' => 'collab_adjust_selesai'];
+
+        return [
+            'message'  => "*Step 8a/8* — Sesuaikan Kolaborator\n\n" .
+                "Pilih nama yang ingin dihapus dari laporan ini:",
+            'keyboard' => array_merge($keyboard, $this->navigationButtons($state)),
+        ];
+    }
+
+    /**
+     * Hapus satu kolaborator dari state berdasarkan indeksnya.
+     *
+     * @param  array  $state  State wizard saat ini
+     * @param  int    $index  Indeks pada collaborator_niks
+     * @return array{state: array, nama: string}  State baru dan nama yang dihapus
+     */
+    protected function hapusKolaboratorIndex(array $state, int $index): array
+    {
+        $niks  = $state['collaborator_niks'] ?? [];
+        $names = $state['collaborator_names'] ?? [];
+        $auto  = $state['collaborator_auto_niks'] ?? [];
+
+        if (! array_key_exists($index, $niks)) {
+            return ['state' => $state, 'nama' => 'Nama tidak ditemukan'];
+        }
+
+        $nikDihapus = $niks[$index];
+        $nama       = $names[$index] ?? $nikDihapus;
+
+        unset($niks[$index], $names[$index]);
+
+        $state['collaborator_niks']      = array_values($niks);
+        $state['collaborator_names']     = array_values($names);
+        // Nama otomatis yang sudah dihapus tidak boleh dianggap otomatis lagi.
+        $state['collaborator_auto_niks'] = array_values(array_filter(
+            $auto,
+            fn ($nik) => $nik !== $nikDihapus
+        ));
+
+        return ['state' => $state, 'nama' => $nama];
     }
 
     /**
@@ -454,7 +581,11 @@ trait WizardCallbackHandlerTrait
             // Step 8a — kolaborator dilewati: hapus semua data kolaborator termasuk
             // state hierarki, push riwayat, lalu langsung ke Step 8 konfirmasi
             case 'collab_skip':
-                unset($state['collaborator_niks'], $state['collaborator_names']);
+                unset(
+                    $state['collaborator_niks'],
+                    $state['collaborator_names'],
+                    $state['collaborator_auto_niks']
+                );
                 $state          = $this->clearCollabHierarchyState($state);
                 $state          = $this->pushStepHistory($state, self::STEP_COLLABORATOR);
                 $state['step']  = self::STEP_CONFIRMATION;

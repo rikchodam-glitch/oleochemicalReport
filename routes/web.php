@@ -14,6 +14,7 @@ use App\Http\Controllers\ItLayoutController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\PanelRuanganController;
 use App\Http\Controllers\ReliabilityController;
+use App\Http\Controllers\CollaborationController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\StorageController;
 use App\Http\Controllers\TechnicianController;
@@ -91,6 +92,15 @@ Route::middleware('admin')->group(function () {
     Route::post('/technicians/{technician}/reactivate', [TechnicianController::class, 'reactivate'])->name('technicians.reactivate');
     Route::post('/technicians/bulk-approve', [TechnicianController::class, 'bulkApprove'])->name('technicians.bulk-approve');
     Route::post('/technicians/{technician}/broadcast', [TechnicianController::class, 'broadcast'])->name('technicians.broadcast');
+
+    // Kolaborasi (kelompok otomatis "ikut andil" saat salah satu anggotanya membuat laporan)
+    Route::get('/collaboration', [CollaborationController::class, 'index'])->name('collaboration.index');
+    Route::post('/collaboration/groups', [CollaborationController::class, 'store'])->name('collaboration.groups.store');
+    Route::put('/collaboration/groups/{group}', [CollaborationController::class, 'update'])->name('collaboration.groups.update');
+    Route::delete('/collaboration/groups/{group}', [CollaborationController::class, 'destroy'])->name('collaboration.groups.destroy');
+    Route::post('/collaboration/groups/{group}/members', [CollaborationController::class, 'addMember'])->name('collaboration.groups.members.add');
+    Route::delete('/collaboration/groups/{group}/members/{technician}', [CollaborationController::class, 'removeMember'])->name('collaboration.groups.members.remove');
+    Route::post('/collaboration/groups/{group}/sync', [CollaborationController::class, 'syncMembers'])->name('collaboration.groups.sync');
 
     // Reports - static dan custom routes WAJIB sebelum resource
     // agar tidak ditimpa oleh wildcard {report} milik resource.

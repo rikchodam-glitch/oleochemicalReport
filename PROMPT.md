@@ -234,6 +234,21 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
   mengisi klasifikasi/jenis pekerjaan serta data lainnya
 - Callback diarahkan di `PollTelegramUpdates::processCallbackQuery()` (prefix `info:`) sebelum wizard laporan
 
+### CollaborationService (kolaborasi otomatis per kelompok)
+- Kelompok kolaborasi disimpan di `collaboration_groups` + `collaboration_group_members`
+  (terpisah dari kolom `technicians.group` supaya susunan anggota bisa disesuaikan bebas)
+- `autoCollaboratorsFor($teknisi)` -> rekan satu kelompok (aktif + otomatis) di luar dirinya sendiri
+- `gabungKolaborator($pelapor, $manualNiks, $manualNames)` -> gabungan manual + otomatis tanpa duplikat, maks 5
+  (selaras `WizardStepHandlerTrait::MAX_COLLABORATORS`)
+- `selaraskanDariGrupTeknisi($group)` -> isi anggota dari teknisi yang `group`-nya sama dengan kode kelompok
+- `sinkronkanKelompokGrupTeknisi()` -> dipakai perintah `php artisan collab:sync-groups`
+  (membuat Grub A samapi D dari grup teknisi; Reguler tidak dibuat kecuali opsi `--with-reguler`)
+- Dipakai wizard Telegram: Step 8a otomatis mencantumkan rekan kelompok (`terapkanTimOtomatis()` di
+  `WizardStepHandlerTrait`, sekali saja per laporan lewat penanda `collab_auto_applied`) dan
+  `WizardReportSaverTrait::saveReport()` menggabungkan ulang sebelum membuat salinan kolaborasi
+- Menu "Sesuaikan" pada Step 8a (`collab_adjust`, `collab_hapus:<index>`, `collab_adjust_selesai`)
+  memungkinkan menghapus satu nama kolaborator untuk laporan itu saja
+
 ### TechIdentSearchService
 - Pencarian 3-pass: exact match → normalized → section+type
 - Input: teks laporan teknisi
@@ -267,6 +282,19 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
 - Filter lanjutan (deskripsi/kode laporan/kode alat/rentang tanggal/area/teknisi/jenis/klasifikasi/tipe)
   ada di panel `<details>` di bawah tabel; `GET /reports/export/csv` memakai filter yang sama.
 - Halaman ini memakai form + tautan biasa (tanpa Alpine.js) agar sederhana dan sesuai aturan vanilla JS.
+
+### Halaman Kolaborasi (`GET /collaboration`)
+
+- Mengatur kelompok kolaborasi (bawaan: Grub A sampai D dari `php artisan collab:sync-groups`)
+  beserta anggotanya; anggota bisa ditambah/dihapus bebas tanpa mengubah `technicians.group`.
+- Setiap kelompok punya saklar **Aktif** dan **Otomatis ikut andil**. Anggota pada kelompok yang
+  keduanya menyala akan otomatis tercantum sebagai kolaborator ketika salah satu anggotanya
+  membuat laporan di bot (tahap kolaborasi Step 8a), dan tetap bisa dihapus per laporan lewat
+  menu "Sesuaikan".
+- Tombol **Selaraskan dari grup teknisi** mengisi anggota dari teknisi yang `group`-nya sama dengan
+  kode kelompok (anggota manual yang sudah ada tidak dihapus).
+- Catatan: laporan yang dibuat admin lewat web (`/reports/create`) tidak punya teknisi pelapor,
+  jadi otomasi kolaborasi hanya berlaku untuk laporan dari bot Telegram.
 
 ### Routes yang Ada (web.php)
 
