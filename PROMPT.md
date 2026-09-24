@@ -251,6 +251,23 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
 
 ## Modul Admin Panel
 
+### Halaman Laporan (`GET /reports`) — tampilan fokus pekerjaan
+
+- Kolom utama: **Pekerjaan** (deskripsi + kode laporan + penyebab), lalu **Teknisi** di sampingnya,
+  disusul Jenis (badge + klasifikasi ZPM), Lokasi/Alat, dan Waktu & Foto.
+- **Per tanggal**: default hari ini; tombol hari sebelumnya / berikutnya melompat ke tanggal yang
+  punya laporan, ada input `tanggal` ("Buka") dan tombol "Hari Ini", plus chip 10 tanggal terakhir
+  beserta jumlah pekerjaannya.
+- **Dua tampilan**: `tampilan=reguler` (default) memuat pekerjaan teknisi grup `reguler`
+  (termasuk yang grupnya belum diisi); `tampilan=shift` memuat pekerjaan teknisi grub A/B/C/D dan
+  bisa dipersempit dengan `grub=grub_a..grub_d` (lihat `Technician::GROUPS`).
+- **Kolaborasi dikonsolidasi**: hanya laporan induk (`collaborator_of` NULL) yang tampil, dengan
+  keterangan "Berkolaborasi dengan: ..." dari relasi `collaboratorReports` — sehingga satu pekerjaan
+  tidak muncul berulang untuk tiap teknisi.
+- Filter lanjutan (deskripsi/kode laporan/kode alat/rentang tanggal/area/teknisi/jenis/klasifikasi/tipe)
+  ada di panel `<details>` di bawah tabel; `GET /reports/export/csv` memakai filter yang sama.
+- Halaman ini memakai form + tautan biasa (tanpa Alpine.js) agar sederhana dan sesuai aturan vanilla JS.
+
 ### Routes yang Ada (web.php)
 
 | Route | Controller | Keterangan |

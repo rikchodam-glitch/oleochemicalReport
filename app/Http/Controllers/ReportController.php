@@ -18,69 +18,31 @@ class ReportController extends Controller
 
     public function index(Request $request)
     {
-        $query = Report::with(['technician', 'area', 'asset', 'creator', 'linkedFinding'])
-            ->withCount(['collaboratorReports as collaborator_count']);
+        $tampilan     = $request->get('tampilan') === 'shift' ? 'shift' : 'reguler';
+        $grubAktif    = $tampilan === 'shift' ? $this->resolveGrub($request->get('grub')) : null;
+        $tanggalAktif = $this->resolveTanggal($request->get('tanggal'));
+        $pakaiRentang = $request->filled('date_from') || $request->filled('date_to');
 
-        // Filter by date range
-        if ($request->filled('date_from')) {
-            $query->whereDate('report_date', '>=', $request->date_from);
-        }
-        if ($request->filled('date_to')) {
-            $query->whereDate('report_date', '<=', $request->date_to);
-        }
+        $query = $this->buildReportQuery($request, $tampilan, $grubAktif, $tanggalAktif);
 
-        // Filter by report type
-        if ($request->filled('report_type')) {
-            $query->where('report_type', $request->report_type);
-        }
+        // Ringkasan jenis pekerjaan dihitung dari query yang sama (sebelum paginasi)
+        $totalLaporan   = (clone $query)->count();
+        $countEI        = (clone $query)->where('jenis_pekerjaan', 'EI')->count();
+        $countMekanik   = (clone $query)->where('jenis_pekerjaan', 'Mekanik')->count();
+        $countCmPm      = (clone $query)->where('jenis_pekerjaan', 'CM/PM')->count();
+        $countFabrikasi = (clone $query)->where('jenis_pekerjaan', 'Fabrikasi')->count();
+        $countSipil     = (clone $query)->where('jenis_pekerjaan', 'Sipil')->count();
 
-        // Filter by work classification (ZPM 1/3/6/5/7, dipilih teknisi
-        // di step awal wizard — berbeda dari report_type)
-        if ($request->filled('work_classification')) {
-            $query->where('work_classification', $request->work_classification);
-        }
-
-        // Filter by area
-        if ($request->filled('area_id')) {
-            $query->where('area_id', $request->area_id);
-        }
-
-        // Filter by technician
-        if ($request->filled('technician_id')) {
-            $query->where('technician_id', $request->technician_id);
-        }
-
-        // Filter by kode alat (tech_ident_no pada tabel assets)
-        if ($request->filled('asset_code')) {
-            $assetCode = $request->asset_code;
-            $query->whereHas('asset', function ($q) use ($assetCode) {
-                $q->where('tech_ident_no', 'like', '%' . $assetCode . '%');
-            });
-        }
-
-        // Search
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('work_description', 'like', "%{$search}%");
-            });
-        }
-
-        // Filter by report code (text search)
-        if ($request->filled('report_code')) {
-            $query->where('report_code', 'like', '%' . $request->report_code . '%');
-        }
-
-        // Filter by jenis pekerjaan
-        if ($request->filled('jenis_pekerjaan')) {
-            $query->where('jenis_pekerjaan', $request->jenis_pekerjaan);
-        }
-
-        $reports = $query->latest()->paginate(20)->withQueryString();
+        $reports = $query
+            ->with(['technician', 'area', 'asset', 'linkedFinding', 'collaboratorReports.technician'])
+            ->orderByDesc('report_date')
+            ->orderBy('technician_id')
+            ->orderBy('id')
+            ->paginate(25)
+            ->withQueryString();
 
         // Append jumlah foto dokumentasi & hygiene ke setiap laporan di
         // halaman ini (bukan kolom DB — dihitung dari array JSON).
-        // Dipakai Sesi 3 untuk kolom indikator foto di index.blade.php.
         $reports->getCollection()->transform(function (Report $report) {
             $report->photo_doc_count = count($report->photo_documentation ?? []);
             $report->photo_hyg_count = count($report->photo_hygiene_clearance ?? []);
@@ -88,29 +50,203 @@ class ReportController extends Controller
             return $report;
         });
 
-        $areas = Area::all();
+        $tanggalSekitar = $this->tanggalSekitar($tampilan, $grubAktif, $tanggalAktif);
 
-        // Hitung ringkasan jenis pekerjaan dari seluruh dataset (tanpa filter halaman)
-        $summaryQuery = Report::query();
-        if ($request->filled('date_from')) {
-            $summaryQuery->whereDate('report_date', '>=', $request->date_from);
-        }
-        if ($request->filled('date_to')) {
-            $summaryQuery->whereDate('report_date', '<=', $request->date_to);
-        }
-        $totalLaporan   = (clone $summaryQuery)->count();
-        $countEI        = (clone $summaryQuery)->where('jenis_pekerjaan', 'EI')->count();
-        $countMekanik   = (clone $summaryQuery)->where('jenis_pekerjaan', 'Mekanik')->count();
-        $countCmPm      = (clone $summaryQuery)->where('jenis_pekerjaan', 'CM/PM')->count();
-        $countFabrikasi = (clone $summaryQuery)->where('jenis_pekerjaan', 'Fabrikasi')->count();
-        $countSipil     = (clone $summaryQuery)->where('jenis_pekerjaan', 'Sipil')->count();
-
+        $areas       = Area::orderBy('code')->get();
         $technicians = Technician::orderBy('name')->get(['id', 'name', 'nik']);
+        $grubOptions = collect(Technician::GROUPS)->except(['reguler'])->all();
 
         return view('reports.index', compact(
-            'reports', 'areas', 'technicians',
-            'totalLaporan', 'countEI', 'countMekanik', 'countCmPm', 'countFabrikasi', 'countSipil'
+            'reports', 'areas', 'technicians', 'grubOptions',
+            'totalLaporan', 'countEI', 'countMekanik', 'countCmPm', 'countFabrikasi', 'countSipil',
+            'tampilan', 'grubAktif', 'tanggalAktif', 'pakaiRentang', 'tanggalSekitar'
         ));
+    }
+
+    /**
+     * Susun query laporan sesuai filter halaman laporan.
+     *
+     * Aturan yang dipakai:
+     *   - Laporan kolaborasi tampil sebagai SATU baris: hanya laporan induk
+     *     (collaborator_of NULL) yang diambil; daftar kolaborator dibaca dari
+     *     relasi collaboratorReports.
+     *   - Tampilan "reguler" memuat laporan teknisi grup 'reguler' (termasuk
+     *     teknisi yang grupnya belum diisi), tampilan "shift" memuat laporan
+     *     teknisi grub (A/B/C/D) dan bisa dipersempit ke satu grub.
+     *   - Tanggal: satu hari (default hari ini), atau rentang bila date_from /
+     *     date_to diisi.
+     *
+     * @param  Request         $request
+     * @param  string          $tampilan     'reguler' atau 'shift'
+     * @param  string|null     $grubAktif    Kunci grub terpilih (khusus shift)
+     * @param  \Carbon\Carbon  $tanggalAktif
+     * @return \Illuminate\Database\Eloquent\Builder<Report>
+     */
+    private function buildReportQuery(Request $request, string $tampilan, ?string $grubAktif, $tanggalAktif)
+    {
+        $query = Report::query()->whereNull('collaborator_of');
+
+        $this->applyGroupFilter($query, $tampilan, $grubAktif);
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('report_date', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('report_date', '<=', $request->date_to);
+        }
+
+        if (! $request->filled('date_from') && ! $request->filled('date_to')) {
+            $query->whereDate('report_date', $tanggalAktif->toDateString());
+        }
+
+        if ($request->filled('report_type')) {
+            $query->where('report_type', $request->report_type);
+        }
+
+        if ($request->filled('work_classification')) {
+            $query->where('work_classification', $request->work_classification);
+        }
+
+        if ($request->filled('area_id')) {
+            $query->where('area_id', $request->area_id);
+        }
+
+        if ($request->filled('technician_id')) {
+            $query->where('technician_id', $request->technician_id);
+        }
+
+        if ($request->filled('asset_code')) {
+            $assetCode = $request->asset_code;
+            $query->whereHas('asset', function ($q) use ($assetCode) {
+                $q->where('tech_ident_no', 'like', '%' . $assetCode . '%');
+            });
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('work_description', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('report_code')) {
+            $query->where('report_code', 'like', '%' . $request->report_code . '%');
+        }
+
+        if ($request->filled('jenis_pekerjaan')) {
+            $query->where('jenis_pekerjaan', $request->jenis_pekerjaan);
+        }
+
+        return $query;
+    }
+
+    /**
+     * Terapkan filter grup teknisi sesuai tampilan yang dipilih.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<Report>  $query
+     * @param  string       $tampilan
+     * @param  string|null  $grubAktif
+     * @return void
+     */
+    private function applyGroupFilter($query, string $tampilan, ?string $grubAktif): void
+    {
+        if ($tampilan === 'shift') {
+            $grubShift = array_keys(collect(Technician::GROUPS)->except(['reguler'])->all());
+
+            $query->whereHas('technician', function ($q) use ($grubAktif, $grubShift) {
+                if ($grubAktif !== null) {
+                    $q->where('group', $grubAktif);
+
+                    return;
+                }
+
+                $q->whereIn('group', $grubShift);
+            });
+
+            return;
+        }
+
+        // Reguler: grup 'reguler' atau grup yang belum diisi (bukan teknisi shift).
+        $query->whereHas('technician', function ($q) {
+            $q->where('group', 'reguler')->orWhereNull('group');
+        });
+    }
+
+    /**
+     * Pastikan kunci grub yang dipilih benar-benar ada pada daftar grup.
+     *
+     * @param  string|null  $grub
+     * @return string|null
+     */
+    private function resolveGrub(?string $grub): ?string
+    {
+        if ($grub === null || $grub === '') {
+            return null;
+        }
+
+        return array_key_exists($grub, Technician::GROUPS) ? $grub : null;
+    }
+
+    /**
+     * Tentukan tanggal aktif halaman laporan (default hari ini).
+     *
+     * @param  string|null  $tanggal  Format Y-m-d
+     * @return \Carbon\Carbon
+     */
+    private function resolveTanggal(?string $tanggal)
+    {
+        if ($tanggal === null || $tanggal === '') {
+            return now()->startOfDay();
+        }
+
+        try {
+            return \Carbon\Carbon::createFromFormat('Y-m-d', $tanggal)->startOfDay();
+        } catch (\Exception $e) {
+            return now()->startOfDay();
+        }
+    }
+
+
+    /**
+     * Cari tanggal laporan terdekat sebelum/sesudah tanggal aktif, plus daftar
+     * tanggal terakhir yang punya laporan (untuk tombol lompat cepat).
+     *
+     * @param  string          $tampilan
+     * @param  string|null     $grubAktif
+     * @param  \Carbon\Carbon  $tanggalAktif
+     * @return array{sebelumnya: string|null, berikutnya: string|null, daftar: \Illuminate\Support\Collection}
+     */
+    private function tanggalSekitar(string $tampilan, ?string $grubAktif, $tanggalAktif): array
+    {
+        $dasar = Report::query()->whereNull('collaborator_of');
+        $this->applyGroupFilter($dasar, $tampilan, $grubAktif);
+
+        $sebelumnya = (clone $dasar)
+            ->whereDate('report_date', '<', $tanggalAktif->toDateString())
+            ->max('report_date');
+
+        $berikutnya = (clone $dasar)
+            ->whereDate('report_date', '>', $tanggalAktif->toDateString())
+            ->min('report_date');
+
+        $daftar = (clone $dasar)
+            ->selectRaw('report_date, count(*) as jumlah')
+            ->whereNotNull('report_date')
+            ->groupBy('report_date')
+            ->orderByDesc('report_date')
+            ->limit(10)
+            ->get()
+            ->map(fn ($baris) => [
+                'tanggal' => \Carbon\Carbon::parse($baris->report_date)->toDateString(),
+                'jumlah'  => (int) $baris->jumlah,
+            ]);
+
+        return [
+            'sebelumnya' => $sebelumnya !== null ? \Carbon\Carbon::parse($sebelumnya)->toDateString() : null,
+            'berikutnya' => $berikutnya !== null ? \Carbon\Carbon::parse($berikutnya)->toDateString() : null,
+            'daftar'     => $daftar,
+        ];
     }
 
     /**
@@ -379,16 +515,20 @@ class ReportController extends Controller
 
     public function exportCsv(Request $request)
     {
-        $query = Report::with(['technician', 'area']);
+        $tampilan     = $request->get('tampilan') === 'shift' ? 'shift' : 'reguler';
+        $grubAktif    = $tampilan === 'shift' ? $this->resolveGrub($request->get('grub')) : null;
+        $tanggalAktif = $this->resolveTanggal($request->get('tanggal'));
 
-        if ($request->filled('date_from')) {
-            $query->whereDate('report_date', '>=', $request->date_from);
-        }
-        if ($request->filled('date_to')) {
-            $query->whereDate('report_date', '<=', $request->date_to);
-        }
+        // Memakai filter yang sama dengan halaman laporan (reguler/shift, grub,
+        // tanggal, dan laporan kolaborasi yang sudah dikonsolidasi satu baris).
+        $query = $this->buildReportQuery($request, $tampilan, $grubAktif, $tanggalAktif);
 
-        $reports = $query->latest()->get();
+        $reports = $query
+            ->with(['technician', 'area', 'collaboratorReports.technician'])
+            ->orderByDesc('report_date')
+            ->orderBy('technician_id')
+            ->orderBy('id')
+            ->get();
 
         $headers = [
             'Content-Type' => 'text/csv',
@@ -401,6 +541,7 @@ class ReportController extends Controller
                 'Kode Laporan',
                 'Tanggal',
                 'Teknisi',
+                'Kolaborator',
                 'Deskripsi',
                 'Area',
                 'Tipe',
@@ -426,6 +567,10 @@ class ReportController extends Controller
                     $report->report_code ?? '-',
                     $report->report_date->format('Y-m-d'),
                     $report->technician->name,
+                    $report->collaboratorReports
+                        ->map(fn ($kolaborator) => $kolaborator->technician?->name)
+                        ->filter()
+                        ->implode(', ') ?: '-',
                     $report->work_description,
                     $report->area?->code ?? '-',
                     $report->report_type,

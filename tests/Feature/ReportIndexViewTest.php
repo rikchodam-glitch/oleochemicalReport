@@ -1,0 +1,187 @@
+<?php
+
+use App\Models\Company;
+use App\Models\Department;
+use App\Models\Report;
+use App\Models\Technician;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+uses(RefreshDatabase::class);
+
+beforeEach(function () {
+    $this->seed();
+
+    $this->admin = User::where('email', 'admin@oleochemical.pro')->firstOrFail();
+
+    $this->company = Company::firstOrCreate(['code' => 'SITETEST'], ['name' => 'Site Uji']);
+    $this->dept    = Department::firstOrCreate(
+        ['company_id' => $this->company->id, 'code' => 'DEPTS'],
+        ['name' => 'Departemen Uji']
+    );
+
+    // Teknisi reguler (pemilik pekerjaan) dan teknisi shift Grub D (kolaborator).
+    $this->teknisiReguler = Technician::create([
+        'name'   => 'Teknisi Reguler Uji',
+        'nik'    => 'REG001',
+        'group'  => 'reguler',
+        'status' => 'active',
+    ]);
+
+    $this->teknisiGrubD = Technician::create([
+        'name'   => 'Teknisi Grub D Uji',
+        'nik'    => 'GRUPD002',
+        'group'  => 'grub_d',
+        'status' => 'active',
+    ]);
+
+    $this->tanggal = now()->subDay()->toDateString();
+
+    // Pekerjaan reguler (induk) + salinan kolaborasi untuk teknisi Grub D.
+    $this->laporanInduk = Report::create([
+        'technician_id'    => $this->teknisiReguler->id,
+        'creator_id'       => $this->teknisiReguler->id,
+        'report_date'      => $this->tanggal,
+        'report_code'      => 'REG-INDUK-01',
+        'work_description' => 'Ganti bearing pompa reguler uji',
+        'root_cause'       => 'Bearing aus',
+        'jenis_pekerjaan'  => 'CM',
+        'status'           => 'submitted',
+    ]);
+
+    $this->laporanAnak = Report::create([
+        'technician_id'    => $this->teknisiGrubD->id,
+        'creator_id'       => $this->teknisiReguler->id,
+        'collaborator_of'  => $this->laporanInduk->id,
+        'report_date'      => $this->tanggal,
+        'report_code'      => 'SALINAN-KOLAB-01',
+        'work_description' => 'Ganti bearing pompa reguler uji',
+        'jenis_pekerjaan'  => 'CM',
+        'status'           => 'submitted',
+    ]);
+
+    // Pekerjaan milik teknisi Grub D (bukan kolaborasi).
+    // Catatan: pada SQLite (test) kolom jenis_pekerjaan masih memakai CHECK
+    // constraint nilai lama (CM/dCM/PM), jadi fixture memakai PM.
+    $this->laporanGrubD = Report::create([
+        'technician_id'    => $this->teknisiGrubD->id,
+        'creator_id'       => $this->teknisiGrubD->id,
+        'report_date'      => $this->tanggal,
+        'report_code'      => 'GRUPD-KERJA-01',
+        'work_description' => 'Pengecekan motor grub D uji',
+        'jenis_pekerjaan'  => 'PM',
+        'status'           => 'submitted',
+    ]);
+});
+
+// ============================================================
+// TAMPILAN DASAR: FOKUS PEKERJAAN + TANGGAL + TAB REGULER/SHIFT
+// ============================================================
+
+test('halaman laporan menampilkan pekerjaan di depan dan teknisi di sampingnya', function () {
+    $respons = $this->actingAs($this->admin)->get('/reports?tanggal=' . $this->tanggal);
+
+    $respons->assertStatus(200)
+        ->assertSee('Pekerjaan', false)
+        ->assertSee('Teknisi', false)
+        ->assertSee('Ganti bearing pompa reguler uji', false)
+        ->assertSee('Teknisi Reguler Uji', false)
+        // Navigasi tanggal
+        ->assertSee('Buka', false)
+        ->assertSee('Hari Ini', false)
+        // Tab tampilan
+        ->assertSee('Reguler', false)
+        ->assertSee('Shift', false);
+});
+
+test('tampilan reguler hanya memuat pekerjaan teknisi reguler', function () {
+    $respons = $this->actingAs($this->admin)->get('/reports?tanggal=' . $this->tanggal . '&tampilan=reguler');
+
+    $respons->assertStatus(200)
+        ->assertSee('Ganti bearing pompa reguler uji', false)
+        ->assertDontSee('Pengecekan motor grub D uji', false);
+});
+
+test('tampilan shift bisa dipersempit ke satu grub', function () {
+    $respons = $this->actingAs($this->admin)
+        ->get('/reports?tanggal=' . $this->tanggal . '&tampilan=shift&grub=grub_d');
+
+    $respons->assertStatus(200)
+        ->assertSee('Pengecekan motor grub D uji', false)
+        ->assertSee('Grub D', false)
+        // Pekerjaan teknisi reguler tidak muncul di tampilan shift
+        ->assertDontSee('Ganti bearing pompa reguler uji', false);
+});
+
+test('tampilan shift tanpa pilih grub memuat semua grub shift', function () {
+    $respons = $this->actingAs($this->admin)
+        ->get('/reports?tanggal=' . $this->tanggal . '&tampilan=shift');
+
+    $respons->assertStatus(200)->assertSee('Pengecekan motor grub D uji', false);
+});
+
+test('grub yang tidak dikenal diabaikan tanpa error', function () {
+    $this->actingAs($this->admin)
+        ->get('/reports?tanggal=' . $this->tanggal . '&tampilan=shift&grub=grub_z')
+        ->assertStatus(200)
+        ->assertSee('Pengecekan motor grub D uji', false);
+});
+
+// ============================================================
+// KOLABORASI: SATU BARIS + DAFTAR KOLABORATOR
+// ============================================================
+
+test('laporan kolaborasi tampil satu baris dengan daftar kolaborator', function () {
+    $respons = $this->actingAs($this->admin)->get('/reports?tanggal=' . $this->tanggal);
+
+    $respons->assertStatus(200)
+        // Satu baris pekerjaan untuk laporan induk
+        ->assertSee('REG-INDUK-01', false)
+        ->assertSee('Berkolaborasi dengan:', false)
+        ->assertSee('Teknisi Grub D Uji', false)
+        // Salinan kolaborasi TIDAK dirender sebagai baris sendiri
+        ->assertDontSee('SALINAN-KOLAB-01', false);
+});
+
+test('pekerjaan milik teknisi grub D tetap muncul sebagai baris tersendiri', function () {
+    $this->actingAs($this->admin)
+        ->get('/reports?tanggal=' . $this->tanggal . '&tampilan=shift&grub=grub_d')
+        ->assertStatus(200)
+        ->assertSee('GRUPD-KERJA-01', false);
+});
+
+// ============================================================
+// NAVIGASI TANGGAL
+// ============================================================
+
+test('tanggal lain bisa dibuka dan laporan hari itu yang tampil', function () {
+    $kemarin = now()->subDays(2)->toDateString();
+
+    Report::create([
+        'technician_id'    => $this->teknisiReguler->id,
+        'report_date'      => $kemarin,
+        'report_code'      => 'REG-HARI-LAIN',
+        'work_description' => 'Pekerjaan dua hari lalu',
+        'status'           => 'submitted',
+    ]);
+
+    $this->actingAs($this->admin)
+        ->get('/reports?tanggal=' . $kemarin)
+        ->assertStatus(200)
+        ->assertSee('Pekerjaan dua hari lalu', false)
+        ->assertDontSee('Ganti bearing pompa reguler uji', false);
+});
+
+test('export csv memakai filter tampilan dan tanggal yang sama', function () {
+    $respons = $this->actingAs($this->admin)
+        ->get('/reports/export/csv?tanggal=' . $this->tanggal . '&tampilan=shift&grub=grub_d');
+
+    $respons->assertStatus(200);
+
+    $isiCsv = $respons->streamedContent();
+
+    expect($isiCsv)->toContain('GRUPD-KERJA-01')
+        ->and($isiCsv)->toContain('Kolaborator')
+        ->and($isiCsv)->not->toContain('REG-INDUK-01');
+});
+
