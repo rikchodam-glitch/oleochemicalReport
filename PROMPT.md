@@ -270,6 +270,8 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
 
 - Kolom utama: **Pekerjaan** (deskripsi + kode laporan + penyebab), lalu **Teknisi** di sampingnya,
   disusul Jenis (badge + klasifikasi ZPM), Lokasi/Alat, dan Waktu & Foto.
+- **Urutan: yang terbaru di paling atas** (`report_date` desc, lalu `created_at` desc, lalu `id` desc)
+  sehingga laporan yang baru saja masuk muncul paling atas pada tanggal tersebut.
 - **Per tanggal**: default hari ini; tombol hari sebelumnya / berikutnya melompat ke tanggal yang
   punya laporan, ada input `tanggal` ("Buka") dan tombol "Hari Ini", plus chip 10 tanggal terakhir
   beserta jumlah pekerjaannya.

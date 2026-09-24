@@ -172,6 +172,41 @@ test('tanggal lain bisa dibuka dan laporan hari itu yang tampil', function () {
         ->assertDontSee('Ganti bearing pompa reguler uji', false);
 });
 
+test('laporan terbaru tampil di urutan paling atas', function () {
+    // Bersihkan laporan pada tanggal uji agar urutannya hanya ditentukan data ini.
+    Report::whereDate('report_date', $this->tanggal)->delete();
+
+    $lama = Report::create([
+        'technician_id'    => $this->teknisiReguler->id,
+        'report_date'      => $this->tanggal,
+        'report_code'      => 'REG-URUT-LAMA',
+        'work_description' => 'Pekerjaan lama dibuat lebih dulu',
+        'status'           => 'submitted',
+    ]);
+    $lama->forceFill(['created_at' => now()->subHours(3)])->save();
+
+    $baru = Report::create([
+        'technician_id'    => $this->teknisiReguler->id,
+        'report_date'      => $this->tanggal,
+        'report_code'      => 'REG-URUT-BARU',
+        'work_description' => 'Pekerjaan paling baru',
+        'status'           => 'submitted',
+    ]);
+    $baru->forceFill(['created_at' => now()])->save();
+
+    $html = $this->actingAs($this->admin)
+        ->get('/reports?tanggal=' . $this->tanggal)
+        ->assertStatus(200)
+        ->getContent();
+
+    $posisiBaru = strpos($html, 'Pekerjaan paling baru');
+    $posisiLama = strpos($html, 'Pekerjaan lama dibuat lebih dulu');
+
+    expect($posisiBaru)->not->toBeFalse()
+        ->and($posisiLama)->not->toBeFalse()
+        ->and($posisiBaru)->toBeLessThan($posisiLama);
+});
+
 test('export csv memakai filter tampilan dan tanggal yang sama', function () {
     $respons = $this->actingAs($this->admin)
         ->get('/reports/export/csv?tanggal=' . $this->tanggal . '&tampilan=shift&grub=grub_d');

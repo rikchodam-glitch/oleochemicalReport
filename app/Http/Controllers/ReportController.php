@@ -35,9 +35,11 @@ class ReportController extends Controller
 
         $reports = $query
             ->with(['technician', 'area', 'asset', 'linkedFinding', 'collaboratorReports.technician'])
+            // Laporan terbaru di paling atas; dalam satu tanggal diurutkan dari
+            // yang paling akhir dibuat (created_at, lalu id sebagai penentu).
             ->orderByDesc('report_date')
-            ->orderBy('technician_id')
-            ->orderBy('id')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->paginate(25)
             ->withQueryString();
 
@@ -525,9 +527,10 @@ class ReportController extends Controller
 
         $reports = $query
             ->with(['technician', 'area', 'collaboratorReports.technician'])
+            // Urutan sama dengan halaman laporan: yang terbaru di atas.
             ->orderByDesc('report_date')
-            ->orderBy('technician_id')
-            ->orderBy('id')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->get();
 
         $headers = [
