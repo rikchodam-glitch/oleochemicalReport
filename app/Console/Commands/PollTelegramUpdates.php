@@ -206,6 +206,20 @@ class PollTelegramUpdates extends Command
         $this->answerCallbackQuery($callbackId);
 
         try {
+            // Tombol asisten informasi perangkat (prefix info:) berdiri sendiri:
+            // tidak membutuhkan sesi wizard laporan sama sekali.
+            if (str_starts_with($data, 'info:')) {
+                $respons = app(\App\Services\Telegram\ItInfoService::class)->handleCallback($data);
+
+                if (!empty($respons['keyboard'])) {
+                    $this->editMessageText($chatId, $messageId, $respons['message'], $respons['keyboard']);
+                } else {
+                    $this->editMessageTextSimple($chatId, $messageId, $respons['message']);
+                }
+
+                return;
+            }
+
             // ReportWizardService adalah satu-satunya sumber kebenaran untuk callback.
             // Alur klarifikasi berdiri sendiri (ClarificationService) sudah sepenuhnya
             // digantikan oleh wizard sejak F4/F5.

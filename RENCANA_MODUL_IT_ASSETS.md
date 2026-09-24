@@ -529,6 +529,40 @@ perangkat maka teknisi diberi pilihan.
    `WS-EPE-MTC-Dian` (setelah `WS-EPE-QC-DIAN` dipetakan lokasinya, namanya akan
    muncul sebagai dua pilihan).
 
+### Sesi 17 — Perintah /info di bot Telegram (asisten perangkat)
+
+Tujuan: teknisi bisa mencari perangkat dan melihat detailnya langsung dari
+Telegram, termasuk CCTV berdasarkan lokasi/deskripsi/NVR-channel.
+
+1. Service baru `App\Services\Telegram\ItInfoService` (berdiri sendiri, tanpa
+   state wizard, tidak mengganggu alur laporan).
+2. Perintah `/info [kata kunci]` ditangani di
+   `TelegramMessageHandlerTrait::processUpdate()` setelah validasi teknisi, dan
+   tetap bisa dipakai saat wizard laporan sedang aktif. Bentuk `/info@NamaBot`
+   (grup) juga dikenali.
+3. Callback tombol memakai prefix `info:` dan ditangani lebih dulu di
+   `PollTelegramUpdates::processCallbackQuery()` sebelum logika wizard, supaya
+   tombol /info tidak dianggap sesi laporan yang sudah kedaluwarsa.
+4. Urutan pencarian: alamat IP -> NVR + channel -> tag alat (tanda hubung
+   diabaikan) -> pencarian teks pada data IT (tag, nama pemakai, lokasi,
+   plant/department, funcloc, dan SELURUH nilai spec termasuk pointing) ->
+   mesin pencari wizard untuk aset industri (dipetakan lewat `assets.it_asset_id`).
+5. Pemfilteran: tipe perangkat (`CCTV`, `Switch`, `Laptop`, ...) dan PT
+   (`EPE`/`NPA`/`CES`) yang disebut pada kata kunci mempersempit hasil, sehingga
+   "CCTV Unloading EPE" tidak lagi menampilkan perangkat tipe lain atau PT lain.
+6. `/info` tanpa kata kunci membuka hirarki: PT -> Departemen -> alat (12 alat
+   per halaman tombol), lalu tombol perangkat memunculkan detail lengkap
+   (IP, status ping, plant/dept, lokasi, funcloc, NVR+channel+connect to untuk
+   CCTV, kapasitas channel untuk NVR, jumlah kamera untuk switch/AP, spesifikasi
+   untuk PC) beserta tautan detail web.
+7. Hasil uji: `/info PC Hafidz` -> detail `WS-EPE-GA-Hafidz`;
+   `/info CCTV-CES-3` -> detail lengkap; `/info CCTV Sekitar Jalan CES` -> tepat
+   `CCTV-CES-3` (frasa ada di field Pointing); `/info CCTV NVR MO 3 Channel D13`
+   -> kamera dengan NVR/channel tersebut; `/info Switch Unloading EPE` -> satu
+   detail `Switch Unloading`; `/info 192.168.49.69` -> perangkat dengan IP itu;
+   `/info Laptop Alvin` -> `WS-EPE-ACC-ALVIN` (walau lokasinya belum dipetakan).
+8. Akses: hanya teknisi terdaftar & aktif (sama seperti pelaporan).
+
 ### Catatan sisa pekerjaan (diperbarui sesi 14)
 
 1. `resources/views/reports/edit.blade.php` belum memuat pilihan `IT` pada peta

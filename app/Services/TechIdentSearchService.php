@@ -69,7 +69,7 @@ class TechIdentSearchService
      *
      * @var array<string, array<int, string>>
      */
-    protected const TYPE_ALIASES = [
+    public const TYPE_ALIASES = [
         'CCTV'                 => ['CCTV', 'KAMERA', 'CAMERA'],
         'NVR'                  => ['NVR', 'DVR', 'PEREKAM'],
         'PC'                   => ['PC', 'KOMPUTER', 'DESKTOP', 'WORKSTATION'],
@@ -100,7 +100,7 @@ class TechIdentSearchService
      *
      * @var array<int, string>
      */
-    protected const LOCATION_STOPWORDS = [
+    public const LOCATION_STOPWORDS = [
         'PERBAIKAN', 'PEMELIHARAAN', 'PEMAINTENANCE', 'MAINTENANCE', 'SERVICE',
         'LAPORAN', 'PENGECEKAN', 'PEMERIKSAAN', 'CEK', 'CHECK', 'REPORT',
         'KERUSAKAN', 'RUSAK', 'ERROR', 'MASALAH', 'GANGGUAN', 'TROUBLE',
@@ -118,7 +118,7 @@ class TechIdentSearchService
      *
      * @var array<int, string>
      */
-    protected const NAME_TITLES = [
+    public const NAME_TITLES = [
         'PAK', 'BAPAK', 'BU', 'IBU', 'MAS', 'MBAK', 'MBK', 'MR', 'MRS', 'MS',
         'SDR', 'SDRI', 'KAK', 'BANG', 'USER', 'PUNYA', 'MILIK', 'ORANG', 'ORANGNYA',
     ];

@@ -4,6 +4,7 @@ namespace App\Console\Commands\Traits;
 
 use App\Models\BotRegistration;
 use App\Models\Technician;
+use App\Services\Telegram\ItInfoService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -80,6 +81,13 @@ trait TelegramMessageHandlerTrait
 
         // Perbarui waktu aktif terakhir
         $technician->update(['last_active_at' => now()]);
+
+        // Asisten informasi perangkat: /info [kata kunci]. Berdiri sendiri dan
+        // bisa dipakai kapan saja, termasuk saat wizard laporan sedang aktif.
+        if (preg_match('/^\/info(?:@\S+)?\b\s*(.*)$/is', $text, $cocokInfo)) {
+            $this->handleInfoCommand($chatId, trim($cocokInfo[1] ?? ''));
+            return;
+        }
 
         // Routing foto
         if ($hasPhoto) {
@@ -196,6 +204,36 @@ trait TelegramMessageHandlerTrait
     }
 
     /**
+     * Jalankan perintah /info: cari perangkat lalu kirim detail atau daftar
+     * pilihan. Tanpa kata kunci, pesan yang dikirim adalah pembuka hirarki alat.
+     *
+     * @param int|string $chatId ID chat
+     * @param string     $query  Kata kunci setelah /info (boleh kosong)
+     * @return void
+     */
+    private function handleInfoCommand(int|string $chatId, string $query): void
+    {
+        $this->sendChatAction($chatId);
+
+        try {
+            $respons = app(ItInfoService::class)->search($query);
+        } catch (\Exception $e) {
+            Log::error('Perintah /info gagal: ' . $e->getMessage());
+            $this->sendMessage($chatId, 'Maaf, pencarian perangkat sedang bermasalah. Coba lagi sebentar.');
+
+            return;
+        }
+
+        if (empty($respons['keyboard'])) {
+            $this->sendMessage($chatId, $respons['message']);
+
+            return;
+        }
+
+        $this->sendMessageWithKeyboard($chatId, $respons['message'], $respons['keyboard']);
+    }
+
+    /**
      * Teruskan teks ke ReportWizardService saat wizard sedang aktif.
      *
      * @param int|string $chatId ID chat
@@ -301,7 +339,7 @@ trait TelegramMessageHandlerTrait
         $existing = Technician::where('telegram_id', $telegramId)->first();
         if ($existing) {
             if ($existing->status === 'active') {
-                $this->sendMessage($chatId, "Halo $firstName! Akun kamu sudah aktif. Silakan kirim laporan harian.");
+                $this->sendMessage($chatId, "Halo $firstName! Akun kamu sudah aktif. Silakan kirim laporan harian.\n\nUntuk mencari perangkat, ketik /info. Contoh:\n/info PC Hafidz\n/info CCTV-CES-3\n/info 192.168.41.210");
             } else {
                 $this->sendMessage($chatId, "Akun kamu masih menunggu persetujuan admin.");
             }
