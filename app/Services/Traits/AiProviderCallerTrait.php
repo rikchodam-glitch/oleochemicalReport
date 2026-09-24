@@ -31,6 +31,15 @@ use Illuminate\Support\Facades\Log;
 trait AiProviderCallerTrait
 {
     /**
+     * Model Groq bawaan bila kolom model pada provider kosong. Nama model
+     * WAJIB salah satu yang tersedia di akun (lihat GET /openai/v1/models);
+     * nilai lama "groq/compound" tidak ada di akun sehingga selalu HTTP 404
+     * "model does not exist". Daftar model akun saat ini antara lain:
+     * openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.8-27b.
+     */
+    const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b';
+
+    /**
      * Jumlah maksimum kandidat asset yang dikirim ke prompt AI.
      * Pre-filter keyword-based akan memangkas ribuan asset menjadi maksimum
      * sebanyak ini, sehingga token yang dikirim tetap hemat.
@@ -860,7 +869,7 @@ PROMPT;
 
         try {
             $endpoint = $provider->endpoint_url ?? 'https://api.groq.com/openai/v1/chat/completions';
-            $model    = $provider->model         ?? 'groq/compound';
+            $model    = $provider->model         ?? self::DEFAULT_GROQ_MODEL;
 
             // BUG 2 FIX — gunakan accessor api_key (bukan api_key_encrypted)
             // agar nilai yang terenkripsi di-decrypt terlebih dahulu.
