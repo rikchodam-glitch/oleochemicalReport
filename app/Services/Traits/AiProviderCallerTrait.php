@@ -8,6 +8,7 @@ use App\Models\Area;
 use App\Models\Asset;
 use App\Models\FunctionalLocation;
 use App\Services\AiModelDiscoveryService;
+use App\Services\AiQuotaService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -915,6 +916,11 @@ PROMPT;
                 $tokensUsed = $response->json()['usage']['total_tokens'] ?? 0;
                 $status     = 'success';
 
+                // Simpan batas/sisa kuota yang disebutkan API pada respons ini.
+                // Nilai inilah sumber kebenaran kuota (per menit), bukan angka
+                // tebakan di kolom daily_token_limit.
+                app(AiQuotaService::class)->recordFromHeaders($provider, $response->headers());
+
                 Log::info("AI Groq response received", [
                     'provider' => $provider->name,
                     'length'   => strlen($content ?? ''),
@@ -944,10 +950,13 @@ PROMPT;
                 return $content;
             }
 
-            // Tandai provider exhausted jika quota habis (HTTP 429)
+            // Tandai provider exhausted jika quota habis (HTTP 429). Waktu tunggu
+            // diambil dari header API (retry-after / x-ratelimit-reset-*), jadi
+            // provider otomatis dipakai lagi setelah batasnya pulih.
             if ($response->status() === 429) {
-                $provider->update(['status' => 'exhausted']);
-                Log::warning("AI Service: Provider [{$provider->name}] quota exhausted (429)");
+                $detik = app(AiQuotaService::class)->applyRateLimit($provider, $response->headers());
+
+                Log::warning("AI Service: Provider [{$provider->name}] quota exhausted (429), tunggu {$detik} detik");
             }
 
             $errorMessage = substr($response->body(), 0, 300);
@@ -1028,14 +1037,32 @@ PROMPT;
             ->byPriority()
             ->get();
 
+        $quota = app(AiQuotaService::class);
+
         foreach ($providers as $provider) {
-            // Cek apakah masih punya kuota harian
-            if ($provider->daily_token_limit > 0 && $provider->tokens_used_today >= $provider->daily_token_limit) {
+            // Penghitung harian/bulanan direset otomatis saat periode berganti,
+            // sehingga provider tidak pernah "mati permanen" karena penghitung
+            // yang tidak pernah direset.
+            $quota->resetCounterIfNewPeriod($provider);
+
+            // Lewati provider yang baru terkena HTTP 429 sampai masa tunggunya
+            // habis (waktu tunggu diambil dari header API, bukan tebakan).
+            if ($quota->isCoolingDown($provider)) {
+                Log::info("AI Service: Provider [{$provider->name}] sedang menunggu {$quota->cooldownRemainingSeconds($provider)} detik setelah kena batas API");
+
                 continue;
             }
-            // Cek kuota bulanan
-            if ($provider->monthly_token_limit > 0 && $provider->tokens_used_month >= $provider->monthly_token_limit) {
-                continue;
+
+            // Kuota lokal hanya sebagai penjaga tambahan bila diaktifkan
+            // (config ai.quota.enforce_local_limit). Sumber kebenaran kuota
+            // adalah API provider (header x-ratelimit-* dan HTTP 429).
+            if ((bool) config('ai.quota.enforce_local_limit', false)) {
+                if ($provider->daily_token_limit > 0 && $provider->tokens_used_today >= $provider->daily_token_limit) {
+                    continue;
+                }
+                if ($provider->monthly_token_limit > 0 && $provider->tokens_used_month >= $provider->monthly_token_limit) {
+                    continue;
+                }
             }
 
             return $provider;

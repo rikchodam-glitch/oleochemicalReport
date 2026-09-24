@@ -24,6 +24,13 @@ class AiProvider extends Model
         'last_used_at',
         'last_health_check',
         'status',
+        'quota_limit_tokens_per_minute',
+        'quota_remaining_tokens_per_minute',
+        'quota_limit_requests_per_minute',
+        'quota_remaining_requests_per_minute',
+        'quota_checked_at',
+        'cooldown_until',
+        'quota_day',
     ];
 
     protected function casts(): array
@@ -31,7 +38,25 @@ class AiProvider extends Model
         return [
             'last_used_at'      => 'datetime',
             'last_health_check' => 'datetime',
+            'quota_checked_at'  => 'datetime',
+            'cooldown_until'    => 'datetime',
+            'quota_day'         => 'date',
         ];
+    }
+
+    /**
+     * Keterangan kuota per menit menurut API provider.
+     *
+     * @return string|null
+     */
+    public function getApiQuotaTextAttribute(): ?string
+    {
+        if ($this->quota_remaining_tokens_per_minute === null) {
+            return null;
+        }
+
+        return number_format((int) $this->quota_remaining_tokens_per_minute)
+            . ' / ' . number_format((int) $this->quota_limit_tokens_per_minute) . ' token per menit (menurut API)';
     }
 
     // =========================================================

@@ -208,6 +208,14 @@ dan diakses via `Storage::disk('public')->url($path)`.
 - Dipakai panel AI (simpan provider tanpa isi model, tombol Deteksi Model, tombol Test)
   dan `AiProviderCallerTrait::callGroq()` saat pemanggilan gagal karena nama model
 
+### AiQuotaService
+- Sumber kuota = header respons API (`x-ratelimit-*`), karena Groq TIDAK punya endpoint sisa kuota
+- `recordFromHeaders()` menyimpan batas/sisa per menit dari setiap panggilan sukses
+- `applyRateLimit()` menyimpan masa tunggu (cooldown) dari `retry-after` saat kena HTTP 429
+- `resetCounterIfNewPeriod()` mereset penghitung harian/bulanan otomatis saat periode berganti
+- Kolom provider terkait: `quota_*_per_minute`, `quota_checked_at`, `cooldown_until`, `quota_day`
+- `daily_token_limit`/`monthly_token_limit` hanya penjaga opt-in (`config('ai.quota.enforce_local_limit')`, bawaan false)
+
 ### TechIdentSearchService
 - Pencarian 3-pass: exact match → normalized → section+type
 - Input: teks laporan teknisi

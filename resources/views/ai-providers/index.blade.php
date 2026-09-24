@@ -121,6 +121,7 @@
                     </div>
                     <p class="text-xs text-slate-400 text-right">{{ $pctDaily }}% terpakai</p>
                 </div>
+                @include('ai-providers.partials._quota-api', ['provider' => $provider])
 
                 {{-- Progress bar token bulanan --}}
                 <div class="space-y-1">

@@ -343,6 +343,31 @@ ulang.
 
 
 
+17. **"Deteksi kuota otomatis" TIDAK bisa lewat endpoint — hanya lewat header
+    respons; klaim ini dibuktikan dulu sebelum menulis kode.** Pada 24/09/2026
+    diuji langsung ke API Groq memakai API key asli: `GET /openai/v1/usage`,
+    `/limits`, `/rate_limits`, `/dashboard/usage`, dan `/organizations/usage`
+    semuanya **404**. Satu-satunya data kuota nyata ada di **header respons
+    chat** (`x-ratelimit-limit-tokens`, `x-ratelimit-remaining-tokens`,
+    `x-ratelimit-reset-tokens`, `x-ratelimit-limit-requests`,
+    `x-ratelimit-remaining-requests`, `x-ratelimit-reset-requests`) dan HTTP
+    **429** (dengan `retry-after`). `GET /models` hanya memberi metadata model
+    (`context_window`, `max_completion_tokens`, `pricing`), BUKAN kuota.
+    Nilai header itu per MENIT (contoh nyata: 8.000 token/menit, 1.000
+    permintaan/menit), bukan per hari — jadi jangan dipakai untuk mengisi
+    `daily_token_limit`. **Pelajaran: (1) kuota yang benar diambil dari header
+    tiap respons (lihat `App\Services\AiQuotaService`), bukan dari angka tebakan
+    di kolom limit aplikasi; (2) kolom `daily_token_limit`/`monthly_token_limit`
+    HANYA boleh jadi penjaga tambahan yang opt-in
+    (`config('ai.quota.enforce_local_limit')`, bawaan false) — kalau dipakai
+    sebagai pemblokir utama, AI akan berhenti diam-diam (lihat insiden #15);
+    (3) 429 WAJIB diperlakukan sebagai masa tunggu (cooldown dari `retry-after`),
+    bukan status mati sampai direset manual; (4) jangan pernah menyimpulkan
+    "API tidak menyediakan X" tanpa memanggil endpoint-nya sendiri dan mencatat
+    kode HTTP-nya.**
+
+
+
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
 
 ## ATURAN PENULISAN KODE

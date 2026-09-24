@@ -6,6 +6,7 @@ use App\Models\AiAlias;
 use App\Models\AiProvider;
 use App\Models\AiUsageLog;
 use App\Services\AiModelDiscoveryService;
+use App\Services\AiQuotaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
@@ -264,6 +265,9 @@ class AiProviderController extends Controller
                     'status'            => 'healthy',
                 ]);
 
+                // Catat batas/sisa kuota yang disebutkan API pada respons ping ini.
+                app(AiQuotaService::class)->recordFromHeaders($aiProvider, (array) ($result['headers'] ?? []));
+
                 // Catat ke usage log sebagai health_check
                 $this->logUsage($aiProvider, $responseTime, 'health_check', 'success');
 
@@ -280,6 +284,15 @@ class AiProviderController extends Controller
                 'last_health_check' => now(),
                 'status'            => $newStatus,
             ]);
+
+            // Kena batas API (429): simpan lama tunggu dari header (retry-after /
+            // x-ratelimit-reset-*) agar provider dipakai lagi otomatis setelah
+            // batasnya pulih, tidak menunggu reset manual.
+            if ($result['http_code'] === 429) {
+                $detik = app(AiQuotaService::class)->applyRateLimit($aiProvider, (array) ($result['headers'] ?? []));
+
+                $result['error'] = (string) ($result['error'] ?? '') . " Tunggu sekitar {$detik} detik.";
+            }
 
             $this->logUsage($aiProvider, $responseTime, 'health_check', 'error', $result['error']);
 
@@ -515,6 +528,7 @@ class AiProviderController extends Controller
                         'response_time_ms' => $responseTime,
                         'http_code'        => $httpCode,
                         'error'            => null,
+                        'headers'          => $response->headers(),
                     ];
                 }
 
@@ -541,6 +555,7 @@ class AiProviderController extends Controller
                 'response_time_ms' => $responseTime,
                 'http_code'        => $httpCode,
                 'error'            => $errorMsg,
+                'headers'          => $response->headers(),
             ];
 
         } catch (\Exception $e) {
