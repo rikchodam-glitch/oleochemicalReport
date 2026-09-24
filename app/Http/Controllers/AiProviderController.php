@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AiAlias;
 use App\Models\AiProvider;
 use App\Models\AiUsageLog;
+use App\Services\AiModelDiscoveryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
@@ -82,7 +83,9 @@ class AiProviderController extends Controller
             'name'                => 'required|string|max:255',
             'provider_type'       => 'required|in:groq,ollama,openai',
             'api_key_encrypted'   => 'nullable|string',
-            'model'               => 'required|string',
+            // Model boleh dikosongkan: sistem akan mendeteksi sendiri model yang
+            // tersedia di akun lewat endpoint /models.
+            'model'               => 'nullable|string',
             'endpoint_url'        => 'nullable|url',
             'priority'            => 'required|integer|min:1',
             'monthly_token_limit' => 'required|integer|min:0',
@@ -90,10 +93,54 @@ class AiProviderController extends Controller
             'status'              => 'required|in:healthy,exhausted,error,disabled',
         ]);
 
-        AiProvider::create($validated);
+        // Kolom model NOT NULL, jadi model yang tidak diisi user harus sudah
+        // terisi saat insert: deteksi dulu dari akun memakai endpoint + API key
+        // yang baru dikirim. Bila deteksi gagal, pakai model bawaan.
+        if (empty($validated['model'])) {
+            $model = $this->detectModelFromInput(
+                $validated['endpoint_url'] ?? null,
+                (string) $validated['provider_type'],
+                (string) ($validated['api_key_encrypted'] ?? '')
+            );
+
+            $validated['model'] = $model ?? AiModelDiscoveryService::DEFAULT_MODEL;
+        }
+
+        $provider = AiProvider::create($validated);
+
+        $catatan = $provider->model === AiModelDiscoveryService::DEFAULT_MODEL
+            ? ' Model belum bisa dideteksi otomatis, untuk sementara memakai model bawaan ' . AiModelDiscoveryService::DEFAULT_MODEL . '.'
+            : " Model terdeteksi otomatis: {$provider->model}.";
 
         return redirect()->route('ai-providers.index')
-            ->with('success', 'Provider AI berhasil ditambahkan.');
+            ->with('success', 'Provider AI berhasil ditambahkan.' . $catatan);
+    }
+
+    /**
+     * Deteksi model dari API memakai endpoint + API key mentah dari form
+     * (dipakai sebelum provider disimpan, karena kolom model NOT NULL).
+     *
+     * @param  string|null $endpointUrl   URL endpoint dari form
+     * @param  string      $providerType  Jenis provider (groq/ollama/openai)
+     * @param  string      $apiKey        API key mentah dari form
+     * @return string|null  Nama model hasil deteksi, atau null bila gagal
+     */
+    private function detectModelFromInput(?string $endpointUrl, string $providerType, string $apiKey): ?string
+    {
+        $provider = new AiProvider([
+            'provider_type' => $providerType,
+            'endpoint_url'  => $endpointUrl,
+            'model'         => AiModelDiscoveryService::DEFAULT_MODEL,
+            'api_key_encrypted' => $apiKey,
+        ]);
+
+        $hasil = app(AiModelDiscoveryService::class)->availableModels($provider);
+
+        if (! $hasil['ok']) {
+            return null;
+        }
+
+        return app(AiModelDiscoveryService::class)->pickChatModel($hasil['models']);
     }
 
     /**
@@ -109,7 +156,9 @@ class AiProviderController extends Controller
             'name'                => 'required|string|max:255',
             'provider_type'       => 'required|in:groq,ollama,openai',
             'api_key_encrypted'   => 'nullable|string',
-            'model'               => 'required|string',
+            // Model boleh dikosongkan: sistem akan mendeteksi sendiri model yang
+            // tersedia di akun lewat endpoint /models.
+            'model'               => 'nullable|string',
             'endpoint_url'        => 'nullable|url',
             'priority'            => 'required|integer|min:1',
             'monthly_token_limit' => 'required|integer|min:0',
@@ -117,10 +166,63 @@ class AiProviderController extends Controller
             'status'              => 'required|in:healthy,exhausted,error,disabled',
         ]);
 
+        // Bila kolom model dikosongkan, jangan hapus model lama yang masih ada.
+        if (empty($validated['model'])) {
+            unset($validated['model']);
+        }
+
         $aiProvider->update($validated);
 
+        $catatan = '';
+        $model   = $this->syncModelFromApi($aiProvider);
+
+        if ($model !== null) {
+            $catatan = " Model terdeteksi otomatis: {$model}.";
+        } elseif (empty($aiProvider->model)) {
+            $catatan = ' Model belum bisa dideteksi otomatis, silakan klik Deteksi Model.';
+        }
+
         return redirect()->route('ai-providers.index')
-            ->with('success', 'Provider AI berhasil diperbarui.');
+            ->with('success', 'Provider AI berhasil diperbarui.' . $catatan);
+    }
+
+    /**
+     * Deteksi ulang model yang tersedia di akun provider lalu simpan yang terbaik.
+     *
+     * Dipakai oleh tombol "Deteksi Model" pada panel AI. Tidak perlu mengisi
+     * nama model manual lagi - nama model mengikuti apa yang benar-benar
+     * tersedia di akun (endpoint GET /models).
+     *
+     * @param AiProvider $aiProvider
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function refreshModels(AiProvider $aiProvider)
+    {
+        $hasil = $this->discoverModels($aiProvider);
+
+        if (! $hasil['ok']) {
+            return redirect()->route('ai-providers.index')->with(
+                'error',
+                "Gagal mendeteksi model untuk {$aiProvider->name}: " . ($hasil['error'] ?? 'penyebab tidak diketahui')
+            );
+        }
+
+        $model = $this->pickAndSaveModel($aiProvider, $hasil['models']);
+
+        if ($model === null) {
+            return redirect()->route('ai-providers.index')->with(
+                'error',
+                "Tidak ada model chat yang cocok untuk {$aiProvider->name}. Model tersedia: "
+                . implode(', ', array_slice($hasil['models'], 0, 12))
+            );
+        }
+
+        return redirect()->route('ai-providers.index')->with(
+            'success',
+            "Model {$aiProvider->name} disetel otomatis ke {$model}. Tersedia " . count($hasil['models'])
+            . ' model di akun: ' . implode(', ', array_slice($hasil['models'], 0, 12))
+            . (count($hasil['models']) > 12 ? ' ...' : '')
+        );
     }
 
     /**
@@ -180,6 +282,34 @@ class AiProviderController extends Controller
             ]);
 
             $this->logUsage($aiProvider, $responseTime, 'health_check', 'error', $result['error']);
+
+            // Koreksi otomatis: bila gagal karena nama model tidak valid/usang,
+            // ambil model yang benar-benar tersedia di akun lalu uji sekali lagi.
+            if ($this->isModelError((string) ($result['error'] ?? ''))) {
+                $modelBaru = $this->perbaikiModelProvider($aiProvider);
+
+                if ($modelBaru !== null) {
+                    $ulang        = $this->pingProvider($aiProvider);
+                    $responseTime = $ulang['response_time_ms'];
+
+                    if ($ulang['success']) {
+                        $aiProvider->update([
+                            'last_health_check' => now(),
+                            'status'            => 'healthy',
+                            'last_used_at'      => now(),
+                        ]);
+
+                        $this->logUsage($aiProvider, $responseTime, 'health_check', 'success');
+
+                        return response()->json([
+                            'success' => true,
+                            'message' => "Model dikoreksi otomatis ke {$modelBaru}. Koneksi berhasil. Response time: {$responseTime}ms",
+                        ]);
+                    }
+
+                    $result['error'] = ($ulang['error'] ?? $result['error']) . " (model sudah dikoreksi ke {$modelBaru})";
+                }
+            }
 
             return response()->json([
                 'success' => false,
@@ -444,6 +574,82 @@ class AiProviderController extends Controller
     }
 
     /**
+     * Ambil daftar model yang benar-benar tersedia di akun provider
+     * (endpoint GET {base}/models).
+     *
+     * @param  AiProvider $provider
+     * @return array{ok: bool, status: int, models: array<int, string>, error: string|null}
+     */
+    private function discoverModels(AiProvider $provider): array
+    {
+        return app(AiModelDiscoveryService::class)->availableModels($provider);
+    }
+
+    /**
+     * Pilih model chat terbaik dari daftar model akun lalu simpan ke provider.
+     *
+     * @param  AiProvider         $provider
+     * @param  array<int, string> $models
+     * @return string|null  Nama model yang disimpan, atau null bila tidak ada yang cocok
+     */
+    private function pickAndSaveModel(AiProvider $provider, array $models): ?string
+    {
+        $model = app(AiModelDiscoveryService::class)->pickChatModel($models);
+
+        if ($model === null) {
+            return null;
+        }
+
+        $provider->update(['model' => $model]);
+
+        return $model;
+    }
+
+    /**
+     * Isi kolom model dari API bila masih kosong (dipakai saat simpan provider).
+     *
+     * @param  AiProvider $provider
+     * @return string|null  Nama model hasil deteksi, atau null bila tidak berubah
+     */
+    private function syncModelFromApi(AiProvider $provider): ?string
+    {
+        if (! empty($provider->model)) {
+            return null;
+        }
+
+        $hasil = $this->discoverModels($provider);
+
+        if (! $hasil['ok']) {
+            return null;
+        }
+
+        return $this->pickAndSaveModel($provider, $hasil['models']);
+    }
+
+    /**
+     * Deteksi model terbaik dari API dan timpa model yang tersimpan
+     * (dipakai saat pengujian gagal karena nama model tidak valid).
+     *
+     * @param  AiProvider $provider
+     * @return string|null  Nama model pengganti, atau null bila gagal deteksi
+     */
+    private function perbaikiModelProvider(AiProvider $provider): ?string
+    {
+        return app(AiModelDiscoveryService::class)->detectAndSave($provider);
+    }
+
+    /**
+     * Apakah pesan error dari provider menunjuk ke masalah nama model.
+     *
+     * @param  string $error
+     * @return bool
+     */
+    private function isModelError(string $error): bool
+    {
+        return app(AiModelDiscoveryService::class)->isModelErrorMessage($error);
+    }
+
+    /**
      * Bangun payload minimal untuk health check.
      * max_tokens=1 agar tidak membuang kuota untuk ping.
      *
@@ -452,7 +658,7 @@ class AiProviderController extends Controller
      */
     private function buildPingPayload(AiProvider $provider): array
     {
-        $model = $provider->model ?? 'llama-3.3-70b-versatile';
+        $model = $provider->model ?: AiModelDiscoveryService::DEFAULT_MODEL;
 
         // Ollama pakai format berbeda
         if ($provider->provider_type === 'ollama') {

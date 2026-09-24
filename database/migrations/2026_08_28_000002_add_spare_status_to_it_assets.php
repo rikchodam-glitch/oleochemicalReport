@@ -17,6 +17,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Selalu dijalankan di atas MySQL (produksi). Pada driver lain (SQLite
+        // saat test) sintaks MODIFY tidak dikenal, jadi dilewati - pengujian
+        // tidak membutuhkan definisi ENUM.
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
+
         DB::statement("ALTER TABLE it_assets MODIFY status ENUM('active', 'inactive', 'needs_review', 'spare') NOT NULL DEFAULT 'active'");
     }
 
@@ -27,6 +34,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
+
         DB::statement("ALTER TABLE it_assets MODIFY status ENUM('active', 'inactive', 'needs_review') NOT NULL DEFAULT 'active'");
     }
 };

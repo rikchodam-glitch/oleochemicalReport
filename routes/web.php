@@ -153,6 +153,7 @@ Route::middleware('admin')->group(function () {
     Route::put('/ai-providers/{aiProvider}', [AiProviderController::class, 'update'])->name('ai-providers.update');
     Route::delete('/ai-providers/{aiProvider}', [AiProviderController::class, 'destroy'])->name('ai-providers.destroy');
     Route::post('/ai-providers/{aiProvider}/test', [AiProviderController::class, 'test'])->name('ai-providers.test');
+    Route::post('/ai-providers/{aiProvider}/refresh-models', [AiProviderController::class, 'refreshModels'])->name('ai-providers.refresh-models');
 
     // Reliability Dashboard
     Route::get('/reliability', [ReliabilityController::class, 'index'])->name('reliability.index');

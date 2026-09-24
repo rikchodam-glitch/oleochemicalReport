@@ -8,6 +8,14 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+// Reset penghitung kuota provider AI. Tanpa ini, tokens_used_today hanya bisa
+// direset manual dari panel sehingga provider berhenti dipakai begitu kuota
+// harian terlampaui (getBestProvider() melewatinya). Reset bulanan otomatis
+// ikut berjalan saat tanggal 1.
+Schedule::command('ai:reset-quota')
+    ->dailyAt('00:05')
+    ->withoutOverlapping();
+
 // Ping otomatis perangkat IT aktif (interval menit diatur di config/it.php).
 if ((bool) config('it.ping.enabled', true)) {
     $pingInterval = min(59, max(1, (int) config('it.ping.interval_minutes', 5)));

@@ -36,6 +36,12 @@ return new class extends Migration
      */
     private function shiftHours(int $hours): void
     {
+        // Perintah ini khusus MySQL (information_schema + DATE_ADD). Pada driver
+        // lain (SQLite saat test) tidak ada data legacy yang perlu digeser.
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
+
         $columns = DB::select(
             'SELECT TABLE_NAME AS t, COLUMN_NAME AS c
                FROM information_schema.COLUMNS

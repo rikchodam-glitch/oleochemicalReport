@@ -94,7 +94,7 @@
                             </span>
                         </div>
                         <p class="text-xs text-slate-400 mt-0.5 truncate">
-                            {{ $provider->provider_type }} &middot; {{ $provider->model }}
+                            {{ $provider->provider_type }} &middot; {{ $provider->model ?: 'model belum disetel' }}
                         </p>
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
@@ -461,9 +461,14 @@
                 </div>
             </div>
             <div class="space-y-1.5">
-                <label class="block text-sm font-medium text-slate-700">Model</label>
-                <input type="text" name="model" id="edit_model" required
+                <label class="block text-sm font-medium text-slate-700">
+                    Model
+                    <span class="text-slate-400 font-normal text-xs ml-1">(opsional - otomatis dideteksi dari API bila kosong)</span>
+                </label>
+                <input type="text" name="model" id="edit_model" list="daftar-model-ai"
+                       placeholder="otomatis dideteksi dari API"
                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                @include('ai-providers.partials._model-options')
             </div>
             <div class="space-y-1.5">
                 <label class="block text-sm font-medium text-slate-700">
@@ -547,10 +552,13 @@
                 </div>
             </div>
             <div class="space-y-1.5">
-                <label class="block text-sm font-medium text-slate-700">Model</label>
-                <input type="text" name="model" required
+                <label class="block text-sm font-medium text-slate-700">
+                    Model
+                    <span class="text-slate-400 font-normal text-xs ml-1">(opsional - otomatis dideteksi dari API bila kosong)</span>
+                </label>
+                <input type="text" name="model" list="daftar-model-ai"
                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       placeholder="llama-3.3-70b-versatile">
+                       placeholder="otomatis dideteksi dari API">
             </div>
             <div class="space-y-1.5">
                 <label class="block text-sm font-medium text-slate-700">API Key</label>

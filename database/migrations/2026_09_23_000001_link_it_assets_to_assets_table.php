@@ -41,8 +41,12 @@ return new class extends Migration
                 ->cascadeOnDelete();
         });
 
-        DB::statement("ALTER TABLE assets MODIFY data_source ENUM('import_excel', 'manual', 'it_sync') NOT NULL DEFAULT 'manual'");
-        DB::statement("ALTER TABLE assets MODIFY status ENUM('active', 'inactive', 'needs_review', 'spare') NOT NULL DEFAULT 'active'");
+        // Ubah definisi ENUM hanya di MySQL; driver lain (SQLite saat test)
+        // tidak mengenal sintaks MODIFY.
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE assets MODIFY data_source ENUM('import_excel', 'manual', 'it_sync') NOT NULL DEFAULT 'manual'");
+            DB::statement("ALTER TABLE assets MODIFY status ENUM('active', 'inactive', 'needs_review', 'spare') NOT NULL DEFAULT 'active'");
+        }
     }
 
     /**
@@ -58,8 +62,10 @@ return new class extends Migration
     {
         DB::table('assets')->where('data_source', 'it_sync')->delete();
 
-        DB::statement("ALTER TABLE assets MODIFY data_source ENUM('import_excel', 'manual') NOT NULL DEFAULT 'manual'");
-        DB::statement("ALTER TABLE assets MODIFY status ENUM('active', 'inactive', 'needs_review') NOT NULL DEFAULT 'active'");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE assets MODIFY data_source ENUM('import_excel', 'manual') NOT NULL DEFAULT 'manual'");
+            DB::statement("ALTER TABLE assets MODIFY status ENUM('active', 'inactive', 'needs_review') NOT NULL DEFAULT 'active'");
+        }
 
         Schema::table('assets', function (Blueprint $table) {
             $table->dropForeign(['it_asset_id']);

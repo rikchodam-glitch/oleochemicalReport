@@ -20,7 +20,10 @@ Backend  : PHP 8.2 + Laravel 11
 Frontend : Blade + Tailwind CSS + Alpine.js + Vanilla JS
 Database : MySQL 8.0
 Bot      : Telegram Bot API (Long Polling via PollTelegramUpdates artisan command)
-AI       : Groq API (openai/gpt-oss-120b, lihat GET /openai/v1/models untuk daftar model yang tersedia), Ollama (local fallback), OpenAI (fallback)
+AI       : Groq API (nama model TIDAK dipatok manual - dideteksi dari GET /models via
+           App\Services\AiModelDiscoveryService, kolom model boleh dikosongkan),
+           Ollama (local fallback), OpenAI (fallback)
+           Kuota harian direset otomatis oleh `php artisan ai:reset-quota` (harian 00:05)
 Import   : PhpSpreadsheet / rap2hpoutre/fast-excel
 Queue    : Laravel Queue (database driver)
 ```
@@ -197,6 +200,13 @@ dan diakses via `Storage::disk('public')->url($path)`.
 - Fallback otomatis: Groq → Ollama → OpenAI
 - Log ke `ai_usage_logs`, update token counter provider
 - Return: `{type, confidence, candidates[], area_id, reasoning, new_alias_suggestion}`
+
+### AiModelDiscoveryService
+- Ambil daftar model yang BENAR-BENAR tersedia di akun provider (`GET {base}/models`)
+- `pickChatModel()` memilih model chat terbaik (model audio/penjaga prompt disaring)
+- `detectAndSave(AiProvider)` mengoreksi otomatis nama model yang sudah tidak valid
+- Dipakai panel AI (simpan provider tanpa isi model, tombol Deteksi Model, tombol Test)
+  dan `AiProviderCallerTrait::callGroq()` saat pemanggilan gagal karena nama model
 
 ### TechIdentSearchService
 - Pencarian 3-pass: exact match → normalized → section+type

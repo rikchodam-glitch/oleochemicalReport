@@ -23,6 +23,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
+
         DB::statement("ALTER TABLE reports MODIFY jenis_pekerjaan ENUM('CM', 'dCM', 'PM', 'EI', 'Mekanik', 'CM/PM', 'Fabrikasi', 'Sipil', 'IT') NULL");
     }
 
@@ -37,6 +41,10 @@ return new class extends Migration
     public function down(): void
     {
         DB::table('reports')->where('jenis_pekerjaan', 'IT')->update(['jenis_pekerjaan' => null]);
+
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
 
         DB::statement("ALTER TABLE reports MODIFY jenis_pekerjaan ENUM('CM', 'dCM', 'PM', 'EI', 'Mekanik', 'CM/PM', 'Fabrikasi', 'Sipil') NULL");
     }

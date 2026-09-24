@@ -305,6 +305,44 @@ ulang.
 
 
 
+15. **AI diam karena dua sebab berbeda yang keduanya tersembunyi (nama model
+    invalid + kuota harian tidak pernah direset otomatis).** Pada 24/09/2026,
+    gejala "AI tidak jalan" ternyata punya dua akar masalah terpisah:
+    (a) `ai_providers.model` berisi `groq/compound` yang TIDAK ADA di akun
+    (Groq membalas HTTP 404 "model does not exist") sehingga setiap panggilan
+    gagal dan provider ditandai `error`; (b) `tokens_used_today` pada kedua
+    provider sudah melewati `daily_token_limit` (114.096/100.000 dan
+    100.553/100.000), dan `getBestProvider()` HANYA memilih provider berstatus
+    `healthy` dengan sisa kuota — akibatnya AI dilewati sama sekali dan sistem
+    diam-diam memakai fallback keyword tanpa pesan apa pun ke pengguna.
+    Penghitung harian itu sebelumnya TIDAK punya penjadwal reset (hanya bisa
+    direset manual dari panel), jadi sekali terlampaui, AI mati permanen.
+    **Pelajaran: (1) pesan "No provider available" di log adalah gejala
+    kuota/status, bukan bukti library/framework bermasalah — cek dulu kolom
+    `status`, `tokens_used_today`, dan `daily_token_limit` sebelum mendiagnosis
+    lebih jauh; (2) nilai yang bisa berubah di sisi vendor (nama model) JANGAN
+    pernah dipatok di kode/dokumentasi sebagai teks bebas — ambil dari API
+    (`GET /models`, lihat `App\Services\AiModelDiscoveryService`) dan sediakan
+    koreksi otomatis saat pemanggilan gagal; (3) setiap penghitung kuota
+    (harian/bulanan) WAJIB punya penjadwal reset (`ai:reset-quota` di
+    `routes/console.php`), jangan hanya tombol manual.**
+
+16. **Migration ber-SQL mentah MySQL membuat SELURUH suite test tidak bisa
+    jalan, dan itu tidak ketahuan karena suite dianggap "sudah pernah hijau".**
+    Empat migration memakai sintaks khusus MySQL tanpa penjaga driver:
+    `ALTER TABLE ... MODIFY ... ENUM(...)` (2026_08_28_000002,
+    2026_09_23_000001, 2026_09_23_000003) dan `information_schema.COLUMNS` +
+    `DATE_ADD` (2026_09_02_000001). Karena test memakai SQLite in-memory
+    (`phpunit.xml`), `RefreshDatabase` gagal di migration dan SEMUA test
+    dilaporkan gagal (bukan hanya test baru). **Pelajaran: setiap SQL mentah
+    yang khas MySQL WAJIB dibungkus penjaga driver
+    (`if (DB::getDriverName() !== 'mysql') { return; }`, mengikuti pola
+    `2026_08_21_000001_expand_report_work_types.php`). Jalankan
+    `php artisan test` secara berkala — jangan menganggap suite masih hijau
+    hanya karena tidak pernah dijalankan.**
+
+
+
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
 
 ## ATURAN PENULISAN KODE

@@ -7,6 +7,7 @@ use App\Models\AiUsageLog;
 use App\Models\Area;
 use App\Models\Asset;
 use App\Models\FunctionalLocation;
+use App\Services\AiModelDiscoveryService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -31,13 +32,13 @@ use Illuminate\Support\Facades\Log;
 trait AiProviderCallerTrait
 {
     /**
-     * Model Groq bawaan bila kolom model pada provider kosong. Nama model
-     * WAJIB salah satu yang tersedia di akun (lihat GET /openai/v1/models);
-     * nilai lama "groq/compound" tidak ada di akun sehingga selalu HTTP 404
-     * "model does not exist". Daftar model akun saat ini antara lain:
-     * openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.8-27b.
+     * Model Groq bawaan bila kolom model pada provider kosong. Nilainya
+     * mengikuti AiModelDiscoveryService::DEFAULT_MODEL supaya hanya ada satu
+     * sumber kebenaran nama model; nama model wajib salah satu yang tersedia
+     * di akun (lihat GET /openai/v1/models). Nilai lama "groq/compound" tidak
+     * ada di akun sehingga selalu gagal dengan HTTP 404 "model does not exist".
      */
-    const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b';
+    const DEFAULT_GROQ_MODEL = AiModelDiscoveryService::DEFAULT_MODEL;
 
     /**
      * Jumlah maksimum kandidat asset yang dikirim ke prompt AI.
@@ -857,19 +858,25 @@ PROMPT;
      *
      * @param AiProvider $provider Provider yang akan digunakan
      * @param string     $prompt   Prompt yang dikirim ke model
+     * @param bool       $sudahKoreksiModel  Penanda internal: true bila pemanggilan ini adalah
+     *                                       ulangan setelah nama model dikoreksi otomatis, agar
+     *                                       koreksi tidak diulang tanpa henti
      * @return string|null Konten respons dari model, atau null jika gagal
      */
-    protected function callGroq(AiProvider $provider, string $prompt): ?string
+    protected function callGroq(AiProvider $provider, string $prompt, bool $sudahKoreksiModel = false): ?string
     {
         $startTime    = microtime(true);
         $responseTime = 0;
         $tokensUsed   = 0;
         $status       = 'error';
         $errorMessage = null;
+        // Model yang dipakai pada percobaan ini (dibandingkan dengan hasil
+        // koreksi otomatis nama model di bawah).
+        $modelDipakai = $provider->model ?: self::DEFAULT_GROQ_MODEL;
 
         try {
             $endpoint = $provider->endpoint_url ?? 'https://api.groq.com/openai/v1/chat/completions';
-            $model    = $provider->model         ?? self::DEFAULT_GROQ_MODEL;
+            $model    = $modelDipakai;
 
             // BUG 2 FIX — gunakan accessor api_key (bukan api_key_encrypted)
             // agar nilai yang terenkripsi di-decrypt terlebih dahulu.
@@ -964,6 +971,21 @@ PROMPT;
             ]);
         } catch (\Exception $e) {
             // Abaikan
+        }
+
+        // Koreksi otomatis nama model yang sudah tidak valid (mis. model
+        // dihentikan provider), lalu ulangi pemanggilan SEKALI dengan model
+        // yang benar-benar tersedia di akun. Tidak diulang dua kali agar tidak
+        // terjadi loop tak berujung.
+        if (! $sudahKoreksiModel && $errorMessage !== null
+            && app(AiModelDiscoveryService::class)->isModelErrorMessage($errorMessage)) {
+            $modelBaru = app(AiModelDiscoveryService::class)->detectAndSave($provider);
+
+            if ($modelBaru !== null && $modelBaru !== $modelDipakai) {
+                Log::warning("AI Service: model provider [{$provider->name}] dikoreksi otomatis ke {$modelBaru}");
+
+                return $this->callGroq($provider, $prompt, true);
+            }
         }
 
         return null;
