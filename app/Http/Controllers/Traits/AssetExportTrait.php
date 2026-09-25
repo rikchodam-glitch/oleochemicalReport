@@ -2,9 +2,17 @@
 
 namespace App\Http\Controllers\Traits;
 
+use App\Models\Area;
 use App\Models\Asset;
+use App\Models\Company;
+use App\Models\Department;
+use App\Models\SubArea;
 use Illuminate\Http\Request;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 /**
@@ -39,24 +47,66 @@ trait AssetExportTrait
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Assets');
 
-        // Baris header kolom
+        // Kolom laporan (Equipment No sengaja TIDAK diekspor: nomornya dikelola
+        // sistem dan dibuat otomatis saat import baris baru).
         $headers = [
-            'Equipment No', 'Description', 'Tech Ident No', 'Equipment Type',
+            'No', 'Description', 'Tech Ident No', 'Equipment Type',
             'Functional Loc', 'Company', 'Department', 'Area', 'Sub Area',
             'Manufacturer', 'Model Number', 'Construct Year', 'Status',
-            'Data Source', 'Imported At', 'Created At', 'Updated At',
+            'Data Source',
         ];
 
-        foreach (array_values($headers) as $i => $header) {
-            $col = chr(65 + $i); // A, B, C...
-            $sheet->setCellValue($col . '1', $header);
-            $sheet->getStyle($col . '1')->getFont()->setBold(true);
+        $kolomTerakhir = chr(64 + count($headers)); // A..N
+        $barisHeader   = 7;
+
+        // ---------- Blok judul & keterangan (baris 1-5) ----------
+        $sheet->mergeCells('A1:' . $kolomTerakhir . '1');
+        $sheet->setCellValue('A1', 'DAFTAR ASSET — ASSET MANAGEMENT');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14)->getColor()->setARGB('FFFFFFFF');
+        $sheet->getStyle('A1')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF0E9E8E');
+        $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setVertical(Alignment::VERTICAL_CENTER);
+        $sheet->getRowDimension(1)->setRowHeight(30);
+
+        $barisInfo = [
+            2 => 'Sistem Manajemen Pemeliharaan — Oleochemical Pro',
+            3 => 'Diekspor: ' . now()->format('d/m/Y H:i') . ' WIB'
+                . (auth()->check() ? ' oleh ' . auth()->user()->name : ''),
+            4 => 'Filter: ' . $this->ringkasanFilterExport($request),
+            5 => 'Jumlah: ' . number_format($assets->count()) . ' asset',
+        ];
+
+        foreach ($barisInfo as $nomor => $teks) {
+            $sheet->mergeCells('A' . $nomor . ':' . $kolomTerakhir . $nomor);
+            $sheet->setCellValue('A' . $nomor, $teks);
+            $sheet->getStyle('A' . $nomor)->getFont()->setSize(10)->getColor()->setARGB('FF475569');
+            $sheet->getStyle('A' . $nomor)->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
+            $sheet->getRowDimension($nomor)->setRowHeight(18);
         }
 
-        // Baris data
-        $rowNum = 2;
+        // ---------- Baris header kolom ----------
+        foreach (array_values($headers) as $i => $header) {
+            $col  = chr(65 + $i);
+            $cell = $sheet->getCell($col . $barisHeader);
+            $cell->setValue($header);
+
+            $style = $sheet->getStyle($col . $barisHeader);
+            $style->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
+            $style->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF0E9E8E');
+            $style->getAlignment()
+                ->setHorizontal(Alignment::HORIZONTAL_CENTER)
+                ->setVertical(Alignment::VERTICAL_CENTER)
+                ->setWrapText(true);
+            $style->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FF0B7A6E');
+        }
+
+        $sheet->getRowDimension($barisHeader)->setRowHeight(26);
+
+        // ---------- Baris data ----------
+        $rowNum = $barisHeader + 1;
+        $no     = 1;
+
         foreach ($assets as $asset) {
-            $sheet->setCellValue('A' . $rowNum, $asset->equipment_no);
+            $sheet->setCellValue('A' . $rowNum, $no);
             $sheet->setCellValue('B' . $rowNum, $asset->description);
             $sheet->setCellValue('C' . $rowNum, $asset->tech_ident_no);
             $sheet->setCellValue('D' . $rowNum, $asset->equipment_type);
@@ -70,16 +120,36 @@ trait AssetExportTrait
             $sheet->setCellValue('L' . $rowNum, $asset->construct_year);
             $sheet->setCellValue('M' . $rowNum, $asset->status);
             $sheet->setCellValue('N' . $rowNum, $asset->data_source);
-            $sheet->setCellValue('O' . $rowNum, $asset->imported_at?->format('Y-m-d H:i:s') ?? '');
-            $sheet->setCellValue('P' . $rowNum, $asset->created_at->format('Y-m-d H:i:s'));
-            $sheet->setCellValue('Q' . $rowNum, $asset->updated_at->format('Y-m-d H:i:s'));
+
+            $sheet->getStyle('A' . $rowNum . ':' . $kolomTerakhir . $rowNum)
+                ->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE2E8F0');
+
+            $sheet->getStyle('A' . $rowNum)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+            // Baris zebra supaya laporan lebih mudah dibaca.
+            if ($no % 2 === 0) {
+                $sheet->getStyle('A' . $rowNum . ':' . $kolomTerakhir . $rowNum)
+                    ->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFF8FAFC');
+            }
+
             $rowNum++;
+            $no++;
         }
 
-        // Auto-size semua kolom
-        foreach (range('A', 'Q') as $col) {
+        // ---------- Penyempurnaan tampilan & siap cetak ----------
+        foreach (range('A', $kolomTerakhir) as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
+
+        if ($assets->isNotEmpty()) {
+            $sheet->freezePane('A' . ($barisHeader + 1));
+            $sheet->setAutoFilter('A' . $barisHeader . ':' . $kolomTerakhir . $barisHeader);
+        }
+
+        $sheet->getPageSetup()->setOrientation(PageSetup::ORIENTATION_LANDSCAPE);
+        $sheet->getPageSetup()->setFitToWidth(1);
+        $sheet->getPageSetup()->setFitToHeight(0);
+        $sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, $barisHeader);
 
         $writer   = new Xlsx($spreadsheet);
         $filename = 'assets-export-' . now()->format('Y-m-d-His') . '.xlsx';
@@ -106,29 +176,49 @@ trait AssetExportTrait
         $assets   = $this->buildExportQuery($request)->get();
         $filename = 'assets-export-' . now()->format('Y-m-d-His') . '.csv';
 
+        // Keterangan header (tanpa Equipment No, sama seperti export Excel).
+        $info = [
+            'DAFTAR ASSET — ASSET MANAGEMENT',
+            'Sistem Manajemen Pemeliharaan — Oleochemical Pro',
+            'Diekspor: ' . now()->format('d/m/Y H:i') . ' WIB'
+                . (auth()->check() ? ' oleh ' . auth()->user()->name : ''),
+            'Filter: ' . $this->ringkasanFilterExport($request),
+            'Jumlah: ' . number_format($assets->count()) . ' asset',
+        ];
+
         $headers = [
             'Content-Type'        => 'text/csv',
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ];
 
-        $callback = function () use ($assets) {
+        $callback = function () use ($assets, $info) {
             $file = fopen('php://output', 'w');
 
             // BOM UTF-8 agar Excel tidak salah baca karakter multibyte
             fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
+            // Blok keterangan: baris header tabel di bawahnya (ImportService
+            // mencari baris header secara otomatis, jadi blok ini aman).
+            foreach ($info as $barisInfo) {
+                fputcsv($file, [$barisInfo]);
+            }
+
+            fputcsv($file, []);
+
             // Baris header kolom
             fputcsv($file, [
-                'Equipment No', 'Description', 'Tech Ident No', 'Equipment Type',
+                'No', 'Description', 'Tech Ident No', 'Equipment Type',
                 'Functional Loc', 'Company', 'Department', 'Area', 'Sub Area',
                 'Manufacturer', 'Model Number', 'Construct Year', 'Status',
-                'Data Source', 'Imported At', 'Created At', 'Updated At',
+                'Data Source',
             ]);
 
             // Baris data
+            $no = 1;
+
             foreach ($assets as $asset) {
                 fputcsv($file, [
-                    $asset->equipment_no,
+                    $no,
                     $asset->description,
                     $asset->tech_ident_no,
                     $asset->equipment_type,
@@ -142,16 +232,57 @@ trait AssetExportTrait
                     $asset->construct_year,
                     $asset->status,
                     $asset->data_source,
-                    $asset->imported_at?->format('Y-m-d H:i:s') ?? '',
-                    $asset->created_at->format('Y-m-d H:i:s'),
-                    $asset->updated_at->format('Y-m-d H:i:s'),
                 ]);
+
+                $no++;
             }
 
             fclose($file);
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * Susun keterangan filter yang sedang aktif untuk blok judul file export.
+     *
+     * @param  Request  $request
+     * @return string  Contoh: "PT EPE | Status: active | Pencarian: AC" atau "(semua data)"
+     */
+    private function ringkasanFilterExport(Request $request): string
+    {
+        $bagian = [];
+
+        if ($request->filled('search')) {
+            $bagian[] = 'Pencarian: "' . $request->search . '"';
+        }
+
+        if ($request->filled('status')) {
+            $bagian[] = 'Status: ' . $request->status;
+        }
+
+        if ($request->filled('company_id')) {
+            $bagian[] = 'PT: ' . (Company::where('id', $request->company_id)->value('code') ?? $request->company_id);
+        }
+
+        if ($request->filled('department_id')) {
+            $bagian[] = 'Departemen: ' . (Department::where('id', $request->department_id)->value('name') ?? $request->department_id);
+        }
+
+        if ($request->filled('area_id')) {
+            $area = Area::where('id', $request->area_id)->first();
+            $bagian[] = 'Area: ' . ($area !== null ? $area->code . ' - ' . $area->name : $request->area_id);
+        }
+
+        if ($request->filled('sub_area_id')) {
+            $bagian[] = 'Sub Area: ' . (SubArea::where('id', $request->sub_area_id)->value('code') ?? $request->sub_area_id);
+        }
+
+        if ($request->filled('equipment_type')) {
+            $bagian[] = 'Tipe: ' . $request->equipment_type;
+        }
+
+        return $bagian === [] ? 'semua data' : implode(' | ', $bagian);
     }
 
     /**

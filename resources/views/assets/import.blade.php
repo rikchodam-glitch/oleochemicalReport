@@ -22,10 +22,14 @@
             <div class="mb-4 rounded-lg border border-teal-100 bg-teal-50 p-3">
                 <p class="text-xs text-teal-800 leading-relaxed">
                     <span class="font-semibold">Memperbarui data yang sudah ada:</span>
-                    file hasil <span class="font-semibold">Export</span> dari halaman Asset Management bisa langsung
-                    disesuaikan lalu diimport ulang. Setelah file dianalisa, baris tersebut muncul sebagai
-                    <span class="font-semibold">duplikat</span> (dicocokkan lewat Equipment No) — pilih aksi
-                    <span class="font-semibold">"Replace — Ganti dengan data baru"</span> agar data lama diperbarui.
+                    file hasil <span class="font-semibold">Export</span> bisa langsung disesuaikan lalu diimport ulang.
+                    Setelah dianalisa, baris tersebut muncul sebagai <span class="font-semibold">duplikat</span> —
+                    pilih aksi <span class="font-semibold">"Replace — Ganti dengan data baru"</span> agar data lama diperbarui.
+                    <br>
+                    <span class="font-semibold">Equipment No tidak perlu diisi.</span>
+                    Pencocokan data lama memakai <span class="font-semibold">Tech Ident No</span>
+                    (ditambah Functional Loc bila Tech Ident No dipakai beberapa aset), sedangkan nomor equipment
+                    untuk baris baru dibuat <span class="font-semibold">otomatis mengikuti seri per PT</span>.
                     Kolom Description, Tech Ident No, Equipment Type, Functional Loc, Company/Department/Area/Sub Area,
                     Manufacturer, Model Number, Construct Year, dan Status ikut diperbarui.
                 </p>

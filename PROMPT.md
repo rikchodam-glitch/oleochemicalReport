@@ -301,20 +301,27 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
 ### Export & Import Aset (putaran lengkap: export → sesuaikan → import)
 
 - **Export**: `GET /assets/export/excel` dan `GET /assets/export/csv` (`AssetExportTrait`, filter sama dengan
-  halaman index). Kolom: Equipment No, Description, Tech Ident No, Equipment Type, Functional Loc,
-  Company, Department, Area, Sub Area, Manufacturer, Model Number, Construct Year, Status,
-  Data Source, Imported At, Created At, Updated At.
+  halaman index). Kolom: **No**, Description, Tech Ident No, Equipment Type, Functional Loc,
+  Company, Department, Area, Sub Area, Manufacturer, Model Number, Construct Year, Status, Data Source.
+  **Equipment No sengaja TIDAK diekspor** (nomornya dikelola sistem).
+- **Header file export profesional**: blok judul di baris 1-5 (judul "DAFTAR ASSET — ASSET MANAGEMENT",
+  nama sistem, waktu ekspor + siapa yang mengekspor, **ringkasan filter yang aktif**, dan jumlah asset),
+  baris 6 kosong, lalu baris tabel (header kolom) di **baris 7** dengan gaya teal tebal berbingkai,
+  baris zebra, `freeze pane`, `auto filter`, dan pengaturan cetak lanskap (muat 1 halaman lebar,
+  judul tabel diulang tiap halaman). Format CSV memuat blok keterangan yang sama.
 - **Import**: `GET /assets/import` → analisa file → pilih aksi → eksekusi (`ImportService`).
-  Pencocokan baris memakai `equipment_no`.
-- **Memperbarui data yang sudah ada**: file hasil export bisa langsung disesuaikan lalu diimport ulang.
-  Baris dengan `equipment_no` yang sudah ada masuk bucket **duplikat**; pilih aksi
-  **replace** ("Ganti dengan data baru") agar data lama DIPERBARUI (bukan dibuat ganda).
-- `ImportService::buildColMap()` mengenali nama kolom SAP (`Equipment`, `TechIdentNo.`, `Functional Loc.`)
-  **dan** nama kolom hasil export (`Equipment No`, `Tech Ident No`, `Functional Loc`, `Company`,
-  `Department`, `Area`, `Sub Area`, `Status`, `Data Source`).
-- Kolom yang ikut diperbarui: Description, Tech Ident No, Equipment Type, Functional Loc (+ `funcloc_id`),
+  Baris header **dicari otomatis** pada 20 baris pertama, sehingga file berblok judul (hasil export)
+  tetap terbaca; kolom yang dikenali mencakup nama SAP **dan** nama kolom export.
+- **Pencocokan baris lama**: lewat `equipment_no` bila file menyertakannya (format SAP), atau lewat
+  **Tech Ident No** bila tidak (format export), dengan Functional Loc sebagai penentu ketika satu
+  Tech Ident No dipakai beberapa aset. Bila tetap ambigu -> baris dilewati dan dilaporkan.
+- **Nomor equipment otomatis**: baris baru tanpa Equipment No dibuatkan nomor 8 digit mengikuti seri milik
+  PT bersangkutan (angka pertama nomor yang sudah ada; cadangan di `config('assets.equipment_no.awalan_pt')`,
+  contoh nyata EPE=1, CES=6, NPA=7) dan dilanjutkan dari nomor terbesar pada seri itu (nomor yang sudah
+  dipakai otomatis dilewati).
+- **Kolom yang ikut diperbarui**: Description, Tech Ident No, Equipment Type, Functional Loc (+ `funcloc_id`),
   Company/Department/Area/Sub Area (diresolusi dari kode kolom; kode tak dikenal = baris dilewati),
-  Manufacturer, Model Number, Construct Year, dan Status. Status kosong / tidak dikenal tidak menimpa nilai lama.
+  Manufacturer, Model Number, Construct Year, dan Status (nilai kosong/tak dikenal tidak menimpa).
 - Baris cermin perangkat IT (`data_source = it_sync`) **dilewati** saat import (dikelola modul IT Assets
   lewat `php artisan it:sync-assets`) dan dilaporkan jumlahnya pada pesan hasil import.
 

@@ -38,6 +38,7 @@ class ImportService
             'duplicate'   => [],
             'no_equip'    => [],
             'bad_funcloc' => [],
+            'ambigu'      => [],
             'total_rows'  => 0,
         ];
 
@@ -47,23 +48,34 @@ class ImportService
                 continue;
             }
 
-            $headers = $rows[0];
-            $colMap  = $this->buildColMap($headers);
+            // Baris header dicari otomatis (bukan selalu baris pertama) supaya
+            // file hasil Export aplikasi yang punya blok judul + keterangan
+            // filter di atas tabel tetap terbaca.
+            $headerIndex = $this->findHeaderRowIndex($rows);
 
-            // Lewati sheet yang bukan data asset (tidak punya kolom wajib).
-            if (!isset($colMap['equipment'], $colMap['tech_ident_no'], $colMap['functional_loc'])) {
+            if ($headerIndex === null) {
                 continue;
             }
 
-            $results['total_rows'] += count($rows) - 1;
+            $colMap = $this->buildColMap($rows[$headerIndex]);
 
-            foreach (array_slice($rows, 1) as $index => $row) {
+            $results['total_rows'] += count($rows) - $headerIndex - 1;
+
+            foreach (array_slice($rows, $headerIndex + 1) as $index => $row) {
                 $equipNo = $this->colVal($row, $colMap, 'equipment');
+                $techNo  = $this->colVal($row, $colMap, 'tech_ident_no');
                 $funcLoc = $this->colVal($row, $colMap, 'functional_loc');
 
-                if (empty($equipNo)) {
+                // Baris sisa blok keterangan / baris kosong dilewati.
+                if ($equipNo === '' && $techNo === '' && $funcLoc === '') {
+                    continue;
+                }
+
+                // Tanpa Equipment No DAN Tech Ident No: tidak bisa dicocokkan
+                // maupun dibuat, masuk bucket tanpa nomor equipment.
+                if ($equipNo === '' && $techNo === '') {
                     $results['no_equip'][] = [
-                        'row'            => $index + 2,
+                        'row'            => $index + $headerIndex + 2,
                         'description'    => $this->colVal($row, $colMap, 'description'),
                         'functional_loc' => $funcLoc,
                     ];
@@ -77,15 +89,14 @@ class ImportService
                 // dilengkapi dulu lalu diimport ulang.
                 if (empty($funcLoc)) {
                     $results['bad_funcloc'][] = [
-                        'row'          => $index + 2,
-                        'equipment_no' => $equipNo,
+                        'row'          => $index + $headerIndex + 2,
+                        'equipment_no' => $equipNo !== '' ? $equipNo : $techNo,
                         'description'  => $this->colVal($row, $colMap, 'description'),
                     ];
                     continue;
                 }
 
-                $isDuplicate = Asset::where('equipment_no', $equipNo)->exists();
-                $location    = $this->parseFunctionalLoc($funcLoc);
+                $location = $this->parseFunctionalLoc($funcLoc);
 
                 $rowData = [
                     'equipment_no'   => $equipNo,
@@ -108,11 +119,39 @@ class ImportService
                     ],
                 ];
 
-                if ($isDuplicate) {
-                    $results['duplicate'][] = $rowData;
-                } else {
-                    $results['clean'][] = $rowData;
+                if ($equipNo !== '') {
+                    $existing = Asset::where('equipment_no', $equipNo)->first();
+
+                    if ($existing !== null) {
+                        $rowData['asset_id']    = $existing->id;
+                        $results['duplicate'][] = $rowData;
+                    } else {
+                        $results['clean'][] = $rowData;
+                    }
+
+                    continue;
                 }
+
+                // Tanpa Equipment No: dicocokkan lewat Tech Ident No (dengan
+                // Functional Loc sebagai penentu bila TechIdentNo dipakai
+                // beberapa aset). Nomor equipment baris baru dibuat otomatis.
+                $kandidat = $this->cariAsetDariTechIdent($techNo, $funcLoc);
+
+                if ($kandidat->count() === 1) {
+                    $rowData['asset_id']    = $kandidat->first()->id;
+                    $results['duplicate'][] = $rowData;
+
+                    continue;
+                }
+
+                if ($kandidat->count() > 1) {
+                    $rowData['kandidat_ids'] = $kandidat->pluck('id')->all();
+                    $results['ambigu'][]     = $rowData;
+
+                    continue;
+                }
+
+                $results['clean'][] = $rowData;
             }
         }
 
@@ -196,10 +235,19 @@ class ImportService
 
                 $location = $this->findOrCreateLocation($row['location']);
 
+                // Nomor equipment: dipakai dari file bila ada (format SAP), atau
+                // dibuat otomatis mengikuti seri milik PT bersangkutan.
+                $equipmentNo = $row['equipment_no'] ?? '';
+
+                if ($equipmentNo === '') {
+                    $equipmentNo = $this->generateEquipmentNo($location['company_id'] ?? null);
+                }
+
                 Asset::create(array_merge(
                     $this->mapToAsset($row),
                     $location,
                     [
+                        'equipment_no' => $equipmentNo,
                         'funcloc_id' => $funcLocNode->id,
                         'status' => $this->statusValid($row['status'] ?? null) ?? 'active',
                         'has_equipment_no' => true,
@@ -213,7 +261,13 @@ class ImportService
             // Proses duplikat
             if ($duplicateAction !== 'skip') {
                 foreach ($analysis['duplicate'] as $row) {
-                    $existing = Asset::where('equipment_no', $row['equipment_no'])->first();
+                    // Baris export terbaru tidak lagi memuat Equipment No, jadi
+                    // aset lama bisa juga ditunjuk lewat asset_id hasil analisa
+                    // (pencocokan Tech Ident No).
+                    $existing = !empty($row['asset_id'])
+                        ? Asset::find($row['asset_id'])
+                        : Asset::where('equipment_no', $row['equipment_no'])->first();
+
                     if (!$existing) continue;
 
                     // Baris cermin perangkat IT dikelola modul IT Assets
@@ -313,6 +367,10 @@ class ImportService
                 }
             }
 
+            // Baris dengan TechIdentNo yang dipakai lebih dari satu aset tidak
+            // bisa dicocokkan dengan aman -> dilewati dan dilaporkan.
+            $errorCount += count($analysis['ambigu'] ?? []);
+
             // Baris di bucket bad_funcloc (Equipment No. ada, Functional Loc.
             // kosong) sengaja tidak pernah dibuat menjadi Asset lewat jalur
             // import. Dihitung sebagai error agar tercatat di log, admin
@@ -327,7 +385,7 @@ class ImportService
 
         $message = "Import berhasil. {$successCount} asset diproses.";
         if ($errorCount > 0) {
-            $message .= " {$errorCount} baris dilewati karena tidak memiliki Functional Location yang valid.";
+            $message .= " {$errorCount} baris dilewati (Functional Location tidak valid, atau Tech Ident No dipakai lebih dari satu aset).";
         }
         if ($itSyncSkipped > 0) {
             $message .= " {$itSyncSkipped} baris perangkat IT dilewati (data IT dikelola modul IT Assets).";
@@ -350,6 +408,128 @@ class ImportService
      * @param  array<int, mixed> $headers Baris header Excel
      * @return array<string, int>         Peta nama field -> indeks kolom
      */
+    /**
+     * Cari indeks baris header pada sebuah sheet.
+     *
+     * Header dikenali bila baris tersebut memuat kolom Functional Loc DAN salah
+     * satu dari Equipment No / Tech Ident No. Pencarian dibatasi 20 baris
+     * pertama, cukup untuk melewati blok judul & keterangan filter pada file
+     * hasil export.
+     *
+     * @param  array<int, array<int, mixed>>  $rows
+     * @return int|null  Indeks baris header, atau null bila tidak ditemukan
+     */
+    private function findHeaderRowIndex(array $rows): ?int
+    {
+        foreach (array_slice($rows, 0, 20, true) as $indeks => $baris) {
+            $colMap = $this->buildColMap($baris);
+
+            $adaFuncLoc = isset($colMap['functional_loc']);
+            $adaPenanda = isset($colMap['equipment']) || isset($colMap['tech_ident_no']);
+
+            if ($adaFuncLoc && $adaPenanda) {
+                return (int) $indeks;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Cari aset lama berdasarkan TechIdentNo, memakai Functional Loc sebagai
+     * penentu ketika satu TechIdentNo dipakai oleh beberapa aset.
+     *
+     * @param  string  $techIdent
+     * @param  string  $funcLoc
+     * @return \Illuminate\Support\Collection<int, Asset>
+     */
+    private function cariAsetDariTechIdent(string $techIdent, string $funcLoc)
+    {
+        $kandidat = Asset::whereRaw('UPPER(TRIM(tech_ident_no)) = ?', [mb_strtoupper(trim($techIdent))])->get();
+
+        if ($kandidat->count() <= 1) {
+            return $kandidat;
+        }
+
+        $sempit = $kandidat->filter(
+            fn (Asset $asset) => strcasecmp(trim((string) $asset->functional_loc), trim($funcLoc)) === 0
+        );
+
+        return $sempit->isNotEmpty() ? $sempit->values() : $kandidat;
+    }
+
+    /**
+     * Buat nomor equipment otomatis untuk baris import yang tidak menyertakan
+     * Equipment No.
+     *
+     * Nomor mengikuti seri milik PT bersangkutan (angka pertama pada nomor yang
+     * sudah ada, mis. EPE = 1xxxxxxx, NPA = 7xxxxxxx, CES = 6xxxxxxx) dan
+     * dilanjutkan dari nomor terbesar pada seri tersebut. Awalan cadangan
+     * tersedia di config('assets.equipment_no.awalan_pt').
+     *
+     * @param  int|null  $companyId
+     * @return string  Nomor equipment 8 digit yang belum dipakai
+     */
+    private function generateEquipmentNo(?int $companyId): string
+    {
+        $panjang = (int) config('assets.equipment_no.panjang', 8);
+        $awalan  = $this->awalanEquipmentNo($companyId);
+
+        $query = Asset::whereNotNull('equipment_no')->where('equipment_no', '!=', '');
+
+        if ($awalan !== null) {
+            $query->where('equipment_no', 'like', $awalan . '%');
+        }
+
+        $terbesar = $query->max('equipment_no');
+
+        $nomor = ($terbesar !== null && ctype_digit((string) $terbesar))
+            ? (int) $terbesar + 1
+            : (int) str_pad((string) ($awalan ?? '1'), $panjang, '0', STR_PAD_RIGHT);
+
+        // Pastikan nomor benar-benar belum dipakai.
+        while (Asset::where('equipment_no', (string) $nomor)->exists()) {
+            $nomor++;
+        }
+
+        return str_pad((string) $nomor, $panjang, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Tentukan awalan nomor equipment untuk sebuah PT.
+     *
+     * @param  int|null  $companyId
+     * @return string|null  Satu digit awalan, atau null bila tidak bisa ditentukan
+     */
+    private function awalanEquipmentNo(?int $companyId): ?string
+    {
+        if ($companyId !== null) {
+            $awalan = Asset::where('company_id', $companyId)
+                ->whereNotNull('equipment_no')
+                ->where('equipment_no', '!=', '')
+                ->selectRaw('SUBSTR(equipment_no, 1, 1) as digit, COUNT(*) as jumlah')
+                ->groupBy('digit')
+                ->orderByDesc('jumlah')
+                ->value('digit');
+
+            if ($awalan !== null && ctype_digit((string) $awalan)) {
+                return (string) $awalan;
+            }
+
+            $kodePt = Company::where('id', $companyId)->value('code');
+
+            if ($kodePt !== null) {
+                $cadangan = (array) config('assets.equipment_no.awalan_pt', []);
+
+                if (isset($cadangan[$kodePt])) {
+                    return (string) $cadangan[$kodePt];
+                }
+            }
+        }
+
+        return null;
+    }
+
     private function buildColMap(array $headers): array
     {
         $map = [];
