@@ -299,32 +299,47 @@ trait AssetExportTrait
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
-                $q->where('equipment_no', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%")
-                  ->orWhere('tech_ident_no', 'like', "%{$search}%")
-                  ->orWhere('functional_loc', 'like', "%{$search}%");
+                $q->where('assets.equipment_no', 'like', "%{$search}%")
+                  ->orWhere('assets.description', 'like', "%{$search}%")
+                  ->orWhere('assets.tech_ident_no', 'like', "%{$search}%")
+                  ->orWhere('assets.functional_loc', 'like', "%{$search}%");
             });
         }
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            $query->where('assets.status', $request->status);
         }
         if ($request->filled('company_id')) {
-            $query->where('company_id', $request->company_id);
+            $query->where('assets.company_id', $request->company_id);
         }
         if ($request->filled('department_id')) {
-            $query->where('department_id', $request->department_id);
+            $query->where('assets.department_id', $request->department_id);
         }
         if ($request->filled('area_id')) {
-            $query->where('area_id', $request->area_id);
+            $query->where('assets.area_id', $request->area_id);
         }
         if ($request->filled('sub_area_id')) {
-            $query->where('sub_area_id', $request->sub_area_id);
+            $query->where('assets.sub_area_id', $request->sub_area_id);
         }
         if ($request->filled('equipment_type')) {
-            $query->where('equipment_type', $request->equipment_type);
+            $query->where('assets.equipment_type', $request->equipment_type);
         }
 
-        $query->latest();
+        // Urutan laporan: mengelompok rapi menurut lokasi
+        // PT -> Departemen -> Area -> Sub Area -> Functional Loc -> Tech Ident No.
+        // Join memakai alias agar kolom kode lokasi bisa dipakai untuk mengurutkan
+        // tanpa bentrok dengan kolom assets. Baris tanpa lokasi diletakkan di akhir.
+        $query->leftJoin('companies as exp_company', 'exp_company.id', '=', 'assets.company_id')
+            ->leftJoin('departments as exp_department', 'exp_department.id', '=', 'assets.department_id')
+            ->leftJoin('areas as exp_area', 'exp_area.id', '=', 'assets.area_id')
+            ->leftJoin('sub_areas as exp_sub_area', 'exp_sub_area.id', '=', 'assets.sub_area_id')
+            ->select('assets.*')
+            ->orderByRaw('CASE WHEN exp_company.code IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('exp_company.code')
+            ->orderBy('exp_department.code')
+            ->orderBy('exp_area.code')
+            ->orderBy('exp_sub_area.code')
+            ->orderBy('assets.functional_loc')
+            ->orderBy('assets.tech_ident_no');
 
         return $query;
     }

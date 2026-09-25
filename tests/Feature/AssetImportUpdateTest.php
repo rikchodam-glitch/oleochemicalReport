@@ -374,6 +374,76 @@ test('export excel memakai blok judul dan header tabel di baris ketujuh', functi
     unlink($path);
 });
 
+test('export mengurutkan data menurut lokasi (PT, departemen, area, sub area, FuncLoc)', function () {
+    // Lokasi kedua dengan kode lebih besar supaya urutannya terlihat jelas.
+    $deptB = Department::firstOrCreate(
+        ['company_id' => $this->company->id, 'code' => 'DEPTZ'],
+        ['name' => 'Departemen Z']
+    );
+    $areaB = Area::firstOrCreate(
+        ['department_id' => $deptB->id, 'code' => 'AR99'],
+        ['name' => 'Area Z']
+    );
+    $subB = SubArea::firstOrCreate(
+        ['area_id' => $areaB->id, 'code' => 'SA99'],
+        ['name' => 'Sub Area Z']
+    );
+
+    $funclocB = $subB->fresh()->functionalLocation;
+
+    Asset::create([
+        'equipment_no'   => '90000088',
+        'description'    => 'Motor Area B',
+        'tech_ident_no'  => 'MTR-AR02-1-1',
+        'equipment_type' => 'MOTOR',
+        'functional_loc' => $funclocB->code,
+        'funcloc_id'     => $funclocB->id,
+        'company_id'     => $this->company->id,
+        'department_id'  => $deptB->id,
+        'area_id'        => $areaB->id,
+        'sub_area_id'    => $subB->id,
+        'status'         => 'active',
+        'data_source'    => 'import_excel',
+    ]);
+
+    $csv = $this->actingAs($this->admin)
+        ->get('/assets/export/csv?company_id=' . $this->company->id)
+        ->assertStatus(200)
+        ->streamedContent();
+
+    // Parsing CSV lewat file supaya tanda kutip dan baris baru di deskripsi tetap benar.
+    $path = tempnam(sys_get_temp_dir(), 'astexp') . '.csv';
+    file_put_contents($path, $csv);
+
+    $rows   = [];
+    $handle = fopen($path, 'r');
+
+    while (($row = fgetcsv($handle)) !== false) {
+        $rows[] = $row;
+    }
+
+    fclose($handle);
+    unlink($path);
+
+    // Header tabel ada di baris ke-7 (indeks 6), data mulai indeks 7.
+    // Kolom: 4 Functional Loc, 6 Department, 7 Area, 8 Sub Area.
+    $kunci = array_map(
+        static fn (array $row): array => [$row[6], $row[7], $row[8], $row[4]],
+        array_slice($rows, 7)
+    );
+
+    $kunciTerurut = $kunci;
+    sort($kunciTerurut);
+
+    expect($kunci)->toBe($kunciTerurut)
+        ->and($kunci)->toHaveCount(3)
+        // Aset departemen DEPTS tampil lebih dulu, aset di DEPTZ terakhir.
+        ->and($kunci[0][0])->toBe('DEPTS')
+        ->and($kunci[0][1])->toBe('AR01')
+        ->and($kunci[2][0])->toBe('DEPTZ')
+        ->and($kunci[2][3])->toContain('DEPTZ-AR99-SA99');
+});
+
 
 test('file export terbaru memperbarui aset lewat Tech Ident No', function () {
     // Urutan kolom: Description, Tech Ident No, Equipment Type, Functional Loc,

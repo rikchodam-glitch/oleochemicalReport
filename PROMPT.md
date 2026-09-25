@@ -309,6 +309,10 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
   baris 6 kosong, lalu baris tabel (header kolom) di **baris 7** dengan gaya teal tebal berbingkai,
   baris zebra, `freeze pane`, `auto filter`, dan pengaturan cetak lanskap (muat 1 halaman lebar,
   judul tabel diulang tiap halaman). Format CSV memuat blok keterangan yang sama.
+- **Urutan data export**: selalu dirapikan menurut lokasi — **PT (Company) → Departemen → Area → Sub Area
+  → Functional Loc → Tech Ident No** (baris tanpa PT diletakkan paling akhir), sehingga data satu lokasi
+  berkumpul dan mudah dibaca/diedit sebelum diimport kembali. Filter kolom (`auto filter`) tetap tersedia
+  di header tabel Excel.
 - **Import**: `GET /assets/import` → analisa file → pilih aksi → eksekusi (`ImportService`).
   Baris header **dicari otomatis** pada 20 baris pertama, sehingga file berblok judul (hasil export)
   tetap terbaca; kolom yang dikenali mencakup nama SAP **dan** nama kolom export.
