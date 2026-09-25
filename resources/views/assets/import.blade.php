@@ -86,8 +86,11 @@
                         <p class="text-xs text-slate-500 mt-1">Data Baru</p>
                     </div>
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
-                        <p class="text-2xl font-bold text-amber-600" x-text="analysis.duplicate.length"></p>
-                        <p class="text-xs text-slate-500 mt-1">Akan Diperbarui</p>
+                        <p class="text-2xl font-bold text-amber-600"
+                           x-text="analysis.duplicate.filter(r => r.perubahan.length > 0).length"></p>
+                        <p class="text-xs text-slate-500 mt-1">Data Berubah</p>
+                        <p class="text-[11px] text-slate-400 mt-0.5"
+                           x-text="analysis.duplicate.length + ' cocok data lama'"></p>
                     </div>
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
                         <p class="text-2xl font-bold text-red-600" x-text="analysis.no_equip.length"></p>
@@ -177,19 +180,19 @@
                 </div>
 
 
-                <!-- Data yang Akan Diperbarui -->
+                <!-- Data yang Akan Diperbarui (hanya baris dengan perubahan) -->
                 <div class="bg-white rounded-xl border border-slate-200 p-6">
                     <div class="flex items-center justify-between mb-1">
                         <h3 class="font-medium text-slate-900">Data yang Akan Diperbarui</h3>
                         <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded"
-                              x-text="analysis.duplicate.length + ' baris'"></span>
+                              x-text="analysis.duplicate.filter(r => r.perubahan.length > 0).length + ' baris'"></span>
                     </div>
                     <p class="text-sm text-slate-500 mb-4">
-                        Tech Ident No berikut sudah ada di database dan akan diperbarui. Nomor equipment lama
-                        tidak diubah; hanya field yang tercantum di bawah ini yang berubah.
+                        Tech Ident No berikut sudah ada di database DAN ada nilai yang berbeda dengan isi file.
+                        Nomor equipment lama tidak diubah; hanya field yang tercantum di bawah ini yang berubah.
                     </p>
                     <div class="max-h-96 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
-                        <template x-for="row in analysis.duplicate" :key="row.row">
+                        <template x-for="row in analysis.duplicate.filter(r => r.perubahan.length > 0).slice(0, 200)" :key="row.row">
                             <div class="px-4 py-3">
                                 <div class="flex flex-wrap items-center gap-3">
                                     <span class="text-xs text-slate-400" x-text="'Baris ' + row.row"></span>
@@ -205,9 +208,6 @@
                                     </span>
                                 </div>
                                 <div class="mt-1.5 space-y-0.5">
-                                    <template x-if="row.perubahan.length === 0">
-                                        <p class="text-xs text-slate-400">Tidak ada nilai yang berubah (data sama).</p>
-                                    </template>
                                     <template x-for="(ubah, i) in row.perubahan" :key="i">
                                         <p class="text-xs text-slate-600">
                                             <span class="font-medium text-slate-700" x-text="ubah.field"></span>:
@@ -219,13 +219,45 @@
                                 </div>
                             </div>
                         </template>
-                        <template x-if="analysis.duplicate.length === 0">
+                        <template x-if="analysis.duplicate.filter(r => r.perubahan.length > 0).length === 0">
                             <div class="px-4 py-6 text-center text-sm text-slate-400">
-                                Tidak ada data yang diperbarui pada file ini.
+                                Tidak ada data yang berubah pada file ini.
                             </div>
                         </template>
+                        <div class="px-4 py-2 text-xs text-slate-400 text-center"
+                             x-show="analysis.duplicate.filter(r => r.perubahan.length > 0).length > 200"
+                             x-text="'Menampilkan 200 baris pertama dari ' + analysis.duplicate.filter(r => r.perubahan.length > 0).length + ' baris yang berubah.'"></div>
                     </div>
                 </div>
+
+                <!-- Cocok data lama tanpa perubahan -->
+                <template x-if="analysis.duplicate.filter(r => r.perubahan.length === 0).length > 0">
+                    <div class="bg-white rounded-xl border border-slate-200 p-6">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="font-medium text-slate-900">Cocok Data Lama Tanpa Perubahan</h3>
+                            <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded"
+                                  x-text="analysis.duplicate.filter(r => r.perubahan.length === 0).length + ' baris'"></span>
+                        </div>
+                        <p class="text-sm text-slate-500 mb-4">
+                            Tech Ident No berikut sudah ada di database dan isi file-nya SAMA dengan data lama,
+                            jadi tidak ada nilai yang berubah. Baris ini tetap diproses tanpa mengubah apa pun.
+                        </p>
+                        <div class="max-h-72 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
+                            <template x-for="row in analysis.duplicate.filter(r => r.perubahan.length === 0).slice(0, 50)" :key="row.row">
+                                <div class="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
+                                    <span class="text-xs text-slate-400 shrink-0" x-text="'Baris ' + row.row"></span>
+                                    <span class="font-mono text-xs text-slate-600 shrink-0"
+                                          x-text="row.tech_ident_terpotong ? row.tech_ident_terpotong.nilai_database : row.tech_ident_no"></span>
+                                    <span class="font-mono text-xs text-slate-400 shrink-0" x-text="'EQ: ' + (row.equipment_no_lama || '-')"></span>
+                                    <span class="text-slate-500 truncate" x-text="row.description"></span>
+                                </div>
+                            </template>
+                            <div class="px-4 py-2 text-xs text-slate-400 text-center"
+                                 x-show="analysis.duplicate.filter(r => r.perubahan.length === 0).length > 50"
+                                 x-text="'Menampilkan 50 baris pertama dari ' + analysis.duplicate.filter(r => r.perubahan.length === 0).length + ' baris yang cocok tanpa perubahan.'"></div>
+                        </div>
+                    </div>
+                </template>
 
                 <!-- Perlu Diperiksa: Tech Ident No tidak unik -->
                 <template x-if="analysis.ambigu.length > 0">

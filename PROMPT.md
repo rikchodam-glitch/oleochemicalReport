@@ -328,12 +328,14 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
   (**tidak diproses import asset**: barisnya dicocokkan ke aset `data_source = 'it_sync'` lalu dilaporkan
   terpisah, karena datanya dikelola di modul IT Assets lewat `GET /it-assets/import` +
   `php artisan it:sync-assets`). Total semua bucket selalu sama dengan jumlah baris yang dibaca.
-- **Halaman preview menampilkan daftar, bukan hanya jumlah**: kartu ringkasan (Data Baru / Akan Diperbarui /
-  Tanpa Tech Ident No / Tanpa Functional Loc. / Perlu Diperiksa / Perangkat IT (dilewati) / Total Baris),
-  daftar **Data Baru** (Baris, Tech Ident No, Equipment Type, Functional Loc, Description) dan daftar
-  **Data yang Akan Diperbarui** (Tech Ident No, nomor equipment lama, serta tiap perubahan `lama → baru`),
-  plus daftar perangkat IT yang dilewati. Hasil eksekusi tidak mengosongkan daftar itu supaya tetap bisa
-  diperiksa.
+- **Halaman preview membedakan "berubah" dan "cocok tanpa perubahan"**: kartu ringkasan (Data Baru /
+  **Data Berubah** / Tanpa Tech Ident No / Tanpa Functional Loc. / Perlu Diperiksa / Perangkat IT
+  (dilewati) / Total Baris) — kartu "Data Berubah" menghitung baris yang benar-benar punya perbedaan
+  nilai, dengan catatan kecil "N cocok data lama". Daftarnya dipisah menjadi **"Data yang Akan
+  Diperbarui"** (hanya baris dengan `perubahan`) dan **"Cocok Data Lama Tanpa Perubahan"** (isi file sama
+  dengan database, tetap diproses tanpa mengubah nilai). Daftar dibatasi 200/50 baris pertama agar
+  halaman tetap ringan. Hasil eksekusi melaporkan `unchanged_count` ("N di antaranya cocok dengan data
+  lama tanpa perubahan nilai").
 - **Nomor equipment otomatis** (`App\Services\AssetNumberService`): SEMUA baris baru — baik dari import
   maupun form Tambah Asset manual — dibuatkan nomor 8 digit mengikuti seri milik PT bersangkutan
   (angka pertama nomor yang sudah ada; cadangan di `config('assets.equipment_no.awalan_pt')`,

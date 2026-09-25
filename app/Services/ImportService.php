@@ -432,6 +432,10 @@ class ImportService
         $insertedCount = 0;
         $updatedCount  = 0;
         $terpotongCount = 0;
+        $tanpaPerubahan = count(array_filter(
+            $analysis['duplicate'],
+            static fn (array $baris) => empty($baris['perubahan'])
+        ));
 
         // Baris perangkat IT sudah dipisahkan di analyzeFile() (bucket it_sync)
         // dan tidak pernah diproses; angka ini dilaporkan sebagai informasi.
@@ -626,6 +630,9 @@ class ImportService
         });
 
         $message = "Import berhasil. {$successCount} baris diproses ({$insertedCount} data baru, {$updatedCount} diperbarui).";
+        if ($tanpaPerubahan > 0) {
+            $message .= " {$tanpaPerubahan} di antaranya cocok dengan data lama tanpa perubahan nilai (isi file sama dengan database).";
+        }
         if ($terpotongCount > 0) {
             $message .= " {$terpotongCount} baris dicocokkan dari nilai Tech Ident No yang terpotong Excel/Google Sheets (nilai Tech Ident No di database dipertahankan).";
         }
@@ -643,6 +650,7 @@ class ImportService
             'inserted_count' => $insertedCount,
             'updated_count' => $updatedCount,
             'truncated_matched_count' => $terpotongCount,
+            'unchanged_count' => $tanpaPerubahan,
             'error_count' => $errorCount,
             'it_sync_skipped' => $itSyncSkipped,
         ];

@@ -703,6 +703,26 @@ test('TechIdentNo yang dipakai lebih dari satu aset masuk bucket ambigu dan dile
 });
 
 
+test('import ulang tanpa mengubah apa pun melaporkan jumlah baris tanpa perubahan', function () {
+    // File berisi data yang persis sama dengan database (tidak ada perubahan).
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([($this->barisAset)()])));
+
+    expect($analysis['duplicate'])->toHaveCount(1)
+        ->and($analysis['duplicate'][0]['perubahan'])->toBe([]);
+
+    $hasil = $this->import->executeImport($analysis, [
+        'duplicate_action' => 'replace',
+        'no_equip_action'  => 'skip',
+        'filename'         => 'assets-export-uji.csv',
+    ]);
+
+    expect($hasil['unchanged_count'])->toBe(1)
+        ->and($hasil['message'])->toContain('cocok dengan data lama tanpa perubahan nilai')
+        // Nilai aset tidak boleh ikut berubah.
+        ->and($this->asset->fresh()->description)->toBe('AC Ruang Panel Uji')
+        ->and($this->asset->fresh()->equipment_no)->toBe('90000001');
+});
+
 test('Tech Ident No angka yang terpotong Excel dicocokkan ke aset "E" dan nilainya di database tidak diubah', function () {
     // Aset dengan Tech Ident No teks berkode E seperti data nyata (6153E1),
     // sementara file berisi nilai yang sudah dikonversi spreadsheet (61530).
