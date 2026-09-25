@@ -703,6 +703,134 @@ test('TechIdentNo yang dipakai lebih dari satu aset masuk bucket ambigu dan dile
 });
 
 
+test('Tech Ident No angka yang terpotong Excel dicocokkan ke aset "E" dan nilainya di database tidak diubah', function () {
+    // Aset dengan Tech Ident No teks berkode E seperti data nyata (6153E1),
+    // sementara file berisi nilai yang sudah dikonversi spreadsheet (61530).
+    $aset = Asset::create([
+        'equipment_no'   => '90000091',
+        'description'    => 'Oils Pre Neutralization Heater',
+        'tech_ident_no'  => '6153E1',
+        'equipment_type' => 'HEAT EXCHANGER (HE)',
+        'functional_loc' => $this->funcloc->code,
+        'funcloc_id'     => $this->funcloc->id,
+        'company_id'     => $this->company->id,
+        'department_id'  => $this->dept->id,
+        'area_id'        => $this->area->id,
+        'sub_area_id'    => $this->subArea->id,
+        'status'         => 'active',
+        'data_source'    => 'import_excel',
+    ]);
+
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([[
+        '90000091', 'Oils Pre Neutralization Heater (revisi)', '61530', 'HEAT EXCHANGER (HE)',
+        $this->funcloc->code, $this->company->code, $this->dept->code,
+        $this->area->code, $this->subArea->code, 'Alfa Laval', '', '', 'active', 'import_excel',
+        '', '', '',
+    ]])));
+
+    // Dicocokkan sebagai aset lama (bukan data baru) dan nilai terpotongnya dicatat.
+    expect($analysis['clean'])->toHaveCount(0)
+        ->and($analysis['duplicate'])->toHaveCount(1)
+        ->and($analysis['duplicate'][0]['asset_id'])->toBe($aset->id)
+        ->and($analysis['duplicate'][0]['tech_ident_terpotong'])->toBe([
+            'nilai_file'     => '61530',
+            'nilai_database' => '6153E1',
+        ])
+        // Tech Ident No tidak pernah muncul sebagai "perubahan".
+        ->and(collect($analysis['duplicate'][0]['perubahan'])->pluck('field')->all())
+        ->toBe(['Description', 'Manufacturer']);
+
+    $hasil = $this->import->executeImport($analysis, [
+        'duplicate_action' => 'replace',
+        'no_equip_action'  => 'skip',
+        'filename'         => 'assets-export-uji.csv',
+    ]);
+
+    $asset = $aset->fresh();
+
+    expect($hasil['truncated_matched_count'])->toBe(1)
+        ->and($hasil['message'])->toContain('terpotong Excel')
+        // Field lain diperbarui, Tech Ident No aset tetap nilai aslinya.
+        ->and($asset->description)->toBe('Oils Pre Neutralization Heater (revisi)')
+        ->and($asset->manufacturer)->toBe('Alfa Laval')
+        ->and($asset->tech_ident_no)->toBe('6153E1')
+        ->and($asset->equipment_no)->toBe('90000091');
+});
+
+test('nilai angka yang cocok dengan lebih dari satu Tech Ident No tidak ditebak', function () {
+    $buat = function (string $equipmentNo, string $techIdent) {
+        return Asset::create([
+            'equipment_no'   => $equipmentNo,
+            'description'    => 'Aset Kembar ' . $techIdent,
+            'tech_ident_no'  => $techIdent,
+            'equipment_type' => 'HE',
+            'functional_loc' => $this->funcloc->code,
+            'funcloc_id'     => $this->funcloc->id,
+            'company_id'     => $this->company->id,
+            'department_id'  => $this->dept->id,
+            'area_id'        => $this->area->id,
+            'sub_area_id'    => $this->subArea->id,
+            'status'         => 'active',
+            'data_source'    => 'import_excel',
+        ]);
+    };
+
+    // Dua bentuk E yang nilai angkanya sama (6153E1 dan 61530E0 -> 61530).
+    $buat('90000092', '6153E1');
+    $buat('90000093', '61530E0');
+
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([[
+        '90000999', 'Aset Kembar', '61530', 'HE',
+        $this->funcloc->code, $this->company->code, $this->dept->code,
+        $this->area->code, $this->subArea->code, '', '', '', 'active', 'import_excel',
+        '', '', '',
+    ]])));
+
+    expect($analysis['ambigu'])->toHaveCount(1)
+        ->and($analysis['clean'])->toHaveCount(0)
+        ->and($analysis['duplicate'])->toHaveCount(0)
+        ->and($analysis['ambigu'][0]['alasan'])->toContain('lebih dari satu Tech Ident No');
+
+    $hasil = $this->import->executeImport($analysis, [
+        'duplicate_action' => 'replace',
+        'no_equip_action'  => 'skip',
+        'filename'         => 'assets-export-uji.csv',
+    ]);
+
+    expect($hasil['success_count'])->toBe(0)
+        ->and($hasil['error_count'])->toBe(1);
+});
+
+test('nilai angka tanpa kandidat E tetap dianggap data baru', function () {
+    // Deskripsi sudah ada, tapi tidak ada aset ber-Tech-Ident pola E dengan
+    // nilai itu -> baris harus tetap dianggap data baru (bukan ditebak).
+    Asset::create([
+        'equipment_no'   => '90000094',
+        'description'    => 'Aset Tanpa Pola E',
+        'tech_ident_no'  => 'AC-AR01-5-5',
+        'equipment_type' => 'AC',
+        'functional_loc' => $this->funcloc->code,
+        'funcloc_id'     => $this->funcloc->id,
+        'company_id'     => $this->company->id,
+        'department_id'  => $this->dept->id,
+        'area_id'        => $this->area->id,
+        'sub_area_id'    => $this->subArea->id,
+        'status'         => 'active',
+        'data_source'    => 'import_excel',
+    ]);
+
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([[
+        '90000998', 'Aset Tanpa Pola E Baru', '99001', 'AC',
+        $this->funcloc->code, $this->company->code, $this->dept->code,
+        $this->area->code, $this->subArea->code, '', '', '', 'active', 'import_excel',
+        '', '', '',
+    ]])));
+
+    expect($analysis['clean'])->toHaveCount(1)
+        ->and($analysis['duplicate'])->toHaveCount(0)
+        ->and($analysis['clean'][0]['tech_ident_no'])->toBe('99001');
+});
+
 test('Tech Ident No mirip notasi ilmiah tidak berubah jadi angka saat dibaca', function () {
     // is_numeric('6153E1') bernilai TRUE, sehingga tanpa penjaga khusus nilai
     // ini terbaca 61530 oleh pembaca spreadsheet dan barisnya salah dianggap

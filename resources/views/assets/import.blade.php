@@ -111,6 +111,27 @@
                     </div>
                 </div>
 
+                <!-- Peringatan nilai Tech Ident No yang terpotong Excel/Google Sheets -->
+                <template x-if="analysis.duplicate.filter(r => r.tech_ident_terpotong).length > 0">
+                    <div class="flex items-start gap-3 p-4 border rounded-lg text-sm bg-amber-50 border-amber-200 text-amber-900">
+                        <div>
+                            <p class="font-medium">Peringatan: sebagian nilai Tech Ident No di file sudah diubah Excel/Google Sheets</p>
+                            <p class="mt-0.5">
+                                <span class="font-semibold" x-text="analysis.duplicate.filter(r => r.tech_ident_terpotong).length"></span>
+                                baris berisi Tech Ident No berbentuk angka (mis. <span class="font-mono text-xs">61530</span>)
+                                yang di database aslinya berupa teks berkode E (mis. <span class="font-mono text-xs">6153E1</span>).
+                                Baris itu tetap dicocokkan ke aset yang benar memakai nilai angkanya, dan kolom Tech Ident No
+                                di database TIDAK diubah.
+                            </p>
+                            <p class="mt-1">
+                                Supaya tidak terulang: di Google Sheets/Excel format kolom TechIdentNo. sebagai
+                                <span class="font-semibold">Teks biasa (Plain text)</span> SEBELUM menempel/mengetik, lalu simpan sebagai
+                                .xlsx (jangan CSV, karena CSV tidak menyimpan tipe sel).
+                            </p>
+                        </div>
+                    </div>
+                </template>
+
                 <!-- Data Baru -->
                 <div class="bg-white rounded-xl border border-slate-200 p-6">
                     <div class="flex items-center justify-between mb-1">
@@ -172,9 +193,16 @@
                             <div class="px-4 py-3">
                                 <div class="flex flex-wrap items-center gap-3">
                                     <span class="text-xs text-slate-400" x-text="'Baris ' + row.row"></span>
-                                    <span class="font-mono text-xs text-slate-700" x-text="row.tech_ident_no"></span>
+                                    <span class="font-mono text-xs text-slate-700"
+                                          x-text="row.tech_ident_terpotong ? row.tech_ident_terpotong.nilai_database : row.tech_ident_no"></span>
                                     <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded font-mono"
                                           x-text="'EQ: ' + (row.equipment_no_lama || '-')"></span>
+                                    <span x-show="row.tech_ident_terpotong"
+                                          class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 rounded">
+                                        <span>nilai di file</span>
+                                        <span class="font-mono" x-text="row.tech_ident_terpotong?.nilai_file"></span>
+                                        <span>dicocokkan dari nilai terpotong</span>
+                                    </span>
                                 </div>
                                 <div class="mt-1.5 space-y-0.5">
                                     <template x-if="row.perubahan.length === 0">

@@ -184,6 +184,11 @@ class ImportService
      */
     private function kelompokkanBaris(array $semuaBaris, array $hitungTech, array $results): array
     {
+        // Peta nilai angka -> aset dengan Tech Ident No bentuk <angka>E<pangkat>,
+        // dipakai mendeteksi nilai yang sudah dikonversi Excel/Google Sheets
+        // (mis. "61530" yang aslinya "6153E1").
+        $petaTerpotong = $this->petaTechTerpotong();
+
         foreach ($semuaBaris as $baris) {
             $rowData = $baris['data'];
             $techNo  = $baris['tech_ident_no'];
@@ -254,10 +259,127 @@ class ImportService
                 continue;
             }
 
+            // Tidak ada kecocokan persis. Sebelum dianggap data baru, periksa
+            // apakah nilai ini adalah bentuk ANGKA dari Tech Ident No yang
+            // sudah ada (mis. "61530" sebenarnya "6153E1" yang dikonversi
+            // spreadsheet). Kolom Tech Ident No di database tidak pernah
+            // ditimpa nilai yang sudah terpotong itu.
+            $digit    = $this->digitKanonik($techNo);
+            $kandidat = $digit !== null ? ($petaTerpotong[$digit] ?? []) : [];
+
+            if (count($kandidat) === 1) {
+                $existing = $kandidat[0];
+
+                if ($existing->data_source === 'it_sync') {
+                    $results['it_sync'][] = $rowData;
+
+                    continue;
+                }
+
+                $rowData['asset_id']          = $existing->id;
+                $rowData['equipment_no_lama'] = $existing->equipment_no;
+                $rowData['tech_ident_terpotong'] = [
+                    'nilai_file'     => $techNo,
+                    'nilai_database' => $existing->tech_ident_no,
+                ];
+                $rowData['perubahan'] = $this->bandingkanPerubahan($existing, $rowData, true);
+
+                $results['duplicate'][] = $rowData;
+
+                continue;
+            }
+
+            if (count($kandidat) > 1) {
+                $rowData['kandidat_ids'] = array_map(static fn (Asset $a) => $a->id, $kandidat);
+                $rowData['alasan']       = 'Nilai "' . $techNo . '" cocok dengan lebih dari satu Tech Ident No di database: '
+                    . implode(', ', array_map(static fn (Asset $a) => (string) $a->tech_ident_no, $kandidat)) . '.';
+                $results['ambigu'][]     = $rowData;
+
+                continue;
+            }
+
             $results['clean'][] = $rowData;
         }
 
         return $results;
+    }
+
+    /**
+     * Peta nilai angka kanonik -> aset yang Tech Ident No-nya berbentuk
+     * <angka>E<pangkat> (mis. 6153E1).
+     *
+     * Dipakai untuk mengenali baris file yang nilai Tech Ident No-nya sudah
+     * dikonversi Excel/Google Sheets menjadi angka, sehingga baris itu tetap
+     * dicocokkan ke aset yang benar alih-alih dibuat sebagai aset duplikat.
+     *
+     * @return array<string, array<int, Asset>>  Kunci = digit kanonik
+     */
+    private function petaTechTerpotong(): array
+    {
+        $peta = [];
+
+        // Sengaja memakai LIKE (bukan REGEXP) supaya jalan di MySQL maupun
+        // SQLite: penyaringan presisi bentuk <angka>E<pangkat> dilakukan di PHP
+        // lewat digitKanonik(). Kolom yang diambil harus lengkap karena model ini
+        // dipakai juga untuk membandingkan perubahan field.
+        $asetPolaE = Asset::whereNotNull('tech_ident_no')
+            ->where('tech_ident_no', 'like', '%E%')
+            ->get([
+                'id', 'equipment_no', 'tech_ident_no', 'description', 'equipment_type',
+                'functional_loc', 'manufacturer', 'model_number', 'construct_year',
+                'status', 'data_source',
+            ]);
+
+        foreach ($asetPolaE as $aset) {
+            $digit = $this->digitKanonik((string) $aset->tech_ident_no);
+
+            if ($digit !== null) {
+                $peta[$digit][] = $aset;
+            }
+        }
+
+        return $peta;
+    }
+
+    /**
+     * Ubah nilai Tech Ident No yang tampak angka menjadi bentuk digit kanonik
+     * TANPA melibatkan float, sehingga "6153E1", "61530", dan "6.153E+4"
+     * sama-sama menghasilkan "61530".
+     *
+     * @param  string|null  $nilai
+     * @return string|null  Digit kanonik, atau null bila bukan bentuk angka
+     */
+    private function digitKanonik(?string $nilai): ?string
+    {
+        $nilai = strtoupper(trim((string) $nilai));
+
+        if ($nilai === '') {
+            return null;
+        }
+
+        // Bentuk <mantissa>E<pangkat> seperti di database (mis. 6153E1).
+        if (preg_match('/^([0-9]+)E([0-9]+)$/', $nilai, $cocok) === 1) {
+            return $cocok[1] . str_repeat('0', (int) $cocok[2]);
+        }
+
+        // Angka biasa (mis. 61530).
+        if (preg_match('/^[0-9]+$/', $nilai) === 1) {
+            return $nilai;
+        }
+
+        // Notasi ilmiah hasil konversi spreadsheet (mis. 6.163E+23).
+        if (preg_match('/^([0-9]+)(?:\.([0-9]+))?E([+-]?[0-9]+)$/', $nilai, $cocok) === 1) {
+            $desimal = $cocok[2] ?? '';
+            $pangkat = (int) $cocok[3] - strlen($desimal);
+
+            if ($pangkat < 0) {
+                return null;
+            }
+
+            return $cocok[1] . $desimal . str_repeat('0', $pangkat);
+        }
+
+        return null;
     }
 
     /**
@@ -309,6 +431,7 @@ class ImportService
         $errorCount = 0;
         $insertedCount = 0;
         $updatedCount  = 0;
+        $terpotongCount = 0;
 
         // Baris perangkat IT sudah dipisahkan di analyzeFile() (bucket it_sync)
         // dan tidak pernah diproses; angka ini dilaporkan sebagai informasi.
@@ -325,7 +448,7 @@ class ImportService
             'detail_json' => $analysis,
         ];
 
-        DB::transaction(function () use ($analysis, $duplicateAction, $noEquipAction, &$successCount, &$errorCount, &$itSyncSkipped, &$insertedCount, &$updatedCount, $importLogData) {
+        DB::transaction(function () use ($analysis, $duplicateAction, $noEquipAction, &$successCount, &$errorCount, &$itSyncSkipped, &$insertedCount, &$updatedCount, &$terpotongCount, $importLogData) {
             // Proses baris bersih
             foreach ($analysis['clean'] as $row) {
                 $funcLocNode = $this->syncFuncLocFromRow($row['functional_loc']);
@@ -412,6 +535,14 @@ class ImportService
                         // No di file pun tidak dibaca).
                         unset($updateData['equipment_no']);
 
+                        // Baris yang dicocokkan dari nilai Tech Ident No hasil
+                        // konversi Excel/Google Sheets: nilai di database
+                        // dipertahankan karena nilai di file sudah rusak.
+                        if (!empty($row['tech_ident_terpotong'])) {
+                            unset($updateData['tech_ident_no']);
+                            $terpotongCount++;
+                        }
+
                         // Sheet tanpa kolom "Equipment Type" (mis. Sheet1 (1))
                         // menghasilkan equipment_type kosong. Jangan biarkan nilai
                         // kosong itu menimpa tipe yang sudah diisi dari sheet lain
@@ -495,6 +626,9 @@ class ImportService
         });
 
         $message = "Import berhasil. {$successCount} baris diproses ({$insertedCount} data baru, {$updatedCount} diperbarui).";
+        if ($terpotongCount > 0) {
+            $message .= " {$terpotongCount} baris dicocokkan dari nilai Tech Ident No yang terpotong Excel/Google Sheets (nilai Tech Ident No di database dipertahankan).";
+        }
         if ($errorCount > 0) {
             $message .= " {$errorCount} baris dilewati (Functional Location kosong, tanpa Tech Ident No, atau Tech Ident No tidak unik).";
         }
@@ -508,6 +642,7 @@ class ImportService
             'success_count' => $successCount,
             'inserted_count' => $insertedCount,
             'updated_count' => $updatedCount,
+            'truncated_matched_count' => $terpotongCount,
             'error_count' => $errorCount,
             'it_sync_skipped' => $itSyncSkipped,
         ];
@@ -560,9 +695,13 @@ class ImportService
      *
      * @param  Asset  $existing  Aset lama yang cocok Tech Ident No-nya
      * @param  array  $row       Baris file yang sudah dinormalisasi
+     * @param  bool   $abaikanTechIdent  true = jangan bandingkan kolom Tech Ident
+     *                                   No (dipakai untuk baris yang dicocokkan
+     *                                   dari nilai angka hasil konversi Excel,
+     *                                   nilai di database dipertahankan)
      * @return array<int, array{field: string, lama: string, baru: string}>
      */
-    private function bandingkanPerubahan(Asset $existing, array $row): array
+    private function bandingkanPerubahan(Asset $existing, array $row, bool $abaikanTechIdent = false): array
     {
         $perubahan = [];
 
@@ -577,6 +716,10 @@ class ImportService
         ];
 
         foreach ($kolom as $nama => $label) {
+            if ($abaikanTechIdent && $nama === 'tech_ident_no') {
+                continue;
+            }
+
             $baru = trim((string) ($row[$nama] ?? ''));
             $lama = trim((string) ($existing->{$nama} ?? ''));
 

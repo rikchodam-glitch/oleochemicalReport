@@ -344,10 +344,17 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
   Pada form Tambah, begitu lokasi dipilih, nomor yang akan dipakai ditampilkan lewat
   `GET /assets/locations/next-equipment-no?funcloc_id=` (PT diambil dari relasi node, atau dari awalan
   kode FuncLoc bila node belum punya `company_id`).
-- **Penjaga nilai mirip notasi ilmiah**: Tech Ident No seperti `6153E1` dianggap angka oleh Excel
-  (`is_numeric('6153E1')` = true). Karena itu pembaca import memakai `StringValueBinder` + normalisasi
-  float (tanpa notasi ilmiah), dan penulis Excel export memakai `setCellValueExplicit(..., TYPE_STRING)`
-  untuk semua kolom data, supaya nilai seperti itu tidak berubah menjadi `61530` saat export/import.
+- **Penjaga nilai Tech Ident No yang terpotong Excel/Google Sheets**: nilai seperti `6153E1` dianggap
+  angka oleh spreadsheet (`is_numeric('6153E1')` = true) sehingga di file bisa berubah menjadi `61530`
+  atau `6.163E+23`. Sebelum baris dianggap data baru, nilai angka itu dibandingkan dengan aset yang
+  Tech Ident No-nya berbentuk `<angka>E<pangkat>` memakai bentuk digit kanonik (`digitKanonik()`, tanpa
+  float): `61530`, `6153E1`, dan `6.153E+4` semuanya menjadi `61530`. Hasilnya:
+  tepat 1 kandidat -> baris dicocokkan ke aset itu (masuk daftar "Akan Diperbarui", key
+  `tech_ident_terpotong` berisi nilai file + nilai database) dan **kolom Tech Ident No di database TIDAK
+  diubah**; lebih dari 1 kandidat -> masuk "Perlu Diperiksa"; tanpa kandidat -> tetap data baru.
+  Jumlah baris yang dicocokkan dengan cara ini dilaporkan (`truncated_matched_count`).
+  Pencegahan di sisi file: format kolom TechIdentNo. sebagai Teks biasa (Plain text) sebelum mengisi,
+  lalu simpan sebagai .xlsx (CSV tidak menyimpan tipe sel).
 - **Kolom yang ikut diperbarui**: Description, Tech Ident No, Equipment Type, Functional Loc (+ `funcloc_id`),
   Company/Department/Area/Sub Area (diresolusi dari kode kolom; kode tak dikenal = baris dilewati),
   Manufacturer, Model Number, Construct Year, dan Status (nilai kosong/tak dikenal tidak menimpa).
