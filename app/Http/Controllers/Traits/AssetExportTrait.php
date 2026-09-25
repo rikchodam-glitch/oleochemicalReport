@@ -73,7 +73,7 @@ trait AssetExportTrait
             3 => 'Diekspor: ' . now()->format('d/m/Y H:i') . ' WIB'
                 . (auth()->check() ? ' oleh ' . auth()->user()->name : ''),
             4 => 'Filter: ' . $this->ringkasanFilterExport($request),
-            5 => 'Jumlah: ' . number_format($assets->count()) . ' asset',
+            5 => 'Jumlah: ' . number_format($assets->count()) . ' asset (perangkat IT / it_sync tidak disertakan)',
         ];
 
         foreach ($barisInfo as $nomor => $teks) {
@@ -198,7 +198,7 @@ trait AssetExportTrait
             'Diekspor: ' . now()->format('d/m/Y H:i') . ' WIB'
                 . (auth()->check() ? ' oleh ' . auth()->user()->name : ''),
             'Filter: ' . $this->ringkasanFilterExport($request),
-            'Jumlah: ' . number_format($assets->count()) . ' asset',
+            'Jumlah: ' . number_format($assets->count()) . ' asset (perangkat IT / it_sync tidak disertakan)',
         ];
 
         $headers = [
@@ -309,7 +309,12 @@ trait AssetExportTrait
      */
     private function buildExportQuery(Request $request)
     {
-        $query = Asset::with(['company', 'department', 'area', 'subArea']);
+        $query = Asset::with(['company', 'department', 'area', 'subArea'])
+            // Perangkat IT (baris cermin dari modul IT Assets, data_source
+            // 'it_sync') TIDAK ikut diexport: datanya dikelola di halaman
+            // IT Assets, sedangkan file ini dipakai untuk memutar data asset
+            // industri (export -> sesuaikan -> import).
+            ->where('assets.data_source', '!=', 'it_sync');
 
         if ($request->filled('search')) {
             $search = $request->search;

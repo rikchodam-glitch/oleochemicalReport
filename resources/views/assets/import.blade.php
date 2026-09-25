@@ -32,6 +32,11 @@
                     sehingga nomor aset lama tidak pernah berubah. Kolom Description, Tech Ident No,
                     Equipment Type, Functional Loc, Company/Department/Area/Sub Area, Manufacturer, Model Number,
                     Construct Year, dan Status ikut diperbarui.
+                    <br>
+                    <span class="font-semibold">Perangkat IT tidak ikut diproses.</span>
+                    Baris cermin perangkat IT di tabel asset (data_source <span class="font-mono text-xs">it_sync</span>)
+                    dilewati dan datanya dikelola di halaman IT Assets; data itu juga tidak ikut diexport
+                    dari halaman Asset Management.
                 </p>
             </div>
 
@@ -75,7 +80,7 @@
         <template x-if="analysis">
             <div class="space-y-6">
                 <!-- Summary -->
-                <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
+                <div class="grid grid-cols-2 md:grid-cols-7 gap-4">
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
                         <p class="text-2xl font-bold text-green-600" x-text="analysis.clean.length"></p>
                         <p class="text-xs text-slate-500 mt-1">Data Baru</p>
@@ -95,6 +100,10 @@
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
                         <p class="text-2xl font-bold text-rose-600" x-text="analysis.ambigu.length"></p>
                         <p class="text-xs text-slate-500 mt-1">Perlu Diperiksa</p>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
+                        <p class="text-2xl font-bold text-sky-600" x-text="analysis.it_sync.length"></p>
+                        <p class="text-xs text-slate-500 mt-1">Perangkat IT (dilewati)</p>
                     </div>
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
                         <p class="text-2xl font-bold text-slate-600" x-text="analysis.total_rows"></p>
@@ -211,6 +220,28 @@
                     </div>
                 </template>
 
+
+                <!-- Perangkat IT: tidak diproses import asset -->
+                <template x-if="analysis.it_sync.length > 0">
+                    <div class="bg-white rounded-xl border border-slate-200 p-6">
+                        <h3 class="font-medium text-slate-900 mb-1">Perangkat IT (dilewati)</h3>
+                        <p class="text-sm text-slate-500 mb-4">
+                            Baris berikut adalah baris cermin perangkat IT di tabel asset
+                            (data_source <span class="font-mono text-xs">it_sync</span>). Datanya dikelola di halaman
+                            IT Assets lewat import perangkat IT, jadi import asset tidak mengubahnya.
+                        </p>
+                        <div class="max-h-56 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
+                            <template x-for="row in analysis.it_sync" :key="row.row">
+                                <div class="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
+                                    <span class="text-xs text-slate-400 shrink-0" x-text="'Baris ' + row.row"></span>
+                                    <span class="font-mono text-xs text-slate-700 shrink-0" x-text="row.tech_ident_no"></span>
+                                    <span class="font-mono text-xs text-slate-500 shrink-0" x-text="'EQ: ' + (row.equipment_no_lama || '-')"></span>
+                                    <span class="text-slate-600 truncate" x-text="row.description"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
 
                 <!-- FuncLoc Preview -->
                 <div class="bg-white rounded-xl border border-slate-200 p-6">

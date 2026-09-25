@@ -303,7 +303,10 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
 - **Export**: `GET /assets/export/excel` dan `GET /assets/export/csv` (`AssetExportTrait`, filter sama dengan
   halaman index). Kolom: **No**, Description, Tech Ident No, Equipment Type, Functional Loc,
   Company, Department, Area, Sub Area, Manufacturer, Model Number, Construct Year, Status, Data Source.
-  **Equipment No sengaja TIDAK diekspor** (nomornya dikelola sistem).
+  **Equipment No sengaja TIDAK diekspor** (nomornya dikelola sistem), dan **baris cermin perangkat IT
+  (`data_source = 'it_sync'`) juga tidak disertakan** — total pada blok keterangan menulis
+  "(perangkat IT / it_sync tidak disertakan)". Data perangkat IT diputar lewat
+  `GET /it-assets/import` di modul IT Assets, bukan lewat export/import asset industri.
 - **Header file export profesional**: blok judul di baris 1-5 (judul "DAFTAR ASSET — ASSET MANAGEMENT",
   nama sistem, waktu ekspor + siapa yang mengekspor, **ringkasan filter yang aktif**, dan jumlah asset),
   baris 6 kosong, lalu baris tabel (header kolom) di **baris 7** dengan gaya teal tebal berbingkai,
@@ -321,13 +324,16 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
   Bucket hasil analisa: `clean` = **data baru**, `duplicate` = **akan diperbarui** (plus key `perubahan`
   berisi daftar field yang berubah: field, lama, baru), `no_equip` = baris tanpa Tech Ident No,
   `bad_funcloc` = tanpa Functional Loc. (funcloc_id wajib), `ambigu` = Tech Ident No dobel di file
-  atau dipakai >1 aset di database (dilewati + alasan ditampilkan). Total semua bucket selalu sama
-  dengan jumlah baris yang dibaca.
+  atau dipakai >1 aset di database (dilewati + alasan ditampilkan), `it_sync` = baris cermin perangkat IT
+  (**tidak diproses import asset**: barisnya dicocokkan ke aset `data_source = 'it_sync'` lalu dilaporkan
+  terpisah, karena datanya dikelola di modul IT Assets lewat `GET /it-assets/import` +
+  `php artisan it:sync-assets`). Total semua bucket selalu sama dengan jumlah baris yang dibaca.
 - **Halaman preview menampilkan daftar, bukan hanya jumlah**: kartu ringkasan (Data Baru / Akan Diperbarui /
-  Tanpa Tech Ident No / Tanpa Functional Loc. / Perlu Diperiksa / Total Baris), daftar **Data Baru**
-  (Baris, Tech Ident No, Equipment Type, Functional Loc, Description) dan daftar **Data yang Akan
-  Diperbarui** (Tech Ident No, nomor equipment lama, serta tiap perubahan `lama → baru`). Hasil eksekusi
-  tidak mengosongkan daftar itu supaya tetap bisa diperiksa.
+  Tanpa Tech Ident No / Tanpa Functional Loc. / Perlu Diperiksa / Perangkat IT (dilewati) / Total Baris),
+  daftar **Data Baru** (Baris, Tech Ident No, Equipment Type, Functional Loc, Description) dan daftar
+  **Data yang Akan Diperbarui** (Tech Ident No, nomor equipment lama, serta tiap perubahan `lama → baru`),
+  plus daftar perangkat IT yang dilewati. Hasil eksekusi tidak mengosongkan daftar itu supaya tetap bisa
+  diperiksa.
 - **Nomor equipment otomatis** (`App\Services\AssetNumberService`): SEMUA baris baru — baik dari import
   maupun form Tambah Asset manual — dibuatkan nomor 8 digit mengikuti seri milik PT bersangkutan
   (angka pertama nomor yang sudah ada; cadangan di `config('assets.equipment_no.awalan_pt')`,

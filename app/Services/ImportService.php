@@ -65,6 +65,7 @@ class ImportService
             'no_equip'    => [],
             'bad_funcloc' => [],
             'ambigu'      => [],
+            'it_sync'     => [],
             'total_rows'  => 0,
         ];
 
@@ -234,7 +235,19 @@ class ImportService
 
                 $rowData['asset_id']          = $existing->id;
                 $rowData['equipment_no_lama'] = $existing->equipment_no;
-                $rowData['perubahan']         = $this->bandingkanPerubahan($existing, $rowData);
+
+                // Baris cermin perangkat IT (data_source 'it_sync') TIDAK
+                // diproses import asset: datanya dikelola di halaman IT Assets
+                // lewat import perangkat IT. Baris seperti ini dikumpulkan di
+                // bucket sendiri supaya tidak dilaporkan sebagai "akan
+                // diperbarui" padahal isinya tidak berubah.
+                if ($existing->data_source === 'it_sync') {
+                    $results['it_sync'][] = $rowData;
+
+                    continue;
+                }
+
+                $rowData['perubahan'] = $this->bandingkanPerubahan($existing, $rowData);
 
                 $results['duplicate'][] = $rowData;
 
@@ -294,9 +307,12 @@ class ImportService
 
         $successCount = 0;
         $errorCount = 0;
-        $itSyncSkipped = 0;
         $insertedCount = 0;
         $updatedCount  = 0;
+
+        // Baris perangkat IT sudah dipisahkan di analyzeFile() (bucket it_sync)
+        // dan tidak pernah diproses; angka ini dilaporkan sebagai informasi.
+        $itSyncSkipped = count($analysis['it_sync'] ?? []);
         $importLogData = [
             'filename' => $choices['filename'] ?? 'unknown.xlsx',
             'imported_by' => auth()->id(),

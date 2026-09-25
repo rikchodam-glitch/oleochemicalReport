@@ -224,6 +224,12 @@ test('baris cermin perangkat IT dilewati saat import memperbarui', function () {
     $barisIt[2]  = 'WS-SITETEST-Uji';
 
     $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([$barisIt])));
+
+    // Baris perangkat IT masuk bucket sendiri, bukan daftar "akan diperbarui".
+    expect($analysis['it_sync'])->toHaveCount(1)
+        ->and($analysis['duplicate'])->toHaveCount(0)
+        ->and($analysis['it_sync'][0]['equipment_no_lama'])->toBe('90000002');
+
     $hasil    = $this->import->executeImport($analysis, [
         'duplicate_action' => 'replace',
         'no_equip_action'  => 'skip',
@@ -521,12 +527,53 @@ test('export mengurutkan data menurut lokasi (PT, departemen, area, sub area, Fu
     sort($kunciTerurut);
 
     expect($kunci)->toBe($kunciTerurut)
-        ->and($kunci)->toHaveCount(3)
-        // Aset departemen DEPTS tampil lebih dulu, aset di DEPTZ terakhir.
+        // Baris cermin perangkat IT (assetIt, data_source it_sync) TIDAK ikut
+        // diexport, jadi yang tersisa hanya aset industri: 1 di DEPTS + 1 di DEPTZ.
+        ->and($kunci)->toHaveCount(2)
         ->and($kunci[0][0])->toBe('DEPTS')
         ->and($kunci[0][1])->toBe('AR01')
-        ->and($kunci[2][0])->toBe('DEPTZ')
-        ->and($kunci[2][3])->toContain('DEPTZ-AR99-SA99');
+        ->and($kunci[1][0])->toBe('DEPTZ')
+        ->and($kunci[1][3])->toContain('DEPTZ-AR99-SA99');
+});
+
+test('export tidak menyertakan baris cermin perangkat IT (it_sync)', function () {
+    // Tanpa filter: baris IT tidak boleh muncul sama sekali.
+    $csv = $this->actingAs($this->admin)
+        ->get('/assets/export/csv')
+        ->assertStatus(200)
+        ->streamedContent();
+
+    expect($csv)->toContain('tidak disertakan')
+        ->and($csv)->not->toContain('WS-SITETEST-Uji')
+        ->and($csv)->not->toContain('PC Uji Cermin IT')
+        // Aset industri tetap ikut diexport.
+        ->and($csv)->toContain('AC-AR01-1-1');
+
+    // Filter pencarian yang mengarah ke perangkat IT -> tidak ada baris data.
+    $csvCari = $this->actingAs($this->admin)
+        ->get('/assets/export/csv?search=WS-SITETEST-Uji')
+        ->assertStatus(200)
+        ->streamedContent();
+
+    expect($csvCari)->toContain('Jumlah: 0 asset')
+        ->and($csvCari)->not->toContain('PC Uji Cermin IT');
+
+    $xlsx = $this->actingAs($this->admin)
+        ->get('/assets/export/excel?search=WS-SITETEST-Uji')
+        ->assertStatus(200)
+        ->streamedContent();
+
+    $path = tempnam(sys_get_temp_dir(), 'astexp') . '.xlsx';
+    file_put_contents($path, $xlsx);
+
+    $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+    $sheet       = $spreadsheet->getActiveSheet();
+
+    // Baris 7 = header tabel; baris 8 harus kosong karena tidak ada data.
+    expect((string) $sheet->getCell('A8')->getValue())->toBe('');
+
+    $spreadsheet->disconnectWorksheets();
+    unlink($path);
 });
 
 
