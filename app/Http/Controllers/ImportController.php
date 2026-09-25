@@ -91,9 +91,8 @@ class ImportController extends Controller
         $sheet->setTitle('Asset Data');
 
         $columns = [
-            'Equipment'       => 'Wajib. Nomor equipment unik, contoh: 10000001',
+            'TechIdentNo.'    => 'WAJIB. Identitas unik satu aset (tidak boleh dobel), contoh: AC-TF-1-1',
             'Description'     => 'Nama/deskripsi asset, contoh: Motor Pompa Transfer',
-            'TechIdentNo.'    => 'ID teknis di lapangan, contoh: AC-TF-1-1',
             'Object Type'     => 'Kode tipe SAP, contoh: ZPM-MOT / ZPM-PU1',
             'Equipment Type'  => 'Tipe equipment, contoh: MOTOR / PUMP / AC',
             'Functional Loc.' => 'WAJIB. Format COMPANY-DEPT-AREA-SUBAREA, contoh: EPE-PROD-BD02-6153',
@@ -123,7 +122,7 @@ class ImportController extends Controller
             $col++;
         }
 
-        $sheet->getStyle('A1:I1')->getAlignment()->setVertical('center');
+        $sheet->getStyle('A1:H1')->getAlignment()->setVertical('center');
         $sheet->getRowDimension(1)->setRowHeight(22);
         $sheet->freezePane('A2');
 
@@ -136,22 +135,24 @@ class ImportController extends Controller
             'PETUNJUK PENGISIAN TEMPLATE IMPORT ASSET',
             '',
             '1. Isi data mulai baris ke-2 pada sheet "Asset Data". JANGAN mengubah nama header di baris 1.',
-            '2. Kolom WAJIB: Equipment dan Functional Loc. Baris yang salah satunya kosong TIDAK akan diimport.',
-            '3. Equipment harus UNIK. Jangan menaruh nomor equipment yang sama lebih dari satu kali dalam satu file.',
-            '4. Functional Loc. memakai format COMPANY-DEPARTEMEN-AREA-SUBAREA, contoh:',
+            '2. Kolom WAJIB: TechIdentNo. dan Functional Loc. Baris yang salah satunya kosong TIDAK akan diimport.',
+            '3. Equipment No TIDAK perlu diisi dan tidak ada di template ini. Nomor equipment dibuat otomatis',
+            '   oleh sistem (id internal) mengikuti seri milik PT dari lokasi yang dipilih.',
+            '4. TechIdentNo. adalah identitas unik satu aset: SATU aset = SATU TechIdentNo.',
+            '   - Baris yang TechIdentNo.-nya sudah ada di database akan MEMPERBARUI aset tersebut.',
+            '   - Baris dengan TechIdentNo. baru akan DITAMBAHKAN sebagai aset baru.',
+            '   - TechIdentNo. yang sama muncul dua kali dalam satu file dilewati (ditandai perlu diperiksa).',
+            '5. Functional Loc. memakai format COMPANY-DEPARTEMEN-AREA-SUBAREA, contoh:',
             '   - EPE-PROD-BD02-6153  (company EPE, dept PROD, area BD02, subarea 6153)',
             '   - EPE-LOGE-ST01       (3 bagian: company, dept, area - tanpa subarea)',
-            '5. Kolom lain bersifat opsional tapi disarankan diisi: Description, TechIdentNo., Object Type,',
+            '6. Kolom lain bersifat opsional tapi disarankan diisi: Description, Object Type,',
             '   Equipment Type, Manufacturer, Model number, ConstructYear.',
-            '6. Cukup isi satu sheet. Sheet kosong lain di dalam file yang sama tidak akan mengganggu import.',
-            '7. Saat upload, pilih aksi untuk data duplikat (equipment yang sudah ada):',
-            '   - "Ganti data duplikat": data lama ditimpa dengan isi file ini.',
-            '   - "Abaikan baris tersebut": data lama dipertahankan.',
-            '   Jika Anda menyusun ulang SELURUH data dan ingin hasil bersih, kosongkan daftar asset dulu',
-            '   (hapus asset lama dari menu Asset Management) sebelum import file ini.',
+            '7. Cukup isi satu sheet. Sheet kosong lain di dalam file yang sama tidak akan mengganggu import.',
+            '8. Sebelum dijalankan, halaman import menampilkan dua daftar: DATA BARU dan DATA YANG AKAN',
+            '   DIPERBARUI (beserta field yang berubah), supaya bisa diperiksa lebih dulu.',
             '',
             'CONTOH BARIS (isi di baris ke-2, ganti dengan data asli):',
-            'Equipment=10000001 | Description=Motor Pompa Transfer | TechIdentNo.=MP-101 | Object Type=ZPM-MOT',
+            'TechIdentNo.=MP-101 | Description=Motor Pompa Transfer | Object Type=ZPM-MOT',
             'Equipment Type=MOTOR | Functional Loc.=EPE-PROD-BD02-6153 | Manufacturer=SIEMENS | Model number=1LA4 | ConstructYear=2021',
         ];
 

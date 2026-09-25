@@ -84,7 +84,7 @@ test('asset baru tanpa Equipment No dibuatkan nomor otomatis saat disimpan', fun
         ->and($asset->funcloc_id)->toBe($this->funcloc->id);
 });
 
-test('Equipment No yang diisi manual tetap dipakai apa adanya', function () {
+test('Equipment No yang dikirim dari form diabaikan karena nomor dibuat sistem', function () {
     $this->actingAs($this->admin)->post('/assets', [
         'equipment_no'   => '80000001',
         'description'    => 'Motor Nomor Manual',
@@ -94,7 +94,9 @@ test('Equipment No yang diisi manual tetap dipakai apa adanya', function () {
         'status'         => 'active',
     ])->assertRedirect(route('assets.index'));
 
-    expect(Asset::where('tech_ident_no', 'SERI-UJI-3')->value('equipment_no'))->toBe('80000001');
+    expect(Asset::where('tech_ident_no', 'SERI-UJI-3')->value('equipment_no'))
+        ->toBe('10000010')
+        ->and(Asset::where('equipment_no', '80000001')->doesntExist())->toBeTrue();
 });
 
 test('endpoint pratinjau mengembalikan nomor otomatis berikutnya untuk lokasi terpilih', function () {
@@ -144,10 +146,12 @@ test('PT diambil dari awalan kode lokasi bila node FuncLoc belum punya company_i
         ->and($asset->company_id)->toBe($this->company->id);
 });
 
-test('form tambah asset menjelaskan nomor equipment terisi otomatis', function () {
+test('form tambah asset menjelaskan nomor equipment dibuat otomatis', function () {
     $this->actingAs($this->admin)
         ->get('/assets/create')
         ->assertStatus(200)
-        ->assertSee('Kosongkan = otomatis', false)
-        ->assertSee('petunjuk-equipment-no', false);
+        ->assertSee('pratinjau-equipment-no', false)
+        ->assertSee('Equipment No dibuat otomatis oleh sistem', false)
+        // Tidak ada kolom input nomor equipment lagi.
+        ->assertDontSee('name="equipment_no"', false);
 });

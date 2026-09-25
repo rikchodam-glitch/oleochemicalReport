@@ -11,6 +11,7 @@ use App\Models\FunctionalLocation;
 use App\Models\SubArea;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\Cell\StringValueBinder;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ImportService
@@ -30,10 +31,21 @@ class ImportService
     }
 
     /**
-     * Analisa file Excel dan kelompokkan tiap baris ke salah satu bucket:
-     * clean (siap import), duplicate (equipment_no sudah ada), no_equip
-     * (tanpa Equipment No.), atau bad_funcloc (Equipment No. ada tapi
-     * Functional Loc. kosong sehingga tidak bisa ditautkan ke FuncLoc).
+     * Analisa file Excel dan kelompokkan tiap baris ke salah satu bucket.
+     *
+     * KUNCI Pencocokan adalah Tech Ident No (identitas unik satu aset; tidak
+     * boleh ada dua aset dengan Tech Ident No sama). Kolom Equipment No TIDAK
+     * dibaca sama sekali: nomor itu adalah id yang dibuat sistem
+     * (lihat AssetNumberService), bukan data yang diinput user.
+     *
+     * Bucket:
+     *   - clean       : Tech Ident No belum ada di database -> aset BARU
+     *   - duplicate   : Tech Ident No cocok tepat satu aset -> akan DIPERBARUI
+     *                   (plus daftar field yang berubah di key 'perubahan')
+     *   - no_equip    : Tech Ident No kosong -> tidak ada identitas yang bisa dicocokkan
+     *   - bad_funcloc : Functional Loc. kosong -> tidak bisa ditautkan ke FuncLoc
+     *   - ambigu      : Tech Ident No dobel di dalam file, atau dipakai lebih
+     *                   dari satu aset di database
      *
      * @param  UploadedFile  $file
      * @return array
@@ -56,8 +68,51 @@ class ImportService
             'total_rows'  => 0,
         ];
 
+        // Tahap 1: kumpulkan seluruh baris data dari semua sheet.
+        $semuaBaris = $this->kumpulkanBaris($sheets, $results);
+
+        // Hitung kemunculan Tech Ident No DI DALAM FILE. Karena Tech Ident No
+        // adalah identitas unik satu aset, nilai yang muncul lebih dari sekali
+        // di satu file tidak bisa dipastikan baris mana yang benar.
+        $hitungTech = [];
+
+        foreach ($semuaBaris as $baris) {
+            if ($baris['tech_ident_no'] === '') {
+                continue;
+            }
+
+            $kunci = mb_strtoupper($baris['tech_ident_no']);
+            $hitungTech[$kunci] = ($hitungTech[$kunci] ?? 0) + 1;
+        }
+
+        // Tahap 2: kelompokkan tiap baris ke bucket.
+        $results = $this->kelompokkanBaris($semuaBaris, $hitungTech, $results);
+
+        $results['funcloc_preview'] = $this->previewFuncLocs(array_merge(
+            array_column($results['clean'], 'functional_loc'),
+            array_column($results['duplicate'], 'functional_loc'),
+        ));
+
+        return $results;
+    }
+
+    /**
+     * Kumpulkan seluruh baris data dari semua sheet tanpa mencocokkan apa pun.
+     *
+     * Baris sisa blok judul/keterangan pada file hasil export dilewati dengan
+     * syarat Tech Ident No, Functional Loc., dan Description sama-sama kosong.
+     *
+     * @param  array<int, array{name: string, rows: array}>  $sheets
+     * @param  array  $results  Diisi jumlah baris yang dibaca (by reference)
+     * @return array<int, array{row: int, tech_ident_no: string, functional_loc: string, data: array}>
+     */
+    private function kumpulkanBaris(array $sheets, array &$results): array
+    {
+        $semuaBaris = [];
+
         foreach ($sheets as $sheet) {
             $rows = $sheet['rows'];
+
             if (count($rows) < 2) {
                 continue;
             }
@@ -76,103 +131,118 @@ class ImportService
             $results['total_rows'] += count($rows) - $headerIndex - 1;
 
             foreach (array_slice($rows, $headerIndex + 1) as $index => $row) {
-                $equipNo = $this->colVal($row, $colMap, 'equipment');
-                $techNo  = $this->colVal($row, $colMap, 'tech_ident_no');
-                $funcLoc = $this->colVal($row, $colMap, 'functional_loc');
+                $techNo    = trim((string) $this->colVal($row, $colMap, 'tech_ident_no'));
+                $funcLoc   = trim((string) $this->colVal($row, $colMap, 'functional_loc'));
+                $deskripsi = trim((string) $this->colVal($row, $colMap, 'description'));
 
                 // Baris sisa blok keterangan / baris kosong dilewati.
-                if ($equipNo === '' && $techNo === '' && $funcLoc === '') {
+                if ($techNo === '' && $funcLoc === '' && $deskripsi === '') {
                     continue;
                 }
 
-                // Tanpa Equipment No DAN Tech Ident No: tidak bisa dicocokkan
-                // maupun dibuat, masuk bucket tanpa nomor equipment.
-                if ($equipNo === '' && $techNo === '') {
-                    $results['no_equip'][] = [
-                        'row'            => $index + $headerIndex + 2,
-                        'description'    => $this->colVal($row, $colMap, 'description'),
-                        'functional_loc' => $funcLoc,
-                    ];
-                    continue;
-                }
-
-                // funcloc_id wajib diisi (kolom assets.funcloc_id NOT NULL),
-                // jadi baris dengan Functional Loc. kosong tidak bisa langsung
-                // diimport. Baris ini harus ditambahkan manual lewat form
-                // Create Asset setelah file diimport, atau file Excel-nya
-                // dilengkapi dulu lalu diimport ulang.
-                if (empty($funcLoc)) {
-                    $results['bad_funcloc'][] = [
-                        'row'          => $index + $headerIndex + 2,
-                        'equipment_no' => $equipNo !== '' ? $equipNo : $techNo,
-                        'description'  => $this->colVal($row, $colMap, 'description'),
-                    ];
-                    continue;
-                }
-
-                $location = $this->parseFunctionalLoc($funcLoc);
-
-                $rowData = [
-                    'equipment_no'   => $equipNo,
-                    'description'    => $this->colVal($row, $colMap, 'description'),
-                    'tech_ident_no'  => $this->colVal($row, $colMap, 'tech_ident_no'),
-                    'object_type'    => $this->colVal($row, $colMap, 'object_type'),
-                    'equipment_type' => $this->colVal($row, $colMap, 'equipment_type'),
+                $semuaBaris[] = [
+                    'row'            => $index + $headerIndex + 2,
+                    'tech_ident_no'  => $techNo,
                     'functional_loc' => $funcLoc,
-                    'location'       => $location,
-                    'manufacturer'   => $this->colVal($row, $colMap, 'manufacturer'),
-                    'model_number'   => $this->colVal($row, $colMap, 'model_number'),
-                    'construct_year' => $this->colVal($row, $colMap, 'construct_year'),
-                    // Kolom tambahan file export aplikasi sendiri.
-                    'status'         => $this->colVal($row, $colMap, 'status'),
-                    'kode_lokasi'    => [
-                        'company_code' => $this->colVal($row, $colMap, 'company_col'),
-                        'dept_code'    => $this->colVal($row, $colMap, 'department_col'),
-                        'area_code'    => $this->colVal($row, $colMap, 'area_col'),
-                        'subarea_code' => $this->colVal($row, $colMap, 'sub_area_col'),
+                    'data'           => [
+                        'row'            => $index + $headerIndex + 2,
+                        'equipment_no'   => '',
+                        'description'    => $deskripsi,
+                        'tech_ident_no'  => $techNo,
+                        'object_type'    => $this->colVal($row, $colMap, 'object_type'),
+                        'equipment_type' => $this->colVal($row, $colMap, 'equipment_type'),
+                        'functional_loc' => $funcLoc,
+                        'location'       => $this->parseFunctionalLoc($funcLoc),
+                        'manufacturer'   => $this->colVal($row, $colMap, 'manufacturer'),
+                        'model_number'   => $this->colVal($row, $colMap, 'model_number'),
+                        'construct_year' => $this->colVal($row, $colMap, 'construct_year'),
+                        // Kolom tambahan file export aplikasi sendiri.
+                        'status'         => $this->colVal($row, $colMap, 'status'),
+                        'kode_lokasi'    => [
+                            'company_code' => $this->colVal($row, $colMap, 'company_col'),
+                            'dept_code'    => $this->colVal($row, $colMap, 'department_col'),
+                            'area_code'    => $this->colVal($row, $colMap, 'area_col'),
+                            'subarea_code' => $this->colVal($row, $colMap, 'sub_area_col'),
+                        ],
                     ],
                 ];
-
-                if ($equipNo !== '') {
-                    $existing = Asset::where('equipment_no', $equipNo)->first();
-
-                    if ($existing !== null) {
-                        $rowData['asset_id']    = $existing->id;
-                        $results['duplicate'][] = $rowData;
-                    } else {
-                        $results['clean'][] = $rowData;
-                    }
-
-                    continue;
-                }
-
-                // Tanpa Equipment No: dicocokkan lewat Tech Ident No (dengan
-                // Functional Loc sebagai penentu bila TechIdentNo dipakai
-                // beberapa aset). Nomor equipment baris baru dibuat otomatis.
-                $kandidat = $this->cariAsetDariTechIdent($techNo, $funcLoc);
-
-                if ($kandidat->count() === 1) {
-                    $rowData['asset_id']    = $kandidat->first()->id;
-                    $results['duplicate'][] = $rowData;
-
-                    continue;
-                }
-
-                if ($kandidat->count() > 1) {
-                    $rowData['kandidat_ids'] = $kandidat->pluck('id')->all();
-                    $results['ambigu'][]     = $rowData;
-
-                    continue;
-                }
-
-                $results['clean'][] = $rowData;
             }
         }
 
-        $results['funcloc_preview'] = $this->previewFuncLocs(array_merge(
-            array_column($results['clean'], 'functional_loc'),
-            array_column($results['duplicate'], 'functional_loc'),
-        ));
+        return $semuaBaris;
+    }
+
+    /**
+     * Kelompokkan baris hasil kumpulkanBaris() ke bucket clean/duplicate/
+     * no_equip/bad_funcloc/ambigu.
+     *
+     * @param  array<int, array>  $semuaBaris
+     * @param  array<string, int>  $hitungTech  Jumlah kemunculan Tech Ident No di file
+     * @param  array  $results  Bucket kosong yang disiapkan analyzeFile()
+     * @return array  Bucket yang sudah terisi
+     */
+    private function kelompokkanBaris(array $semuaBaris, array $hitungTech, array $results): array
+    {
+        foreach ($semuaBaris as $baris) {
+            $rowData = $baris['data'];
+            $techNo  = $baris['tech_ident_no'];
+
+            // funcloc_id wajib diisi (kolom assets.funcloc_id NOT NULL), jadi
+            // baris tanpa Functional Loc. tidak bisa diimport sama sekali.
+            if ($baris['functional_loc'] === '') {
+                $results['bad_funcloc'][] = [
+                    'row'           => $baris['row'],
+                    'tech_ident_no' => $techNo,
+                    'description'   => $rowData['description'],
+                ];
+
+                continue;
+            }
+
+            // Tanpa Tech Ident No: tidak ada identitas yang bisa dicocokkan.
+            if ($techNo === '') {
+                $results['no_equip'][] = [
+                    'row'            => $baris['row'],
+                    'description'    => $rowData['description'],
+                    'functional_loc' => $baris['functional_loc'],
+                    'equipment_type' => $rowData['equipment_type'],
+                ];
+
+                continue;
+            }
+
+            // Tech Ident No mustahil unik kalau muncul lebih dari sekali di file.
+            if (($hitungTech[mb_strtoupper($techNo)] ?? 0) > 1) {
+                $rowData['alasan']   = 'Tech Ident No "' . $techNo . '" muncul lebih dari sekali di file ini.';
+                $results['ambigu'][] = $rowData;
+
+                continue;
+            }
+
+            $kandidat = Asset::whereRaw('UPPER(TRIM(tech_ident_no)) = ?', [mb_strtoupper($techNo)])->get();
+
+            if ($kandidat->count() > 1) {
+                $rowData['kandidat_ids'] = $kandidat->pluck('id')->all();
+                $rowData['alasan']       = 'Tech Ident No "' . $techNo . '" dipakai oleh ' . $kandidat->count() . ' aset di database.';
+                $results['ambigu'][]     = $rowData;
+
+                continue;
+            }
+
+            if ($kandidat->count() === 1) {
+                $existing = $kandidat->first();
+
+                $rowData['asset_id']          = $existing->id;
+                $rowData['equipment_no_lama'] = $existing->equipment_no;
+                $rowData['perubahan']         = $this->bandingkanPerubahan($existing, $rowData);
+
+                $results['duplicate'][] = $rowData;
+
+                continue;
+            }
+
+            $results['clean'][] = $rowData;
+        }
 
         return $results;
     }
@@ -225,6 +295,8 @@ class ImportService
         $successCount = 0;
         $errorCount = 0;
         $itSyncSkipped = 0;
+        $insertedCount = 0;
+        $updatedCount  = 0;
         $importLogData = [
             'filename' => $choices['filename'] ?? 'unknown.xlsx',
             'imported_by' => auth()->id(),
@@ -237,7 +309,7 @@ class ImportService
             'detail_json' => $analysis,
         ];
 
-        DB::transaction(function () use ($analysis, $duplicateAction, $noEquipAction, &$successCount, &$errorCount, &$itSyncSkipped, $importLogData) {
+        DB::transaction(function () use ($analysis, $duplicateAction, $noEquipAction, &$successCount, &$errorCount, &$itSyncSkipped, &$insertedCount, &$updatedCount, $importLogData) {
             // Proses baris bersih
             foreach ($analysis['clean'] as $row) {
                 $funcLocNode = $this->syncFuncLocFromRow($row['functional_loc']);
@@ -249,13 +321,9 @@ class ImportService
 
                 $location = $this->findOrCreateLocation($row['location']);
 
-                // Nomor equipment: dipakai dari file bila ada (format SAP), atau
-                // dibuat otomatis mengikuti seri milik PT bersangkutan.
-                $equipmentNo = $row['equipment_no'] ?? '';
-
-                if ($equipmentNo === '') {
-                    $equipmentNo = $this->assetNumbers->generateForCompanyId($location['company_id'] ?? null);
-                }
+                // Nomor equipment SELALU dibuat sistem (tidak diambil dari file):
+                // nomor adalah id internal, bukan data yang diinput user.
+                $equipmentNo = $this->assetNumbers->generateForCompanyId($location['company_id'] ?? null);
 
                 Asset::create(array_merge(
                     $this->mapToAsset($row),
@@ -270,6 +338,7 @@ class ImportService
                     ]
                 ));
                 $successCount++;
+                $insertedCount++;
             }
 
             // Proses duplikat
@@ -322,6 +391,11 @@ class ImportService
                             ['funcloc_id' => $funcLocNode->id, 'imported_at' => now()]
                         );
 
+                        // Nomor equipment adalah id internal yang dibuat sistem:
+                        // tidak pernah diubah oleh file import (kolom Equipment
+                        // No di file pun tidak dibaca).
+                        unset($updateData['equipment_no']);
+
                         // Sheet tanpa kolom "Equipment Type" (mis. Sheet1 (1))
                         // menghasilkan equipment_type kosong. Jangan biarkan nilai
                         // kosong itu menimpa tipe yang sudah diisi dari sheet lain
@@ -340,20 +414,24 @@ class ImportService
 
                         $existing->update($updateData);
                         $successCount++;
+                        $updatedCount++;
                     } elseif ($duplicateAction === 'keep_flag') {
                         $existing->update(['status' => 'needs_review']);
                         $successCount++;
+                        $updatedCount++;
                     }
                 }
             }
 
-            // Proses baris tanpa Equipment No.
+            // Proses baris tanpa Tech Ident No. (tidak ada identitas yang bisa
+            // dicocokkan). Nomor equipment tetap dibuat sistem, status ditandai
+            // perlu review supaya admin melengkapi Tech Ident No-nya.
             if ($noEquipAction === 'flag') {
                 foreach ($analysis['no_equip'] as $row) {
                     $funcLocString = $row['functional_loc'] ?? '';
                     $funcLocNode = $funcLocString !== '' ? $this->syncFuncLocFromRow($funcLocString) : null;
 
-                    // Baris tanpa Equipment No. sekaligus tanpa Functional Loc.
+                    // Baris tanpa Tech Ident No. sekaligus tanpa Functional Loc.
                     // tidak bisa dibuat karena funcloc_id wajib diisi
                     if (!$funcLocNode) {
                         $errorCount++;
@@ -361,23 +439,26 @@ class ImportService
                     }
 
                     $location = $this->findOrCreateLocation($this->parseFunctionalLoc($funcLocString));
+                    $tipe     = trim((string) ($row['equipment_type'] ?? ''));
 
                     Asset::create(array_merge(
                         [
-                            'equipment_no' => null,
+                            'equipment_no' => $this->assetNumbers->generateForCompanyId($location['company_id'] ?? null),
                             'description' => $row['description'] ?? '',
                             'functional_loc' => $funcLocString,
+                            'equipment_type' => $tipe !== '' ? $tipe : null,
                         ],
                         $location,
                         [
                             'funcloc_id' => $funcLocNode->id,
                             'status' => 'needs_review',
-                            'has_equipment_no' => false,
+                            'has_equipment_no' => true,
                             'data_source' => 'import_excel',
                             'imported_at' => now(),
                         ]
                     ));
                     $successCount++;
+                    $insertedCount++;
                 }
             }
 
@@ -385,10 +466,10 @@ class ImportService
             // bisa dicocokkan dengan aman -> dilewati dan dilaporkan.
             $errorCount += count($analysis['ambigu'] ?? []);
 
-            // Baris di bucket bad_funcloc (Equipment No. ada, Functional Loc.
-            // kosong) sengaja tidak pernah dibuat menjadi Asset lewat jalur
-            // import. Dihitung sebagai error agar tercatat di log, admin
-            // menambahkannya manual lewat form Create Asset setelahnya.
+            // Baris di bucket bad_funcloc (Functional Loc. kosong) sengaja tidak
+            // pernah dibuat menjadi Asset lewat jalur import. Dihitung sebagai
+            // error agar tercatat di log, admin menambahkannya manual lewat form
+            // Create Asset setelahnya.
             $errorCount += count($analysis['bad_funcloc']);
 
             // Simpan log import
@@ -397,9 +478,9 @@ class ImportService
             AssetImportLog::create($importLogData);
         });
 
-        $message = "Import berhasil. {$successCount} asset diproses.";
+        $message = "Import berhasil. {$successCount} baris diproses ({$insertedCount} data baru, {$updatedCount} diperbarui).";
         if ($errorCount > 0) {
-            $message .= " {$errorCount} baris dilewati (Functional Location tidak valid, atau Tech Ident No dipakai lebih dari satu aset).";
+            $message .= " {$errorCount} baris dilewati (Functional Location kosong, tanpa Tech Ident No, atau Tech Ident No tidak unik).";
         }
         if ($itSyncSkipped > 0) {
             $message .= " {$itSyncSkipped} baris perangkat IT dilewati (data IT dikelola modul IT Assets).";
@@ -409,6 +490,8 @@ class ImportService
             'status' => 'success',
             'message' => $message,
             'success_count' => $successCount,
+            'inserted_count' => $insertedCount,
+            'updated_count' => $updatedCount,
             'error_count' => $errorCount,
             'it_sync_skipped' => $itSyncSkipped,
         ];
@@ -450,26 +533,57 @@ class ImportService
     }
 
     /**
-     * Cari aset lama berdasarkan TechIdentNo, memakai Functional Loc sebagai
-     * penentu ketika satu TechIdentNo dipakai oleh beberapa aset.
+     * Bandingkan isi file dengan aset lama hasil pencocokan Tech Ident No,
+     * untuk ditampilkan di halaman preview sebagai daftar "data yang akan
+     * diperbarui" (field apa berubah, dari nilai apa ke nilai apa).
      *
-     * @param  string  $techIdent
-     * @param  string  $funcLoc
-     * @return \Illuminate\Support\Collection<int, Asset>
+     * Aturan update di executeImport() diikuti di sini supaya daftar perubahan
+     * tidak menjanjikan sesuatu yang tidak akan ditulis: Equipment Type kosong
+     * dari file tidak menimpa nilai lama, dan Status yang tidak dikenal tidak
+     * dipakai.
+     *
+     * @param  Asset  $existing  Aset lama yang cocok Tech Ident No-nya
+     * @param  array  $row       Baris file yang sudah dinormalisasi
+     * @return array<int, array{field: string, lama: string, baru: string}>
      */
-    private function cariAsetDariTechIdent(string $techIdent, string $funcLoc)
+    private function bandingkanPerubahan(Asset $existing, array $row): array
     {
-        $kandidat = Asset::whereRaw('UPPER(TRIM(tech_ident_no)) = ?', [mb_strtoupper(trim($techIdent))])->get();
+        $perubahan = [];
 
-        if ($kandidat->count() <= 1) {
-            return $kandidat;
+        $kolom = [
+            'description'    => 'Description',
+            'tech_ident_no'  => 'Tech Ident No',
+            'equipment_type' => 'Equipment Type',
+            'functional_loc' => 'Functional Loc',
+            'manufacturer'   => 'Manufacturer',
+            'model_number'   => 'Model Number',
+            'construct_year' => 'Construct Year',
+        ];
+
+        foreach ($kolom as $nama => $label) {
+            $baru = trim((string) ($row[$nama] ?? ''));
+            $lama = trim((string) ($existing->{$nama} ?? ''));
+
+            if ($nama === 'equipment_type' && $baru === '') {
+                continue;
+            }
+
+            if ($baru !== $lama) {
+                $perubahan[] = ['field' => $label, 'lama' => $lama, 'baru' => $baru];
+            }
         }
 
-        $sempit = $kandidat->filter(
-            fn (Asset $asset) => strcasecmp(trim((string) $asset->functional_loc), trim($funcLoc)) === 0
-        );
+        $statusBaru = $this->statusValid($row['status'] ?? null);
 
-        return $sempit->isNotEmpty() ? $sempit->values() : $kandidat;
+        if ($statusBaru !== null && $statusBaru !== $existing->status) {
+            $perubahan[] = [
+                'field' => 'Status',
+                'lama'  => (string) $existing->status,
+                'baru'  => $statusBaru,
+            ];
+        }
+
+        return $perubahan;
     }
 
     private function buildColMap(array $headers): array
@@ -529,7 +643,16 @@ class ImportService
             return '';
         }
 
-        return trim((string) ($row[$colMap[$key]] ?? ''));
+        $nilai = $row[$colMap[$key]] ?? '';
+
+        // Sel angka dari file Excel terbaca sebagai float. Format ulang tanpa
+        // notasi ilmiah (mis. 61600000 tetap "61600000", bukan "6.16E+7")
+        // supaya nilai seperti Tech Ident No tidak berubah bentuk.
+        if (is_float($nilai)) {
+            $nilai = $nilai === floor($nilai) ? sprintf('%.0F', $nilai) : (string) $nilai;
+        }
+
+        return trim((string) $nilai);
     }
 
     /**
@@ -545,6 +668,14 @@ class ImportService
 
         $reader = IOFactory::createReaderForFile($file->getPathname());
         $reader->setReadDataOnly(true);
+
+        // Semua nilai dibaca apa adanya sebagai TEKS. Tanpa ini, nilai seperti
+        // "6153E1" (Tech Ident No) dianggap angka oleh pembaca spreadsheet
+        // (is_numeric('6153E1') bernilai true) sehingga berubah menjadi 61530
+        // dan baris tersebut gagal dicocokkan dengan aset yang sudah ada.
+        if (method_exists($reader, 'setValueBinder')) {
+            $reader->setValueBinder(new StringValueBinder());
+        }
 
         $sheetNames = $reader->listWorksheetNames($file->getPathname());
         $sheets     = [];

@@ -316,21 +316,37 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
 - **Import**: `GET /assets/import` → analisa file → pilih aksi → eksekusi (`ImportService`).
   Baris header **dicari otomatis** pada 20 baris pertama, sehingga file berblok judul (hasil export)
   tetap terbaca; kolom yang dikenali mencakup nama SAP **dan** nama kolom export.
-- **Pencocokan baris lama**: lewat `equipment_no` bila file menyertakannya (format SAP), atau lewat
-  **Tech Ident No** bila tidak (format export), dengan Functional Loc sebagai penentu ketika satu
-  Tech Ident No dipakai beberapa aset. Bila tetap ambigu -> baris dilewati dan dilaporkan.
-- **Nomor equipment otomatis** (`App\Services\AssetNumberService`): baris baru tanpa Equipment No — baik
-  dari **import** maupun dari **form Tambah Asset manual** — dibuatkan nomor 8 digit mengikuti seri milik
-  PT bersangkutan (angka pertama nomor yang sudah ada; cadangan di `config('assets.equipment_no.awalan_pt')`,
+- **KUNCI Pencocokan = Tech Ident No** (keputusan bisnis: satu aset = satu Tech Ident No, tidak boleh dobel).
+  Equipment No **tidak dibaca sama sekali** dari file: nomor adalah id internal yang dibuat sistem.
+  Bucket hasil analisa: `clean` = **data baru**, `duplicate` = **akan diperbarui** (plus key `perubahan`
+  berisi daftar field yang berubah: field, lama, baru), `no_equip` = baris tanpa Tech Ident No,
+  `bad_funcloc` = tanpa Functional Loc. (funcloc_id wajib), `ambigu` = Tech Ident No dobel di file
+  atau dipakai >1 aset di database (dilewati + alasan ditampilkan). Total semua bucket selalu sama
+  dengan jumlah baris yang dibaca.
+- **Halaman preview menampilkan daftar, bukan hanya jumlah**: kartu ringkasan (Data Baru / Akan Diperbarui /
+  Tanpa Tech Ident No / Tanpa Functional Loc. / Perlu Diperiksa / Total Baris), daftar **Data Baru**
+  (Baris, Tech Ident No, Equipment Type, Functional Loc, Description) dan daftar **Data yang Akan
+  Diperbarui** (Tech Ident No, nomor equipment lama, serta tiap perubahan `lama → baru`). Hasil eksekusi
+  tidak mengosongkan daftar itu supaya tetap bisa diperiksa.
+- **Nomor equipment otomatis** (`App\Services\AssetNumberService`): SEMUA baris baru — baik dari import
+  maupun form Tambah Asset manual — dibuatkan nomor 8 digit mengikuti seri milik PT bersangkutan
+  (angka pertama nomor yang sudah ada; cadangan di `config('assets.equipment_no.awalan_pt')`,
   contoh nyata EPE=1, CES=6, NPA=7) dan dilanjutkan dari nomor terbesar pada seri itu (nomor yang sudah
-  dipakai otomatis dilewati). Dipakai bersama supaya aturan import dan manual tidak berbeda.
-- **Tambah Asset manual** (`GET /assets/create`): kolom Equipment No **opsional** (label "(opsional)",
-  placeholder "Kosongkan = otomatis"). Begitu lokasi dipilih, form menampilkan nomor berikutnya lewat
-  `GET /assets/locations/next-equipment-no?funcloc_id=` (hanya pratinjau, nomor asli ditetapkan server saat
-  Simpan dan ditampilkan di pesan sukses). Nomor tetap boleh diisi manual dan dipakai apa adanya.
+  dipakai otomatis dilewati). Nomor aset lama **tidak pernah** diubah oleh import maupun form edit.
+- **Tambah/Edit Asset**: Equipment No hanya ditampilkan sebagai informasi (tidak ada input-nya), karena
+  nomor dibuat sistem. Nilai `equipment_no` yang tetap dikirim ke request diabaikan controller.
+  Pada form Tambah, begitu lokasi dipilih, nomor yang akan dipakai ditampilkan lewat
+  `GET /assets/locations/next-equipment-no?funcloc_id=` (PT diambil dari relasi node, atau dari awalan
+  kode FuncLoc bila node belum punya `company_id`).
+- **Penjaga nilai mirip notasi ilmiah**: Tech Ident No seperti `6153E1` dianggap angka oleh Excel
+  (`is_numeric('6153E1')` = true). Karena itu pembaca import memakai `StringValueBinder` + normalisasi
+  float (tanpa notasi ilmiah), dan penulis Excel export memakai `setCellValueExplicit(..., TYPE_STRING)`
+  untuk semua kolom data, supaya nilai seperti itu tidak berubah menjadi `61530` saat export/import.
 - **Kolom yang ikut diperbarui**: Description, Tech Ident No, Equipment Type, Functional Loc (+ `funcloc_id`),
   Company/Department/Area/Sub Area (diresolusi dari kode kolom; kode tak dikenal = baris dilewati),
   Manufacturer, Model Number, Construct Year, dan Status (nilai kosong/tak dikenal tidak menimpa).
+- Baris cermin perangkat IT (`data_source = it_sync`) **dilewati** saat import (dikelola modul IT Assets
+  lewat `php artisan it:sync-assets`) dan dilaporkan jumlahnya pada pesan hasil import.
 - Baris cermin perangkat IT (`data_source = it_sync`) **dilewati** saat import (dikelola modul IT Assets
   lewat `php artisan it:sync-assets`) dan dilaporkan jumlahnya pada pesan hasil import.
 

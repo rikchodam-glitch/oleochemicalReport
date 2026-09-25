@@ -252,7 +252,7 @@ test('status kosong pada file tidak menimpa status yang sudah ada', function () 
     expect($this->asset->fresh()->status)->toBe('spare');
 });
 
-test('aset baru tetap dibuat dari file dengan header export', function () {
+test('aset baru dari file dibuatkan nomor otomatis, nomor di file diabaikan', function () {
     $barisBaru = ($this->barisAset)();
 
     $barisBaru[0]  = '90000099';
@@ -269,8 +269,93 @@ test('aset baru tetap dibuat dari file dengan header export', function () {
         'filename'         => 'assets-export-uji.csv',
     ]);
 
+    $baru = Asset::where('tech_ident_no', 'AC-AR01-9-9')->first();
+
     expect($hasil['success_count'])->toBe(1)
-        ->and(Asset::where('equipment_no', '90000099')->exists())->toBeTrue();
+        ->and($hasil['inserted_count'])->toBe(1)
+        ->and($hasil['updated_count'])->toBe(0)
+        ->and($baru)->not->toBeNull()
+        // Nomor dari file TIDAK dipakai: nomor dibuat sistem meneruskan seri
+        // nomor yang sudah ada (aset uji memakai 90000001 dan 90000002).
+        ->and($baru->equipment_no)->toBe('90000003')
+        ->and(Asset::where('equipment_no', '90000099')->doesntExist())->toBeTrue();
+});
+
+test('nomor equipment aset lama tidak pernah diubah oleh import', function () {
+    $baris = ($this->barisAset)();
+
+    // Nomor di file sengaja berbeda dan belum dipakai aset mana pun: dengan
+    // pencocokan Tech Ident No, baris ini tetap memperbarui aset lama dan
+    // nomornya tidak boleh ikut berubah.
+    $baris[0] = '99999999';
+    $baris[1] = 'AC Ruang Panel Uji (nomor file diabaikan)';
+
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([$baris])));
+
+    expect($analysis['duplicate'])->toHaveCount(1)
+        ->and($analysis['clean'])->toHaveCount(0)
+        ->and($analysis['duplicate'][0]['asset_id'])->toBe($this->asset->id)
+        ->and($analysis['duplicate'][0]['equipment_no_lama'])->toBe('90000001');
+
+    $hasil = $this->import->executeImport($analysis, [
+        'duplicate_action' => 'replace',
+        'no_equip_action'  => 'skip',
+        'filename'         => 'assets-export-uji.csv',
+    ]);
+
+    $asset = $this->asset->fresh();
+
+    expect($hasil['updated_count'])->toBe(1)
+        ->and($asset->equipment_no)->toBe('90000001')
+        ->and($asset->description)->toBe('AC Ruang Panel Uji (nomor file diabaikan)');
+});
+
+test('daftar perubahan disiapkan untuk baris yang akan diperbarui', function () {
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([
+        ($this->barisAset)([1 => 'Nama Baru', 3 => 'ACU']),
+    ])));
+
+    $baris = $analysis['duplicate'][0];
+
+    expect(collect($baris['perubahan'])->pluck('field')->all())->toBe(['Description', 'Equipment Type'])
+        ->and($baris['perubahan'][0])->toBe([
+            'field' => 'Description',
+            'lama'  => 'AC Ruang Panel Uji',
+            'baru'  => 'Nama Baru',
+        ])
+        ->and($baris['perubahan'][1]['lama'])->toBe('AC')
+        ->and($baris['perubahan'][1]['baru'])->toBe('ACU');
+
+    // Baris tanpa perubahan tidak menampilkan daftar kosong yang menyesatkan.
+    $tanpaUbah = $this->import->analyzeFile(fileImportAset(csvExportAset([($this->barisAset)()])));
+
+    expect($tanpaUbah['duplicate'][0]['perubahan'])->toBe([]);
+});
+
+test('Tech Ident No yang dobel di dalam satu file masuk bucket ambigu', function () {
+    $barisA = ($this->barisAset)();
+    $barisB = ($this->barisAset)();
+
+    $barisA[0] = '90000011';
+    $barisB[0] = '90000012';
+    $barisB[1] = 'Duplikat Tech Ident No';
+
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([$barisA, $barisB])));
+
+    expect($analysis['ambigu'])->toHaveCount(2)
+        ->and($analysis['duplicate'])->toHaveCount(0)
+        ->and($analysis['clean'])->toHaveCount(0)
+        ->and($analysis['ambigu'][0]['alasan'])->toContain('lebih dari sekali di file');
+
+    $hasil = $this->import->executeImport($analysis, [
+        'duplicate_action' => 'replace',
+        'no_equip_action'  => 'skip',
+        'filename'         => 'assets-export-uji.csv',
+    ]);
+
+    expect($hasil['success_count'])->toBe(0)
+        ->and($hasil['error_count'])->toBe(2)
+        ->and($this->asset->fresh()->description)->toBe('AC Ruang Panel Uji');
 });
 
 
@@ -568,5 +653,74 @@ test('TechIdentNo yang dipakai lebih dari satu aset masuk bucket ambigu dan dile
     expect($hasil['success_count'])->toBe(0)
         ->and($hasil['error_count'])->toBe(1)
         ->and($this->asset->fresh()->description)->toBe('AC Ruang Panel Uji');
+});
+
+
+test('Tech Ident No mirip notasi ilmiah tidak berubah jadi angka saat dibaca', function () {
+    // is_numeric('6153E1') bernilai TRUE, sehingga tanpa penjaga khusus nilai
+    // ini terbaca 61530 oleh pembaca spreadsheet dan barisnya salah dianggap
+    // data baru (aset duplikat).
+    $aset = Asset::create([
+        'equipment_no'   => '90000077',
+        'description'    => 'Oils Pre Neutralization Heater',
+        'tech_ident_no'  => '6153E1',
+        'equipment_type' => 'HEATER',
+        'functional_loc' => $this->funcloc->code,
+        'funcloc_id'     => $this->funcloc->id,
+        'company_id'     => $this->company->id,
+        'department_id'  => $this->dept->id,
+        'area_id'        => $this->area->id,
+        'sub_area_id'    => $this->subArea->id,
+        'status'         => 'active',
+        'data_source'    => 'import_excel',
+    ]);
+
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([[
+        '90000077', 'Oils Pre Neutralization Heater', '6153E1', 'HEATER',
+        $this->funcloc->code, $this->company->code, $this->dept->code,
+        $this->area->code, $this->subArea->code, '', '', '', 'active', 'import_excel',
+        '', '', '',
+    ]])));
+
+    expect($analysis['duplicate'])->toHaveCount(1)
+        ->and($analysis['clean'])->toHaveCount(0)
+        ->and($analysis['duplicate'][0]['tech_ident_no'])->toBe('6153E1')
+        ->and($analysis['duplicate'][0]['asset_id'])->toBe($aset->id);
+});
+
+test('export excel menulis nilai seperti 6153E1 sebagai teks, bukan angka', function () {
+    Asset::create([
+        'equipment_no'   => '90000078',
+        'description'    => 'Methanol Heater',
+        'tech_ident_no'  => '6153E1',
+        'equipment_type' => 'HEATER',
+        'functional_loc' => $this->funcloc->code,
+        'funcloc_id'     => $this->funcloc->id,
+        'company_id'     => $this->company->id,
+        'department_id'  => $this->dept->id,
+        'area_id'        => $this->area->id,
+        'sub_area_id'    => $this->subArea->id,
+        'status'         => 'active',
+        'data_source'    => 'import_excel',
+    ]);
+
+    $isi = $this->actingAs($this->admin)
+        ->get('/assets/export/excel?search=Methanol Heater')
+        ->assertStatus(200)
+        ->streamedContent();
+
+    $path = tempnam(sys_get_temp_dir(), 'astexp') . '.xlsx';
+    file_put_contents($path, $isi);
+
+    $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+    $sheet       = $spreadsheet->getActiveSheet();
+
+    // Data mulai baris 8 (baris 7 = header tabel). Tipe sel harus string,
+    // bukan angka, supaya nilai ini tidak berubah saat diimport ulang.
+    expect((string) $sheet->getCell('C8')->getValue())->toBe('6153E1')
+        ->and($sheet->getCell('C8')->getDataType())->toBe('s');
+
+    $spreadsheet->disconnectWorksheets();
+    unlink($path);
 });
 

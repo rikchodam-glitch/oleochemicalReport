@@ -15,23 +15,23 @@
         <div class="bg-white rounded-xl border border-slate-200 p-6">
             <h3 class="font-medium text-slate-900 mb-4">Upload File Excel</h3>
             <p class="text-sm text-slate-500 mb-4">
-                Upload file ZPM export dari SAP. Format .xlsx, .xls, atau .csv (maks 10MB).
-                <br>Kolom yang diproses: Equipment, Description, TechIdentNo., Object Type, Functional Loc. — <a href="{{ route('assets.import.template') }}" class="text-teal-600 hover:underline font-medium">Download Template Excel</a>
+                Format .xlsx, .xls, atau .csv (maks 10MB).
+                <br>Kolom yang diproses: TechIdentNo., Description, Object Type, Equipment Type, Functional Loc.,
+                Manufacturer, Model number, ConstructYear — <a href="{{ route('assets.import.template') }}" class="text-teal-600 hover:underline font-medium">Download Template Excel</a>
             </p>
 
             <div class="mb-4 rounded-lg border border-teal-100 bg-teal-50 p-3">
                 <p class="text-xs text-teal-800 leading-relaxed">
-                    <span class="font-semibold">Memperbarui data yang sudah ada:</span>
-                    file hasil <span class="font-semibold">Export</span> bisa langsung disesuaikan lalu diimport ulang.
-                    Setelah dianalisa, baris tersebut muncul sebagai <span class="font-semibold">duplikat</span> —
-                    pilih aksi <span class="font-semibold">"Replace — Ganti dengan data baru"</span> agar data lama diperbarui.
+                    <span class="font-semibold">Pencocokan memakai Tech Ident No.</span>
+                    Tech Ident No adalah identitas unik satu aset (satu aset = satu Tech Ident No).
+                    Baris yang Tech Ident No-nya sudah ada akan <span class="font-semibold">diperbarui</span>,
+                    yang belum ada akan <span class="font-semibold">ditambahkan sebagai data baru</span>.
                     <br>
-                    <span class="font-semibold">Equipment No tidak perlu diisi.</span>
-                    Pencocokan data lama memakai <span class="font-semibold">Tech Ident No</span>
-                    (ditambah Functional Loc bila Tech Ident No dipakai beberapa aset), sedangkan nomor equipment
-                    untuk baris baru dibuat <span class="font-semibold">otomatis mengikuti seri per PT</span>.
-                    Kolom Description, Tech Ident No, Equipment Type, Functional Loc, Company/Department/Area/Sub Area,
-                    Manufacturer, Model Number, Construct Year, dan Status ikut diperbarui.
+                    <span class="font-semibold">Equipment No tidak perlu diisi</span> dan tidak dipakai untuk
+                    pencocokan: nomor itu id internal yang dibuat sistem mengikuti seri milik PT dari lokasi,
+                    sehingga nomor aset lama tidak pernah berubah. Kolom Description, Tech Ident No,
+                    Equipment Type, Functional Loc, Company/Department/Area/Sub Area, Manufacturer, Model Number,
+                    Construct Year, dan Status ikut diperbarui.
                 </p>
             </div>
 
@@ -75,28 +75,142 @@
         <template x-if="analysis">
             <div class="space-y-6">
                 <!-- Summary -->
-                <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
                         <p class="text-2xl font-bold text-green-600" x-text="analysis.clean.length"></p>
-                        <p class="text-xs text-slate-500 mt-1">Baru & Siap Import</p>
+                        <p class="text-xs text-slate-500 mt-1">Data Baru</p>
                     </div>
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
                         <p class="text-2xl font-bold text-amber-600" x-text="analysis.duplicate.length"></p>
-                        <p class="text-xs text-slate-500 mt-1">Duplikat</p>
+                        <p class="text-xs text-slate-500 mt-1">Akan Diperbarui</p>
                     </div>
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
                         <p class="text-2xl font-bold text-red-600" x-text="analysis.no_equip.length"></p>
-                        <p class="text-xs text-slate-500 mt-1">Tanpa Equipment No</p>
+                        <p class="text-xs text-slate-500 mt-1">Tanpa Tech Ident No</p>
                     </div>
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
                         <p class="text-2xl font-bold text-orange-600" x-text="analysis.bad_funcloc.length"></p>
                         <p class="text-xs text-slate-500 mt-1">Tanpa Functional Loc.</p>
                     </div>
                     <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
+                        <p class="text-2xl font-bold text-rose-600" x-text="analysis.ambigu.length"></p>
+                        <p class="text-xs text-slate-500 mt-1">Perlu Diperiksa</p>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
                         <p class="text-2xl font-bold text-slate-600" x-text="analysis.total_rows"></p>
                         <p class="text-xs text-slate-500 mt-1">Total Baris</p>
                     </div>
                 </div>
+
+                <!-- Data Baru -->
+                <div class="bg-white rounded-xl border border-slate-200 p-6">
+                    <div class="flex items-center justify-between mb-1">
+                        <h3 class="font-medium text-slate-900">Data Baru</h3>
+                        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded"
+                              x-text="analysis.clean.length + ' baris'"></span>
+                    </div>
+                    <p class="text-sm text-slate-500 mb-4">
+                        Tech Ident No berikut belum ada di database, jadi akan ditambahkan sebagai aset baru
+                        dengan nomor equipment otomatis.
+                    </p>
+                    <div class="max-h-72 overflow-y-auto border border-slate-100 rounded-lg">
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-50 text-xs text-slate-500">
+                                <tr>
+                                    <th class="px-3 py-2 text-left font-medium">Baris</th>
+                                    <th class="px-3 py-2 text-left font-medium">Tech Ident No</th>
+                                    <th class="px-3 py-2 text-left font-medium">Equipment Type</th>
+                                    <th class="px-3 py-2 text-left font-medium">Functional Loc</th>
+                                    <th class="px-3 py-2 text-left font-medium">Description</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-50">
+                                <template x-for="row in analysis.clean" :key="row.row">
+                                    <tr>
+                                        <td class="px-3 py-2 text-xs text-slate-400" x-text="row.row"></td>
+                                        <td class="px-3 py-2 font-mono text-xs text-slate-700" x-text="row.tech_ident_no"></td>
+                                        <td class="px-3 py-2 text-xs text-slate-600" x-text="row.equipment_type"></td>
+                                        <td class="px-3 py-2 font-mono text-xs text-slate-600" x-text="row.functional_loc"></td>
+                                        <td class="px-3 py-2 text-slate-600" x-text="row.description"></td>
+                                    </tr>
+                                </template>
+                                <template x-if="analysis.clean.length === 0">
+                                    <tr>
+                                        <td colspan="5" class="px-3 py-6 text-center text-sm text-slate-400">
+                                            Tidak ada data baru pada file ini.
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+
+                <!-- Data yang Akan Diperbarui -->
+                <div class="bg-white rounded-xl border border-slate-200 p-6">
+                    <div class="flex items-center justify-between mb-1">
+                        <h3 class="font-medium text-slate-900">Data yang Akan Diperbarui</h3>
+                        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded"
+                              x-text="analysis.duplicate.length + ' baris'"></span>
+                    </div>
+                    <p class="text-sm text-slate-500 mb-4">
+                        Tech Ident No berikut sudah ada di database dan akan diperbarui. Nomor equipment lama
+                        tidak diubah; hanya field yang tercantum di bawah ini yang berubah.
+                    </p>
+                    <div class="max-h-96 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
+                        <template x-for="row in analysis.duplicate" :key="row.row">
+                            <div class="px-4 py-3">
+                                <div class="flex flex-wrap items-center gap-3">
+                                    <span class="text-xs text-slate-400" x-text="'Baris ' + row.row"></span>
+                                    <span class="font-mono text-xs text-slate-700" x-text="row.tech_ident_no"></span>
+                                    <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded font-mono"
+                                          x-text="'EQ: ' + (row.equipment_no_lama || '-')"></span>
+                                </div>
+                                <div class="mt-1.5 space-y-0.5">
+                                    <template x-if="row.perubahan.length === 0">
+                                        <p class="text-xs text-slate-400">Tidak ada nilai yang berubah (data sama).</p>
+                                    </template>
+                                    <template x-for="(ubah, i) in row.perubahan" :key="i">
+                                        <p class="text-xs text-slate-600">
+                                            <span class="font-medium text-slate-700" x-text="ubah.field"></span>:
+                                            <span class="text-rose-600 line-through" x-text="ubah.lama || '(kosong)'"></span>
+                                            <span class="text-slate-400">&rarr;</span>
+                                            <span class="text-green-700" x-text="ubah.baru || '(kosong)'"></span>
+                                        </p>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                        <template x-if="analysis.duplicate.length === 0">
+                            <div class="px-4 py-6 text-center text-sm text-slate-400">
+                                Tidak ada data yang diperbarui pada file ini.
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Perlu Diperiksa: Tech Ident No tidak unik -->
+                <template x-if="analysis.ambigu.length > 0">
+                    <div class="bg-white rounded-xl border border-slate-200 p-6">
+                        <h3 class="font-medium text-slate-900 mb-1">Perlu Diperiksa</h3>
+                        <p class="text-sm text-slate-500 mb-4">
+                            Tech Ident No harus unik untuk satu aset. Baris berikut dilewati (tidak ditambahkan
+                            dan tidak diperbarui) sampai Tech Ident No-nya diperbaiki.
+                        </p>
+                        <div class="max-h-56 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
+                            <template x-for="row in analysis.ambigu" :key="row.row">
+                                <div class="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
+                                    <span class="text-xs text-slate-400 shrink-0" x-text="'Baris ' + row.row"></span>
+                                    <span class="font-mono text-xs text-slate-700 shrink-0" x-text="row.tech_ident_no"></span>
+                                    <span class="text-slate-600 truncate" x-text="row.description"></span>
+                                    <span class="text-xs text-rose-600" x-text="row.alasan"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
 
                 <!-- FuncLoc Preview -->
                 <div class="bg-white rounded-xl border border-slate-200 p-6">
@@ -127,20 +241,21 @@
                     </div>
                 </div>
 
-                <!-- Bad FuncLoc List -->
-                <template x-if="analysis.bad_funcloc.length > 0">
+                <!-- Baris Tanpa Tech Ident No -->
+                <template x-if="analysis.no_equip.length > 0">
                     <div class="bg-white rounded-xl border border-slate-200 p-6">
-                        <h3 class="font-medium text-slate-900 mb-1">Baris Tanpa Functional Location</h3>
+                        <h3 class="font-medium text-slate-900 mb-1">Baris Tanpa Tech Ident No</h3>
                         <p class="text-sm text-slate-500 mb-4">
-                            Baris berikut punya Equipment No. tapi kolom Functional Loc. kosong, sehingga
-                            tidak bisa ditautkan ke lokasi mana pun. Baris ini akan dilewati saat import
-                            dan perlu ditambahkan manual lewat form Tambah Asset setelahnya.
+                            Tanpa Tech Ident No, baris ini tidak bisa dicocokkan dengan aset mana pun.
+                            Pilih aksinya di bagian bawah: dimasukkan sebagai aset baru berstatus Perlu Review
+                            (lengkap dengan nomor equipment otomatis), atau dilewati.
                         </p>
                         <div class="max-h-56 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
-                            <template x-for="row in analysis.bad_funcloc" :key="row.row">
+                            <template x-for="row in analysis.no_equip" :key="row.row">
                                 <div class="flex items-center gap-3 px-4 py-2 text-sm">
                                     <span class="text-xs text-slate-400 shrink-0" x-text="'Baris ' + row.row"></span>
-                                    <span class="font-mono text-xs text-slate-700 shrink-0" x-text="row.equipment_no"></span>
+                                    <span class="text-xs text-slate-500 shrink-0" x-text="row.equipment_type"></span>
+                                    <span class="font-mono text-xs text-slate-600 shrink-0" x-text="row.functional_loc"></span>
                                     <span class="text-slate-600 truncate" x-text="row.description"></span>
                                 </div>
                             </template>
@@ -148,28 +263,50 @@
                     </div>
                 </template>
 
+                <!-- Baris Tanpa Functional Location -->
+                <template x-if="analysis.bad_funcloc.length > 0">
+                    <div class="bg-white rounded-xl border border-slate-200 p-6">
+                        <h3 class="font-medium text-slate-900 mb-1">Baris Tanpa Functional Location</h3>
+                        <p class="text-sm text-slate-500 mb-4">
+                            Setiap asset wajib punya Functional Location, jadi baris berikut tidak bisa
+                            diimport dan akan dilewati. Lengkapi lokasinya lalu import ulang, atau tambahkan
+                            manual lewat form Tambah Asset.
+                        </p>
+                        <div class="max-h-56 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
+                            <template x-for="row in analysis.bad_funcloc" :key="row.row">
+                                <div class="flex items-center gap-3 px-4 py-2 text-sm">
+                                    <span class="text-xs text-slate-400 shrink-0" x-text="'Baris ' + row.row"></span>
+                                    <span class="font-mono text-xs text-slate-700 shrink-0" x-text="row.tech_ident_no || '(tanpa Tech Ident No)'"></span>
+                                    <span class="text-slate-600 truncate" x-text="row.description"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+
                 <!-- Actions -->
                 <div class="bg-white rounded-xl border border-slate-200 p-6">
                     <h3 class="font-medium text-slate-900 mb-4">Pilihan Aksi Import</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-2">Aksi untuk Duplikat</label>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Aksi untuk Data yang Cocok (Tech Ident No sudah ada)</label>
                             <select x-model="duplicateAction" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
-                                <option value="skip">Skip — Abaikan (biarkan data lama)</option>
-                                <option value="replace">Replace — Ganti dengan data baru</option>
-                                <option value="keep_flag">Tandai Review — Ubah status jadi perlu review</option>
+                                <option value="replace">Perbarui data lama dengan isi file</option>
+                                <option value="skip">Abaikan (biarkan data lama)</option>
+                                <option value="keep_flag">Tandai Review - ubah status jadi perlu review</option>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-2">Aksi untuk Tanpa Equipment No</label>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Aksi untuk Baris Tanpa Tech Ident No</label>
                             <select x-model="noEquipAction" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
-                                <option value="flag">Masukkan & Tandai Review</option>
                                 <option value="skip">Abaikan baris tersebut</option>
+                                <option value="flag">Masukkan sebagai aset baru (status Perlu Review)</option>
                                 <option value="cancel">Batalkan seluruh import</option>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-2">Aksi untuk Tanpa Functional Loc.</label>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Aksi untuk Baris Tanpa Functional Loc.</label>
                             <select x-model="badFuncLocAction" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
                                 <option value="skip">Abaikan baris tersebut</option>
                                 <option value="cancel">Batalkan seluruh import</option>
@@ -177,6 +314,12 @@
                             <p class="text-xs text-slate-400 mt-1">
                                 Setiap asset wajib punya Functional Location, jadi baris ini tidak bisa
                                 langsung dimasukkan tanpa lokasi.
+                            </p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Baris Perlu Diperiksa</label>
+                            <p class="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm text-slate-500">
+                                Selalu dilewati (tidak diimport) sampai Tech Ident No-nya unik.
                             </p>
                         </div>
                     </div>
@@ -204,6 +347,9 @@
                             <div>
                                 <p class="font-medium">Hasil Import</p>
                                 <p class="mt-0.5" x-text="result.message"></p>
+                                <p class="mt-0.5 text-xs"
+                                   x-show="typeof result.inserted_count === 'number'"
+                                   x-text="'Data baru: ' + result.inserted_count + ', diperbarui: ' + result.updated_count + ', dilewati: ' + result.error_count"></p>
                             </div>
                         </div>
                         <div x-show="result.status !== 'success'"
@@ -220,6 +366,7 @@
     </div>
 @endsection
 
+
 @push('scripts')
 <script>
 function importManager() {
@@ -229,10 +376,14 @@ function importManager() {
         loading: false,
         executing: false,
         result: null,
-        duplicateAction: 'skip',
-        noEquipAction: 'flag',
+        duplicateAction: 'replace',
+        noEquipAction: 'skip',
         badFuncLocAction: 'skip',
 
+        /**
+         * Kirim file ke endpoint analisa, lalu simpan hasilnya untuk ditampilkan
+         * sebagai daftar Data Baru dan Data yang Akan Diperbarui.
+         */
         uploadFile() {
             const fileInput = this.$refs.fileInput;
             if (!fileInput.files || !fileInput.files[0]) {
@@ -248,10 +399,7 @@ function importManager() {
             const formData = new FormData();
             formData.append('file', fileInput.files[0]);
 
-            const url = '{{ route('assets.import.preview') }}';
-            console.log('Uploading to:', url);
-
-            fetch(url, {
+            fetch('{{ route('assets.import.preview') }}', {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': '{{ csrf_token() }}',
@@ -260,12 +408,10 @@ function importManager() {
                 body: formData,
             })
             .then(res => {
-                console.log('Response status:', res.status);
                 if (!res.ok) {
                     return res.json().then(errData => {
                         throw new Error(errData.message || 'HTTP ' + res.status);
                     }).catch(e => {
-                        // If JSON parse fails, try to get text
                         if (e instanceof SyntaxError) {
                             throw new Error('Server error ' + res.status + '. Cek log untuk detail.');
                         }
@@ -275,7 +421,6 @@ function importManager() {
                 return res.json();
             })
             .then(data => {
-                console.log('Response data:', data);
                 if (data.success) {
                     this.analysis = data.analysis;
                 } else {
@@ -283,7 +428,6 @@ function importManager() {
                 }
             })
             .catch(err => {
-                console.error('Upload error:', err);
                 this.error = err.message || 'Gagal mengupload file. Cek console (F12) untuk detail.';
             })
             .finally(() => {
@@ -291,6 +435,11 @@ function importManager() {
             });
         },
 
+        /**
+         * Jalankan import sesuai pilihan aksi. Hasil analisa SENGAJA tidak
+         * dikosongkan agar daftar Data Baru dan Data yang Diperbarui tetap
+         * terlihat sebagai bukti apa yang baru saja diproses.
+         */
         executeImport() {
             this.executing = true;
             this.result = null;
@@ -312,12 +461,9 @@ function importManager() {
             .then(res => res.json())
             .then(data => {
                 this.result = data;
-                if (data.status === 'success') {
-                    this.analysis = null;
-                }
             })
-            .catch(err => {
-                this.result = { status: 'error', message: 'Terjadi kesalahan.' };
+            .catch(() => {
+                this.result = { status: 'error', message: 'Terjadi kesalahan saat import.' };
             })
             .finally(() => {
                 this.executing = false;
@@ -327,3 +473,4 @@ function importManager() {
 }
 </script>
 @endpush
+

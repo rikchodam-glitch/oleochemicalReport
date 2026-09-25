@@ -21,14 +21,18 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="space-y-1.5">
                         <label class="block text-sm font-medium text-slate-700">Equipment No</label>
-                        <input type="text" name="equipment_no" value="{{ old('equipment_no', $asset->equipment_no) }}"
-                               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
-                        @error('equipment_no') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
+                        <div class="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm font-mono text-slate-600">
+                            {{ $asset->equipment_no ?? 'Belum ada' }}
+                        </div>
+                        <p class="text-xs text-slate-500">
+                            Nomor ini dibuat sistem dan tidak dapat diubah manual.
+                        </p>
                     </div>
                     <div class="space-y-1.5">
                         <label class="block text-sm font-medium text-slate-700">Tech Ident No</label>
                         <input type="text" name="tech_ident_no" value="{{ old('tech_ident_no', $asset->tech_ident_no) }}"
                                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+                        @error('tech_ident_no') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
                     </div>
                 </div>
 

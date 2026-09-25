@@ -224,8 +224,10 @@ class AssetController extends Controller
      * tetap diisi otomatis dari FuncLoc terpilih agar filter dan laporan
      * lama yang masih memakainya tetap konsisten.
      *
-     * Kolom Equipment No boleh dikosongkan: nomornya dibuat otomatis mengikuti
-     * seri milik PT dari lokasi yang dipilih (lihat AssetNumberService).
+     * Kolom Equipment No tidak ada di form: nomor adalah id internal yang
+     * dibuat sistem mengikuti seri milik PT dari lokasi yang dipilih
+     * (lihat AssetNumberService), jadi nilainya tidak pernah diambil dari
+     * request meskipun ada yang mengirimkannya.
      *
      * @param  Request  $request
      * @return \Illuminate\Http\RedirectResponse
@@ -233,7 +235,6 @@ class AssetController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'equipment_no'   => 'nullable|unique:assets',
             'description'    => 'nullable|string',
             'tech_ident_no'  => 'nullable|string',
             'equipment_type' => 'nullable|string',
@@ -249,12 +250,9 @@ class AssetController extends Controller
         $data = array_merge($validated, $this->locationFieldsFromFuncLoc($funcLoc));
         $data['data_source'] = 'manual';
 
-        // Nomor equipment tidak wajib diisi; kalau kosong, dibuat otomatis.
-        if (empty($data['equipment_no'])) {
-            $data['equipment_no'] = $this->assetNumbers->generateForFuncLoc($funcLoc);
-        }
-
-        $data['has_equipment_no'] = ! empty($data['equipment_no']);
+        // Nomor equipment selalu dibuat sistem.
+        $data['equipment_no']     = $this->assetNumbers->generateForFuncLoc($funcLoc);
+        $data['has_equipment_no'] = true;
 
         Asset::create($data);
 
@@ -284,6 +282,9 @@ class AssetController extends Controller
     /**
      * Perbarui data asset di database.
      *
+     * Kolom Equipment No tidak bisa diubah dari form (nomor adalah id internal
+     * yang dibuat sistem), jadi nilainya sengaja tidak diambil dari request.
+     *
      * @param  Request  $request
      * @param  Asset    $asset
      * @return \Illuminate\Http\RedirectResponse
@@ -291,7 +292,6 @@ class AssetController extends Controller
     public function update(Request $request, Asset $asset)
     {
         $validated = $request->validate([
-            'equipment_no'   => 'nullable|unique:assets,equipment_no,' . $asset->id,
             'description'    => 'nullable|string',
             'tech_ident_no'  => 'nullable|string',
             'equipment_type' => 'nullable|string',
@@ -305,7 +305,7 @@ class AssetController extends Controller
         $funcLoc = FunctionalLocation::findOrFail($validated['funcloc_id']);
 
         $data = array_merge($validated, $this->locationFieldsFromFuncLoc($funcLoc));
-        $data['has_equipment_no'] = !empty($validated['equipment_no']);
+        $data['has_equipment_no'] = $asset->equipment_no !== null && $asset->equipment_no !== '';
 
         $asset->update($data);
 

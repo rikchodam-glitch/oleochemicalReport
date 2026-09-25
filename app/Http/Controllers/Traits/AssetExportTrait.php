@@ -13,6 +13,7 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 /**
@@ -106,20 +107,34 @@ trait AssetExportTrait
         $no     = 1;
 
         foreach ($assets as $asset) {
-            $sheet->setCellValue('A' . $rowNum, $no);
-            $sheet->setCellValue('B' . $rowNum, $asset->description);
-            $sheet->setCellValue('C' . $rowNum, $asset->tech_ident_no);
-            $sheet->setCellValue('D' . $rowNum, $asset->equipment_type);
-            $sheet->setCellValue('E' . $rowNum, $asset->functional_loc);
-            $sheet->setCellValue('F' . $rowNum, $asset->company?->code ?? '');
-            $sheet->setCellValue('G' . $rowNum, $asset->department?->code ?? '');
-            $sheet->setCellValue('H' . $rowNum, $asset->area?->code ?? '');
-            $sheet->setCellValue('I' . $rowNum, $asset->subArea?->code ?? '');
-            $sheet->setCellValue('J' . $rowNum, $asset->manufacturer);
-            $sheet->setCellValue('K' . $rowNum, $asset->model_number);
-            $sheet->setCellValue('L' . $rowNum, $asset->construct_year);
-            $sheet->setCellValue('M' . $rowNum, $asset->status);
-            $sheet->setCellValue('N' . $rowNum, $asset->data_source);
+            // Semua kolom data ditulis sebagai TEKS (setCellValueExplicit).
+            // Alasannya: nilai seperti Tech Ident No "6153E1" dianggap angka oleh
+            // Excel/PhpSpreadsheet (6153 x 10^1) sehingga akan tersimpan sebagai
+            // 61530 dan merusak data saat file diimport ulang.
+            $nilaiKolom = [
+                'A' => $no,
+                'B' => $asset->description,
+                'C' => $asset->tech_ident_no,
+                'D' => $asset->equipment_type,
+                'E' => $asset->functional_loc,
+                'F' => $asset->company?->code ?? '',
+                'G' => $asset->department?->code ?? '',
+                'H' => $asset->area?->code ?? '',
+                'I' => $asset->subArea?->code ?? '',
+                'J' => $asset->manufacturer,
+                'K' => $asset->model_number,
+                'L' => $asset->construct_year,
+                'M' => $asset->status,
+                'N' => $asset->data_source,
+            ];
+
+            foreach ($nilaiKolom as $kolom => $nilai) {
+                $sheet->setCellValueExplicit(
+                    $kolom . $rowNum,
+                    (string) ($nilai ?? ''),
+                    DataType::TYPE_STRING
+                );
+            }
 
             $sheet->getStyle('A' . $rowNum . ':' . $kolomTerakhir . $rowNum)
                 ->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE2E8F0');
