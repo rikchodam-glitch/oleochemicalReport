@@ -319,10 +319,15 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
 - **Pencocokan baris lama**: lewat `equipment_no` bila file menyertakannya (format SAP), atau lewat
   **Tech Ident No** bila tidak (format export), dengan Functional Loc sebagai penentu ketika satu
   Tech Ident No dipakai beberapa aset. Bila tetap ambigu -> baris dilewati dan dilaporkan.
-- **Nomor equipment otomatis**: baris baru tanpa Equipment No dibuatkan nomor 8 digit mengikuti seri milik
+- **Nomor equipment otomatis** (`App\Services\AssetNumberService`): baris baru tanpa Equipment No — baik
+  dari **import** maupun dari **form Tambah Asset manual** — dibuatkan nomor 8 digit mengikuti seri milik
   PT bersangkutan (angka pertama nomor yang sudah ada; cadangan di `config('assets.equipment_no.awalan_pt')`,
   contoh nyata EPE=1, CES=6, NPA=7) dan dilanjutkan dari nomor terbesar pada seri itu (nomor yang sudah
-  dipakai otomatis dilewati).
+  dipakai otomatis dilewati). Dipakai bersama supaya aturan import dan manual tidak berbeda.
+- **Tambah Asset manual** (`GET /assets/create`): kolom Equipment No **opsional** (label "(opsional)",
+  placeholder "Kosongkan = otomatis"). Begitu lokasi dipilih, form menampilkan nomor berikutnya lewat
+  `GET /assets/locations/next-equipment-no?funcloc_id=` (hanya pratinjau, nomor asli ditetapkan server saat
+  Simpan dan ditampilkan di pesan sukses). Nomor tetap boleh diisi manual dan dipakai apa adanya.
 - **Kolom yang ikut diperbarui**: Description, Tech Ident No, Equipment Type, Functional Loc (+ `funcloc_id`),
   Company/Department/Area/Sub Area (diresolusi dari kode kolom; kode tak dikenal = baris dilewati),
   Manufacturer, Model Number, Construct Year, dan Status (nilai kosong/tak dikenal tidak menimpa).

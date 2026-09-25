@@ -12,14 +12,30 @@
 @section('content')
     <div class="max-w-2xl">
         <div class="bg-white rounded-xl border border-slate-200 p-6">
+            <div class="mb-4 rounded-lg border border-teal-100 bg-teal-50 p-3">
+                <p class="text-xs text-teal-800 leading-relaxed">
+                    <span class="font-semibold">Equipment No tidak wajib diisi.</span>
+                    Kosongkan kolom tersebut dan nomornya dibuat otomatis mengikuti seri milik PT
+                    dari lokasi yang dipilih (contoh seri yang berjalan sekarang:
+                    EPE 10003479, CES 60000318, NPA 70000288).
+                </p>
+            </div>
+
             <form method="POST" action="{{ route('assets.store') }}" class="space-y-4">
                 @csrf
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="space-y-1.5">
-                        <label class="block text-sm font-medium text-slate-700">Equipment No</label>
+                        <label class="block text-sm font-medium text-slate-700">
+                            Equipment No
+                            <span class="text-xs font-normal text-slate-400">(opsional)</span>
+                        </label>
                         <input type="text" name="equipment_no" value="{{ old('equipment_no') }}"
-                               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+                               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                               placeholder="Kosongkan = otomatis">
+                        <p id="petunjuk-equipment-no" class="text-xs text-slate-500">
+                            Nomor dibuat otomatis setelah lokasi dipilih.
+                        </p>
                         @error('equipment_no') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div class="space-y-1.5">
@@ -69,6 +85,7 @@
                     </div>
                 </div>
 
+
                 <div class="space-y-1.5">
                     <label class="block text-sm font-medium text-slate-700">Status</label>
                     <select name="status" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -90,3 +107,70 @@
         </div>
     </div>
 @endsection
+
+
+@push('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var inputNomor  = document.querySelector('input[name="equipment_no"]');
+        var inputLokasi = document.querySelector('input[name="funcloc_id"]');
+        var petunjuk    = document.getElementById('petunjuk-equipment-no');
+
+        if (! inputNomor || ! inputLokasi || ! petunjuk) {
+            return;
+        }
+
+        var lokasiTerakhir = null;
+
+        /**
+         * Tampilkan pratinjau nomor equipment yang akan dipakai untuk lokasi
+         * yang sedang terpilih. Nomor hanya muncul sebagai placeholder dan
+         * keterangan (kolom tetap boleh kosong), karena nomor aslinya baru
+         * ditentukan server saat data disimpan.
+         */
+        function tampilkanPratinjau() {
+            var idLokasi = (inputLokasi.value || '').trim();
+
+            if (idLokasi === lokasiTerakhir) {
+                return;
+            }
+
+            lokasiTerakhir = idLokasi;
+
+            if (idLokasi === '') {
+                petunjuk.textContent = 'Nomor dibuat otomatis setelah lokasi dipilih.';
+                return;
+            }
+
+            petunjuk.textContent = 'Menghitung nomor otomatis...';
+
+            var url = '{{ route('assets.locations.next-equipment-no') }}?funcloc_id=' + encodeURIComponent(idLokasi);
+
+            fetch(url, { headers: { 'Accept': 'application/json' } })
+                .then(function (respon) { return respon.json(); })
+                .then(function (data) {
+                    if (! data.success) {
+                        petunjuk.textContent = 'Nomor otomatis belum bisa dihitung untuk lokasi ini.';
+                        return;
+                    }
+
+                    inputNomor.placeholder = data.equipment_no;
+                    petunjuk.textContent = 'Nomor otomatis berikutnya: ' + data.equipment_no
+                        + (data.pt ? ' (PT ' + data.pt + ')' : '')
+                        + '. Kosongkan kolom ini untuk memakainya.';
+                })
+                .catch(function () {
+                    petunjuk.textContent = 'Nomor otomatis belum bisa dihitung untuk lokasi ini.';
+                });
+        }
+
+        // Nilai input lokasi diisi oleh komponen picker (bukan diketik langsung
+        // ke input), jadi perubahannya dipantau lewat event sekaligus berkala.
+        inputLokasi.addEventListener('input', tampilkanPratinjau);
+        inputLokasi.addEventListener('change', tampilkanPratinjau);
+        window.setInterval(tampilkanPratinjau, 700);
+        tampilkanPratinjau();
+    });
+</script>
+@endpush
+

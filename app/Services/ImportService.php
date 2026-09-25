@@ -16,6 +16,20 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 class ImportService
 {
     /**
+     * @var AssetNumberService Pembuat nomor equipment otomatis untuk baris
+     *                         import yang tidak menyertakan Equipment No
+     */
+    protected AssetNumberService $assetNumbers;
+
+    /**
+     * @param  AssetNumberService  $assetNumbers
+     */
+    public function __construct(AssetNumberService $assetNumbers)
+    {
+        $this->assetNumbers = $assetNumbers;
+    }
+
+    /**
      * Analisa file Excel dan kelompokkan tiap baris ke salah satu bucket:
      * clean (siap import), duplicate (equipment_no sudah ada), no_equip
      * (tanpa Equipment No.), atau bad_funcloc (Equipment No. ada tapi
@@ -240,7 +254,7 @@ class ImportService
                 $equipmentNo = $row['equipment_no'] ?? '';
 
                 if ($equipmentNo === '') {
-                    $equipmentNo = $this->generateEquipmentNo($location['company_id'] ?? null);
+                    $equipmentNo = $this->assetNumbers->generateForCompanyId($location['company_id'] ?? null);
                 }
 
                 Asset::create(array_merge(
@@ -456,78 +470,6 @@ class ImportService
         );
 
         return $sempit->isNotEmpty() ? $sempit->values() : $kandidat;
-    }
-
-    /**
-     * Buat nomor equipment otomatis untuk baris import yang tidak menyertakan
-     * Equipment No.
-     *
-     * Nomor mengikuti seri milik PT bersangkutan (angka pertama pada nomor yang
-     * sudah ada, mis. EPE = 1xxxxxxx, NPA = 7xxxxxxx, CES = 6xxxxxxx) dan
-     * dilanjutkan dari nomor terbesar pada seri tersebut. Awalan cadangan
-     * tersedia di config('assets.equipment_no.awalan_pt').
-     *
-     * @param  int|null  $companyId
-     * @return string  Nomor equipment 8 digit yang belum dipakai
-     */
-    private function generateEquipmentNo(?int $companyId): string
-    {
-        $panjang = (int) config('assets.equipment_no.panjang', 8);
-        $awalan  = $this->awalanEquipmentNo($companyId);
-
-        $query = Asset::whereNotNull('equipment_no')->where('equipment_no', '!=', '');
-
-        if ($awalan !== null) {
-            $query->where('equipment_no', 'like', $awalan . '%');
-        }
-
-        $terbesar = $query->max('equipment_no');
-
-        $nomor = ($terbesar !== null && ctype_digit((string) $terbesar))
-            ? (int) $terbesar + 1
-            : (int) str_pad((string) ($awalan ?? '1'), $panjang, '0', STR_PAD_RIGHT);
-
-        // Pastikan nomor benar-benar belum dipakai.
-        while (Asset::where('equipment_no', (string) $nomor)->exists()) {
-            $nomor++;
-        }
-
-        return str_pad((string) $nomor, $panjang, '0', STR_PAD_LEFT);
-    }
-
-    /**
-     * Tentukan awalan nomor equipment untuk sebuah PT.
-     *
-     * @param  int|null  $companyId
-     * @return string|null  Satu digit awalan, atau null bila tidak bisa ditentukan
-     */
-    private function awalanEquipmentNo(?int $companyId): ?string
-    {
-        if ($companyId !== null) {
-            $awalan = Asset::where('company_id', $companyId)
-                ->whereNotNull('equipment_no')
-                ->where('equipment_no', '!=', '')
-                ->selectRaw('SUBSTR(equipment_no, 1, 1) as digit, COUNT(*) as jumlah')
-                ->groupBy('digit')
-                ->orderByDesc('jumlah')
-                ->value('digit');
-
-            if ($awalan !== null && ctype_digit((string) $awalan)) {
-                return (string) $awalan;
-            }
-
-            $kodePt = Company::where('id', $companyId)->value('code');
-
-            if ($kodePt !== null) {
-                $cadangan = (array) config('assets.equipment_no.awalan_pt', []);
-
-                if (isset($cadangan[$kodePt])) {
-                    return (string) $cadangan[$kodePt];
-                }
-            }
-        }
-
-        return null;
     }
 
     private function buildColMap(array $headers): array

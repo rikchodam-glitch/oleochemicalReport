@@ -53,6 +53,7 @@ Route::middleware('admin')->group(function () {
     Route::get('/assets/locations/departments', [AssetController::class, 'getDepartments'])->name('assets.locations.departments');
     Route::get('/assets/locations/areas', [AssetController::class, 'getAreas'])->name('assets.locations.areas');
     Route::get('/assets/locations/subareas', [AssetController::class, 'getSubAreas'])->name('assets.locations.subareas');
+Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'nextEquipmentNo'])->name('assets.locations.next-equipment-no');
 
     // Rekonsiliasi manual FuncLoc — WAJIB sebelum resource agar tidak
     // ditimpa wildcard {asset} milik resource (assets.show).

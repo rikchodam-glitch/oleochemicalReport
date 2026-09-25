@@ -14,6 +14,7 @@ use App\Models\FunctionalLocation;
 use App\Models\Report;
 use App\Models\SubArea;
 use App\Models\Technician;
+use App\Services\AssetNumberService;
 use App\Services\FuncLocSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +24,20 @@ class AssetController extends Controller
     use AssetExportTrait;
     use AssetTechnicianTrait;
     use AssetLocationTrait;
+
+    /**
+     * @var AssetNumberService Pembuat nomor equipment otomatis untuk asset
+     *                         baru yang kolom Equipment No-nya dikosongkan
+     */
+    protected AssetNumberService $assetNumbers;
+
+    /**
+     * @param  AssetNumberService  $assetNumbers
+     */
+    public function __construct(AssetNumberService $assetNumbers)
+    {
+        $this->assetNumbers = $assetNumbers;
+    }
 
     /**
      * Tampilkan daftar asset dengan filter dan paginasi.
@@ -209,6 +224,9 @@ class AssetController extends Controller
      * tetap diisi otomatis dari FuncLoc terpilih agar filter dan laporan
      * lama yang masih memakainya tetap konsisten.
      *
+     * Kolom Equipment No boleh dikosongkan: nomornya dibuat otomatis mengikuti
+     * seri milik PT dari lokasi yang dipilih (lihat AssetNumberService).
+     *
      * @param  Request  $request
      * @return \Illuminate\Http\RedirectResponse
      */
@@ -229,13 +247,19 @@ class AssetController extends Controller
         $funcLoc = FunctionalLocation::findOrFail($validated['funcloc_id']);
 
         $data = array_merge($validated, $this->locationFieldsFromFuncLoc($funcLoc));
-        $data['has_equipment_no'] = !empty($validated['equipment_no']);
-        $data['data_source']      = 'manual';
+        $data['data_source'] = 'manual';
+
+        // Nomor equipment tidak wajib diisi; kalau kosong, dibuat otomatis.
+        if (empty($data['equipment_no'])) {
+            $data['equipment_no'] = $this->assetNumbers->generateForFuncLoc($funcLoc);
+        }
+
+        $data['has_equipment_no'] = ! empty($data['equipment_no']);
 
         Asset::create($data);
 
         return redirect()->route('assets.index')
-            ->with('success', 'Asset berhasil ditambahkan.');
+            ->with('success', 'Asset berhasil ditambahkan dengan nomor equipment ' . $data['equipment_no'] . '.');
     }
 
     /**
@@ -445,6 +469,34 @@ class AssetController extends Controller
     }
 
     /**
+     * Nomor equipment yang AKAN dipakai bila kolom Equipment No dikosongkan di
+     * form tambah asset. Hanya untuk pratinjau di form (tidak menyimpan apa
+     * pun), supaya pengguna tahu nomor yang akan diberikan sebelum menekan
+     * Simpan.
+     *
+     * @param  Request  $request  Harus mengandung funcloc_id
+     * @param  AssetNumberService  $assetNumbers
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function nextEquipmentNo(Request $request, AssetNumberService $assetNumbers)
+    {
+        $funcLoc = FunctionalLocation::find((int) $request->input('funcloc_id'));
+
+        if ($funcLoc === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lokasi tidak ditemukan.',
+            ], 404);
+        }
+
+        return response()->json([
+            'success'      => true,
+            'equipment_no' => $assetNumbers->generateForFuncLoc($funcLoc),
+            'pt'           => $assetNumbers->kodePtForFuncLoc($funcLoc),
+        ]);
+    }
+
+    /**
      * Bangun label tampilan "KODE — Nama" untuk sebuah FuncLoc, dipakai
      * mengisi ulang komponen picker saat form gagal validasi atau saat
      * membuka form edit.
@@ -469,6 +521,11 @@ class AssetController extends Controller
      * lama yang masih membacanya. Nilai bisa null jika node FuncLoc dibuat
      * manual tanpa relasi ke master data lama.
      *
+     * Khusus company_id: sebagian besar node FuncLoc hasil sinkron belum
+     * terhubung ke master Company, padahal kodenya berawalan kode PT
+     * (mis. "EPE-PROD-TF01-6010"). PT diambil dari awalan kode itu bila
+     * relasinya kosong, supaya asset baru tetap tampil di filter PT yang benar.
+     *
      * @param  FunctionalLocation  $funcLoc
      * @return array{functional_loc: string, company_id: int|null, department_id: int|null, area_id: int|null, sub_area_id: int|null}
      */
@@ -476,7 +533,7 @@ class AssetController extends Controller
     {
         return [
             'functional_loc' => $funcLoc->code,
-            'company_id'     => $funcLoc->company_id,
+            'company_id'     => $this->assetNumbers->companyIdForFuncLoc($funcLoc),
             'department_id'  => $funcLoc->department_id,
             'area_id'        => $funcLoc->area_id,
             'sub_area_id'    => $funcLoc->sub_area_id,
