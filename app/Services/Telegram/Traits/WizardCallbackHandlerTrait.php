@@ -557,6 +557,21 @@ trait WizardCallbackHandlerTrait
             $subAreaId = (int) $subArea->id;
             $areaId    = $subArea->area_id !== null ? (int) $subArea->area_id : null;
             $deptId    = $areaId !== null ? Area::where('id', $areaId)->value('department_id') : null;
+        } elseif ($level === 'fn') {
+            // Node FunctionalLocation langsung (nama lokasi yang hanya ada di
+            // hierarki, mis. "Main Office"), cukup dikunci apa adanya.
+            $node = FunctionalLocation::active()->find($id);
+
+            if ($node === null) {
+                return $this->errorResponse('Lokasi tidak ditemukan atau sudah tidak aktif.');
+            }
+
+            Log::info("Wizard: pintasan node FuncLoc dipilih untuk chat {$chatId}", [
+                'funcloc_id'   => $node->id,
+                'funcloc_code' => $node->code,
+            ]);
+
+            return $this->lockFuncLocAndAdvance($chatId, $node, $state);
         } elseif ($level === 'area') {
             $area = Area::find($id);
 

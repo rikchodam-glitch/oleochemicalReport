@@ -252,19 +252,89 @@ trait WizardFuncLocPickerTrait
             }
         }
 
-        // Urutkan: level paling spesifik dulu, lalu lokasi dengan alat terbanyak.
-        $bobot = ['sub' => 0, 'area' => 1, 'dept' => 2];
+        // Node FuncLoc: sebagian nama lokasi HANYA ada di hierarki FuncLoc dan
+        // tidak ada di tabel master lama (contoh nyata: node "Main Office" pada
+        // kode EPE-HRGA-GA01). Tanpa pass ini, teks seperti "Main Office
+        // accounting" tidak menghasilkan pilihan area sama sekali.
+        foreach ($this->detectFuncLocNodes($teks) as $opsiNode) {
+            $kandidat[] = $opsiNode;
+        }
 
-        usort($kandidat, static function (array $a, array $b) use ($bobot) {
-            return [$bobot[$a['level']] ?? 9, -$a['jumlah'], $a['kode']]
-                <=> [$bobot[$b['level']] ?? 9, -$b['jumlah'], $b['kode']];
+        // Urutkan: level paling spesifik dulu, lalu lokasi dengan alat terbanyak.
+        usort($kandidat, static function (array $a, array $b) {
+            return [$a['bobot'], -$a['jumlah'], $a['kode']] <=> [$b['bobot'], -$b['jumlah'], $b['kode']];
         });
 
-        // Lokasi tanpa alat terdaftar tidak ditawarkan: biasanya itu baris master
-        // lokasi ganda/kosong yang akan membingungkan teknisi.
-        $kandidat = array_values(array_filter($kandidat, static fn (array $opsi) => $opsi['jumlah'] > 0));
+        // Buang duplikat: master lokasi dan node FuncLoc sering mewakili tempat
+        // yang sama (mis. Area GA01 vs node EPE-HRGA-GA01).
+        $hasil = [];
+        $terpakai = [];
 
-        return array_slice($kandidat, 0, $maks);
+        foreach ($kandidat as $opsi) {
+            if ($opsi['jumlah'] <= 0) {
+                continue;
+            }
+
+            $kunci = mb_strtolower($opsi['kode']);
+
+            if (isset($terpakai[$kunci])) {
+                continue;
+            }
+
+            $terpakai[$kunci] = true;
+            $hasil[]          = $opsi;
+        }
+
+        return array_slice($hasil, 0, $maks);
+    }
+
+    /**
+     * Deteksi node FunctionalLocation (Departemen/Area/Seksi) yang nama atau
+     * kodenya disebut eksplisit di teks laporan.
+     *
+     * @param  string  $teksPadat  Teks hasil normalizeTextForLocation()
+     * @return array<int, array<string, mixed>>  Opsi lokasi bentuk node FuncLoc
+     */
+    private function detectFuncLocNodes(string $teksPadat): array
+    {
+        $opsi = [];
+
+        $nodes = FunctionalLocation::where('level', '!=', FunctionalLocation::LEVEL_SITE)
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'level', 'area_id']);
+
+        foreach ($nodes as $node) {
+            $nama = trim((string) $node->name);
+
+            if (mb_strlen($nama) < 4) {
+                continue;
+            }
+
+            if (! $this->textMentionsLocation($teksPadat, $nama) && ! $this->textMentionsLocation($teksPadat, (string) $node->code)) {
+                continue;
+            }
+
+            [$label, $bobot] = match ((string) $node->level) {
+                FunctionalLocation::LEVEL_DEPARTMENT => ['Departemen', 3],
+                FunctionalLocation::LEVEL_AREA       => ['Area', 2],
+                default                              => ['Sub Area/Seksi', 1],
+            };
+
+            $opsi[] = [
+                'bobot'   => $bobot,
+                'label'   => $label,
+                'level'   => 'fn',
+                'id'      => (int) $node->id,
+                'kode'    => (string) $node->code,
+                'nama'    => $nama,
+                'konteks' => 'hierarki lokasi',
+                'jumlah'  => Asset::where('functional_loc', 'like', $node->code . '%')->count(),
+            ];
+        }
+
+        return $opsi;
     }
 
     /**
@@ -296,6 +366,8 @@ trait WizardFuncLocPickerTrait
         }
 
         return [
+            'bobot'   => ['sub' => 0, 'area' => 2, 'dept' => 3][$level] ?? 9,
+            'label'   => ['sub' => 'Sub Area', 'area' => 'Area', 'dept' => 'Departemen'][$level] ?? 'Lokasi',
             'level'   => $level,
             'id'      => (int) $lokasi->id,
             'kode'    => (string) $lokasi->code,
@@ -348,13 +420,7 @@ trait WizardFuncLocPickerTrait
         $tombol = [];
 
         foreach ($this->detectLocationOptions($text) as $opsi) {
-            $label = match ($opsi['level']) {
-                'sub'   => 'Sub Area',
-                'area'  => 'Area',
-                default => 'Departemen',
-            };
-
-            $judul = $label . ': ' . ($opsi['nama'] !== '' ? $opsi['nama'] : $opsi['kode'])
+            $judul = $opsi['label'] . ': ' . ($opsi['nama'] !== '' ? $opsi['nama'] : $opsi['kode'])
                 . ' (' . $opsi['kode'] . ($opsi['konteks'] !== '' ? ' - ' . $opsi['konteks'] : '') . ')';
 
             $tombol[] = [

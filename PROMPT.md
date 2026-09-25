@@ -209,16 +209,20 @@ type tersembunyi (di data nyata: 2.643 dari 4.247 alat terlihat, sekarang 4.243 
 punya Tech Ident No sehingga tombolnya tidak bisa diberi kode).
 
 **Pintasan laporan area saat equipment tidak pasti** (revisi): kalau pencarian equipment tidak
-auto-accept (confidence < 90%) dan teks laporan **menyebut Sub Area / Area / Departemen secara eksplisit**
-(kode atau nama, termasuk penulisan `BD 2` untuk kode `BD02`), wizard menambahkan tombol pintasan
-`Sub Area: … / Area: … / Departemen: … (n alat)` di keyboard kandidat/no-match. Menekan tombol itu
-langsung mengunci lokasi tersebut sebagai **laporan area** (`is_area_work = true`, tanpa equipment),
-memakai node FuncLoc hasil susunan `PT-DEPARTEMEN-AREA-SUBAREA` bila ada (kalau tidak ada, laporan tetap
-tersimpan dengan `area_id`), lalu maju ke langkah durasi. Deteksi & tombol:
+auto-accept (confidence < 90%) dan teks laporan **menyebut Sub Area / Area / Departemen / nama lokasi
+secara eksplisit** (kode atau nama, termasuk penulisan `BD 2` untuk kode `BD02`), wizard menambahkan
+tombol pintasan `Sub Area/Seksi: … / Area: … / Departemen: … (n alat)` di keyboard kandidat/no-match.
+Menekan tombol itu langsung mengunci lokasi tersebut sebagai **laporan area** (`is_area_work = true`,
+tanpa equipment), memakai node FuncLoc hasil susunan `PT-DEPARTEMEN-AREA-SUBAREA` bila ada (kalau tidak
+ada, laporan tetap tersimpan dengan `area_id`), lalu maju ke langkah durasi. Deteksi & tombol:
 `WizardFuncLocPickerTrait::detectLocationOptions()`, `buildLocationShortcutButtons()`,
-`appendLocationShortcuts()`; callback `wizard_loc:{sub|area|dept}:{id}` ditangani
-`WizardCallbackHandlerTrait::handleLocationShortcutCallback()`. Lokasi yang jumlah alatnya 0 tidak
-ditawarkan supaya tidak menyesatkan (baris master lokasi ganda/kosong).
+`appendLocationShortcuts()`; callback `wizard_loc:{sub|area|dept|fn}:{id}` ditangani
+`WizardCallbackHandlerTrait::handleLocationShortcutCallback()` (`fn` = node FuncLoc langsung).
+Deteksi memakai DUA sumber: tabel master lokasi (Department/Area/SubArea) **dan nama node FuncLoc** —
+banyak lokasi hanya punya nama di hierarki (contoh nyata: `Main Office` pada node `EPE-HRGA-GA01`),
+sehingga laporan seperti "pengecekan scanner EPE Main Office accounting" tetap mendapat pilihan lokasi.
+Opsi dideduplikasi per kode dan lokasi tanpa alat tidak ditawarkan supaya tidak menyesatkan
+(banyak baris master lokasi ganda/kosong).
 
 **PENTING — bot Telegram berjalan sebagai proses panjang** (`php artisan telegram:poll --action=start`,
 loop `while (true)` di dalam proses). Setelah mengubah kode Telegram, proses itu WAJIB dijalankan ulang

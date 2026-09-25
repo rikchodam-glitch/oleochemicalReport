@@ -380,6 +380,27 @@ test('teks tanpa sebutan lokasi tidak menambah tombol pintasan area', function (
     expect($teks)->not->toContain('wizard_loc:');
 });
 
+test('nama lokasi yang hanya ada di hierarki FuncLoc juga ditawarkan sebagai pintasan', function () {
+    $wizard = app(ReportWizardService::class);
+    $chatId = 'uji-lokasi-node-001';
+
+    // "Section Uji" HANYA ada sebagai nama node FuncLoc (tidak ada di tabel
+    // master area/sub area) — kasus nyata seperti "Main Office".
+    $wizard->startWizard($chatId, 'Pengecekan scanner di Section Uji');
+    $respons = $wizard->handleCallback($chatId, 'classification:zpm3');
+    $teks    = $respons['message'] . ' ' . json_encode($respons['keyboard']);
+
+    expect($teks)->toContain('wizard_loc:fn:' . $this->flSection->id);
+
+    $lanjut = $wizard->handleCallback($chatId, 'wizard_loc:fn:' . $this->flSection->id);
+    $state  = $wizard->getState($chatId);
+
+    expect($state['is_area_work'])->toBeTrue()
+        ->and($state['funcloc_id'])->toBe($this->flSection->id)
+        ->and($state['equipment_id'])->toBeNull()
+        ->and($lanjut['message'])->toContain('Pekerjaan Area');
+});
+
 test('hirarki pemilihan equipment menampilkan alat yang belum diisi Equipment Type', function () {
     $wizard = app(ReportWizardService::class);
     $chatId = 'uji-hirarki-001';
