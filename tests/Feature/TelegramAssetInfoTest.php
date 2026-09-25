@@ -327,6 +327,35 @@ test('detail perangkat IT menampilkan pemakai, IP, dan tombol Buat Laporan', fun
 // TOMBOL REPORT -> WIZARD LAPORAN DENGAN ALAT SUDAH TERKUNCI
 // ============================================================
 
+test('hirarki pemilihan equipment menampilkan alat yang belum diisi Equipment Type', function () {
+    $wizard = app(ReportWizardService::class);
+    $chatId = 'uji-hirarki-001';
+
+    // Alat tanpa Equipment Type: sebelumnya tersembunyi dari hierarki.
+    Asset::create([
+        'equipment_no'   => 'EQ-INFO-003',
+        'description'    => 'Alat Tanpa Tipe Uji',
+        'tech_ident_no'  => '6010MO03',
+        'functional_loc' => $this->flSection->code,
+        'funcloc_id'     => $this->flSection->id,
+        'company_id'     => $this->company->id,
+        'department_id'  => $this->dept->id,
+        'area_id'        => $this->area->id,
+        'sub_area_id'    => $this->subArea->id,
+        'status'         => 'active',
+        'data_source'    => 'import_excel',
+    ]);
+
+    $wizard->startWizard($chatId, 'Cek alat tanpa tipe');
+
+    $respons = $wizard->handleCallback($chatId, 'funcloc_assets:' . $this->flSection->id);
+    $teks    = $respons['message'] . ' ' . json_encode($respons['keyboard']);
+
+    // Alat berkode 6010MO03 (tanpa Equipment Type) harus ikut terdaftar.
+    expect($teks)->toContain('6010MO03')
+        ->and($teks)->toContain('6010MO01');
+});
+
 test('jenis pekerjaan IT tidak lagi membatasi pilihan equipment ke perangkat IT saja', function () {
     $wizard = app(ReportWizardService::class);
     $chatId = 'uji-pool-it-001';

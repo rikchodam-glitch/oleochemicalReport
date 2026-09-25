@@ -202,6 +202,17 @@ FuncLoc berubah bersamaan.
    lokasinya di halaman IT Assets lalu jalankan `php artisan it:sync-assets`
    (`--dry-run` untuk melihat "N belum bisa dipetakan" tanpa menyimpan).
 
+**Hirarki pemilihan equipment** (`WizardFuncLocPickerTrait`) tidak lagi mensyaratkan kolom
+`equipment_type` terisi: alat tanpa Equipment Type ikut ditampilkan dan dikelompokkan pada label
+`TANPA TIPE` (`equipmentTypeOf()`), karena seluruh equipment harus bisa dipilih. Sebelumnya alat tanpa
+type tersembunyi (di data nyata: 2.643 dari 4.247 alat terlihat, sekarang 4.243 — sisa 4 alat belum
+punya Tech Ident No sehingga tombolnya tidak bisa diberi kode).
+
+**PENTING — bot Telegram berjalan sebagai proses panjang** (`php artisan telegram:poll --action=start`,
+loop `while (true)` di dalam proses). Setelah mengubah kode Telegram, proses itu WAJIB dijalankan ulang
+(`--action=stop` lalu `--action=start`), kalau tidak ia masih memakai kelas lama di memori dan perilaku
+baru tidak akan terlihat di chat.
+
 Foto disimpan di `storage/app/public/reports/{chat_id}/{uniqid}.jpg`
 dan diakses via `Storage::disk('public')->url($path)`.
 

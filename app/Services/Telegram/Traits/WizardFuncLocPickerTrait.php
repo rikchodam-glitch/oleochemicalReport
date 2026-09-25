@@ -62,6 +62,9 @@ trait WizardFuncLocPickerTrait
     /** Jumlah equipment dalam satu lokasi sebelum dikelompokkan per tipe alat. */
     protected const EQUIPMENT_GROUP_THRESHOLD = 10;
 
+    /** Label pengelompokan untuk alat yang Equipment Type-nya belum diisi. */
+    protected const TANPA_TIPE_LABEL = 'TANPA TIPE';
+
     // =========================================================
     // ENTRY POINT — dipanggil dari handleWorkTypeCallback
     // =========================================================
@@ -503,8 +506,7 @@ trait WizardFuncLocPickerTrait
 
     /**
      * Hitung jumlah asset yang terdaftar langsung di bawah node FuncLoc.
-     * Hanya asset yang punya equipment_type (dan tech_ident_no) yang dihitung,
-     * karena asset tanpa type tidak ditampilkan di hierarki pemilihan equipment.
+     * Alat tanpa Equipment Type tetap dihitung (lihat assetsUnderNode()).
      *
      * @param  int   $funclocId ID FunctionalLocation
      * @param  bool  $itOnly    true = hanya perangkat IT (data_source 'it_sync')
@@ -515,13 +517,14 @@ trait WizardFuncLocPickerTrait
         return Asset::where('funcloc_id', $funclocId)
             ->when($itOnly, fn ($query) => $query->where('data_source', 'it_sync'))
             ->whereNotNull('tech_ident_no')
-            ->whereNotNull('equipment_type')
             ->count();
     }
 
     /**
      * Ambil koleksi asset di bawah node FuncLoc, diurutkan berdasarkan TechIdentNo.
-     * Asset tanpa equipment_type dikecualikan dari hasil.
+     * Alat tanpa Equipment Type IKUT disertakan (dikelompokkan pada label
+     * TANPA TIPE lewat equipmentTypeOf()), karena seluruh equipment harus bisa
+     * dipilih teknisi — sebelumnya alat tanpa type tersembunyi dari hierarki.
      *
      * @param  int   $funclocId ID FunctionalLocation
      * @param  bool  $itOnly    true = hanya perangkat IT (data_source 'it_sync')
@@ -532,7 +535,6 @@ trait WizardFuncLocPickerTrait
         return Asset::where('funcloc_id', $funclocId)
             ->when($itOnly, fn ($query) => $query->where('data_source', 'it_sync'))
             ->whereNotNull('tech_ident_no')
-            ->whereNotNull('equipment_type')
             ->orderBy('tech_ident_no')
             ->get(['id', 'tech_ident_no', 'description', 'equipment_type']);
     }
@@ -729,15 +731,19 @@ trait WizardFuncLocPickerTrait
     }
 
     /**
-     * Ambil kode tipe alat dari kolom equipment_type di database.
-     * Asset tanpa equipment_type sudah disaring di assetsUnderNode(),
-     * jadi method ini hanya dipanggil untuk asset yang punya type.
+     * Label tipe alat untuk pengelompokan di hierarki pemilihan equipment.
      *
-     * @param  Asset  $asset Model asset
-     * @return string Kode tipe alat
+     * Alat yang belum diisi Equipment Type tetap bisa dipilih dan dikelompokkan
+     * pada label cadangan TANPA TIPE (bukan disembunyikan), sesuai keputusan
+     * bahwa seluruh equipment harus bisa dipilih teknisi.
+     *
+     * @param  Asset  $asset
+     * @return string  Label tipe, atau TANPA TIPE bila kolomnya kosong
      */
     protected function equipmentTypeOf(Asset $asset): string
     {
-        return (string) ($asset->equipment_type ?? '');
+        $tipe = trim((string) ($asset->equipment_type ?? ''));
+
+        return $tipe !== '' ? $tipe : self::TANPA_TIPE_LABEL;
     }
 }
