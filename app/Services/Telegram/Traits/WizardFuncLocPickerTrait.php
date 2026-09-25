@@ -2,8 +2,11 @@
 
 namespace App\Services\Telegram\Traits;
 
+use App\Models\Area;
 use App\Models\Asset;
+use App\Models\Department;
 use App\Models\FunctionalLocation;
+use App\Models\SubArea;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
@@ -64,6 +67,304 @@ trait WizardFuncLocPickerTrait
 
     /** Label pengelompokan untuk alat yang Equipment Type-nya belum diisi. */
     protected const TANPA_TIPE_LABEL = 'TANPA TIPE';
+
+    /**
+     * Sisipkan tombol pintasan lokasi ke respons wizard: ditambahkan sebelum
+     * baris tombol navigasi (Kembali/Batalkan) supaya mudah dijangkau, dan
+     * pesannya diberi keterangan singkat.
+     *
+     * @param  array   $response  Respons wizard (message + keyboard)
+     * @param  string  $text      Teks laporan mentah dari teknisi
+     * @return array   Respons dengan tombol pintasan (tidak berubah bila lokasi tidak disebut)
+     */
+    protected function appendLocationShortcuts(array $response, string $text): array
+    {
+        $tombol = $this->buildLocationShortcutButtons($text);
+
+        if ($tombol === []) {
+            return $response;
+        }
+
+        $keyboard  = $response['keyboard'] ?? [];
+        $posisiNav = null;
+
+        foreach ($keyboard as $indeks => $baris) {
+            if (str_starts_with((string) ($baris['callback_data'] ?? ''), 'wizard:')) {
+                $posisiNav = $indeks;
+                break;
+            }
+        }
+
+        if ($posisiNav === null) {
+            $keyboard = array_merge($keyboard, $tombol);
+        } else {
+            array_splice($keyboard, $posisiNav, 0, $tombol);
+        }
+
+        $response['message'] = ($response['message'] ?? '')
+            . "\n\nKalau ini pekerjaan AREA (bukan satu alat tertentu), pilih lokasinya langsung:";
+        $response['keyboard'] = $keyboard;
+
+        return $response;
+    }
+
+    /**
+     * Cari node FunctionalLocation yang mewakili kombinasi Departemen/Area/Sub Area.
+     *
+     * Kode node mengikuti pola PT-DEPARTEMEN-AREA-SUBAREA, jadi kode disusun dari
+     * master lokasi yang dipilih. Bila node-nya tidak ada, laporan tetap bisa
+     * disimpan sebagai laporan area memakai area_id.
+     *
+     * @param  int|null  $deptId     ID Departemen (opsional)
+     * @param  int|null  $areaId     ID Area (opsional)
+     * @param  int|null  $subAreaId  ID Sub Area (opsional)
+     * @return FunctionalLocation|null
+     */
+    protected function resolveFuncLocForLocation(?int $deptId, ?int $areaId, ?int $subAreaId): ?FunctionalLocation
+    {
+        $dept = $deptId !== null ? Department::with('company')->find($deptId) : null;
+
+        if ($dept === null) {
+            return null;
+        }
+
+        $segmen = array_filter([
+            $dept->company?->code,
+            $dept->code,
+            $areaId !== null ? Area::where('id', $areaId)->value('code') : null,
+            $subAreaId !== null ? SubArea::where('id', $subAreaId)->value('code') : null,
+        ]);
+
+        if (count($segmen) < 2) {
+            return null;
+        }
+
+        return FunctionalLocation::where('code', implode('-', $segmen))->first();
+    }
+
+    /**
+     * Jumlah alat pada satu level lokasi (untuk label tombol pintasan).
+     *
+     * @param  string  $level  'sub' | 'area' | 'dept'
+     * @param  int     $id     ID lokasi
+     * @return int
+     */
+    protected function assetsCountForLocationLevel(string $level, int $id): int
+    {
+        return match ($level) {
+            'sub'   => Asset::where('sub_area_id', $id)->count(),
+            'area'  => Asset::where('area_id', $id)->count(),
+            default => Asset::where('department_id', $id)->count(),
+        };
+    }
+
+    /**
+     * Normalisasi teks untuk pencocokan lokasi: huruf besar, semua karakter
+     * selain huruf/angka menjadi spasi, spasi ganda dirapikan, dan diberi spasi
+     * pengapit supaya pencocokan kata utuh mudah.
+     *
+     * @param  string  $text
+     * @return string
+     */
+    private function normalizeTextForLocation(string $text): string
+    {
+        $bersih = preg_replace('/[^A-Za-z0-9]+/', ' ', strtoupper($text)) ?? '';
+
+        return ' ' . trim(preg_replace('/\s+/', ' ', $bersih) ?? '') . ' ';
+    }
+
+    /**
+     * Apakah kode/nama lokasi disebut sebagai kata utuh pada teks ternormalisasi.
+     *
+     * @param  string       $teksPadat  Teks hasil normalizeTextForLocation()
+     * @param  string|null  $kata       Kode atau nama lokasi
+     * @return bool
+     */
+    private function textMentionsLocation(string $teksPadat, ?string $kata): bool
+    {
+        $kata = trim(preg_replace('/[^A-Za-z0-9]+/', ' ', strtoupper((string) $kata)) ?? '');
+
+        if ($kata === '') {
+            return false;
+        }
+
+        if (str_contains($teksPadat, ' ' . $kata . ' ')) {
+            return true;
+        }
+
+        // Kode berawalan nol: "BD02" juga cocok dengan penulisan "BD 2" / "BD-2".
+        if (preg_match('/^([A-Z]+)0*([0-9]+)$/', $kata, $cocok) === 1) {
+            return preg_match('/\b' . $cocok[1] . '\s*0*' . $cocok[2] . '\b/', $teksPadat) === 1;
+        }
+
+        return false;
+    }
+
+    /** Callback data tombol pintasan laporan area: wizard_loc:{level}:{id}. */
+    protected const CALLBACK_LOCATION_SHORTCUT = 'wizard_loc:';
+
+    /**
+     * Deteksi lokasi (Sub Area / Area / Departemen) yang disebut EKSPLISIT di
+     * teks laporan teknisi.
+     *
+     * Dipakai saat pencarian equipment tidak bisa dipastikan (confidence < 90%)
+     * supaya teknisi bisa langsung membuat LAPORAN AREA untuk lokasi yang dia
+     * sebut, tanpa harus menelusuri hierarki FuncLoc dari awal.
+     *
+     * Pencocokan memakai KODE atau NAMA lokasi sebagai kata utuh (bukan bagian
+     * kata lain), sehingga teks seperti "cat pagar area BD02" mendeteksi Area
+     * BD02, dan "bersihkan saluran dept PROD" mendeteksi Departemen PROD.
+     *
+     * @param  string  $text  Teks laporan mentah dari teknisi
+     * @param  int     $maks  Jumlah maksimum opsi yang dikembalikan
+     * @return array<int, array{level: string, id: int, kode: string, nama: string, jumlah: int}>
+     */
+    protected function detectLocationOptions(string $text, int $maks = 4): array
+    {
+        $teks = $this->normalizeTextForLocation($text);
+
+        if ($teks === '') {
+            return [];
+        }
+
+        $kandidat = [];
+
+        // Sub Area paling spesifik, lalu Area, lalu Departemen. Pencocokan
+        // dilakukan di memori (jumlah master lokasi kecil); penghitungan alat
+        // hanya untuk kandidat yang benar-benar disebut.
+        foreach ([
+            'sub'  => SubArea::with('area.department.company')->orderBy('code')->get(),
+            'area' => Area::with('department.company')->orderBy('code')->get(),
+            'dept' => Department::with('company')->orderBy('code')->get(),
+        ] as $level => $daftar) {
+            foreach ($daftar as $lokasi) {
+                $kode = (string) $lokasi->code;
+                $nama = (string) $lokasi->name;
+
+                $cocokKode = $this->textMentionsLocation($teks, $kode);
+                $cocokNama = $this->textMentionsLocation($teks, $nama) && mb_strlen(trim($nama)) >= 4;
+
+                if (! $cocokKode && ! $cocokNama) {
+                    continue;
+                }
+
+                $kandidat[] = $this->buildLocationOption($level, $lokasi);
+            }
+        }
+
+        // Urutkan: level paling spesifik dulu, lalu lokasi dengan alat terbanyak.
+        $bobot = ['sub' => 0, 'area' => 1, 'dept' => 2];
+
+        usort($kandidat, static function (array $a, array $b) use ($bobot) {
+            return [$bobot[$a['level']] ?? 9, -$a['jumlah'], $a['kode']]
+                <=> [$bobot[$b['level']] ?? 9, -$b['jumlah'], $b['kode']];
+        });
+
+        // Lokasi tanpa alat terdaftar tidak ditawarkan: biasanya itu baris master
+        // lokasi ganda/kosong yang akan membingungkan teknisi.
+        $kandidat = array_values(array_filter($kandidat, static fn (array $opsi) => $opsi['jumlah'] > 0));
+
+        return array_slice($kandidat, 0, $maks);
+    }
+
+    /**
+     * Susun satu opsi lokasi (dipakai tombol pintasan): kode, nama, konteks
+     * induk (PT/Area) supaya dua lokasi berkode sama di PT berbeda tetap bisa
+     * dibedakan, dan jumlah alat pada lokasi tersebut.
+     *
+     * @param  string  $level   'sub' | 'area' | 'dept'
+     * @param  mixed   $lokasi  Model SubArea/Area/Department
+     * @return array{level: string, id: int, kode: string, nama: string, konteks: string, jumlah: int}
+     */
+    private function buildLocationOption(string $level, $lokasi): array
+    {
+        $deptId = $areaId = $subId = null;
+        $konteks = '';
+
+        if ($level === 'sub') {
+            $subId    = (int) $lokasi->id;
+            $areaId   = $lokasi->area_id !== null ? (int) $lokasi->area_id : null;
+            $deptId   = $lokasi->area?->department_id !== null ? (int) $lokasi->area->department_id : null;
+            $konteks  = (string) ($lokasi->area?->code ?? '');
+        } elseif ($level === 'area') {
+            $areaId  = (int) $lokasi->id;
+            $deptId  = $lokasi->department_id !== null ? (int) $lokasi->department_id : null;
+            $konteks = trim((string) ($lokasi->department?->company?->code ?? '') . '-' . (string) ($lokasi->department?->code ?? ''), '-');
+        } else {
+            $deptId  = (int) $lokasi->id;
+            $konteks = (string) ($lokasi->company?->code ?? '');
+        }
+
+        return [
+            'level'   => $level,
+            'id'      => (int) $lokasi->id,
+            'kode'    => (string) $lokasi->code,
+            'nama'    => (string) $lokasi->name,
+            'konteks' => $konteks,
+            'jumlah'  => $this->hitungAlatLokasi($deptId, $areaId, $subId, $level, (int) $lokasi->id),
+        ];
+    }
+
+    /**
+     * Hitung jumlah alat pada satu lokasi.
+     *
+     * Prioritas: subtree node FuncLoc (kolom functional_loc) karena kolom id
+     * lokasi lama (area_id/sub_area_id) tidak selalu terisi; bila node-nya tidak
+     * ada, baru jatuh ke kolom id lama.
+     *
+     * @param  int|null  $deptId
+     * @param  int|null  $areaId
+     * @param  int|null  $subId
+     * @param  string    $level
+     * @param  int       $id
+     * @return int
+     */
+    private function hitungAlatLokasi(?int $deptId, ?int $areaId, ?int $subId, string $level, int $id): int
+    {
+        // Cadangan 1 (paling akurat): subtree node FuncLoc hasil susunan
+        // PT-DEPARTEMEN-AREA-SUBAREA.
+        $node = $this->resolveFuncLocForLocation($deptId, $areaId, $subId);
+
+        if ($node !== null) {
+            $subtree = Asset::where('functional_loc', 'like', $node->code . '%')->count();
+
+            if ($subtree > 0) {
+                return $subtree;
+            }
+        }
+
+        // Cadangan 2: kolom id lokasi lama (area_id/sub_area_id/department_id).
+        return $this->assetsCountForLocationLevel($level, $id);
+    }
+
+    /**
+     * Bangun tombol pintasan laporan area dari lokasi yang disebut di teks.
+     *
+     * @param  string  $text  Teks laporan mentah dari teknisi
+     * @return array<int, array{text: string, callback_data: string}>  Tombol (kosong bila tidak ada lokasi disebut)
+     */
+    protected function buildLocationShortcutButtons(string $text): array
+    {
+        $tombol = [];
+
+        foreach ($this->detectLocationOptions($text) as $opsi) {
+            $label = match ($opsi['level']) {
+                'sub'   => 'Sub Area',
+                'area'  => 'Area',
+                default => 'Departemen',
+            };
+
+            $judul = $label . ': ' . ($opsi['nama'] !== '' ? $opsi['nama'] : $opsi['kode'])
+                . ' (' . $opsi['kode'] . ($opsi['konteks'] !== '' ? ' - ' . $opsi['konteks'] : '') . ')';
+
+            $tombol[] = [
+                'text'          => mb_substr($judul, 0, 60) . ' - ' . $opsi['jumlah'] . ' alat',
+                'callback_data' => self::CALLBACK_LOCATION_SHORTCUT . $opsi['level'] . ':' . $opsi['id'],
+            ];
+        }
+
+        return $tombol;
+    }
 
     // =========================================================
     // ENTRY POINT — dipanggil dari handleWorkTypeCallback

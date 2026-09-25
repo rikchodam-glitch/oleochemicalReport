@@ -208,6 +208,18 @@ FuncLoc berubah bersamaan.
 type tersembunyi (di data nyata: 2.643 dari 4.247 alat terlihat, sekarang 4.243 — sisa 4 alat belum
 punya Tech Ident No sehingga tombolnya tidak bisa diberi kode).
 
+**Pintasan laporan area saat equipment tidak pasti** (revisi): kalau pencarian equipment tidak
+auto-accept (confidence < 90%) dan teks laporan **menyebut Sub Area / Area / Departemen secara eksplisit**
+(kode atau nama, termasuk penulisan `BD 2` untuk kode `BD02`), wizard menambahkan tombol pintasan
+`Sub Area: … / Area: … / Departemen: … (n alat)` di keyboard kandidat/no-match. Menekan tombol itu
+langsung mengunci lokasi tersebut sebagai **laporan area** (`is_area_work = true`, tanpa equipment),
+memakai node FuncLoc hasil susunan `PT-DEPARTEMEN-AREA-SUBAREA` bila ada (kalau tidak ada, laporan tetap
+tersimpan dengan `area_id`), lalu maju ke langkah durasi. Deteksi & tombol:
+`WizardFuncLocPickerTrait::detectLocationOptions()`, `buildLocationShortcutButtons()`,
+`appendLocationShortcuts()`; callback `wizard_loc:{sub|area|dept}:{id}` ditangani
+`WizardCallbackHandlerTrait::handleLocationShortcutCallback()`. Lokasi yang jumlah alatnya 0 tidak
+ditawarkan supaya tidak menyesatkan (baris master lokasi ganda/kosong).
+
 **PENTING — bot Telegram berjalan sebagai proses panjang** (`php artisan telegram:poll --action=start`,
 loop `while (true)` di dalam proses). Setelah mengubah kode Telegram, proses itu WAJIB dijalankan ulang
 (`--action=stop` lalu `--action=start`), kalau tidak ia masih memakai kelas lama di memori dan perilaku

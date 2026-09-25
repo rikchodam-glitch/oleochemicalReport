@@ -6,6 +6,7 @@ use App\Models\Area;
 use App\Models\Asset;
 use App\Models\Department;
 use App\Models\FunctionalLocation;
+use App\Models\SubArea;
 use App\Models\Technician;
 use Illuminate\Support\Facades\Log;
 
@@ -291,6 +292,13 @@ trait WizardCallbackHandlerTrait
             return $this->handleFuncLocAssetPick($chatId, $callbackData, $state);
         }
 
+        // Pintasan laporan area dari lokasi yang disebut di teks laporan
+        // (wizard_loc:{sub|area|dept}:{id}) — muncul saat pencarian equipment
+        // tidak bisa dipastikan (confidence < 90%).
+        if (str_starts_with($callbackData, self::CALLBACK_LOCATION_SHORTCUT)) {
+            return $this->handleLocationShortcutCallback($chatId, $callbackData, $state);
+        }
+
         // Callback pemilihan kandidat nama kolaborator yang ambigu (Step 8a).
         // Guard: hanya diproses saat step adalah STEP_COLLABORATOR agar tidak
         // keliru masuk sini dari step lain yang kebetulan mengirim callback serupa.
@@ -514,6 +522,88 @@ trait WizardCallbackHandlerTrait
         $this->saveState($chatId, $state);
 
         return $this->processEquipmentSearch($chatId, $state);
+    }
+
+    /**
+     * Teknisi memilih pintasan lokasi (Sub Area / Area / Departemen) yang disebut
+     * di teks laporan, dari callback 'wizard_loc:{level}:{id}'.
+     *
+     * Lokasi langsung dikunci sebagai LAPORAN AREA (is_area_work = true, tanpa
+     * equipment) lalu maju ke Step 4 (durasi kerja). Bila node FuncLoc yang
+     * mewakili kombinasi lokasi itu ada, node tersebut juga dikunci supaya
+     * laporan menyimpan funcloc_id; kalau tidak ada, laporan tetap tersimpan
+     * dengan area_id.
+     *
+     * @param  string  $chatId       Chat ID Telegram
+     * @param  string  $callbackData Data callback wizard_loc:{level}:{id}
+     * @param  array   $state        State wizard saat ini
+     * @return array   Respons wizard
+     */
+    protected function handleLocationShortcutCallback(string $chatId, string $callbackData, array $state): array
+    {
+        $bagian = explode(':', $callbackData);
+        $level  = $bagian[1] ?? '';
+        $id     = (int) ($bagian[2] ?? 0);
+
+        $deptId = $areaId = $subAreaId = null;
+
+        if ($level === 'sub') {
+            $subArea = SubArea::find($id);
+
+            if ($subArea === null) {
+                return $this->errorResponse('Sub Area tidak ditemukan. Silakan pilih ulang.');
+            }
+
+            $subAreaId = (int) $subArea->id;
+            $areaId    = $subArea->area_id !== null ? (int) $subArea->area_id : null;
+            $deptId    = $areaId !== null ? Area::where('id', $areaId)->value('department_id') : null;
+        } elseif ($level === 'area') {
+            $area = Area::find($id);
+
+            if ($area === null) {
+                return $this->errorResponse('Area tidak ditemukan. Silakan pilih ulang.');
+            }
+
+            $areaId = (int) $area->id;
+            $deptId = $area->department_id !== null ? (int) $area->department_id : null;
+        } elseif ($level === 'dept') {
+            $department = Department::find($id);
+
+            if ($department === null) {
+                return $this->errorResponse('Departemen tidak ditemukan. Silakan pilih ulang.');
+            }
+
+            $deptId = (int) $department->id;
+        } else {
+            return $this->errorResponse('Level lokasi tidak dikenali.');
+        }
+
+        // area_id & kode area disimpan lebih dulu supaya tetap terpakai walau
+        // node FuncLoc-nya tidak ditemukan.
+        $state['area_id']   = $areaId;
+        $state['area_code'] = $areaId !== null ? Area::where('id', $areaId)->value('code') : null;
+
+        $node = $this->resolveFuncLocForLocation($deptId, $areaId, $subAreaId);
+
+        Log::info("Wizard: pintasan lokasi dipilih untuk chat {$chatId}", [
+            'level'     => $level,
+            'dept_id'   => $deptId,
+            'area_id'   => $areaId,
+            'sub_area'  => $subAreaId,
+            'funcloc'   => $node?->code,
+        ]);
+
+        if ($node !== null) {
+            return $this->lockFuncLocAndAdvance($chatId, $node, $state);
+        }
+
+        // Tanpa node FuncLoc: kunci sebagai laporan area memakai area_id saja.
+        $state['is_area_work']    = true;
+        $state['equipment_id']    = null;
+        $state['equipment_ident'] = null;
+        $this->saveState($chatId, $state);
+
+        return $this->advanceToWorkDuration($chatId, $state);
     }
 
     /**

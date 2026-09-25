@@ -327,6 +327,59 @@ test('detail perangkat IT menampilkan pemakai, IP, dan tombol Buat Laporan', fun
 // TOMBOL REPORT -> WIZARD LAPORAN DENGAN ALAT SUDAH TERKUNCI
 // ============================================================
 
+test('teks yang menyebut Area tanpa kode alat menawarkan laporan area lewat tombol pintasan', function () {
+    $wizard = app(ReportWizardService::class);
+    $chatId = 'uji-lokasi-area-001';
+
+    // Teks tidak memuat kode alat, tapi menyebut nama Area secara eksplisit.
+    $wizard->startWizard($chatId, 'Pengecatan pagar di Area Uji');
+    $respons = $wizard->handleCallback($chatId, 'classification:zpm3');
+    $teks    = $respons['message'] . ' ' . json_encode($respons['keyboard']);
+
+    expect($teks)->toContain('wizard_loc:area:' . $this->area->id)
+        ->and($respons['message'])->toContain('pekerjaan AREA');
+
+    // Teknisi memilih pintasan itu: lokasi langsung dikunci sebagai laporan area
+    // dan wizard maju ke langkah durasi kerja.
+    $lanjut = $wizard->handleCallback($chatId, 'wizard_loc:area:' . $this->area->id);
+    $state  = $wizard->getState($chatId);
+
+    expect($state['is_area_work'])->toBeTrue()
+        ->and($state['area_id'])->toBe($this->area->id)
+        ->and($state['area_code'])->toBe($this->area->code)
+        ->and($state['equipment_id'])->toBeNull()
+        ->and($lanjut['message'])->toContain('Pekerjaan Area');
+});
+
+test('teks yang menyebut Sub Area menawarkan laporan area untuk sub area itu', function () {
+    $wizard = app(ReportWizardService::class);
+    $chatId = 'uji-lokasi-sub-001';
+
+    $wizard->startWizard($chatId, 'Bersihkan saluran di Sub Area Uji');
+    $respons = $wizard->handleCallback($chatId, 'classification:zpm3');
+    $teks    = $respons['message'] . ' ' . json_encode($respons['keyboard']);
+
+    expect($teks)->toContain('wizard_loc:sub:' . $this->subArea->id);
+
+    $lanjut = $wizard->handleCallback($chatId, 'wizard_loc:sub:' . $this->subArea->id);
+    $state  = $wizard->getState($chatId);
+
+    expect($state['is_area_work'])->toBeTrue()
+        ->and($state['area_id'])->toBe($this->area->id)
+        ->and($lanjut['message'])->toContain('Pekerjaan Area');
+});
+
+test('teks tanpa sebutan lokasi tidak menambah tombol pintasan area', function () {
+    $wizard = app(ReportWizardService::class);
+    $chatId = 'uji-lokasi-kosong-001';
+
+    $wizard->startWizard($chatId, 'Perbaikan pompa transfer');
+    $respons = $wizard->handleCallback($chatId, 'classification:zpm3');
+    $teks    = $respons['message'] . ' ' . json_encode($respons['keyboard']);
+
+    expect($teks)->not->toContain('wizard_loc:');
+});
+
 test('hirarki pemilihan equipment menampilkan alat yang belum diisi Equipment Type', function () {
     $wizard = app(ReportWizardService::class);
     $chatId = 'uji-hirarki-001';

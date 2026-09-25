@@ -453,6 +453,13 @@ class ReportWizardService
             $this->saveState($chatId, $state);
 
             $response = $this->buildCandidateKeyboard($candidates, $results, $state);
+
+            // Di bawah 90%: bila teks menyebut Sub Area/Area/Departemen secara
+            // eksplisit, tawarkan pintasan laporan area untuk lokasi itu.
+            if ($confidence < 90) {
+                $response = $this->appendLocationShortcuts($response, $text);
+            }
+
             return $this->appendDateConfirmationNote($response, $state);
         }
 
@@ -497,14 +504,19 @@ class ReportWizardService
         }
 
         // AI equipment maupun lokasi sama-sama tidak menemukan — tanya jenis
-        // pekerjaan secara manual seperti alur sebelumnya.
+        // pekerjaan secara manual seperti alur sebelumnya, tapi bila teks
+        // menyebut Sub Area/Area/Departemen secara eksplisit, tawarkan pintasan
+        // laporan area supaya teknisi tidak perlu menelusuri hierarki.
         $state['step']               = self::STEP_EQUIPMENT_CLARIFY;
         $state['search_results']     = $results;
         $state['retype_attempts']    = 0;
         $state['awaiting_work_type'] = true;
         $this->saveState($chatId, $state);
 
-        return $this->appendDateConfirmationNote($this->buildManualWorkTypePrompt($state), $state);
+        return $this->appendDateConfirmationNote(
+            $this->appendLocationShortcuts($this->buildManualWorkTypePrompt($state), $text),
+            $state
+        );
     }
 
     /**
