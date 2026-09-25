@@ -327,6 +327,33 @@ test('detail perangkat IT menampilkan pemakai, IP, dan tombol Buat Laporan', fun
 // TOMBOL REPORT -> WIZARD LAPORAN DENGAN ALAT SUDAH TERKUNCI
 // ============================================================
 
+test('jenis pekerjaan IT tidak lagi membatasi pilihan equipment ke perangkat IT saja', function () {
+    $wizard = app(ReportWizardService::class);
+    $chatId = 'uji-pool-it-001';
+
+    // Aset industri uji punya tech_ident_no 6010MO01 (bukan perangkat IT).
+    $wizard->startWizard($chatId, 'Perbaikan motor pompa 6010MO01');
+    $wizard->handleCallback($chatId, 'classification:zpm1');
+
+    $respons = $wizard->handleCallback($chatId, 'jenis_pekerjaan:IT');
+
+    $state = $wizard->getState($chatId);
+
+    expect($state['jenis_pekerjaan'])->toBe('IT');
+
+    // Aset industri harus ikut terjangkau walau jenis pekerjaannya IT.
+    $teks = $respons['message'] . ' ' . json_encode($respons['keyboard']);
+
+    expect($teks)->toContain('6010MO01');
+
+    // Dipastikan bukan karena pembatas pool: pool sekarang tidak dibatasi.
+    $isItPool = (new ReflectionMethod(ReportWizardService::class, 'isItPool'));
+    $isItPool->setAccessible(true);
+
+    expect($isItPool->invoke($wizard, $state))->toBeFalse()
+        ->and($isItPool->invoke($wizard, ['jenis_pekerjaan' => 'Mekanik']))->toBeFalse();
+});
+
 test('tombol Buat Laporan membuka wizard dengan alat terkunci dan langsung ke jenis pekerjaan', function () {
     $wizard = app(ReportWizardService::class);
     $chatId = 'info-uji-001';

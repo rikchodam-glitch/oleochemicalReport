@@ -188,6 +188,20 @@ Step 8: Konfirmasi & Simpan  → ringkasan, simpan ke DB jika OK
 State wizard disimpan di **Laravel Cache** per `chat_id` dengan TTL 2 jam.
 Laporan hanya dibuat di DB pada Step 8 (pendekatan "Create at End").
 
+**Pool equipment tidak dibatasi jenis pekerjaan** (revisi): `WizardUtilityTrait::isItPool()` sekarang
+SELALU `false`, jadi teknisi dengan jenis pekerjaan **IT tetap bisa memilih seluruh equipment**
+(aset industri EPE/NPA/CES maupun perangkat IT). Sebelumnya pilihan IT membatasi pool ke baris cermin
+perangkat IT (`data_source = 'it_sync'`) sehingga aset industri lain tidak muncul. Method itu dipertahankan
+sebagai satu-satunya tempat keputusan supaya pencarian TechIdentNo, keyboard tipe/area, dan penjelajahan
+FuncLoc berubah bersamaan.
+
+**Kalau sebuah alat tidak muncul di wizard**, periksa dua hal:
+1. Apakah alat itu ada di tabel `assets` dengan `tech_ident_no` terisi (pencarian memakai kolom itu).
+2. Untuk perangkat IT: baris cermin di `assets` hanya dibuat bila perangkat punya `funcloc_id`.
+   Perangkat IT tanpa lokasi TIDAK punya cermin sehingga tidak bisa dicari siapa pun. Lengkapi
+   lokasinya di halaman IT Assets lalu jalankan `php artisan it:sync-assets`
+   (`--dry-run` untuk melihat "N belum bisa dipetakan" tanpa menyimpan).
+
 Foto disimpan di `storage/app/public/reports/{chat_id}/{uniqid}.jpg`
 dan diakses via `Storage::disk('public')->url($path)`.
 

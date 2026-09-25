@@ -121,8 +121,11 @@ trait WizardStepHandlerTrait
      * Bangun pesan prompt pilihan jenis pekerjaan: EI, Mekanik, atau IT.
      * Ditampilkan setelah teknisi memilih klasifikasi ZPM 1 atau ZPM 6.
      * Callback_data mengikuti pola 'jenis_pekerjaan:<kode>', ditangani
-     * WizardCallbackHandlerTrait::handleJenisPekerjaanCallback(). Pilihan IT
-     * membatasi pencarian equipment ke perangkat IT (data_source 'it_sync').
+     * WizardCallbackHandlerTrait::handleJenisPekerjaanCallback().
+     *
+     * Jenis pekerjaan TIDAK lagi membatasi pool pencarian equipment: pilihan IT
+     * tetap bisa memilih seluruh equipment (aset industri maupun perangkat IT),
+     * lihat WizardUtilityTrait::isItPool().
      *
      * @param  array $state State wizard saat ini
      * @return array Respons dengan message dan keyboard EI/Mekanik/IT

@@ -406,8 +406,9 @@ class ReportWizardService
 
         $text    = $state['text'];
         $areaId  = $state['area_id'] ?? null;
-        // Jenis pekerjaan IT membatasi pool pencarian ke perangkat IT saja.
-        $itOnly  = ($state['jenis_pekerjaan'] ?? null) === 'IT';
+        // Pool pencarian TIDAK lagi dibatasi per jenis pekerjaan (lihat
+        // isItPool()): aset industri dan perangkat IT sama-sama bisa dipilih.
+        $itOnly  = $this->isItPool($state);
         $results = $this->techIdentSearch->search($text, $areaId, $itOnly);
 
         Log::info("WizardService: TechIdentSearch result for chat {$chatId}", [
@@ -1160,7 +1161,7 @@ class ReportWizardService
         $state['retype_attempts'] = $attempts;
 
         $areaId     = $state['area_id'] ?? null;
-        $itOnly     = ($state['jenis_pekerjaan'] ?? null) === 'IT';
+        $itOnly     = $this->isItPool($state);
         $results    = $this->techIdentSearch->search($text, $areaId, $itOnly);
         $confidence = $results['confidence'] ?? 0;
         $candidates = $results['candidates'] ?? [];

@@ -496,17 +496,24 @@ trait WizardUtilityTrait
     }
 
     /**
-     * Apakah laporan ini berjenis pekerjaan IT. Dipakai untuk membatasi pool
-     * pencarian equipment ke perangkat IT saja (baris cermin di tabel assets
-     * dengan data_source 'it_sync'), sehingga teknisi IT TIDAK melihat asset
-     * industri dan sebaliknya EI/Mekanik tetap bisa melihat semuanya.
+     * Apakah pool pencarian equipment dibatasi ke perangkat IT saja.
+     *
+     * KEPUTUSAN BISNIS (revisi): sekarang SELALU false — teknisi dengan jenis
+     * pekerjaan IT tetap bisa memilih SELURUH equipment, termasuk aset industri
+     * milik PT mana pun (EPE/NPA/CES). Sebelumnya pilihan jenis pekerjaan IT
+     * membatasi pool ke baris cermin perangkat IT (data_source 'it_sync'),
+     * sehingga aset industri (mis. NPA/CES) tidak muncul padahal dikerjakan.
+     *
+     * Method ini sengaja dipertahankan sebagai satu-satunya tempat keputusan
+     * tersebut supaya seluruh pemakai (pencarian TechIdentNo, keyboard tipe/area,
+     * dan penjelajahan FuncLoc) ikut berubah tanpa perlu diubah satu per satu.
      *
      * @param  array  $state State wizard saat ini
-     * @return bool
+     * @return bool  Selalu false (tidak ada pembatasan pool per jenis pekerjaan)
      */
     protected function isItPool(array $state): bool
     {
-        return ($state['jenis_pekerjaan'] ?? null) === 'IT';
+        return false;
     }
 
     // =========================================================
