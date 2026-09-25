@@ -19,6 +19,18 @@
                 <br>Kolom yang diproses: Equipment, Description, TechIdentNo., Object Type, Functional Loc. — <a href="{{ route('assets.import.template') }}" class="text-teal-600 hover:underline font-medium">Download Template Excel</a>
             </p>
 
+            <div class="mb-4 rounded-lg border border-teal-100 bg-teal-50 p-3">
+                <p class="text-xs text-teal-800 leading-relaxed">
+                    <span class="font-semibold">Memperbarui data yang sudah ada:</span>
+                    file hasil <span class="font-semibold">Export</span> dari halaman Asset Management bisa langsung
+                    disesuaikan lalu diimport ulang. Setelah file dianalisa, baris tersebut muncul sebagai
+                    <span class="font-semibold">duplikat</span> (dicocokkan lewat Equipment No) — pilih aksi
+                    <span class="font-semibold">"Replace — Ganti dengan data baru"</span> agar data lama diperbarui.
+                    Kolom Description, Tech Ident No, Equipment Type, Functional Loc, Company/Department/Area/Sub Area,
+                    Manufacturer, Model Number, Construct Year, dan Status ikut diperbarui.
+                </p>
+            </div>
+
             <form @submit.prevent="uploadFile" class="space-y-4">
                 <div class="flex items-center gap-4">
                     <input type="file" x-ref="fileInput" accept=".xlsx,.xls,.csv"

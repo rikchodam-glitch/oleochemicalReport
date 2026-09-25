@@ -98,6 +98,14 @@ class ImportService
                     'manufacturer'   => $this->colVal($row, $colMap, 'manufacturer'),
                     'model_number'   => $this->colVal($row, $colMap, 'model_number'),
                     'construct_year' => $this->colVal($row, $colMap, 'construct_year'),
+                    // Kolom tambahan file export aplikasi sendiri.
+                    'status'         => $this->colVal($row, $colMap, 'status'),
+                    'kode_lokasi'    => [
+                        'company_code' => $this->colVal($row, $colMap, 'company_col'),
+                        'dept_code'    => $this->colVal($row, $colMap, 'department_col'),
+                        'area_code'    => $this->colVal($row, $colMap, 'area_col'),
+                        'subarea_code' => $this->colVal($row, $colMap, 'sub_area_col'),
+                    ],
                 ];
 
                 if ($isDuplicate) {
@@ -163,6 +171,7 @@ class ImportService
 
         $successCount = 0;
         $errorCount = 0;
+        $itSyncSkipped = 0;
         $importLogData = [
             'filename' => $choices['filename'] ?? 'unknown.xlsx',
             'imported_by' => auth()->id(),
@@ -175,7 +184,7 @@ class ImportService
             'detail_json' => $analysis,
         ];
 
-        DB::transaction(function () use ($analysis, $duplicateAction, $noEquipAction, &$successCount, &$errorCount, $importLogData) {
+        DB::transaction(function () use ($analysis, $duplicateAction, $noEquipAction, &$successCount, &$errorCount, &$itSyncSkipped, $importLogData) {
             // Proses baris bersih
             foreach ($analysis['clean'] as $row) {
                 $funcLocNode = $this->syncFuncLocFromRow($row['functional_loc']);
@@ -192,7 +201,7 @@ class ImportService
                     $location,
                     [
                         'funcloc_id' => $funcLocNode->id,
-                        'status' => 'active',
+                        'status' => $this->statusValid($row['status'] ?? null) ?? 'active',
                         'has_equipment_no' => true,
                         'data_source' => 'import_excel',
                         'imported_at' => now(),
@@ -207,6 +216,14 @@ class ImportService
                     $existing = Asset::where('equipment_no', $row['equipment_no'])->first();
                     if (!$existing) continue;
 
+                    // Baris cermin perangkat IT dikelola modul IT Assets
+                    // (lewat `php artisan it:sync-assets`), jadi tidak diubah
+                    // dari impor Excel aset supaya data IT tidak menyimpang.
+                    if ($existing->data_source === 'it_sync') {
+                        $itSyncSkipped++;
+                        continue;
+                    }
+
                     if ($duplicateAction === 'replace') {
                         $funcLocNode = $this->syncFuncLocFromRow($row['functional_loc']);
 
@@ -216,6 +233,20 @@ class ImportService
                         }
 
                         $location = $this->findOrCreateLocation($row['location']);
+
+                        // Kolom Company/Department/Area/Sub Area pada file hasil
+                        // export dipakai sebagai penentu lokasi bila diisi, supaya
+                        // penyesuaian kolom tersebut benar-benar ikut terupdate.
+                        $lokasiKolom = $this->resolveLokasiDariKode($row['kode_lokasi'] ?? []);
+
+                        if (!$lokasiKolom['ok']) {
+                            $errorCount++;
+                            continue;
+                        }
+
+                        if ($lokasiKolom['ada']) {
+                            $location = array_filter($lokasiKolom['ids'], fn ($id) => $id !== null) + $location;
+                        }
 
                         $updateData = array_merge(
                             $this->mapToAsset($row),
@@ -229,6 +260,14 @@ class ImportService
                         // (Sheet1) — pertahankan nilai lama.
                         if (empty($row['equipment_type'] ?? '')) {
                             unset($updateData['equipment_type']);
+                        }
+
+                        // Status dari file hanya dipakai bila nilainya dikenal,
+                        // sehingga kolom Status yang tidak diisi tidak menimpa.
+                        $statusBaru = $this->statusValid($row['status'] ?? null);
+
+                        if ($statusBaru !== null) {
+                            $updateData['status'] = $statusBaru;
                         }
 
                         $existing->update($updateData);
@@ -290,12 +329,16 @@ class ImportService
         if ($errorCount > 0) {
             $message .= " {$errorCount} baris dilewati karena tidak memiliki Functional Location yang valid.";
         }
+        if ($itSyncSkipped > 0) {
+            $message .= " {$itSyncSkipped} baris perangkat IT dilewati (data IT dikelola modul IT Assets).";
+        }
 
         return [
             'status' => 'success',
             'message' => $message,
             'success_count' => $successCount,
             'error_count' => $errorCount,
+            'it_sync_skipped' => $itSyncSkipped,
         ];
     }
 
@@ -317,7 +360,13 @@ class ImportService
             $name = preg_replace('/[^a-z]/', '', strtolower((string) $header));
 
             switch ($name) {
-                case 'equipment':     $map['equipment'] = $index; break;
+                // Nama kolom SAP (template import) dan nama kolom hasil Export
+                // aplikasi ini sama-sama dikenali, supaya file hasil export bisa
+                // disesuaikan lalu diimport ulang untuk MEMPERBARUI data
+                // ("Equipment No" pada export vs "Equipment" pada template SAP).
+                case 'equipment':
+                case 'equipmentno':   $map['equipment'] = $index; break;
+
                 case 'description':   $map['description'] = $index; break;
                 case 'validto':       $map['valid_to'] = $index; break;
                 case 'planningplant': $map['planning_plant'] = $index; break;
@@ -329,6 +378,14 @@ class ImportService
                 case 'companycode':   $map['company_code'] = $index; break;
                 case 'manufacturer':  $map['manufacturer'] = $index; break;
                 case 'modelnumber':   $map['model_number'] = $index; break;
+
+                // Kolom tambahan yang hanya ada pada file hasil export aplikasi.
+                case 'company':       $map['company_col'] = $index; break;
+                case 'department':    $map['department_col'] = $index; break;
+                case 'area':          $map['area_col'] = $index; break;
+                case 'subarea':       $map['sub_area_col'] = $index; break;
+                case 'status':        $map['status'] = $index; break;
+                case 'datasource':    $map['data_source'] = $index; break;
             }
         }
 
@@ -431,6 +488,110 @@ class ImportService
             'area_id'       => $area?->id,
             'sub_area_id'   => $subarea?->id,
         ];
+    }
+
+    /**
+     * Pastikan nilai status dari file import termasuk status yang dikenal.
+     *
+     * @param  string|null  $status
+     * @return string|null  Status valid, atau null bila kosong/tidak dikenal
+     */
+    private function statusValid(?string $status): ?string
+    {
+        $status = trim((string) $status);
+
+        return in_array($status, ['active', 'inactive', 'needs_review', 'spare'], true) ? $status : null;
+    }
+
+    /**
+     * Ubah kode lokasi dari kolom file export (Company/Department/Area/Sub Area)
+     * menjadi ID yang benar-benar ada di database.
+     *
+     * Dipakai agar penyesuaian kolom lokasi pada file export ikut terupdate saat
+     * diimport ulang. Bila salah satu kode yang diisi tidak ditemukan, baris
+     * dianggap gagal (ok = false) supaya tidak terjadi perubahan lokasi yang
+     * keliru tanpa pemberitahuan.
+     *
+     * @param  array<string, string>  $kode
+     * @return array{ok: bool, ada: bool, ids: array<string, int|null>}
+     */
+    private function resolveLokasiDariKode(array $kode): array
+    {
+        $ids = [
+            'company_id'    => null,
+            'department_id' => null,
+            'area_id'       => null,
+            'sub_area_id'   => null,
+        ];
+
+        $diisi = array_filter($kode, fn ($nilai) => trim((string) $nilai) !== '');
+
+        if ($diisi === []) {
+            return ['ok' => true, 'ada' => false, 'ids' => $ids];
+        }
+
+        if (!empty($kode['company_code'])) {
+            $company = Company::where('code', trim((string) $kode['company_code']))->first();
+
+            if ($company === null) {
+                return ['ok' => false, 'ada' => true, 'ids' => $ids];
+            }
+
+            $ids['company_id'] = $company->id;
+        }
+
+        if (!empty($kode['dept_code'])) {
+            $deptQuery = Department::where('code', trim((string) $kode['dept_code']));
+
+            if ($ids['company_id'] !== null) {
+                $deptQuery->where('company_id', $ids['company_id']);
+            }
+
+            $dept = $deptQuery->first();
+
+            if ($dept === null) {
+                return ['ok' => false, 'ada' => true, 'ids' => $ids];
+            }
+
+            $ids['department_id'] = $dept->id;
+            $ids['company_id']    = $ids['company_id'] ?? $dept->company_id;
+        }
+
+        if (!empty($kode['area_code'])) {
+            $areaQuery = Area::where('code', trim((string) $kode['area_code']));
+
+            if ($ids['department_id'] !== null) {
+                $areaQuery->where('department_id', $ids['department_id']);
+            }
+
+            $area = $areaQuery->first();
+
+            if ($area === null) {
+                return ['ok' => false, 'ada' => true, 'ids' => $ids];
+            }
+
+            $ids['area_id']       = $area->id;
+            $ids['department_id'] = $ids['department_id'] ?? $area->department_id;
+        }
+
+        if (!empty($kode['subarea_code'])) {
+            $subAreaQuery = SubArea::where('code', trim((string) $kode['subarea_code']));
+
+            if ($ids['area_id'] !== null) {
+                $subAreaQuery->where('area_id', $ids['area_id']);
+            }
+
+            $subArea = $subAreaQuery->first();
+
+            if ($subArea === null) {
+                return ['ok' => false, 'ada' => true, 'ids' => $ids];
+            }
+
+            $ids['sub_area_id'] = $subArea->id;
+            $ids['area_id']     = $ids['area_id'] ?? $subArea->area_id;
+        }
+
+        return ['ok' => true, 'ada' => true, 'ids' => $ids];
     }
 
     private function mapToAsset(array $row): array

@@ -298,6 +298,26 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
 - Catatan: laporan yang dibuat admin lewat web (`/reports/create`) tidak punya teknisi pelapor,
   jadi otomasi kolaborasi hanya berlaku untuk laporan dari bot Telegram.
 
+### Export & Import Aset (putaran lengkap: export → sesuaikan → import)
+
+- **Export**: `GET /assets/export/excel` dan `GET /assets/export/csv` (`AssetExportTrait`, filter sama dengan
+  halaman index). Kolom: Equipment No, Description, Tech Ident No, Equipment Type, Functional Loc,
+  Company, Department, Area, Sub Area, Manufacturer, Model Number, Construct Year, Status,
+  Data Source, Imported At, Created At, Updated At.
+- **Import**: `GET /assets/import` → analisa file → pilih aksi → eksekusi (`ImportService`).
+  Pencocokan baris memakai `equipment_no`.
+- **Memperbarui data yang sudah ada**: file hasil export bisa langsung disesuaikan lalu diimport ulang.
+  Baris dengan `equipment_no` yang sudah ada masuk bucket **duplikat**; pilih aksi
+  **replace** ("Ganti dengan data baru") agar data lama DIPERBARUI (bukan dibuat ganda).
+- `ImportService::buildColMap()` mengenali nama kolom SAP (`Equipment`, `TechIdentNo.`, `Functional Loc.`)
+  **dan** nama kolom hasil export (`Equipment No`, `Tech Ident No`, `Functional Loc`, `Company`,
+  `Department`, `Area`, `Sub Area`, `Status`, `Data Source`).
+- Kolom yang ikut diperbarui: Description, Tech Ident No, Equipment Type, Functional Loc (+ `funcloc_id`),
+  Company/Department/Area/Sub Area (diresolusi dari kode kolom; kode tak dikenal = baris dilewati),
+  Manufacturer, Model Number, Construct Year, dan Status. Status kosong / tidak dikenal tidak menimpa nilai lama.
+- Baris cermin perangkat IT (`data_source = it_sync`) **dilewati** saat import (dikelola modul IT Assets
+  lewat `php artisan it:sync-assets`) dan dilaporkan jumlahnya pada pesan hasil import.
+
 ### Routes yang Ada (web.php)
 
 | Route | Controller | Keterangan |
