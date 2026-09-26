@@ -398,6 +398,14 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
   Jumlah baris yang dicocokkan dengan cara ini dilaporkan (`truncated_matched_count`).
   Pencegahan di sisi file: format kolom TechIdentNo. sebagai Teks biasa (Plain text) sebelum mengisi,
   lalu simpan sebagai .xlsx (CSV tidak menyimpan tipe sel).
+- **Daftar "Perlu Diperiksa" menampilkan aset kandidatnya**: untuk baris ambigu (Tech Ident No dobel),
+  halaman import menampilkan tiap aset yang memakai Tech Ident No itu (nomor equipment, Tech Ident No,
+  deskripsi, Functional Loc, sumber data) lengkap dengan tautan ke detail aset dan tautan
+  `Buka di Asset Management` (pencarian tech ident tsb), supaya tidak perlu dicari manual.
+- **Perintah pendata Tech Ident No dobel**: `php artisan assets:duplicate-tech-ident [--pt=EPE]` —
+  menampilkan setiap kelompok Tech Ident No yang dipakai lebih dari satu aset beserta id, nomor equipment,
+  sumber data, lokasi, jumlah laporan, dan waktu dibuat. Dipakai untuk membereskan data sebelum import
+  berikutnya (Tech Ident No harus unik per aset).
 - **Penjaga noise float & sel kosong pada import**: sel Excel bertipe ANGKA (mis. Model Number `4373.2602`)
   terbaca ber-noise oleh pembaca spreadsheet (`4373.26019999999971`). Dua lapis penjagaan:
   (1) pembaca merapikan angka desimal panjang (`rapikanAngkaPanjang()`, hanya bentuk 12+ angka di

@@ -894,7 +894,12 @@ test('nilai angka yang cocok dengan lebih dari satu Tech Ident No tidak ditebak'
     expect($analysis['ambigu'])->toHaveCount(1)
         ->and($analysis['clean'])->toHaveCount(0)
         ->and($analysis['duplicate'])->toHaveCount(0)
-        ->and($analysis['ambigu'][0]['alasan'])->toContain('lebih dari satu Tech Ident No');
+        ->and($analysis['ambigu'][0]['alasan'])->toContain('lebih dari satu Tech Ident No')
+        // Kandidat ditampilkan lengkap (nomor equipment + lokasi) supaya bisa
+        // langsung dicocokkan dengan daftar aset tanpa mencari manual.
+        ->and($analysis['ambigu'][0]['kandidat'])->toHaveCount(2)
+        ->and(collect($analysis['ambigu'][0]['kandidat'])->pluck('equipment_no')->all())
+        ->toBe(['90000092', '90000093']);
 
     $hasil = $this->import->executeImport($analysis, [
         'duplicate_action' => 'replace',

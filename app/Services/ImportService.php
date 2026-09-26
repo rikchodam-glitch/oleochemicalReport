@@ -243,6 +243,7 @@ class ImportService
 
             if ($kandidat->count() > 1) {
                 $rowData['kandidat_ids'] = $kandidat->pluck('id')->all();
+                $rowData['kandidat']     = $this->ringkasKandidat($kandidat);
                 $rowData['alasan']       = 'Tech Ident No "' . $techNo . '" dipakai oleh ' . $kandidat->count() . ' aset di database.';
                 $results['ambigu'][]     = $rowData;
 
@@ -305,6 +306,7 @@ class ImportService
 
             if (count($kandidat) > 1) {
                 $rowData['kandidat_ids'] = array_map(static fn (Asset $a) => $a->id, $kandidat);
+                $rowData['kandidat']     = $this->ringkasKandidat(collect($kandidat));
                 $rowData['alasan']       = 'Nilai "' . $techNo . '" cocok dengan lebih dari satu Tech Ident No di database: '
                     . implode(', ', array_map(static fn (Asset $a) => (string) $a->tech_ident_no, $kandidat)) . '.';
                 $results['ambigu'][]     = $rowData;
@@ -316,6 +318,30 @@ class ImportService
         }
 
         return $results;
+    }
+
+    /**
+     * Ringkas daftar aset kandidat supaya bisa ditampilkan di halaman import
+     * (baris "Perlu Diperiksa"): id + nomor equipment + Tech Ident No +
+     * deskripsi + lokasi + sumber data aset tersebut.
+     *
+     * @param  \Illuminate\Support\Collection<int, Asset>  $kandidat
+     * @return array<int, array<string, string|int|null>>
+     */
+    private function ringkasKandidat($kandidat): array
+    {
+        return $kandidat
+            ->map(static fn (Asset $aset) => [
+                'id'             => $aset->id,
+                'equipment_no'   => $aset->equipment_no,
+                'tech_ident_no'  => $aset->tech_ident_no,
+                'description'    => $aset->description,
+                'functional_loc' => $aset->functional_loc,
+                'data_source'    => $aset->data_source,
+                'diperbarui'     => $aset->updated_at?->toDateString(),
+            ])
+            ->values()
+            ->all();
     }
 
     /**
@@ -341,7 +367,7 @@ class ImportService
             ->get([
                 'id', 'equipment_no', 'tech_ident_no', 'description', 'equipment_type',
                 'functional_loc', 'manufacturer', 'model_number', 'construct_year',
-                'status', 'data_source',
+                'status', 'data_source', 'updated_at',
             ]);
 
         foreach ($asetPolaE as $aset) {

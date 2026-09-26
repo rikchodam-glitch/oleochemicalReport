@@ -269,11 +269,33 @@
                         </p>
                         <div class="max-h-56 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
                             <template x-for="row in analysis.ambigu" :key="row.row">
-                                <div class="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
-                                    <span class="text-xs text-slate-400 shrink-0" x-text="'Baris ' + row.row"></span>
-                                    <span class="font-mono text-xs text-slate-700 shrink-0" x-text="row.tech_ident_no"></span>
-                                    <span class="text-slate-600 truncate" x-text="row.description"></span>
-                                    <span class="text-xs text-rose-600" x-text="row.alasan"></span>
+                                <div class="px-4 py-2 text-sm">
+                                    <div class="flex flex-wrap items-center gap-3">
+                                        <span class="text-xs text-slate-400 shrink-0" x-text="'Baris ' + row.row"></span>
+                                        <span class="font-mono text-xs text-slate-700 shrink-0" x-text="row.tech_ident_no"></span>
+                                        <span class="text-slate-600 truncate" x-text="row.description"></span>
+                                    </div>
+                                    <p class="mt-0.5 text-xs text-rose-600" x-text="row.alasan"></p>
+                                    <div class="mt-1 space-y-0.5">
+                                        <template x-for="k in (row.kandidat || [])" :key="k.id">
+                                            <p class="text-xs text-slate-500">
+                                                <a :href="'/assets/' + k.id" target="_blank" class="text-teal-600 hover:underline font-mono"
+                                                   x-text="k.equipment_no || '(tanpa nomor)'"></a>
+                                                <span class="mx-1">&middot;</span>
+                                                <span class="font-mono" x-text="k.tech_ident_no"></span>
+                                                <span class="mx-1">&middot;</span>
+                                                <span x-text="k.description"></span>
+                                                <span class="mx-1">&middot;</span>
+                                                <span class="font-mono" x-text="k.functional_loc"></span>
+                                                <span class="mx-1">&middot;</span>
+                                                <span x-text="k.data_source"></span>
+                                            </p>
+                                        </template>
+                                        <p class="text-xs">
+                                            <a :href="'/assets?search=' + encodeURIComponent(row.tech_ident_no)" target="_blank"
+                                               class="text-teal-600 hover:underline">Buka di Asset Management</a>
+                                        </p>
+                                    </div>
                                 </div>
                             </template>
                         </div>
