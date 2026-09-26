@@ -452,7 +452,7 @@
                                 onclick="window.location='{{ route('reports.show', $report) }}'">
                                 <td class="px-5 py-3.5 align-top whitespace-nowrap">
                                     <p class="text-slate-700 font-medium">{{ $report->report_date?->format('d/m/Y') ?? '-' }}</p>
-                                    <p class="text-xs text-slate-400">{{ $report->report_date?->translatedFormat('l') ?? '' }}</p>
+                                    <p class="text-xs text-slate-400">{{ $report->report_date?->locale('id')->translatedFormat('l') ?? '' }}</p>
                                 </td>
                                 <td class="px-4 py-3.5 align-top whitespace-nowrap text-xs text-slate-600">
                                     {{ $report->time_range ?? '-' }}

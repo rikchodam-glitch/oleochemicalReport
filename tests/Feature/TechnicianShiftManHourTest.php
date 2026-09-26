@@ -237,7 +237,12 @@ test('halaman teknisi menampilkan man hour, rincian harian, dan kolom jam kerja'
         ->assertSee('Jam Kerja', false)
         ->assertSee('Jadwal Shift', false)
         ->assertSee('Buat Jadwal Otomatis', false)
-        ->assertSee('Riwayat Import Jadwal', false);
+        ->assertSee('Riwayat Import Jadwal', false)
+        // Popup preview jadwal bulanan (pengganti form upload jadwal).
+        ->assertSee('Lihat Jadwal Bulanan', false)
+        ->assertSee('Jadwal Shift Bulanan', false)
+        ->assertSee('modal-jadwal-bulanan', false)
+        ->assertSee('Shift 1 (08.00-16.00)', false);
 
     // Detail teknisi: kartu man hour, rincian harian, dan grafik.
     $this->actingAs($this->admin)
@@ -353,4 +358,38 @@ test('tombol buat jadwal otomatis mengisi jadwal dari pola rotasi', function () 
         ->and($baris->first()->group_code)->toBe('A')
         // Teknisi reguler tidak dibuatkan jadwal shift.
         ->and(TechnicianShift::where('technician_id', $this->teknisiStaf->id)->count())->toBe(0);
+});
+
+test('preview jadwal bulanan berisi 4 group dan rekap hari', function () {
+    $jadwal = app(ShiftPatternService::class)->jadwalBulan(Carbon::parse('2026-10-01'));
+
+    // Okktober 2026 = 31 hari, 4 group pekerja shift.
+    expect($jadwal['label'])->toBe('Oktober 2026')
+        ->and($jadwal['hari'])->toHaveCount(31)
+        ->and($jadwal['grup'])->toHaveCount(4)
+        // Group A: 01/10 OFF, 26/10 Shift 1 (sesuai file jadwal asli).
+        ->and($jadwal['grup'][0]['label'])->toBe('Grub A')
+        ->and($jadwal['grup'][0]['kode'][0])->toBe('x')
+        ->and($jadwal['grup'][0]['kode'][25])->toBe('1')
+        // Rekap hari group A: 10 Shift 1, 5 Shift 2, 8 Shift 3, 8 OFF (total 31).
+        ->and($jadwal['grup'][0]['jumlah'])->toBe(['1' => 10, '2' => 5, '3' => 8, 'x' => 8])
+        ->and($jadwal['grup'][0]['hari_kerja'])->toBe(23)
+        ->and($jadwal['grup'][0]['hari_off'])->toBe(8)
+        // Navigasi bulan sebelumnya & berikutnya.
+        ->and($jadwal['bulan_sebelumnya'])->toBe('2026-09')
+        ->and($jadwal['bulan_berikutnya'])->toBe('2026-11');
+});
+
+test('popup jadwal bulanan bisa digeser ke bulan berikutnya', function () {
+    $this->actingAs($this->admin)
+        ->get('/technicians?jadwal_bulan=2026-11')
+        ->assertStatus(200)
+        ->assertSee('November 2026', false)
+        ->assertSee('Jadwal Shift Bulanan', false);
+
+    // Parameter tidak valid tidak membuat halaman error (pakai bulan berjalan).
+    $this->actingAs($this->admin)
+        ->get('/technicians?jadwal_bulan=ngawur')
+        ->assertStatus(200)
+        ->assertSee('Jadwal Shift Bulanan', false);
 });

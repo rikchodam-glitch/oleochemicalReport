@@ -10,6 +10,7 @@ use App\Services\Shift\ManHourService;
 use App\Services\Shift\ShiftPatternService;
 use App\Services\TelegramService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 
@@ -65,6 +66,12 @@ class TechnicianController extends Controller
         $shiftTerakhir = ShiftSchedule::latest('id')->first();
         $riwayatJadwal = ShiftSchedule::with('uploader')->latest('id')->take(5)->get();
 
+        // Preview jadwal bulanan (popup): default bulan berjalan, bisa digeser
+        // lewat parameter ?jadwal_bulan=YYYY-MM.
+        $bulanJadwal = $this->bulanJadwalDariRequest($request);
+
+        $jadwalBulanan = app(ShiftPatternService::class)->jadwalBulan($bulanJadwal);
+
         return view('technicians.index', compact(
             'technicians',
             'departments',
@@ -72,8 +79,27 @@ class TechnicianController extends Controller
             'targetKerja',
             'labelPeriode',
             'shiftTerakhir',
-            'riwayatJadwal'
+            'riwayatJadwal',
+            'jadwalBulanan'
         ));
+    }
+
+    /**
+     * Baca parameter bulan jadwal dari request (?jadwal_bulan=YYYY-MM) dengan
+     * fallback ke bulan berjalan bila kosong atau tidak valid.
+     *
+     * @param  Request $request Request halaman daftar teknisi
+     * @return \Illuminate\Support\Carbon Bulan yang akan ditampilkan
+     */
+    private function bulanJadwalDariRequest(Request $request): \Illuminate\Support\Carbon
+    {
+        $bulan = (string) $request->input('jadwal_bulan', '');
+
+        if (preg_match('/^\d{4}-\d{2}$/', $bulan) === 1) {
+            return Carbon::createFromFormat('Y-m-d', $bulan . '-01')->startOfMonth();
+        }
+
+        return now()->startOfMonth();
     }
 
     /**

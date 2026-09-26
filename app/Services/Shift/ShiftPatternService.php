@@ -51,6 +51,98 @@ class ShiftPatternService
     }
 
     /**
+     * Kebalikan dari hurufGrup(): cari group teknisi dari huruf group jadwal.
+     *
+     * @param  string $huruf Huruf group jadwal (A-D)
+     * @return string|null   Group teknisi (mis. grub_a) atau null bila tidak ada
+     */
+    public function grupDariHuruf(string $huruf): ?string
+    {
+        foreach ((array) config('cm.shift_pattern.grup_ke_huruf', []) as $grup => $kode) {
+            if (strtoupper((string) $kode) === strtoupper($huruf)) {
+                return (string) $grup;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Susun jadwal satu bulan untuk seluruh group pekerja shift, dipakai oleh
+     * popup "Lihat Jadwal Bulanan" di halaman Teknisi.
+     *
+     * @param  CarbonInterface $bulan Bulan yang ditampilkan (tanggal apa pun di bulan itu)
+     * @return array{
+     *     label: string,
+     *     mulai: string,
+     *     selesai: string,
+     *     bulan_sebelumnya: string,
+     *     bulan_berikutnya: string,
+     *     hari: array<int, array{tanggal: string, hari: string, akhir_pekan: bool}>,
+     *     grup: array<int, array{grup: string, label: string, huruf: string, kode: array<int, string>, jumlah: array<string, int>, hari_kerja: int, hari_off: int}>
+     * }
+     */
+    public function jadwalBulan(CarbonInterface $bulan): array
+    {
+        $awal  = $bulan->copy()->startOfMonth();
+        $akhir = $bulan->copy()->endOfMonth();
+
+        $hari = [];
+
+        for ($tanggal = $awal->copy(); $tanggal->lte($akhir); $tanggal->addDay()) {
+            $hari[] = [
+                'tanggal'     => $tanggal->toDateString(),
+                'nomor'       => $tanggal->day,
+                'hari'        => $tanggal->locale('id')->translatedFormat('D'),
+                'akhir_pekan' => $tanggal->dayOfWeek === 0,
+            ];
+        }
+
+        $grup = [];
+
+        foreach ((array) config('cm.shift_pattern.grup_ke_huruf', []) as $grupTeknisi => $huruf) {
+            $kode    = [];
+            $jumlah  = ['1' => 0, '2' => 0, '3' => 0, 'x' => 0];
+            $kerja   = 0;
+
+            foreach ($hari as $info) {
+                $nilai = (string) $this->kode((string) $grupTeknisi, Carbon::parse($info['tanggal']));
+                $kode[] = $nilai;
+
+                $kunci = strtolower($nilai);
+
+                if (isset($jumlah[$kunci])) {
+                    $jumlah[$kunci]++;
+                }
+
+                if ($kunci !== 'x') {
+                    $kerja++;
+                }
+            }
+
+            $grup[] = [
+                'grup'       => (string) $grupTeknisi,
+                'label'      => (string) (Technician::GROUPS[$grupTeknisi] ?? $grupTeknisi),
+                'huruf'      => strtoupper((string) $huruf),
+                'kode'       => $kode,
+                'jumlah'     => $jumlah,
+                'hari_kerja' => $kerja,
+                'hari_off'   => count($hari) - $kerja,
+            ];
+        }
+
+        return [
+            'label'            => $awal->locale('id')->translatedFormat('F Y'),
+            'mulai'            => $awal->toDateString(),
+            'selesai'          => $akhir->toDateString(),
+            'bulan_sebelumnya' => $awal->copy()->subMonthNoOverflow()->format('Y-m'),
+            'bulan_berikutnya' => $awal->copy()->addMonthNoOverflow()->format('Y-m'),
+            'hari'             => $hari,
+            'grup'             => $grup,
+        ];
+    }
+
+    /**
      * Kode shift hasil proyeksi pola untuk satu group pada satu tanggal.
      *
      * @param  string|null     $grupTeknisi Group teknisi

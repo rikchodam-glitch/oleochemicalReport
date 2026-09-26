@@ -106,7 +106,7 @@ class ManHourService
 
             $rincian[] = [
                 'tanggal'          => $kunci,
-                'hari'             => $tanggal->translatedFormat('l'),
+                'hari'             => $tanggal->locale('id')->translatedFormat('l'),
                 'kode'             => $shift?->kode(),
                 'label_shift'      => $shift?->label($grup) ?? app(JamKerjaService::class)->label($grup, $tanggal),
                 'target_menit'     => $target,

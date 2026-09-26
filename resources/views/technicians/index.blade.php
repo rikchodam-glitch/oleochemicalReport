@@ -101,20 +101,13 @@
                 </p>
             </form>
 
-            <form method="POST" action="{{ route('technicians.shift-schedule.store') }}"
-                  enctype="multipart/form-data" class="mt-4 pt-4 border-t border-slate-100 space-y-3">
-                @csrf
-                <label class="block text-xs font-medium text-slate-600">Upload jadwal resmi (opsional)</label>
-                <input type="file" name="file" accept=".xlsx,.xls,.csv" required
-                       class="w-full text-xs text-slate-600 border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                @error('file')
-                    <p class="text-xs text-red-600">{{ $message }}</p>
-                @enderror
-                <button type="submit"
-                        class="w-full px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
-                    Import Jadwal
-                </button>
-            </form>
+            <button type="button" onclick="bukaJadwalBulanan()"
+                    class="mt-3 w-full px-4 py-2 border border-teal-300 hover:bg-teal-50 text-teal-700 text-sm font-medium rounded-lg transition-colors">
+                Lihat Jadwal Bulanan
+            </button>
+            <p class="text-xs text-slate-400 mt-1.5">
+                Preview jadwal shift per group (bulan berjalan dan bulan berikutnya) beserta rekapan harinya.
+            </p>
         </div>
 
         <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -269,4 +262,163 @@
             <div class="px-5 py-3 border-t border-slate-100">{{ $technicians->links() }}</div>
         @endif
     </div>
+
+{{-- Popup preview jadwal shift bulanan (hasil proyeksi pola rotasi) --}}
+@push('modals')
+    <div id="modal-jadwal-bulanan" class="hidden fixed inset-0 z-50 items-center justify-center bg-slate-900/50 p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex flex-wrap items-start justify-between gap-3 px-5 py-3.5 border-b border-slate-100">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-800">Jadwal Shift Bulanan</h3>
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        Hasil proyeksi pola rotasi 20 hari (5 hari Shift 1, 2 OFF, 5 hari Shift 3, 2 OFF, 5 hari Shift 2, 1 OFF).
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <a href="{{ route('technicians.index', ['jadwal_bulan' => $jadwalBulanan['bulan_sebelumnya']]) }}"
+                       class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                        Bulan Sebelumnya
+                    </a>
+                    <span class="px-3 py-1.5 rounded-lg bg-teal-50 border border-teal-100 text-xs font-semibold text-teal-700">
+                        {{ $jadwalBulanan['label'] }}
+                    </span>
+                    <a href="{{ route('technicians.index', ['jadwal_bulan' => $jadwalBulanan['bulan_berikutnya']]) }}"
+                       class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                        Bulan Berikutnya
+                    </a>
+                    <button type="button" onclick="tutupJadwalBulanan()" title="Tutup"
+                            class="text-slate-400 hover:text-slate-600">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="px-5 py-4 overflow-y-auto">
+                <div class="overflow-x-auto">
+                    <table class="text-xs border-separate" style="border-spacing: 3px;">
+                        <thead>
+                            <tr>
+                                <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-2 py-1 whitespace-nowrap">Group</th>
+                                @foreach($jadwalBulanan['hari'] as $hari)
+                                    <th class="text-center px-1 py-1 whitespace-nowrap {{ $hari['akhir_pekan'] ? 'text-rose-500' : 'text-slate-500' }}">
+                                        <span class="block text-[10px] font-medium">{{ $hari['hari'] }}</span>
+                                        <span class="block font-semibold">{{ $hari['nomor'] }}</span>
+                                    </th>
+                                @endforeach
+                                <th class="px-2 py-1 text-center text-xs font-medium text-slate-500 whitespace-nowrap">Kerja</th>
+                                <th class="px-2 py-1 text-center text-xs font-medium text-slate-500 whitespace-nowrap">OFF</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($jadwalBulanan['grup'] as $grup)
+                                <tr>
+                                    <td class="px-2 py-1 whitespace-nowrap">
+                                        <p class="font-medium text-slate-700">{{ $grup['label'] }}</p>
+                                        <p class="text-[10px] text-slate-400">Group {{ $grup['huruf'] }}</p>
+                                    </td>
+                                    @foreach($grup['kode'] as $kode)
+                                        @php
+                                            $kodeKecil = strtolower($kode);
+                                            $warnaKode = [
+                                                '1' => 'bg-teal-500 text-white',
+                                                '2' => 'bg-amber-400 text-white',
+                                                '3' => 'bg-indigo-500 text-white',
+                                                'x' => 'bg-slate-100 text-slate-400',
+                                            ][$kodeKecil] ?? 'bg-slate-100 text-slate-500';
+                                        @endphp
+                                        <td class="text-center">
+                                            <span class="inline-flex items-center justify-center w-6 h-6 rounded text-[10px] font-semibold {{ $warnaKode }}">
+                                                {{ $kodeKecil === 'x' ? 'X' : $kodeKecil }}
+                                            </span>
+                                        </td>
+                                    @endforeach
+                                    <td class="px-2 py-1 text-center text-xs font-semibold text-teal-700 whitespace-nowrap">{{ $grup['hari_kerja'] }} hari</td>
+                                    <td class="px-2 py-1 text-center text-xs font-semibold text-slate-500 whitespace-nowrap">{{ $grup['hari_off'] }} hari</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                {{-- Legenda kode shift --}}
+                <div class="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                    <span class="inline-flex items-center gap-1.5">
+                        <span class="w-4 h-4 rounded bg-teal-500"></span> Shift 1 (08.00-16.00)
+                    </span>
+                    <span class="inline-flex items-center gap-1.5">
+                        <span class="w-4 h-4 rounded bg-amber-400"></span> Shift 2 (16.00-24.00)
+                    </span>
+                    <span class="inline-flex items-center gap-1.5">
+                        <span class="w-4 h-4 rounded bg-indigo-500"></span> Shift 3 (00.00-08.00)
+                    </span>
+                    <span class="inline-flex items-center gap-1.5">
+                        <span class="w-4 h-4 rounded bg-slate-200"></span> OFF
+                    </span>
+                </div>
+
+                {{-- Rekap jumlah hari per group --}}
+                <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                    @foreach($jadwalBulanan['grup'] as $grup)
+                        <div class="rounded-lg border border-slate-200 p-3">
+                            <p class="font-semibold text-slate-700">{{ $grup['label'] }}</p>
+                            <p class="text-slate-500 mt-1">Shift 1: {{ $grup['jumlah']['1'] }} hari</p>
+                            <p class="text-slate-500">Shift 2: {{ $grup['jumlah']['2'] }} hari</p>
+                            <p class="text-slate-500">Shift 3: {{ $grup['jumlah']['3'] }} hari</p>
+                            <p class="text-slate-500">OFF: {{ $grup['jumlah']['x'] }} hari</p>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+
+            <div class="px-5 py-3 border-t border-slate-100 text-right">
+                <button type="button" onclick="tutupJadwalBulanan()"
+                        class="px-4 py-1.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                    Tutup
+                </button>
+            </div>
+        </div>
+    </div>
+@endpush
+
+@push('scripts')
+<script>
+    // Popup preview jadwal shift bulanan.
+    function bukaJadwalBulanan() {
+        var modal = document.getElementById('modal-jadwal-bulanan');
+
+        if (!modal) {
+            return;
+        }
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    function tutupJadwalBulanan() {
+        var modal = document.getElementById('modal-jadwal-bulanan');
+
+        if (!modal) {
+            return;
+        }
+
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    document.addEventListener('keydown', function (peristiwa) {
+        if (peristiwa.key === 'Escape') {
+            tutupJadwalBulanan();
+        }
+    });
+
+    // Buka otomatis bila halaman dimuat dengan parameter bulan jadwal
+    // (dipakai tombol Bulan Sebelumnya / Bulan Berikutnya di dalam popup).
+    if (window.location.search.indexOf('jadwal_bulan=') !== -1) {
+        bukaJadwalBulanan();
+    }
+</script>
+@endpush
+
 @endsection
