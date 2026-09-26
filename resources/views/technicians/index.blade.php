@@ -65,6 +65,95 @@
         </form>
     </div>
 
+    <!-- Jadwal Shift & Man Hour -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div class="lg:col-span-1 bg-white rounded-xl border border-slate-200 p-5">
+            <h3 class="text-sm font-semibold text-slate-900">Import Jadwal Shift</h3>
+            <p class="text-xs text-slate-400 mt-1 leading-snug">
+                File jadwal maintenance periode 26-25 (No, NIK, Nama, Group, kode shift x/1/2/3).
+                Kode ini dipakai untuk target 8 jam per hari dan deteksi laporan di luar jam shift.
+            </p>
+
+            @if($shiftTerakhir)
+                <div class="mt-3 rounded-lg bg-teal-50 border border-teal-100 px-3 py-2">
+                    <p class="text-xs font-semibold text-teal-800">
+                        Periode terakhir: {{ $shiftTerakhir->periode_label ?? '-' }}
+                    </p>
+                    <p class="text-xs text-teal-700 mt-0.5">
+                        {{ $shiftTerakhir->jumlah_baris }} orang dibaca,
+                        {{ $shiftTerakhir->jumlah_terpetakan }} terpetakan,
+                        {{ $shiftTerakhir->jumlah_tidak_cocok }} belum cocok
+                    </p>
+                </div>
+            @else
+                <p class="text-xs text-amber-600 mt-3">Belum ada jadwal shift yang diimport.</p>
+            @endif
+
+            <form method="POST" action="{{ route('technicians.shift-schedule.store') }}"
+                  enctype="multipart/form-data" class="mt-4 space-y-3">
+                @csrf
+                <input type="file" name="file" accept=".xlsx,.xls,.csv" required
+                       class="w-full text-xs text-slate-600 border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                @error('file')
+                    <p class="text-xs text-red-600">{{ $message }}</p>
+                @enderror
+                <button type="submit"
+                        class="w-full px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
+                    Import Jadwal
+                </button>
+            </form>
+        </div>
+
+        <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-100">
+                <h3 class="text-sm font-semibold text-slate-900">Riwayat Import Jadwal</h3>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-100">
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Waktu Import</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">File</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Periode</th>
+                            <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Orang</th>
+                            <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Terpetakan</th>
+                            <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Belum Cocok</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Oleh</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        @forelse($riwayatJadwal as $jadwal)
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="px-5 py-3.5 align-top whitespace-nowrap">
+                                    <p class="text-slate-700">{{ $jadwal->created_at?->format('d/m/Y H:i') ?? '-' }}</p>
+                                    <p class="text-xs text-slate-400">{{ $jadwal->created_at?->diffForHumans() }}</p>
+                                </td>
+                                <td class="px-4 py-3.5 align-top">
+                                    <p class="text-xs text-slate-600 break-words max-w-xs">{{ $jadwal->nama_file }}</p>
+                                </td>
+                                <td class="px-4 py-3.5 align-top whitespace-nowrap text-xs text-slate-600">
+                                    {{ $jadwal->periode_label ?? '-' }}
+                                </td>
+                                <td class="px-4 py-3.5 align-top text-center text-xs text-slate-700">{{ $jadwal->jumlah_baris }}</td>
+                                <td class="px-4 py-3.5 align-top text-center text-xs font-semibold text-teal-700">{{ $jadwal->jumlah_terpetakan }}</td>
+                                <td class="px-4 py-3.5 align-top text-center text-xs {{ $jadwal->jumlah_tidak_cocok > 0 ? 'font-semibold text-amber-600' : 'text-slate-400' }}">
+                                    {{ $jadwal->jumlah_tidak_cocok }}
+                                </td>
+                                <td class="px-4 py-3.5 align-top whitespace-nowrap text-xs text-slate-600">
+                                    {{ $jadwal->uploader?->name ?? 'sistem' }}
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="7" class="px-5 py-8 text-center text-sm text-slate-400">Belum ada riwayat import jadwal.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- Table -->
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div class="overflow-x-auto">
@@ -76,6 +165,7 @@
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Group</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Bagian</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Departemen</th>
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Jam Kerja</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Aksi</th>
                     </tr>
                 </thead>
@@ -103,6 +193,32 @@
                                 @endif
                             </td>
                             <td class="px-5 py-3.5 text-slate-600">{{ $technician->department?->code ?? '-' }}</td>
+                            <td class="px-4 py-3.5 align-top">
+                                @php
+                                    $menitTeknisi  = (int) ($menitKerja[$technician->id] ?? 0);
+                                    $targetTeknisi = (int) ($targetKerja[$technician->id] ?? 0);
+                                    $persenTeknisi = $targetTeknisi > 0
+                                        ? (int) round($menitTeknisi / $targetTeknisi * 100)
+                                        : null;
+                                @endphp
+                                @if($targetTeknisi > 0)
+                                    <p class="text-sm font-semibold text-slate-800 whitespace-nowrap">
+                                        {{ number_format($menitTeknisi / 60, 1, ',', '.') }} j
+                                        <span class="text-xs font-normal text-slate-400">/ {{ number_format($targetTeknisi / 60, 0, ',', '.') }} j</span>
+                                    </p>
+                                    <div class="mt-1 flex items-center gap-2">
+                                        <div class="w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                            <div class="h-full rounded-full {{ $persenTeknisi >= 100 ? 'bg-teal-500' : ($persenTeknisi >= 75 ? 'bg-amber-400' : 'bg-rose-400') }}"
+                                                 style="width: {{ max(0, min(100, $persenTeknisi)) }}%"></div>
+                                        </div>
+                                        <span class="text-xs font-medium {{ $persenTeknisi >= 100 ? 'text-teal-700' : ($persenTeknisi >= 75 ? 'text-amber-600' : 'text-rose-600') }}">
+                                            {{ $persenTeknisi }}%
+                                        </span>
+                                    </div>
+                                @else
+                                    <span class="text-xs text-slate-400">Tanpa jadwal</span>
+                                @endif
+                            </td>
                             <td class="px-5 py-3.5">
                                 <div class="flex items-center gap-2" onclick="event.stopPropagation()">
                                     <a href="{{ route('technicians.show', $technician) }}" class="text-teal-700 hover:text-teal-800 text-xs font-medium">Detail</a>
@@ -130,7 +246,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-5 py-8 text-center text-sm text-slate-400">Belum ada teknisi.</td>
+                            <td colspan="7" class="px-5 py-8 text-center text-sm text-slate-400">Belum ada teknisi.</td>
                         </tr>
                     @endforelse
                 </tbody>

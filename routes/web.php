@@ -18,6 +18,7 @@ use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\CollaborationController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\StorageController;
+use App\Http\Controllers\ShiftScheduleController;
 use App\Http\Controllers\TechnicianController;
 use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\WorkOrderController;
@@ -92,6 +93,7 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     Route::get('/locations/{location}', [LocationController::class, 'show'])->name('locations.show');
 
     // Technicians
+    Route::post('/technicians/shift-schedule', [ShiftScheduleController::class, 'store'])->name('technicians.shift-schedule.store');
     Route::resource('technicians', TechnicianController::class);
     Route::post('/technicians/{technician}/approve', [TechnicianController::class, 'approve'])->name('technicians.approve');
     Route::post('/technicians/{technician}/suspend', [TechnicianController::class, 'suspend'])->name('technicians.suspend');

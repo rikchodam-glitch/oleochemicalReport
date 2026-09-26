@@ -226,6 +226,180 @@
             </div>
         </div>
 
+        <!-- Man Hour: target 8 jam per hari kerja sesuai jadwal shift -->
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap items-start justify-between gap-2">
+                <div>
+                    <h3 class="font-medium text-slate-900">Man Hour</h3>
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        Periode {{ $labelPeriodeManHour }} — target {{ (int) config('cm.man_hour.target_minutes', 480) / 60 }} jam per hari kerja,
+                        hari OFF tidak dihitung. Baris salinan pekerjaan multi alat dikecualikan agar tidak dobel.
+                    </p>
+                </div>
+                @if($shiftHariIni)
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold {{ $shiftHariIni->isOff() ? 'bg-slate-100 text-slate-600' : 'bg-teal-50 text-teal-700 border border-teal-100' }}">
+                        Hari ini: {{ $shiftHariIni->label() }}
+                    </span>
+                @endif
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 px-5 pt-4">
+                <div class="rounded-xl border border-teal-200 bg-teal-50/40 p-3 text-center">
+                    <p class="text-2xl font-bold text-teal-700">
+                        {{ number_format(($manHourRingkasan['total_menit'] ?? 0) / 60, 1, ',', '.') }} j
+                    </p>
+                    <p class="text-xs text-slate-500 mt-1">
+                        dari {{ number_format(($manHourRingkasan['total_target_menit'] ?? 0) / 60, 0, ',', '.') }} j target
+                    </p>
+                    @if(($manHourRingkasan['persen'] ?? null) !== null)
+                        <p class="text-xs font-semibold mt-1 {{ $manHourRingkasan['persen'] >= 100 ? 'text-teal-700' : ($manHourRingkasan['persen'] >= 75 ? 'text-amber-600' : 'text-rose-600') }}">
+                            Pencapaian {{ $manHourRingkasan['persen'] }}%
+                        </p>
+                    @endif
+                </div>
+                <div class="rounded-xl border border-slate-200 p-3 text-center">
+                    <p class="text-2xl font-bold text-slate-800">{{ $manHourRingkasan['hari_kerja'] ?? 0 }}</p>
+                    <p class="text-xs text-slate-500 mt-1">Hari kerja terjadwal</p>
+                    <p class="text-xs text-slate-400 mt-1">
+                        {{ $manHourRingkasan['hari_terpenuhi'] ?? 0 }} terpenuhi,
+                        {{ $manHourRingkasan['hari_lebih'] ?? 0 }} lebih
+                    </p>
+                </div>
+                <div class="rounded-xl border {{ ($manHourRingkasan['hari_kurang'] ?? 0) > 0 ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200' }} p-3 text-center">
+                    <p class="text-2xl font-bold {{ ($manHourRingkasan['hari_kurang'] ?? 0) > 0 ? 'text-amber-600' : 'text-slate-400' }}">
+                        {{ $manHourRingkasan['hari_kurang'] ?? 0 }}
+                    </p>
+                    <p class="text-xs text-slate-500 mt-1">Hari kurang dari 8 jam</p>
+                    <p class="text-xs text-slate-400 mt-1">{{ $manHourRingkasan['hari_libur'] ?? 0 }} hari OFF</p>
+                </div>
+                <div class="rounded-xl border {{ (($manHourRingkasan['hari_kerja_off'] ?? 0) + ($manHourRingkasan['laporan_luar_shift'] ?? 0)) > 0 ? 'border-rose-200 bg-rose-50/40' : 'border-slate-200' }} p-3 text-center">
+                    <p class="text-2xl font-bold {{ (($manHourRingkasan['hari_kerja_off'] ?? 0) + ($manHourRingkasan['laporan_luar_shift'] ?? 0)) > 0 ? 'text-rose-600' : 'text-slate-400' }}">
+                        {{ ($manHourRingkasan['hari_kerja_off'] ?? 0) + ($manHourRingkasan['laporan_luar_shift'] ?? 0) }}
+                    </p>
+                    <p class="text-xs text-slate-500 mt-1">Anomali jam kerja</p>
+                    <p class="text-xs text-slate-400 mt-1">
+                        {{ $manHourRingkasan['hari_kerja_off'] ?? 0 }} kerja di hari OFF,
+                        {{ $manHourRingkasan['laporan_luar_shift'] ?? 0 }} di luar jam shift
+                    </p>
+                </div>
+            </div>
+
+            <div class="px-5 py-4">
+                <canvas id="grafikManHour" height="110"></canvas>
+            </div>
+        </div>
+
+        <!-- Rincian man hour harian -->
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-100">
+                <h3 class="font-medium text-slate-900">Rincian Man Hour Harian</h3>
+                <p class="text-xs text-slate-400 mt-0.5">
+                    Periode {{ $labelPeriodeManHour }}. Klik baris untuk melihat laporan pada hari itu.
+                </p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-100">
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Tanggal</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Shift</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Target</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Realisasi</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Pencapaian</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Pekerjaan</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Catatan</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        @forelse($manHourHarian as $hari)
+                            @php
+                                $tautanHari = $hari['jumlah_pekerjaan'] > 0
+                                    ? route('reports.index', ['technician_id' => $technician->id, 'tanggal' => $hari['tanggal']])
+                                    : null;
+
+                                $tanggalHari = \Illuminate\Support\Carbon::parse($hari['tanggal']);
+
+                                $warnaStatus = [
+                                    'terpenuhi' => 'text-teal-700',
+                                    'lebih'     => 'text-indigo-600',
+                                    'kurang'    => 'text-amber-600',
+                                    'libur'     => 'text-slate-400',
+                                ][$hari['status']] ?? 'text-slate-500';
+
+                                $warnaBar = [
+                                    'terpenuhi' => 'bg-teal-500',
+                                    'lebih'     => 'bg-indigo-500',
+                                    'kurang'    => 'bg-amber-400',
+                                    'libur'     => 'bg-slate-300',
+                                ][$hari['status']] ?? 'bg-slate-300';
+
+                                $warnaBadge = $hari['kode'] === 'x'
+                                    ? 'bg-slate-100 text-slate-500'
+                                    : ($hari['kode'] === 'R'
+                                        ? 'bg-sky-50 text-sky-700 border border-sky-100'
+                                        : 'bg-teal-50 text-teal-700 border border-teal-100');
+                            @endphp
+                            <tr class="{{ $tautanHari ? 'hover:bg-slate-50 transition-colors cursor-pointer' : '' }}"
+                                @if($tautanHari)
+                                    title="Lihat laporan {{ $tanggalHari->format('d/m/Y') }}"
+                                    onclick="window.location='{{ $tautanHari }}'"
+                                @endif>
+                                <td class="px-5 py-3 align-top whitespace-nowrap">
+                                    <p class="text-slate-700 font-medium">{{ $tanggalHari->format('d/m/Y') }}</p>
+                                    <p class="text-xs text-slate-400">{{ $hari['hari'] }}</p>
+                                </td>
+                                <td class="px-4 py-3 align-top whitespace-nowrap">
+                                    <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ $warnaBadge }}">
+                                        {{ $hari['label_shift'] }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 align-top whitespace-nowrap text-xs text-slate-600">
+                                    {{ $hari['target_menit'] > 0 ? number_format($hari['target_menit'] / 60, 1, ',', '.') . ' j' : '-' }}
+                                </td>
+                                <td class="px-4 py-3 align-top whitespace-nowrap text-sm font-semibold text-slate-800">
+                                    {{ number_format($hari['menit'] / 60, 1, ',', '.') }} j
+                                </td>
+                                <td class="px-4 py-3 align-top whitespace-nowrap">
+                                    @if($hari['persen'] !== null)
+                                        <p class="text-sm font-semibold {{ $warnaStatus }}">{{ $hari['persen'] }}%</p>
+                                        <div class="mt-1 w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                            <div class="h-full rounded-full {{ $warnaBar }}"
+                                                 style="width: {{ max(0, min(100, $hari['persen'])) }}%"></div>
+                                        </div>
+                                    @else
+                                        <span class="text-xs text-slate-400">
+                                            {{ $hari['status'] === 'libur' ? 'Libur' : 'Tanpa target' }}
+                                        </span>
+                                    @endif
+                                </td>
+                                <td class="px-4 py-3 align-top whitespace-nowrap text-xs">
+                                    @if($hari['jumlah_pekerjaan'] > 0)
+                                        <a href="{{ $tautanHari }}" onclick="event.stopPropagation()"
+                                           class="text-teal-700 hover:underline font-medium">
+                                            {{ $hari['jumlah_pekerjaan'] }} laporan
+                                        </a>
+                                    @else
+                                        <span class="text-slate-300">-</span>
+                                    @endif
+                                </td>
+                                <td class="px-4 py-3 align-top">
+                                    @forelse($hari['catatan'] as $catatan)
+                                        <p class="text-xs text-rose-600">{{ $catatan }}</p>
+                                    @empty
+                                        <span class="text-xs text-slate-300">-</span>
+                                    @endforelse
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="7" class="px-5 py-8 text-center text-sm text-slate-400">Belum ada data man hour.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- Pekerjaan Harian -->
         <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap items-start justify-between gap-2">
@@ -486,5 +660,85 @@ function broadcastMessage() {
         el.__x.$data.openBroadcast();
     }
 }
+</script>
+@endpush
+
+{{-- Grafik man hour harian: realisasi vs target 8 jam --}}
+@push('scripts')
+@php
+    // Data grafik disiapkan di server agar tidak bergantung pada parsing directive.
+    $dataGrafik = array_map(function (array $hari): array {
+        return [
+            'tanggal' => \Illuminate\Support\Carbon::parse($hari['tanggal'])->format('d/m'),
+            'menit'   => (int) $hari['menit'],
+            'target'  => (int) $hari['target_menit'],
+            'shift'   => (string) $hari['label_shift'],
+        ];
+    }, $manHourHarian);
+
+    $dataGrafikJson = json_encode($dataGrafik, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+@endphp
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    var kanvas = document.getElementById('grafikManHour');
+
+    if (!kanvas || typeof Chart === 'undefined') {
+        return;
+    }
+
+    // Data harian berasal dari perhitungan man hour di server.
+    var dataHarian = {!! $dataGrafikJson !!};
+
+    new Chart(kanvas, {
+        type: 'bar',
+        data: {
+            labels: dataHarian.map(function (baris) { return baris.tanggal; }),
+            datasets: [
+                {
+                    label: 'Realisasi (jam)',
+                    data: dataHarian.map(function (baris) { return Math.round(baris.menit / 6) / 10; }),
+                    backgroundColor: '#0E9E8E',
+                    borderRadius: 4,
+                    maxBarThickness: 26
+                },
+                {
+                    label: 'Target (jam)',
+                    data: dataHarian.map(function (baris) { return Math.round(baris.target / 6) / 10; }),
+                    backgroundColor: '#CBD5E1',
+                    borderRadius: 4,
+                    maxBarThickness: 26
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { boxWidth: 12, font: { size: 11 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        afterLabel: function (konteks) {
+                            var baris = dataHarian[konteks.dataIndex];
+
+                            return baris ? 'Shift: ' + baris.shift : '';
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function (nilai) { return nilai + ' j'; }
+                    }
+                },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+})();
 </script>
 @endpush

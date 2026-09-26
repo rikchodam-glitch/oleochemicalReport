@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Department;
+use App\Models\ShiftSchedule;
 use App\Models\Technician;
+use App\Services\Shift\ManHourService;
 use App\Services\TelegramService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -48,7 +50,50 @@ class TechnicianController extends Controller
         $technicians = $query->latest()->paginate(20)->withQueryString();
         $departments = Department::all();
 
-        return view('technicians.index', compact('technicians', 'departments'));
+        // Ringkasan man hour periode berjalan untuk kolom di tabel teknisi.
+        $manHour = app(ManHourService::class);
+
+        [$mulaiManHour, $selesaiManHour, $labelPeriode] = $this->rentangManHour();
+
+        $idTeknisi   = $technicians->pluck('id')->all();
+        $menitKerja  = $manHour->menitPerTeknisi($idTeknisi, $mulaiManHour, $selesaiManHour);
+        $targetKerja = $manHour->targetPerTeknisi($idTeknisi, $mulaiManHour, $selesaiManHour);
+
+        // Info jadwal shift: periode terakhir + riwayat import.
+        $shiftTerakhir = ShiftSchedule::latest('id')->first();
+        $riwayatJadwal = ShiftSchedule::with('uploader')->latest('id')->take(5)->get();
+
+        return view('technicians.index', compact(
+            'technicians',
+            'departments',
+            'menitKerja',
+            'targetKerja',
+            'labelPeriode',
+            'shiftTerakhir',
+            'riwayatJadwal'
+        ));
+    }
+
+    /**
+     * Rentang tanggal untuk perhitungan man hour: periode jadwal shift terakhir
+     * bila sudah ada, jika belum memakai bulan berjalan.
+     *
+     * @return array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon, 2: string}
+     *         [tanggal mulai, tanggal selesai, label periode]
+     */
+    private function rentangManHour(): array
+    {
+        $jadwal = ShiftSchedule::latest('id')->first();
+
+        if ($jadwal?->periode_mulai !== null && $jadwal?->periode_selesai !== null) {
+            return [
+                $jadwal->periode_mulai->copy()->startOfDay(),
+                $jadwal->periode_selesai->copy()->startOfDay(),
+                (string) $jadwal->periode_label,
+            ];
+        }
+
+        return [now()->startOfMonth(), now()->endOfMonth(), now()->translatedFormat('F Y')];
     }
 
     public function create()
@@ -188,7 +233,25 @@ class TechnicianController extends Controller
                 ->value('report_date'),
         ];
 
-        return view('technicians.show', compact('technician', 'stats', 'botStats', 'laporanTerbaru'));
+        // Man hour: realisasi jam kerja vs target sesuai jadwal shift.
+        $manHour = app(ManHourService::class);
+
+        [$mulaiManHour, $selesaiManHour, $labelPeriodeManHour] = $this->rentangManHour();
+
+        $manHourHarian    = $manHour->harian($technician, $mulaiManHour, $selesaiManHour);
+        $manHourRingkasan = $manHour->ringkasan($manHourHarian);
+        $shiftHariIni     = $technician->shifts()->untukTanggal(now()->toDateString())->first();
+
+        return view('technicians.show', compact(
+            'technician',
+            'stats',
+            'botStats',
+            'laporanTerbaru',
+            'manHourHarian',
+            'manHourRingkasan',
+            'labelPeriodeManHour',
+            'shiftHariIni'
+        ));
     }
 
     public function approve(Technician $technician)

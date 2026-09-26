@@ -75,12 +75,39 @@ return [
     | link can view" agar bisa di-download tanpa Google Cloud API.
     |
     */
-    'google_sheets' => [
-        // Spreadsheet Data CM (sheet: Data AppSheet & Status CM)
-        'data_cm_url' => env('GOOGLE_SHEETS_DATA_CM_URL'),
+    /*
+    |--------------------------------------------------------------------------
+    | Man Hour & Shift Teknisi
+    |--------------------------------------------------------------------------
+    |
+    | Target jam kerja harian teknisi (default 8 jam = 480 menit) dan jendela
+    | waktu tiap shift sesuai jadwal shift maintenance:
+    | Shift 1 (08.00-16.00), Shift 2 (16.00-24.00), Shift 3 (00.00-08.00).
+    | Kode 'x' pada jadwal berarti OFF (tidak ada target), kode 'R' berarti
+    | teknisi reguler (non-shift).
+    |
+    */
+    'man_hour' => [
 
-        // Spreadsheet Finding CM (sheet: Finding CM)
-        'finding_cm_url' => env('GOOGLE_SHEETS_FINDING_CM_URL'),
+        // Target menit kerja untuk satu hari kerja penuh
+        'target_minutes' => 480,
+
+        // Toleransi menit saat memeriksa jam laporan terhadap jendela shift
+        'toleransi_menit' => 60,
+
+        // Jendela waktu tiap kode shift (dipakai untuk deteksi laporan di luar
+        // jam shift). '24:00' berarti tengah malam akhir hari.
+        'windows' => [
+            '1' => ['mulai' => '08:00', 'selesai' => '16:00'],
+            '2' => ['mulai' => '16:00', 'selesai' => '24:00'],
+            '3' => ['mulai' => '00:00', 'selesai' => '08:00'],
+        ],
+
+        // Jendela kerja teknisi reguler (non-shift)
+        'reguler_window' => ['mulai' => '08:00', 'selesai' => '16:00'],
+
+        // Hari Minggu dianggap libur (target 0 menit) untuk teknisi reguler
+        'minggu_libur_reguler' => true,
     ],
 
 ];

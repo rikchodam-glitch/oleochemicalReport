@@ -115,6 +115,16 @@ class Technician extends Model
         return $this->hasMany(Report::class, 'creator_id');
     }
 
+    /**
+     * Jadwal shift teknisi ini (hasil import jadwal shift).
+     *
+     * @return HasMany<TechnicianShift>
+     */
+    public function shifts(): HasMany
+    {
+        return $this->hasMany(TechnicianShift::class);
+    }
+
     // =========================================================
     // SCOPES
     // =========================================================

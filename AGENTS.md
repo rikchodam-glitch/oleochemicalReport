@@ -81,6 +81,27 @@ ulang.
    SAMA DENGAN jumlah semua kategori tersebut — log warning kalau tidak
    balance.
 
+10. **Jadwal shift & man hour teknisi (sudah diputuskan 26/09/2026):**
+   - Sumber: file Excel "Schedule Shift MTC" per periode **26-25 tiap bulan**.
+     Blok `NAME STAF`/`NAME INTERNAL`/`NAME OS` = reguler, blok `NAME SHIFT` =
+     Group A/B/C/D dengan kode `x` = OFF, `1` = 08.00-16.00,
+     `2` = 16.00-24.00, `3` = 00.00-08.00.
+   - Import lewat tombol di halaman Teknisi (POST `technicians.shift-schedule`)
+     atau `php artisan shifts:import <file> [--execute]`; riwayat di tabel
+     `shift_schedules`, detail harian di `technician_shifts`. Pencocokan
+     teknisi memakai NIK dulu, baru nama (dicatat sebagai "dicocokkan lewat
+     nama"); yang tetap tidak ketemu tetap tersimpan dan dilaporkan, tidak
+     ditolak.
+   - Target man hour: **480 menit per hari kerja** (`config('cm.man_hour')`),
+     hari OFF target 0, Minggu target 0 untuk teknisi reguler. Realisasi =
+     jumlah `work_duration_minutes` laporan milik teknisi (`technician_id`)
+     pada tanggal itu; **baris salinan multi alat (`multi_of`) TIDAK dihitung**
+     supaya satu pekerjaan tidak terhitung berkali-kali.
+   - Anomali yang ditandai: bekerja pada hari OFF dan laporan yang
+     `start_time`-nya di luar jendela shift hari itu (toleransi 60 menit).
+   - Rentang tanggal di halaman Teknisi = periode jadwal terakhir (fallback:
+     bulan berjalan). Perubahan aturan ini wajib dikonfirmasi ulang ke user.
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file
@@ -455,6 +476,23 @@ ulang.
     "auto-lock" pada picker adalah tempat paling rawan: pastikan cabang itu tidak
     pernah dijalankan oleh mode yang niatnya hanya "menambah item".**
 
+
+
+23. **Rentang tanggal pada kolom `date` WAJIB memakai batas jam, jika tidak hari
+    terakhir rentang selalu hilang tanpa error apa pun.** Pada 26/09/2026,
+    perhitungan man hour memakai
+    `whereBetween('report_date', ['2026-09-26', '2026-09-26'])`. Di MySQL
+    (kolom DATE) itu benar, tetapi di SQLite (dipakai test) Eloquent menyimpan
+    cast `date` sebagai `2026-09-26 00:00:00`, sehingga baris pada hari
+    terakhir rentang GAGAL cocok (`'2026-09-26 00:00:00' > '2026-09-26'`).
+    Akibatnya produksi akan selalu melaporkan "hari ini 0 menit" dan catatan
+    anomali hari terakhir hilang — ketahuan dari test man hour, bukan dari
+    halaman web. Perbaikan: batas rentang memakai jam
+    (`[$mulai . ' 00:00:00', $selesai . ' 23:59:59']`, lihat
+    `TechnicianShift::scopeAntara()` dan `App\Services\Shift\ManHourService`).
+    **Pelajaran: setiap filter rentang pada kolom tanggal WAJIB memakai batas
+    jam 00:00:00/23:59:59 (atau `whereDate()`) supaya perilakunya sama di MySQL
+    dan SQLite; jangan pernah memakai `whereBetween` dengan tanggal polos.**
 
 
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
