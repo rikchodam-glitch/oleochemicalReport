@@ -269,7 +269,7 @@
                                             $warnaKode = [
                                                 '1' => 'bg-teal-500 text-white',
                                                 '2' => 'bg-amber-400 text-white',
-                                                '3' => 'bg-indigo-500 text-white',
+                                                '3' => 'bg-blue-600 text-white',
                                                 'x' => 'bg-slate-100 text-slate-400',
                                             ][$kodeKecil] ?? 'bg-slate-100 text-slate-500';
                                         @endphp
@@ -296,7 +296,7 @@
                         <span class="w-4 h-4 rounded bg-amber-400"></span> Shift 2 (16.00-24.00)
                     </span>
                     <span class="inline-flex items-center gap-1.5">
-                        <span class="w-4 h-4 rounded bg-indigo-500"></span> Shift 3 (00.00-08.00)
+                        <span class="w-4 h-4 rounded bg-blue-600"></span> Shift 3 (00.00-08.00)
                     </span>
                     <span class="inline-flex items-center gap-1.5">
                         <span class="w-4 h-4 rounded bg-slate-200"></span> OFF

@@ -415,6 +415,17 @@ test('panel jadwal menampilkan ringkasan data aktual bukan angka import lama', f
         ->assertDontSee('belum cocok', false);
 });
 
+test('sel shift 3 pada popup jadwal memakai warna biru yang terbaca', function () {
+    // Warna lama (indigo) tidak ada di CSS build sehingga sel tampil putih
+    // dengan tulisan putih (tak terbaca); sekarang memakai biru.
+    $this->actingAs($this->admin)
+        ->get('/technicians')
+        ->assertStatus(200)
+        ->assertSee('bg-blue-600 text-white', false)
+        ->assertSee('w-4 h-4 rounded bg-blue-600', false)
+        ->assertDontSee('bg-indigo-500', false);
+});
+
 test('popup jadwal bulanan bisa digeser ke bulan berikutnya', function () {
     $this->actingAs($this->admin)
         ->get('/technicians?jadwal_bulan=2026-11')
