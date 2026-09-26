@@ -124,6 +124,15 @@ ulang.
      480/480/480/480/420/0/0 menit (Senin s.d. Minggu) — lihat
      `config('cm.man_hour.jam_kerja')`.
 
+11. **Status laporan `draft` TIDAK dipakai lagi (diputuskan 26/09/2026).**
+   Laporan hanya berstatus `completed` (Done) atau `continue` (belum selesai),
+   plus `needs_review` bila admin meminta pemeriksaan. Semua draft lama
+   (700 laporan) sudah dipindahkan ke `completed` lewat migration
+   `2026_09_26_000005` beserta `completed_at`-nya, dan nilai bawaan kolom
+   `status` di database kini `completed`. Tombol "Tandai Draft", opsi filter
+   Draft, dan kartu "Draft" di halaman Teknisi (diganti "Continue") sudah
+   dihapus — jangan dihidupkan lagi tanpa instruksi user.
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file

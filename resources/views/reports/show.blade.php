@@ -775,17 +775,6 @@
                     </form>
                 @endif
 
-                @if($report->status !== 'draft')
-                    <form method="POST" action="{{ route('reports.update-status', $report) }}">
-                        @csrf
-                        <input type="hidden" name="status" value="draft">
-                        <button type="submit"
-                                class="w-full px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
-                            Tandai Draft
-                        </button>
-                    </form>
-                @endif
-
                 <form method="POST" action="{{ route('reports.destroy', $report) }}"
                       onsubmit="return confirm('Hapus laporan ini? Tindakan tidak dapat dibatalkan.')">
                     @csrf

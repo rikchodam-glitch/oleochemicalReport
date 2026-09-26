@@ -126,7 +126,8 @@ class TelegramWebhookController extends Controller
             'ai_analyzed'      => true,
             'ai_confidence'    => $analysis['confidence'] ?? 0,
             'ai_suggestion_json' => $analysis,
-            'status'           => 'draft',
+            // Laporan langsung dianggap selesai; status 'draft' tidak dipakai lagi.
+            'status'           => 'completed',
         ]);
 
         // TechIdentNo adalah kunci utama, bukan equipment_no

@@ -22,7 +22,6 @@
     @php
         // Label status laporan agar konsisten dengan halaman laporan.
         $labelStatus = [
-            'draft'        => ['Draft', 'bg-slate-100 text-slate-600 border-slate-200'],
             'needs_review' => ['Perlu Diperiksa', 'bg-amber-50 text-amber-700 border-amber-100'],
             'completed'    => ['Selesai', 'bg-teal-50 text-teal-700 border-teal-100'],
             'continue'     => ['Continue', 'bg-amber-100 text-amber-700 border-amber-200'],

@@ -306,10 +306,10 @@ trait WizardReportSaverTrait
                 'photo_hygiene_clearance' => $photoHygieneClearance,
                 // Status akhir dipilih teknisi di Step 8: 'completed' (Done) atau
                 // 'continue' (pekerjaan belum tuntas, akan dilanjutkan hari lain).
-                // Fallback 'draft' untuk jalur lama yang belum mengirim final_status.
-                'status'                  => $state['final_status'] ?? 'draft',
+                // Fallback 'completed' karena status 'draft' tidak dipakai lagi.
+                'status'                  => $state['final_status'] ?? 'completed',
                 'continued_from_id'       => $state['lanjutan_dari_id'] ?? null,
-                'completed_at'            => ($state['final_status'] ?? null) === 'completed' ? now() : null,
+                'completed_at'            => ($state['final_status'] ?? 'completed') === 'completed' ? now() : null,
                 'wizard_started_at'       => $state['created_at'] ?? null,
                 'submitted_at'            => now(),
             ];

@@ -240,7 +240,7 @@ class TechnicianController extends Controller
         $stats = [
             'total_reports' => $technician->reports()->count(),
             'completed_reports' => $technician->reports()->where('status', 'completed')->count(),
-            'pending_reports' => $technician->reports()->where('status', 'draft')->count(),
+            'pending_reports' => $technician->reports()->where('status', 'continue')->count(),
             'last_report' => $technician->reports()->latest()->first()?->report_date,
             'reports_this_month' => $technician->reports()
                 ->whereMonth('report_date', now()->month)

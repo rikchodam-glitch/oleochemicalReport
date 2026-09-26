@@ -614,7 +614,6 @@
                     <option value="">Semua Status</option>
                     <option value="continue" {{ request('status') === 'continue' ? 'selected' : '' }}>Continue (belum selesai)</option>
                     <option value="completed" {{ request('status') === 'completed' ? 'selected' : '' }}>Done (selesai)</option>
-                    <option value="draft" {{ request('status') === 'draft' ? 'selected' : '' }}>Draft</option>
                     <option value="needs_review" {{ request('status') === 'needs_review' ? 'selected' : '' }}>Perlu Diperiksa</option>
                 </select>
             </div>

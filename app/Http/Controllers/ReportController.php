@@ -316,7 +316,8 @@ class ReportController extends Controller
         }
 
         $validated['report_code']    = Report::generateReportCode();
-        $validated['status']         = $request->status ?? 'draft';
+        // Status 'draft' sudah tidak dipakai; laporan manual langsung 'completed'.
+        $validated['status']         = $request->status ?? 'completed';
         $validated['is_manually_edited'] = true;
 
         $report = Report::create($validated);
@@ -436,7 +437,8 @@ class ReportController extends Controller
     public function updateStatus(Request $request, Report $report)
     {
         $request->validate([
-            'status' => 'required|in:draft,needs_review,completed,continue',
+            // 'draft' sudah tidak dipakai lagi (lihat migration 2026_09_26_000005).
+            'status' => 'required|in:needs_review,completed,continue',
         ]);
 
         $data = ['status' => $request->status];

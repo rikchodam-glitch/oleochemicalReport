@@ -98,7 +98,7 @@
                     </div>
                     <div class="bg-white rounded-xl border border-amber-200 p-4 text-center">
                         <p class="text-2xl font-bold text-amber-600">{{ $stats['pending_reports'] }}</p>
-                        <p class="text-xs text-slate-500 mt-1">Draft</p>
+                        <p class="text-xs text-slate-500 mt-1">Continue (belum selesai)</p>
                     </div>
                     <div class="bg-white rounded-xl border border-violet-200 p-4 text-center">
                         <p class="text-2xl font-bold text-violet-600">{{ $stats['last_report'] ? $stats['last_report']->format('d/m') : '-' }}</p>

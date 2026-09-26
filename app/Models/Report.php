@@ -325,11 +325,6 @@ class Report extends Model
         return $query->where('status', 'completed');
     }
 
-    public function scopeDraft($query)
-    {
-        return $query->where('status', 'draft');
-    }
-
     public function scopeNeedsReview($query)
     {
         return $query->where('status', 'needs_review');
