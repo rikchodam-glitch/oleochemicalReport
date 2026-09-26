@@ -723,6 +723,91 @@ test('import ulang tanpa mengubah apa pun melaporkan jumlah baris tanpa perubaha
         ->and($this->asset->fresh()->equipment_no)->toBe('90000001');
 });
 
+test('sel angka pada file Excel dibaca rapi tanpa noise float', function () {
+    // Persis kasus nyata: sel Model Number bertipe angka berisi 4373.2602
+    // sebelumnya terbaca "4373.26019999999971" oleh pembaca spreadsheet.
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet       = $spreadsheet->getActiveSheet();
+
+    $sheet->fromArray([
+        'Tech Ident No', 'Equipment Type', 'Functional Loc', 'Description', 'Model Number',
+    ], null, 'A1');
+
+    $sheet->setCellValue('A2', 'AC-AR01-1-1');
+    $sheet->setCellValue('B2', 'AC');
+    $sheet->setCellValueExplicit('C2', $this->funcloc->code, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+    $sheet->setCellValue('D2', 'AC Ruang Panel Uji');
+    $sheet->setCellValue('E2', 4373.2602);
+
+    $path = tempnam(sys_get_temp_dir(), 'imp') . '.xlsx';
+    (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save($path);
+
+    $analysis = $this->import->analyzeFile(new UploadedFile($path, 'uji-angka.xlsx', null, null, true));
+
+    unlink($path);
+
+    $baris = $analysis['duplicate'][0] ?? $analysis['clean'][0];
+
+    expect($baris['model_number'])->toBe('4373.2602');
+});
+
+test('nilai yang hanya beda bentuk angka tidak dianggap berubah dan tidak menimpa database', function () {
+    $this->asset->update(['model_number' => '4373.2602']);
+
+    $csv = csvExportAset([($this->barisAset)([10 => '4373.26019999999971'])]);
+
+    $analysis = $this->import->analyzeFile(fileImportAset($csv));
+
+    expect($analysis['duplicate'])->toHaveCount(1)
+        ->and($analysis['duplicate'][0]['perubahan'])->toBe([]);
+
+    $this->import->executeImport($analysis, [
+        'duplicate_action' => 'replace',
+        'no_equip_action'  => 'skip',
+        'filename'         => 'assets-export-uji.csv',
+    ]);
+
+    expect($this->asset->fresh()->model_number)->toBe('4373.2602');
+});
+
+test('sel kosong tidak mengosongkan Manufacturer, Model Number, dan Construct Year', function () {
+    $this->asset->update([
+        'manufacturer'   => 'Leser',
+        'model_number'   => '4373.2602',
+        'construct_year' => '2020',
+    ]);
+
+    // File tanpa kolom tersebut (sel kosong) tidak boleh menghapus data lama.
+    $csv = csvExportAset([($this->barisAset)([9 => '', 10 => '', 11 => ''])]);
+
+    $analysis = $this->import->analyzeFile(fileImportAset($csv));
+
+    expect($analysis['duplicate'][0]['perubahan'])->toBe([]);
+
+    $this->import->executeImport($analysis, [
+        'duplicate_action' => 'replace',
+        'no_equip_action'  => 'skip',
+        'filename'         => 'assets-export-uji.csv',
+    ]);
+
+    $aset = $this->asset->fresh();
+
+    expect($aset->manufacturer)->toBe('Leser')
+        ->and($aset->model_number)->toBe('4373.2602')
+        ->and($aset->construct_year)->toBe('2020');
+});
+
+test('perubahan Model Number yang benar-benar berbeda tetap terdeteksi', function () {
+    $this->asset->update(['model_number' => '4373.2602']);
+
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([
+        ($this->barisAset)([10 => '4373.2603']),
+    ])));
+
+    expect(collect($analysis['duplicate'][0]['perubahan'])->pluck('field')->all())
+        ->toContain('Model Number');
+});
+
 test('Tech Ident No angka yang terpotong Excel dicocokkan ke aset "E" dan nilainya di database tidak diubah', function () {
     // Aset dengan Tech Ident No teks berkode E seperti data nyata (6153E1),
     // sementara file berisi nilai yang sudah dikonversi spreadsheet (61530).

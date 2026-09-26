@@ -17,6 +17,20 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 class ImportService
 {
     /**
+     * Kolom deskriptif yang TIDAK boleh dikosongkan oleh isi file import:
+     * sel kosong di file (mis. file tanpa kolom Manufacturer/Model/Tahun)
+     * tidak menimpa nilai yang sudah ada di database.
+     *
+     * @var array<int, string>
+     */
+    private const KOLOM_TIDAK_BOLEH_KOSONG = [
+        'description',
+        'manufacturer',
+        'model_number',
+        'construct_year',
+    ];
+
+    /**
      * @var AssetNumberService Pembuat nomor equipment otomatis untuk baris
      *                         import yang tidak menyertakan Equipment No
      */
@@ -555,6 +569,33 @@ class ImportService
                             unset($updateData['equipment_type']);
                         }
 
+                        // Nilai yang hanya berbeda BENTUK PENULISAN ANGKA
+                        // (mis. file berisi "4373.26019999999971" karena sel XLSX
+                        // bertipe angka) jangan menimpa nilai bersih di database.
+                        foreach (self::KOLOM_TIDAK_BOLEH_KOSONG as $kolomAngka) {
+                            if (! isset($updateData[$kolomAngka])) {
+                                continue;
+                            }
+
+                            $nilaiBaru = (string) $updateData[$kolomAngka];
+
+                            // Sel kosong tidak mengosongkan nilai yang sudah ada.
+                            if (trim($nilaiBaru) === '' && trim((string) $existing->{$kolomAngka}) !== '') {
+                                unset($updateData[$kolomAngka]);
+
+                                continue;
+                            }
+
+                            if ($this->hanyaBedaFormatAngka($nilaiBaru, (string) $existing->{$kolomAngka})) {
+                                unset($updateData[$kolomAngka]);
+                            }
+                        }
+
+                        if (isset($updateData['tech_ident_no'])
+                            && $this->hanyaBedaFormatAngka((string) $updateData['tech_ident_no'], (string) $existing->tech_ident_no)) {
+                            unset($updateData['tech_ident_no']);
+                        }
+
                         // Status dari file hanya dipakai bila nilainya dikenal,
                         // sehingga kolom Status yang tidak diisi tidak menimpa.
                         $statusBaru = $this->statusValid($row['status'] ?? null);
@@ -735,6 +776,19 @@ class ImportService
                 continue;
             }
 
+            // Kolom deskriptif tidak pernah dikosongkan oleh file: sel kosong
+            // (mis. file tanpa kolom Manufacturer/Model/Tahun) TIDAK menimpa
+            // nilai yang sudah ada di database.
+            if ($baru === '' && in_array($nama, self::KOLOM_TIDAK_BOLEH_KOSONG, true)) {
+                continue;
+            }
+
+            // Beda hanya pada bentuk penulisan angka (artefak float spreadsheet)
+            // dianggap TIDAK berubah supaya tidak muncul perubahan palsu.
+            if ($this->hanyaBedaFormatAngka($baru, $lama)) {
+                continue;
+            }
+
             if ($baru !== $lama) {
                 $perubahan[] = ['field' => $label, 'lama' => $lama, 'baru' => $baru];
             }
@@ -819,7 +873,53 @@ class ImportService
             $nilai = $nilai === floor($nilai) ? sprintf('%.0F', $nilai) : (string) $nilai;
         }
 
-        return trim((string) $nilai);
+        return $this->rapikanAngkaPanjang(trim((string) $nilai));
+    }
+
+    /**
+     * Rapikan angka desimal panjang hasil pembulatan float dari pembaca
+     * spreadsheet (mis. sel XLSX angka 4373.2602 terbaca "4373.26019999999971").
+     *
+     * Hanya bentuk desimal dengan 12+ angka di belakang koma yang disentuh;
+     * teks lain (termasuk angka biasa dan kode alat) dibiarkan apa adanya.
+     *
+     * @param  string  $nilai
+     * @return string  Nilai yang sudah dirapikan
+     */
+    private function rapikanAngkaPanjang(string $nilai): string
+    {
+        if (preg_match('/^-?[0-9]+\.[0-9]{12,}$/', $nilai) !== 1) {
+            return $nilai;
+        }
+
+        $rapi = rtrim(rtrim(sprintf('%.12F', (float) $nilai), '0'), '.');
+
+        return $rapi !== '' ? $rapi : $nilai;
+    }
+
+    /**
+     * Apakah dua nilai hanya berbeda bentuk penulisan angka, bukan nilai
+     * (mis. "4373.2602" vs "4373.26019999999971" hasil pembulatan float)?
+     * Dipakai supaya import tidak melaporkan/menulis perubahan palsu.
+     *
+     * @param  string|null  $nilaiBaru
+     * @param  string|null  $nilaiLama
+     * @return bool
+     */
+    private function hanyaBedaFormatAngka(?string $nilaiBaru, ?string $nilaiLama): bool
+    {
+        $baru = trim((string) $nilaiBaru);
+        $lama = trim((string) $nilaiLama);
+
+        if ($baru === '' || $lama === '' || $baru === $lama) {
+            return false;
+        }
+
+        if (! is_numeric($baru) || ! is_numeric($lama)) {
+            return false;
+        }
+
+        return (float) $baru === (float) $lama;
     }
 
     /**

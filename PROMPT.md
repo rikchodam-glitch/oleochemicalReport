@@ -398,9 +398,15 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
   Jumlah baris yang dicocokkan dengan cara ini dilaporkan (`truncated_matched_count`).
   Pencegahan di sisi file: format kolom TechIdentNo. sebagai Teks biasa (Plain text) sebelum mengisi,
   lalu simpan sebagai .xlsx (CSV tidak menyimpan tipe sel).
-- **Kolom yang ikut diperbarui**: Description, Tech Ident No, Equipment Type, Functional Loc (+ `funcloc_id`),
-  Company/Department/Area/Sub Area (diresolusi dari kode kolom; kode tak dikenal = baris dilewati),
-  Manufacturer, Model Number, Construct Year, dan Status (nilai kosong/tak dikenal tidak menimpa).
+- **Penjaga noise float & sel kosong pada import**: sel Excel bertipe ANGKA (mis. Model Number `4373.2602`)
+  terbaca ber-noise oleh pembaca spreadsheet (`4373.26019999999971`). Dua lapis penjagaan:
+  (1) pembaca merapikan angka desimal panjang (`rapikanAngkaPanjang()`, hanya bentuk 12+ angka di
+  belakang koma) sehingga nilainya kembali `4373.2602`; (2) nilai yang hanya beda BENTUK PENULISAN ANGKA
+  (`hanyaBedaFormatAngka()`) tidak dianggap berubah dan tidak menimpa nilai bersih di database.
+  Selain itu sel KOSONG tidak pernah mengosongkan kolom deskriptif
+  (`ImportService::KOLOM_TIDAK_BOLEH_KOSONG` = description, manufacturer, model_number, construct_year),
+  jadi file yang tidak memuat kolom tertentu tidak menghapus data lama. Bukti nyata: export EPE
+  (3.299 baris) di-analyze ulang -> 0 data baru, 3.296 cocok data lama, **0 perubahan palsu**.
 - Baris cermin perangkat IT (`data_source = it_sync`) **dilewati** saat import (dikelola modul IT Assets
   lewat `php artisan it:sync-assets`) dan dilaporkan jumlahnya pada pesan hasil import.
 - Baris cermin perangkat IT (`data_source = it_sync`) **dilewati** saat import (dikelola modul IT Assets
