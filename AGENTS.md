@@ -101,6 +101,28 @@ ulang.
      `start_time`-nya di luar jendela shift hari itu (toleransi 60 menit).
    - Rentang tanggal di halaman Teknisi = periode jadwal terakhir (fallback:
      bulan berjalan). Perubahan aturan ini wajib dikonfirmasi ulang ke user.
+   - **Pola rotasi (dikonfirmasi 26/09/2026):** semua group memakai siklus 20
+     hari yang SAMA, hanya fasenya berbeda:
+     `5 hari Shift 1 -> 2 OFF -> 5 hari Shift 3 -> 2 OFF -> 5 hari Shift 2 -> 1 OFF`.
+     Rumus: `kode = siklus[(jarak_hari(tanggal, acuan) + offset[group]) mod 20]`
+     dengan acuan `2026-06-26` dan offset A=2, B=12, C=17, D=7 (semuanya di
+     `config('cm.shift_pattern')`). Verifikasi: 976 dari 976 hari-orang pada 4
+     file jadwal (26 Juni - 25 Oktober 2026) cocok tanpa selisih. Karena itu
+     jadwal periode berikutnya TIDAK perlu diupload: sistem memproyeksi sendiri
+     (`ShiftPatternService`), dan bisa dipermanenkan lewat
+     `php artisan shifts:generate --execute` atau tombol "Buat Jadwal Otomatis"
+     di halaman Teknisi. Baris hasil upload selalu menang atas hasil proyeksi
+     (untuk koreksi manual).
+   - **Group non-shift ada dua (26/09/2026):**
+     `reguler` = Senin-Kamis 08.00-16.00, Jumat 08.00-16.00 dengan istirahat
+     2 jam (11.00-13.00), Sabtu 08.00-14.00, Minggu libur; istirahat hari biasa
+     12.00-13.00.
+     `reguler_staff` = Senin-Jumat 08.00-17.00, Jumat istirahat 2 jam,
+     Sabtu/Minggu libur.
+     Target harian = (jam selesai - jam mulai) dikurangi istirahat, hasilnya:
+     reguler 420/420/420/420/360/300/0 menit dan reguler staff
+     480/480/480/480/420/0/0 menit (Senin s.d. Minggu) — lihat
+     `config('cm.man_hour.jam_kerja')`.
 
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 

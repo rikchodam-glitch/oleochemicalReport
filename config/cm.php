@@ -89,7 +89,7 @@ return [
     */
     'man_hour' => [
 
-        // Target menit kerja untuk satu hari kerja penuh
+        // Target menit kerja untuk satu hari kerja penuh (shift / reguler penuh)
         'target_minutes' => 480,
 
         // Toleransi menit saat memeriksa jam laporan terhadap jendela shift
@@ -103,11 +103,88 @@ return [
             '3' => ['mulai' => '00:00', 'selesai' => '08:00'],
         ],
 
-        // Jendela kerja teknisi reguler (non-shift)
-        'reguler_window' => ['mulai' => '08:00', 'selesai' => '16:00'],
+        // Jam kerja teknisi non-shift. Target harian dihitung dari (selesai -
+        // mulai) dikurangi istirahat, jadi hari Sabtu/Minggu dan Jumat otomatis
+        // punya target lebih kecil. Kunci hari: 0 = Minggu ... 6 = Sabtu.
+        'jam_kerja' => [
+            'reguler' => [
+                'label' => 'Reguler',
+                // Senin - Kamis: 08.00-16.00, istirahat 12.00-13.00 (7 jam)
+                1 => ['mulai' => '08:00', 'selesai' => '16:00', 'istirahat' => [['12:00', '13:00']]],
+                2 => ['mulai' => '08:00', 'selesai' => '16:00', 'istirahat' => [['12:00', '13:00']]],
+                3 => ['mulai' => '08:00', 'selesai' => '16:00', 'istirahat' => [['12:00', '13:00']]],
+                4 => ['mulai' => '08:00', 'selesai' => '16:00', 'istirahat' => [['12:00', '13:00']]],
+                // Jumat: 08.00-16.00, istirahat 2 jam 11.00-13.00 (6 jam)
+                5 => ['mulai' => '08:00', 'selesai' => '16:00', 'istirahat' => [['11:00', '13:00']]],
+                // Sabtu: 08.00-14.00, istirahat 12.00-13.00 (5 jam)
+                6 => ['mulai' => '08:00', 'selesai' => '14:00', 'istirahat' => [['12:00', '13:00']]],
+                // Minggu libur
+                0 => null,
+            ],
+            'reguler_staff' => [
+                'label' => 'Reguler Staff',
+                // Senin - Kamis: 08.00-17.00, istirahat 12.00-13.00 (8 jam)
+                1 => ['mulai' => '08:00', 'selesai' => '17:00', 'istirahat' => [['12:00', '13:00']]],
+                2 => ['mulai' => '08:00', 'selesai' => '17:00', 'istirahat' => [['12:00', '13:00']]],
+                3 => ['mulai' => '08:00', 'selesai' => '17:00', 'istirahat' => [['12:00', '13:00']]],
+                4 => ['mulai' => '08:00', 'selesai' => '17:00', 'istirahat' => [['12:00', '13:00']]],
+                // Jumat: 08.00-17.00, istirahat 2 jam 11.00-13.00 (7 jam)
+                5 => ['mulai' => '08:00', 'selesai' => '17:00', 'istirahat' => [['11:00', '13:00']]],
+                // Sabtu & Minggu libur
+                6 => null,
+                0 => null,
+            ],
+        ],
 
         // Hari Minggu dianggap libur (target 0 menit) untuk teknisi reguler
         'minggu_libur_reguler' => true,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pola Rotasi Shift (agar tidak perlu upload jadwal tiap bulan)
+    |--------------------------------------------------------------------------
+    |
+    | Hasil analisa 4 file jadwal (26 Juni - 25 Oktober 2026): semua group
+    | memakai siklus 20 hari yang sama, hanya fasenya berbeda.
+    |   Siklus: 5 hari Shift 1 -> 2 OFF -> 5 hari Shift 3 -> 2 OFF ->
+    |           5 hari Shift 2 -> 1 OFF (total 20 hari)
+    | Fase dihitung dari tanggal acuan: kode(group, tanggal) =
+    |   siklus[(jarak_hari(tanggal, acuan) + offset[group]) mod 20].
+    | Verifikasi: 976 dari 976 hari-orang pada 4 file cocok tanpa selisih.
+    | Ubah 'offset' bila perusahaan mengubah komposisi group.
+    |
+    */
+    'shift_pattern' => [
+
+        // Tanggal acuan perhitungan fase
+        'acuan' => '2026-06-26',
+
+        // Siklus dalam bentuk blok: [kode, jumlah hari]
+        'siklus' => [
+            ['1', 5],
+            ['x', 2],
+            ['3', 5],
+            ['x', 2],
+            ['2', 5],
+            ['x', 1],
+        ],
+
+        // Fase tiap group (A-D) terhadap tanggal acuan
+        'offset' => [
+            'A' => 2,
+            'B' => 12,
+            'C' => 17,
+            'D' => 7,
+        ],
+
+        // Pemetaan group teknisi di aplikasi ke group jadwal
+        'grup_ke_huruf' => [
+            'grub_a' => 'A',
+            'grub_b' => 'B',
+            'grub_c' => 'C',
+            'grub_d' => 'D',
+        ],
     ],
 
 ];

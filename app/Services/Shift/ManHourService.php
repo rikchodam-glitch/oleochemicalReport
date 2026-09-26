@@ -6,7 +6,6 @@ use App\Models\Report;
 use App\Models\Technician;
 use App\Models\TechnicianShift;
 use Carbon\CarbonInterface;
-
 /**
  * Perhitungan man hour teknisi: jam kerja terealisasi (dari durasi laporan)
  * dibandingkan target 8 jam sesuai jadwal shift hasil import.
@@ -60,6 +59,23 @@ class ManHourService
             ->get()
             ->keyBy(fn (TechnicianShift $shift): string => $shift->shift_date->toDateString());
 
+        $grup = (string) ($technician->group ?? 'reguler');
+
+        // Tanggal yang belum ada di jadwal import diisi dari pola rotasi 20 hari
+        // supaya jadwal bulan berikutnya tidak perlu diupload lagi. Jadwal import
+        // selalu menang bila ada (bisa dipakai untuk koreksi manual).
+        foreach (app(ShiftPatternService::class)->proyeksi($grup, $awal, $akhir) as $tanggalPola => $kodePola) {
+            if (isset($jadwal[$tanggalPola])) {
+                continue;
+            }
+
+            $jadwal[$tanggalPola] = new TechnicianShift([
+                'technician_id' => $technician->id,
+                'shift_date'    => $tanggalPola,
+                'shift_code'    => $kodePola,
+            ]);
+        }
+
         $rincian = [];
 
         for ($tanggal = $awal->copy(); $tanggal->lte($akhir); $tanggal->addDay()) {
@@ -73,7 +89,7 @@ class ManHourService
                 $menit += (int) ($baris->work_duration_minutes ?? 0);
             }
 
-            $target      = $this->targetHari($shift, $tanggal);
+            $target      = $this->targetHari($shift, $tanggal, $grup);
             $jumlahKerja = count($laporanHari);
 
             if ($shift !== null && $shift->isOff() && $jumlahKerja > 0) {
@@ -81,10 +97,10 @@ class ManHourService
             }
 
             if ($shift !== null && !$shift->isOff() && $jumlahKerja > 0) {
-                $luar = $this->hitungLaporanLuarShift($laporanHari, $shift);
+                $luar = $this->hitungLaporanLuarShift($laporanHari, $shift, $grup);
 
                 if ($luar > 0) {
-                    $catatan[] = $luar . ' laporan di luar jam ' . $shift->label();
+                    $catatan[] = $luar . ' laporan di luar jam ' . $shift->label($grup);
                 }
             }
 
@@ -92,7 +108,7 @@ class ManHourService
                 'tanggal'          => $kunci,
                 'hari'             => $tanggal->translatedFormat('l'),
                 'kode'             => $shift?->kode(),
-                'label_shift'      => $shift?->label() ?? 'Tanpa jadwal',
+                'label_shift'      => $shift?->label($grup) ?? app(JamKerjaService::class)->label($grup, $tanggal),
                 'target_menit'     => $target,
                 'menit'            => $menit,
                 'persen'           => $target > 0 ? (int) round($menit / $target * 100) : null,
@@ -194,8 +210,9 @@ class ManHourService
     }
 
     /**
-     * Total target menit per teknisi sesuai jadwal shift pada rentang tanggal.
-     * Teknisi tanpa baris jadwal tidak muncul di hasil (target belum diketahui).
+     * Total target menit per teknisi pada rentang tanggal: baris jadwal import
+     * dipakai lebih dulu, tanggal yang belum ada diisi proyeksi pola rotasi
+     * (pekerja shift) atau jam kerja non-shift (reguler / reguler staff).
      *
      * @param  array<int, int> $teknisiIds Daftar ID teknisi
      * @param  CarbonInterface $mulai      Tanggal awal (inklusif)
@@ -208,41 +225,69 @@ class ManHourService
             return [];
         }
 
-        $hasil = [];
+        $teknisi = Technician::query()
+            ->whereIn('id', $teknisiIds)
+            ->get(['id', 'group'])
+            ->keyBy('id');
+
+        $hasil         = [];
+        $tanggalTerisi = [];
 
         TechnicianShift::query()
             ->whereIn('technician_id', $teknisiIds)
             ->antara($mulai->toDateString(), $selesai->toDateString())
-            ->select(['technician_id', 'shift_date', 'shift_code'])
-            ->get()
-            ->each(function (TechnicianShift $shift) use (&$hasil): void {
-                $id = (int) $shift->technician_id;
+            ->get(['technician_id', 'shift_date', 'shift_code'])
+            ->each(function (TechnicianShift $shift) use (&$hasil, &$tanggalTerisi, $teknisi): void {
+                $id   = (int) $shift->technician_id;
+                $grup = (string) ($teknisi[$id]->group ?? 'reguler');
 
-                $hasil[$id] = ($hasil[$id] ?? 0) + $shift->targetMenit();
+                $hasil[$id] = ($hasil[$id] ?? 0) + $shift->targetMenit($grup);
+
+                $tanggalTerisi[$id][$shift->shift_date->toDateString()] = true;
             });
+
+        $pola = app(ShiftPatternService::class);
+        $jam  = app(JamKerjaService::class);
+
+        foreach ($teknisi as $id => $data) {
+            $grup = (string) ($data->group ?? 'reguler');
+
+            for ($tanggal = $mulai->copy()->startOfDay(); $tanggal->lte($selesai); $tanggal->addDay()) {
+                $kunci = $tanggal->toDateString();
+
+                if (isset($tanggalTerisi[$id][$kunci])) {
+                    continue;
+                }
+
+                $kode = $pola->kode($grup, $tanggal);
+
+                $menit = $kode !== null
+                    ? ($kode === TechnicianShift::KODE_OFF ? 0 : (int) config('cm.man_hour.target_minutes', 480))
+                    : $jam->targetMenit($grup, $tanggal);
+
+                $hasil[$id] = ($hasil[$id] ?? 0) + $menit;
+            }
+        }
 
         return $hasil;
     }
 
     /**
-     * Target menit satu hari: 0 untuk hari OFF / Minggu reguler, selain itu
-     * target harian dari config (hari tanpa baris jadwal dianggap hari kerja).
+     * Target menit satu hari: mengikuti kode shift bila ada baris jadwal, dan
+     * memakai jam kerja non-shift (reguler / reguler staff) bila tidak ada.
      *
-     * @param  TechnicianShift|null $shift   Baris jadwal hari itu (nullable)
-     * @param  CarbonInterface      $tanggal Tanggal yang dihitung
-     * @return int                           Target menit
+     * @param  TechnicianShift|null $shift       Baris jadwal hari itu (nullable)
+     * @param  CarbonInterface      $tanggal     Tanggal yang dihitung
+     * @param  string               $grupTeknisi Group teknisi
+     * @return int                               Target menit
      */
-    private function targetHari(?TechnicianShift $shift, CarbonInterface $tanggal): int
+    private function targetHari(?TechnicianShift $shift, CarbonInterface $tanggal, string $grupTeknisi): int
     {
         if ($shift !== null) {
-            return $shift->targetMenit();
+            return $shift->targetMenit($grupTeknisi);
         }
 
-        if ((bool) config('cm.man_hour.minggu_libur_reguler', true) && $tanggal->dayOfWeek === 0) {
-            return 0;
-        }
-
-        return (int) config('cm.man_hour.target_minutes', 480);
+        return app(JamKerjaService::class)->targetMenit($grupTeknisi, $tanggal);
     }
 
     /**
@@ -266,16 +311,17 @@ class ManHourService
     }
 
     /**
-     * Hitung berapa laporan yang jam mulainya di luar jendela shift hari itu
+     * Hitung berapa laporan yang jam mulainya di luar jendela jam kerja hari itu
      * (dengan toleransi dari config).
      *
-     * @param  array<int, Report> $laporan Daftar laporan hari itu
-     * @param  TechnicianShift    $shift   Baris jadwal hari itu
-     * @return int                         Jumlah laporan di luar jam shift
+     * @param  array<int, Report> $laporan     Daftar laporan hari itu
+     * @param  TechnicianShift    $shift       Baris jadwal hari itu
+     * @param  string             $grupTeknisi Group teknisi
+     * @return int                             Jumlah laporan di luar jam kerja
      */
-    private function hitungLaporanLuarShift(array $laporan, TechnicianShift $shift): int
+    private function hitungLaporanLuarShift(array $laporan, TechnicianShift $shift, string $grupTeknisi): int
     {
-        $jendela = $shift->jendela();
+        $jendela = $shift->jendela($grupTeknisi);
 
         if ($jendela === null) {
             return 0;

@@ -34,11 +34,12 @@ class Technician extends Model
     }
 
     public const GROUPS = [
-        'reguler' => 'Reguler',
-        'grub_a'  => 'Grub A',
-        'grub_b'  => 'Grub B',
-        'grub_c'  => 'Grub C',
-        'grub_d'  => 'Grub D',
+        'reguler'       => 'Reguler',
+        'reguler_staff' => 'Reguler Staff',
+        'grub_a'        => 'Grub A',
+        'grub_b'        => 'Grub B',
+        'grub_c'        => 'Grub C',
+        'grub_d'        => 'Grub D',
     ];
 
     public const SECTIONS = [

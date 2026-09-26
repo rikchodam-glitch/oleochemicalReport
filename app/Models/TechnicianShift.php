@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Shift\JamKerjaService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -79,11 +80,13 @@ class TechnicianShift extends Model
     }
 
     /**
-     * Label shift untuk tampilan, mis. "Shift 1 (08.00-16.00)" atau "OFF".
+     * Label shift untuk tampilan, mis. "Shift 1 (08.00-16.00)", "OFF", atau
+     * "Reguler"/"Reguler Staff" untuk teknisi non-shift.
      *
-     * @return string  Label shift
+     * @param  string|null $grupTeknisi Group teknisi (dipakai untuk kode 'R')
+     * @return string                   Label shift
      */
-    public function label(): string
+    public function label(?string $grupTeknisi = null): string
     {
         $kode = strtoupper(trim((string) $this->shift_code));
 
@@ -102,49 +105,79 @@ class TechnicianShift extends Model
             );
         }
 
-        return $kode === self::KODE_REGULER ? 'Reguler' : 'Kode ' . $kode;
+        if ($kode === self::KODE_REGULER) {
+            return app(JamKerjaService::class)->labelGroup($this->grupBerlaku($grupTeknisi));
+        }
+
+        return 'Kode ' . $kode;
     }
 
     /**
-     * Target menit kerja pada tanggal ini: 0 untuk hari OFF (dan Minggu bagi
-     * teknisi reguler), selain itu target harian dari config.
+     * Target menit kerja pada tanggal ini: 0 untuk hari OFF (dan hari libur
+     * teknisi non-shift), 480 untuk hari shift, dan jam kerja dikurangi
+     * istirahat untuk kode 'R' (reguler / reguler staff).
      *
-     * @return int  Target menit kerja
+     * @param  string|null $grupTeknisi Group teknisi (dipakai untuk kode 'R')
+     * @return int                      Target menit kerja
      */
-    public function targetMenit(): int
+    public function targetMenit(?string $grupTeknisi = null): int
     {
         if ($this->isOff()) {
             return 0;
         }
 
-        $target = (int) config('cm.man_hour.target_minutes', 480);
+        $kode = $this->kode();
 
-        if ($this->kode() === self::KODE_REGULER
-            && (bool) config('cm.man_hour.minggu_libur_reguler', true)
-            && $this->shift_date?->dayOfWeek === 0) {
-            return 0;
+        if (in_array($kode, ['1', '2', '3'], true)) {
+            return (int) config('cm.man_hour.target_minutes', 480);
         }
 
-        return $target;
+        return app(JamKerjaService::class)->targetMenit(
+            $this->grupBerlaku($grupTeknisi),
+            $this->shift_date ?? now()
+        );
     }
 
     /**
      * Jendela waktu kerja yang berlaku pada tanggal ini (jam mulai & selesai),
-     * dipakai untuk memeriksa apakah laporan dibuat di dalam jam shift.
+     * dipakai untuk memeriksa apakah laporan dibuat di dalam jam kerja.
      *
-     * @return array{mulai: string, selesai: string}|null  Jendela waktu atau null bila OFF
+     * @param  string|null $grupTeknisi Group teknisi (dipakai untuk kode 'R')
+     * @return array{mulai: string, selesai: string}|null  Jendela waktu atau null bila OFF/libur
      */
-    public function jendela(): ?array
+    public function jendela(?string $grupTeknisi = null): ?array
     {
         if ($this->isOff()) {
             return null;
         }
 
-        $kode     = $this->kode();
-        $windows  = (array) config('cm.man_hour.windows', []);
-        $reguler  = (array) config('cm.man_hour.reguler_window', ['mulai' => '08:00', 'selesai' => '16:00']);
+        $kode    = $this->kode();
+        $windows = (array) config('cm.man_hour.windows', []);
 
-        return $windows[$kode] ?? $reguler;
+        if (isset($windows[$kode])) {
+            return $windows[$kode];
+        }
+
+        return app(JamKerjaService::class)->jendela(
+            $this->grupBerlaku($grupTeknisi),
+            $this->shift_date ?? now()
+        );
+    }
+
+    /**
+     * Group teknisi yang dipakai untuk menghitung target: dari parameter, atau
+     * dari relasi teknisi, atau fallback 'reguler'.
+     *
+     * @param  string|null $grupTeknisi Group dari pemanggil (opsional)
+     * @return string                   Group yang berlaku
+     */
+    private function grupBerlaku(?string $grupTeknisi): string
+    {
+        if ($grupTeknisi !== null && $grupTeknisi !== '') {
+            return $grupTeknisi;
+        }
+
+        return (string) ($this->technician?->group ?? 'reguler');
     }
 
     /**

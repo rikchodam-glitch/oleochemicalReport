@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Department;
 use App\Models\ShiftSchedule;
 use App\Models\Technician;
+use App\Models\TechnicianShift;
 use App\Services\Shift\ManHourService;
+use App\Services\Shift\ShiftPatternService;
 use App\Services\TelegramService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -240,7 +242,23 @@ class TechnicianController extends Controller
 
         $manHourHarian    = $manHour->harian($technician, $mulaiManHour, $selesaiManHour);
         $manHourRingkasan = $manHour->ringkasan($manHourHarian);
-        $shiftHariIni     = $technician->shifts()->untukTanggal(now()->toDateString())->first();
+        $shiftHariIni = $technician->shifts()->untukTanggal(now()->toDateString())->first();
+
+        // Bila belum ada baris jadwal (mis. periode berjalan belum diupload),
+        // pakai hasil proyeksi pola rotasi supaya badge shift tetap terisi.
+        if ($shiftHariIni === null) {
+            $kodeHariIni = app(ShiftPatternService::class)->kode($technician->group, now());
+
+            if ($kodeHariIni !== null) {
+                $shiftHariIni = new TechnicianShift([
+                    'technician_id' => $technician->id,
+                    'nik'           => (string) $technician->nik,
+                    'nama'          => (string) $technician->name,
+                    'shift_date'    => now()->toDateString(),
+                    'shift_code'    => $kodeHariIni,
+                ]);
+            }
+        }
 
         return view('technicians.show', compact(
             'technician',

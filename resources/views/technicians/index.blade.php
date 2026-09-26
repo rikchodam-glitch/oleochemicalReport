@@ -68,10 +68,11 @@
     <!-- Jadwal Shift & Man Hour -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div class="lg:col-span-1 bg-white rounded-xl border border-slate-200 p-5">
-            <h3 class="text-sm font-semibold text-slate-900">Import Jadwal Shift</h3>
+            <h3 class="text-sm font-semibold text-slate-900">Jadwal Shift</h3>
             <p class="text-xs text-slate-400 mt-1 leading-snug">
-                File jadwal maintenance periode 26-25 (No, NIK, Nama, Group, kode shift x/1/2/3).
-                Kode ini dipakai untuk target 8 jam per hari dan deteksi laporan di luar jam shift.
+                Pola rotasi 20 hari (5 hari Shift 1, 2 OFF, 5 hari Shift 3, 2 OFF, 5 hari Shift 2, 1 OFF)
+                sudah dikenali sistem, jadi periode berikutnya tidak perlu upload lagi. Upload Excel hanya
+                bila ada perubahan komposisi group atau koreksi manual.
             </p>
 
             @if($shiftTerakhir)
@@ -89,16 +90,28 @@
                 <p class="text-xs text-amber-600 mt-3">Belum ada jadwal shift yang diimport.</p>
             @endif
 
-            <form method="POST" action="{{ route('technicians.shift-schedule.store') }}"
-                  enctype="multipart/form-data" class="mt-4 space-y-3">
+            <form method="POST" action="{{ route('technicians.shift-schedule.generate') }}" class="mt-4">
                 @csrf
+                <button type="submit"
+                        class="w-full px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
+                    Buat Jadwal Otomatis (30 hari)
+                </button>
+                <p class="text-xs text-slate-400 mt-1.5">
+                    Mengisi jadwal teknisi group A-D dari pola rotasi, dimulai sehari setelah jadwal terakhir.
+                </p>
+            </form>
+
+            <form method="POST" action="{{ route('technicians.shift-schedule.store') }}"
+                  enctype="multipart/form-data" class="mt-4 pt-4 border-t border-slate-100 space-y-3">
+                @csrf
+                <label class="block text-xs font-medium text-slate-600">Upload jadwal resmi (opsional)</label>
                 <input type="file" name="file" accept=".xlsx,.xls,.csv" required
                        class="w-full text-xs text-slate-600 border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
                 @error('file')
                     <p class="text-xs text-red-600">{{ $message }}</p>
                 @enderror
                 <button type="submit"
-                        class="w-full px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
+                        class="w-full px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
                     Import Jadwal
                 </button>
             </form>

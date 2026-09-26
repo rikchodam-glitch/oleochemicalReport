@@ -261,9 +261,9 @@ class CollaborationService
     /**
      * Buat/pastikan kelompok untuk seluruh grup shift (Grub A sampai D).
      *
-     * Dipakai perintah `collab:sync-groups`. Grup 'reguler' dilewati secara
-     * bawaan karena anggotanya banyak; bisa dibuat manual lewat halaman
-     * Kolaborasi (atau dengan opsi --with-reguler).
+     * Dipakai perintah `collab:sync-groups`. Grup 'reguler' dan 'reguler_staff'
+     * dilewati secara bawaan karena anggotanya banyak; bisa dibuat manual lewat
+     * halaman Kolaborasi (atau dengan opsi --with-reguler).
      *
      * @param  bool  $denganReguler  true = sekalian membuat kelompok Reguler (otomasi mati)
      * @return array<int, array{code: string, created: bool, members: int}>
@@ -273,8 +273,12 @@ class CollaborationService
         $laporan = [];
         $urutan  = 1;
 
+        // Group non-shift: tidak dibuatkan kelompok otomatis karena anggotanya
+        // banyak dan kolaborasi otomatis akan membanjiri laporan.
+        $tanpaOtomasi = ['reguler', 'reguler_staff'];
+
         foreach (Technician::GROUPS as $kode => $label) {
-            if ($kode === 'reguler' && ! $denganReguler) {
+            if (in_array($kode, $tanpaOtomasi, true) && ! $denganReguler) {
                 continue;
             }
 
@@ -284,8 +288,8 @@ class CollaborationService
                     'name'             => $label,
                     'description'      => 'Dibuat otomatis dari grup teknisi ' . $label,
                     'is_active'        => true,
-                    // Reguler dimatikan otomasinya supaya tidak membanjiri laporan.
-                    'auto_collaborate' => $kode !== 'reguler',
+                    // Reguler / Reguler Staff dimatikan otomasinya.
+                    'auto_collaborate' => ! in_array($kode, $tanpaOtomasi, true),
                     'sort_order'       => $urutan,
                 ]
             );

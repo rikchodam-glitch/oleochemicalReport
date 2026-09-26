@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\TechnicianShift;
+use App\Services\Shift\ShiftPatternService;
 use App\Services\Shift\ShiftScheduleImportService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -73,5 +76,32 @@ class ShiftScheduleController extends Controller
         }
 
         return $respons;
+    }
+
+    /**
+     * Buat jadwal shift otomatis dari pola rotasi untuk 30 hari ke depan,
+     * dipakai supaya periode berikutnya tidak perlu upload Excel jadwal.
+     *
+     * @param  ShiftPatternService $pola Service pola rotasi shift
+     * @return RedirectResponse          Redirect kembali dengan pesan hasil
+     */
+    public function generate(ShiftPatternService $pola): RedirectResponse
+    {
+        $terakhir = TechnicianShift::max('shift_date');
+
+        $mulai = $terakhir !== null
+            ? Carbon::parse((string) $terakhir)->addDay()->startOfDay()
+            : now()->startOfDay();
+
+        $selesai = $mulai->copy()->addDays(29);
+
+        $jumlah = $pola->simpanProyeksi($mulai, $selesai);
+
+        return back()->with('success', sprintf(
+            'Jadwal otomatis dibuat dari pola rotasi: %d baris untuk %s s/d %s. Jadwal hasil import tetap dipakai bila ada.',
+            $jumlah,
+            $mulai->format('d/m/Y'),
+            $selesai->format('d/m/Y')
+        ));
     }
 }

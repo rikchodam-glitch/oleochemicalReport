@@ -5,7 +5,9 @@ use App\Models\ShiftSchedule;
 use App\Models\Technician;
 use App\Models\TechnicianShift;
 use App\Models\User;
+use App\Services\Shift\JamKerjaService;
 use App\Services\Shift\ManHourService;
+use App\Services\Shift\ShiftPatternService;
 use App\Services\Shift\ShiftScheduleImportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -142,7 +144,9 @@ test('import jadwal shift membaca blok staf & shift serta mencatat yang belum co
     expect($staf)->toHaveCount(3)
         ->and($staf->pluck('shift_code')->unique()->all())->toBe(['R'])
         ->and($staf->first()->technician_id)->toBe($this->teknisiStaf->id)
-        ->and($staf->first()->targetMenit())->toBe(480);
+        // Kode R memakai jam kerja reguler: Sabtu 26/09 5 jam, Minggu 27/09 libur,
+        // Senin 28/09 7 jam (08.00-16.00 dikurangi istirahat 1 jam).
+        ->and($staf->map(fn (TechnicianShift $baris): int => $baris->targetMenit())->all())->toBe([300, 0, 420]);
 
     // Pekerja shift: kode sesuai jadwal, terpetakan lewat nama karena NIK beda.
     $shift = TechnicianShift::where('nama', 'Teknisi Shift Uji')->orderBy('shift_date')->get();
@@ -226,12 +230,13 @@ test('halaman teknisi menampilkan man hour, rincian harian, dan kolom jam kerja'
 
     buatLaporanManHour($this->teknisiStaf, now()->toDateString(), 240, '08:00');
 
-    // Daftar teknisi: panel import jadwal + kolom jam kerja.
+    // Daftar teknisi: panel jadwal + kolom jam kerja.
     $this->actingAs($this->admin)
         ->get('/technicians')
         ->assertStatus(200)
         ->assertSee('Jam Kerja', false)
-        ->assertSee('Import Jadwal Shift', false)
+        ->assertSee('Jadwal Shift', false)
+        ->assertSee('Buat Jadwal Otomatis', false)
         ->assertSee('Riwayat Import Jadwal', false);
 
     // Detail teknisi: kartu man hour, rincian harian, dan grafik.
@@ -272,4 +277,80 @@ test('upload file bukan excel ditolak validasi', function () {
 
     expect(ShiftSchedule::count())->toBe(0)
         ->and(TechnicianShift::count())->toBe(0);
+});
+
+test('pola rotasi 20 hari cocok dengan jadwal asli 4 periode', function () {
+    $pola = app(ShiftPatternService::class);
+
+    // Siklus: 5 hari Shift 1, 2 OFF, 5 hari Shift 3, 2 OFF, 5 hari Shift 2, 1 OFF.
+    expect(implode('', $pola->siklus()))->toBe('11111xx33333xx22222x');
+
+    // Acuan 26 Juni 2026 (terverifikasi: 976 dari 976 hari-orang pada 4 file cocok).
+    expect($pola->kode('grub_a', Carbon::parse('2026-06-26')))->toBe('1')
+        ->and($pola->kode('grub_b', Carbon::parse('2026-06-26')))->toBe('x')
+        ->and($pola->kode('grub_c', Carbon::parse('2026-06-26')))->toBe('2')
+        ->and($pola->kode('grub_d', Carbon::parse('2026-06-26')))->toBe('3')
+        // Periode 26 September - 25 Oktober 2026 (sesuai file jadwal terakhir).
+        ->and($pola->kode('grub_a', Carbon::parse('2026-09-26')))->toBe('2')
+        ->and($pola->kode('grub_b', Carbon::parse('2026-09-26')))->toBe('1')
+        ->and($pola->kode('grub_c', Carbon::parse('2026-09-26')))->toBe('3')
+        ->and($pola->kode('grub_d', Carbon::parse('2026-09-26')))->toBe('x')
+        ->and($pola->kode('grub_a', Carbon::parse('2026-10-01')))->toBe('x')
+        // Teknisi non-shift tidak diproyeksikan lewat pola.
+        ->and($pola->kode('reguler', Carbon::parse('2026-09-26')))->toBeNull()
+        ->and($pola->kode('reguler_staff', Carbon::parse('2026-09-26')))->toBeNull();
+});
+
+test('target reguler dan reguler staff mengikuti jam kerja dan istirahat', function () {
+    $jam = app(JamKerjaService::class);
+
+    // Senin 28/09/2026: reguler 08.00-16.00 istirahat 1 jam (7 jam),
+    // reguler staff 08.00-17.00 istirahat 1 jam (8 jam).
+    expect($jam->targetMenit('reguler', Carbon::parse('2026-09-28')))->toBe(420)
+        ->and($jam->targetMenit('reguler_staff', Carbon::parse('2026-09-28')))->toBe(480)
+        // Jumat 02/10/2026: istirahat 2 jam (11.00-13.00).
+        ->and($jam->targetMenit('reguler', Carbon::parse('2026-10-02')))->toBe(360)
+        ->and($jam->targetMenit('reguler_staff', Carbon::parse('2026-10-02')))->toBe(420)
+        // Sabtu 26/09/2026: reguler 08.00-14.00 istirahat 1 jam (5 jam), staff libur.
+        ->and($jam->targetMenit('reguler', Carbon::parse('2026-09-26')))->toBe(300)
+        ->and($jam->targetMenit('reguler_staff', Carbon::parse('2026-09-26')))->toBe(0)
+        // Minggu 27/09/2026 libur untuk keduanya.
+        ->and($jam->targetMenit('reguler', Carbon::parse('2026-09-27')))->toBe(0)
+        ->and($jam->targetMenit('reguler_staff', Carbon::parse('2026-09-27')))->toBe(0);
+});
+
+test('man hour memakai proyeksi pola saat jadwal belum diimport', function () {
+    TechnicianShift::query()->delete();
+
+    $harian = app(ManHourService::class)->harian(
+        $this->teknisiShift,
+        Carbon::parse('2026-09-30'),
+        Carbon::parse('2026-10-02')
+    );
+
+    expect($harian)->toHaveCount(3)
+        // Group A: 30/09 = hari ke-5 Shift 2, 01/10 = OFF, 02/10 = Shift 1.
+        ->and($harian[0]['label_shift'])->toBe('Shift 2 (16.00-24.00)')
+        ->and($harian[0]['target_menit'])->toBe(480)
+        ->and($harian[1]['kode'])->toBe('X')
+        ->and($harian[1]['target_menit'])->toBe(0)
+        ->and($harian[2]['label_shift'])->toBe('Shift 1 (08.00-16.00)')
+        ->and($harian[2]['target_menit'])->toBe(480);
+});
+
+test('tombol buat jadwal otomatis mengisi jadwal dari pola rotasi', function () {
+    TechnicianShift::query()->delete();
+
+    $this->actingAs($this->admin)
+        ->post(route('technicians.shift-schedule.generate'))
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $baris = TechnicianShift::where('technician_id', $this->teknisiShift->id)->orderBy('shift_date')->get();
+
+    expect($baris)->toHaveCount(30)
+        ->and($baris->first()->section_label)->toBe('POLA')
+        ->and($baris->first()->group_code)->toBe('A')
+        // Teknisi reguler tidak dibuatkan jadwal shift.
+        ->and(TechnicianShift::where('technician_id', $this->teknisiStaf->id)->count())->toBe(0);
 });
