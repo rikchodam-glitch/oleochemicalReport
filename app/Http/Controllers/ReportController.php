@@ -151,6 +151,11 @@ class ReportController extends Controller
             $query->where('jenis_pekerjaan', $request->jenis_pekerjaan);
         }
 
+        // Filter status pekerjaan (mis. 'continue' = pekerjaan belum selesai).
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
         return $query;
     }
 
@@ -431,7 +436,7 @@ class ReportController extends Controller
     public function updateStatus(Request $request, Report $report)
     {
         $request->validate([
-            'status' => 'required|in:draft,needs_review,completed',
+            'status' => 'required|in:draft,needs_review,completed,continue',
         ]);
 
         $data = ['status' => $request->status];

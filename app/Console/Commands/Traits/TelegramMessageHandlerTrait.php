@@ -107,9 +107,24 @@ trait TelegramMessageHandlerTrait
         // Routing teks: wizard aktif atau mulai baru
         if ($this->reportWizard->hasActiveWizard((string) $chatId)) {
             $this->handleWizardText($chatId, $text);
-        } else {
-            $this->handleReport($chatId, $technician, $text);
+            return;
         }
+
+        // Perintah lanjutan pekerjaan: "<KODE LAPORAN> Done|Continue".
+        // Diproses sebelum handleReport() supaya teks ini tidak dianggap
+        // laporan baru biasa.
+        $perintahLanjutan = $this->reportWizard->detectContinuationCommand($text);
+
+        if ($perintahLanjutan !== null) {
+            $this->dispatchWizardResponse($chatId, $this->reportWizard->startContinuation(
+                (string) $chatId,
+                $perintahLanjutan['kode'],
+                $perintahLanjutan['mode']
+            ));
+            return;
+        }
+
+        $this->handleReport($chatId, $technician, $text);
     }
 
     /**

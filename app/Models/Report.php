@@ -42,6 +42,7 @@ class Report extends Model
         'ai_confidence',
         'ai_suggestion_json',
         'status',
+        'continued_from_id',
         'completed_at',
         'telegram_message_id',
     ];
@@ -157,6 +158,39 @@ class Report extends Model
     public function cmEquipment(): BelongsTo
     {
         return $this->belongsTo(CmEquipment::class, 'equipment_tag', 'equipment_tag');
+    }
+
+    /**
+     * Laporan sebelumnya yang dilanjutkan oleh laporan ini (status 'continue').
+     *
+     * @return BelongsTo<Report, Report>
+     */
+    public function continuedFrom(): BelongsTo
+    {
+        return $this->belongsTo(Report::class, 'continued_from_id');
+    }
+
+    /**
+     * Laporan lanjutan yang menunjuk balik ke laporan ini (bisa lebih dari satu
+     * bila pekerjaan sama berlanjut beberapa hari).
+     *
+     * @return HasMany<Report>
+     */
+    public function continuedBy(): HasMany
+    {
+        return $this->hasMany(Report::class, 'continued_from_id');
+    }
+
+    /**
+     * Laporan yang masih terbuka untuk dilanjutkan (status 'continue' dan belum
+     * pernah dilanjutkan laporan lain).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<Report>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<Report>
+     */
+    public function scopeBelumDilanjutkan($query)
+    {
+        return $query->where('status', 'continue')->whereDoesntHave('continuedBy');
     }
 
     // =========================================================

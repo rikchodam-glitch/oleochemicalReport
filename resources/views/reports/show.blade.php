@@ -37,6 +37,37 @@
                             </a>
                         </div>
                     @endif
+
+                    {{-- Rantai pekerjaan lanjutan: laporan 'continue' berhari-hari --}}
+                    @if($report->continuedFrom || $report->continuedBy->isNotEmpty())
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                            @if($report->continuedFrom)
+                                <span class="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200">
+                                    Lanjutan dari
+                                </span>
+                                <a href="{{ route('reports.show', $report->continuedFrom) }}"
+                                   class="text-xs font-medium font-mono text-blue-600 hover:text-blue-700">
+                                    {{ $report->continuedFrom->report_code ?? ('#' . $report->continuedFrom->id) }}
+                                </a>
+                                <span class="text-xs text-slate-400">
+                                    ({{ $report->continuedFrom->report_date?->format('d/m/Y') ?? '-' }})
+                                </span>
+                            @endif
+
+                            @foreach($report->continuedBy as $lanjutan)
+                                <span class="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-teal-50 text-teal-700 border border-teal-100">
+                                    Dilanjutkan oleh
+                                </span>
+                                <a href="{{ route('reports.show', $lanjutan) }}"
+                                   class="text-xs font-medium font-mono text-blue-600 hover:text-blue-700">
+                                    {{ $lanjutan->report_code ?? ('#' . $lanjutan->id) }}
+                                </a>
+                                <span class="text-xs text-slate-400">
+                                    ({{ $lanjutan->report_date?->format('d/m/Y') ?? '-' }})
+                                </span>
+                            @endforeach
+                        </div>
+                    @endif
                 </div>
                 <x-status-badge :status="$report->status" />
             </div>

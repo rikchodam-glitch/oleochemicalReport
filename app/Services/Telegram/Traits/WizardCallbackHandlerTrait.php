@@ -706,8 +706,20 @@ trait WizardCallbackHandlerTrait
                 $this->saveState($chatId, $state);
                 return $this->buildConfirmationSummary($state);
 
-            // Step 8 — simpan laporan
+            // Step 8 — simpan laporan. Tombol lama 'save_report' dipertahankan
+            // agar pesan konfirmasi yang masih tersimpan di riwayat chat
+            // Telegram tetap bekerja (diperlakukan sebagai Done).
             case 'save_report':
+            case 'save_done':
+                $state['final_status'] = 'completed';
+
+                return $this->saveReport($chatId, $state);
+
+            // Step 8 — simpan sebagai Continue: pekerjaan belum tuntas dan akan
+            // dilanjutkan (bisa beberapa hari) lewat kode laporan ini.
+            case 'save_continue':
+                $state['final_status'] = 'continue';
+
                 return $this->saveReport($chatId, $state);
 
             // Step 8 — batalkan laporan: minta konfirmasi YAKIN/TIDAK lebih dulu

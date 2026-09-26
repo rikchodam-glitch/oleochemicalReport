@@ -288,6 +288,16 @@
                             </p>
                             <p class="text-xs text-slate-400 mt-1">
                                 {{ $report->report_code ?? '-' }}
+                                @if($report->status === 'continue')
+                                    <span class="inline-flex ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                                        CONTINUE
+                                    </span>
+                                @endif
+                                @if($report->continued_from_id)
+                                    <span class="inline-flex ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-100">
+                                        LANJUTAN
+                                    </span>
+                                @endif
                                 @if($report->root_cause)
                                     <span class="text-slate-200 mx-1">|</span>
                                     Penyebab: {{ \Illuminate\Support\Str::limit($report->root_cause, 80) }}
@@ -556,6 +566,17 @@
                     <option value="equipment_repair" {{ request('report_type') === 'equipment_repair' ? 'selected' : '' }}>Perbaikan Equipment</option>
                     <option value="area_work" {{ request('report_type') === 'area_work' ? 'selected' : '' }}>Pekerjaan Area</option>
                     <option value="general" {{ request('report_type') === 'general' ? 'selected' : '' }}>Umum</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Status Pekerjaan</label>
+                <select name="status"
+                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="">Semua Status</option>
+                    <option value="continue" {{ request('status') === 'continue' ? 'selected' : '' }}>Continue (belum selesai)</option>
+                    <option value="completed" {{ request('status') === 'completed' ? 'selected' : '' }}>Done (selesai)</option>
+                    <option value="draft" {{ request('status') === 'draft' ? 'selected' : '' }}>Draft</option>
+                    <option value="needs_review" {{ request('status') === 'needs_review' ? 'selected' : '' }}>Perlu Diperiksa</option>
                 </select>
             </div>
         </div>

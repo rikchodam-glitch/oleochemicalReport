@@ -94,14 +94,21 @@ trait WizardReportSaverTrait
             $msg .= "\n_Laporan akan dibuat untuk {$jumlah} kolaborator secara otomatis._\n";
         }
 
+        // Info bila laporan ini merupakan lanjutan dari laporan 'continue'
+        // sebelumnya, supaya teknisi tahu deskripsi/lokasi diwarisi dari sana.
+        if (!empty($state['lanjutan_dari_id'])) {
+            $msg .= "\n*Lanjutan dari*: " . ($state['lanjutan_kode'] ?? ('#' . $state['lanjutan_dari_id'])) . "\n";
+        }
+
         $msg .= "\nSimpan laporan ini?";
 
         return [
             'message'  => $msg,
             'keyboard' => array_merge(
                 [
-                    ['text' => 'Ya, Simpan', 'callback_data' => 'wizard:confirm:save_report'],
-                    ['text' => 'Batalkan',   'callback_data' => 'wizard:confirm:cancel_report'],
+                    ['text' => 'Done (Selesai)',            'callback_data' => 'wizard:confirm:save_done'],
+                    ['text' => 'Continue (Lanjut besok)',   'callback_data' => 'wizard:confirm:save_continue'],
+                    ['text' => 'Batalkan',                  'callback_data' => 'wizard:confirm:cancel_report'],
                 ],
                 $this->navigationButtons($state)
             ),
@@ -196,7 +203,12 @@ trait WizardReportSaverTrait
                 'root_cause'              => $state['root_cause'],
                 'photo_documentation'     => $photoDocumentation,
                 'photo_hygiene_clearance' => $photoHygieneClearance,
-                'status'                  => 'draft',
+                // Status akhir dipilih teknisi di Step 8: 'completed' (Done) atau
+                // 'continue' (pekerjaan belum tuntas, akan dilanjutkan hari lain).
+                // Fallback 'draft' untuk jalur lama yang belum mengirim final_status.
+                'status'                  => $state['final_status'] ?? 'draft',
+                'continued_from_id'       => $state['lanjutan_dari_id'] ?? null,
+                'completed_at'            => ($state['final_status'] ?? null) === 'completed' ? now() : null,
                 'wizard_started_at'       => $state['created_at'] ?? null,
                 'submitted_at'            => now(),
             ];

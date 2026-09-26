@@ -5,6 +5,7 @@ namespace App\Services\Telegram;
 use App\Models\Area;
 use App\Models\Asset;
 use App\Models\FunctionalLocation;
+use App\Models\Report;
 use App\Services\AiService;
 use App\Services\TechIdentSearchService;
 use App\Services\Telegram\CollaboratorSearchService;
@@ -17,6 +18,7 @@ use App\Services\Telegram\Traits\WizardUtilityTrait;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * ReportWizardService
@@ -269,6 +271,131 @@ class ReportWizardService
         $respons['message'] = "Laporan untuk *" . $label . "* dimulai.\n\n" . $respons['message'];
 
         return $respons;
+    }
+
+    /**
+     * Kenali perintah lanjutan pekerjaan dari teks bebas teknisi.
+     *
+     * Format yang dikenali (kode laporan wajib ada):
+     *   "RPT-20260926-00005 Done"      → ['kode' => ..., 'mode' => 'done']
+     *   "RPT-20260926-00005 Selesai"   → mode 'done'
+     *   "RPT-20260926-00005 Continue"  → mode 'continue'
+     *   "RPT-20260926-00005 Lanjut"    → mode 'continue'
+     *
+     * Teks yang hanya memuat kode laporan (tanpa kata Done/Continue) TIDAK
+     * dianggap perintah lanjutan — itu diarahkan ke addPhotoToReport seperti
+     * sebelumnya (caption foto berisi kode laporan).
+     *
+     * @param  string  $text  Teks pesan dari teknisi
+     * @return array{kode: string, mode: string}|null
+     */
+    public function detectContinuationCommand(string $text): ?array
+    {
+        $kode = $this->extractReportCode($text);
+
+        if ($kode === null) {
+            return null;
+        }
+
+        // Sisa teks setelah kode dibersihkan dari tanda baca, lalu dicek
+        // kata kuncinya (Indonesia maupun Inggris).
+        $sisa = Str::upper(preg_replace('/[^A-Za-z]+/', ' ', str_replace($kode, ' ', $text)) ?? '');
+        $sisa = trim($sisa);
+
+        if ($sisa === '') {
+            return null;
+        }
+
+        $mode = match (true) {
+            str_contains($sisa, 'CONTINUE'), str_contains($sisa, 'LANJUT') => 'continue',
+            str_contains($sisa, 'DONE'), str_contains($sisa, 'SELESAI')     => 'done',
+            default => null,
+        };
+
+        if ($mode === null) {
+            return null;
+        }
+
+        return ['kode' => $kode, 'mode' => $mode];
+    }
+
+    /**
+     * Mulai wizard lanjutan dari laporan berstatus 'continue'.
+     *
+     * Semua data laporan asal diwarisi (deskripsi, klasifikasi, jenis pekerjaan,
+     * root cause, lokasi/alat, foto, kolaborator) supaya teknisi tidak perlu
+     * menulis ulang — tetapi DURASI/JAM KERJA dikosongkan dan wajib diisi ulang
+     * karena pekerjaannya berlangsung di hari yang berbeda. Teknisi tetap bisa
+     * menambah/mengubah data warisan di step-step berikutnya, dan di Step 8 bisa
+     * memilih Done (selesai) atau Continue (lanjut lagi hari berikutnya).
+     *
+     * @param  string  $chatId  Chat ID Telegram
+     * @param  string  $kode    Kode laporan sumber (RPT-YYYYMMDD-XXXX)
+     * @param  string  $mode    Mode awal dari perintah teknisi ('done'|'continue')
+     * @return array   Respons prompt durasi (atau pesan error bila tidak bisa)
+     */
+    public function startContinuation(string $chatId, string $kode, string $mode = 'done'): array
+    {
+        $asal = Report::where('report_code', $kode)->latest('id')->first();
+
+        if ($asal === null) {
+            return $this->errorResponse(
+                "Laporan *{$kode}* tidak ditemukan.\n" .
+                "Periksa kembali kode laporannya (contoh: RPT-20260926-00005 Done)."
+            );
+        }
+
+        if ($asal->status !== 'continue') {
+            return $this->errorResponse(
+                "Laporan *{$kode}* berstatus *{$asal->status}*, bukan Continue — jadi tidak perlu dilanjutkan.\n" .
+                "Kirim laporan baru seperti biasa bila ada pekerjaan lain."
+            );
+        }
+
+        $this->destroyWizard($chatId);
+
+        $state = $this->createInitialState($chatId, (string) $asal->work_description);
+
+        // ---- Data warisan dari laporan asal (opsional, bisa diubah teknisi) ----
+        $state['lanjutan_dari_id']        = $asal->id;
+        $state['lanjutan_kode']           = $asal->report_code;
+        $state['lanjutan_mode_awal']      = $mode;
+        $state['work_classification']     = $asal->work_classification;
+        $state['jenis_pekerjaan']         = $asal->jenis_pekerjaan;
+        $state['root_cause']              = $asal->root_cause;
+        $state['is_area_work']            = $asal->report_type === 'area_work';
+        $state['photo_documentation']     = $asal->photo_documentation ?? [];
+        $state['photo_hygiene_clearance'] = $asal->photo_hygiene_clearance ?? [];
+
+        // Kolaborator laporan asal (baris salinan kolaborasi) ikut diwarisi.
+        $kolaborator = Report::with('technician')
+            ->where('collaborator_of', $asal->id)
+            ->get();
+
+        $state['collaborator_niks']  = $kolaborator->map(fn (Report $baris) => $baris->technician?->nik)->filter()->values()->all();
+        $state['collaborator_names'] = $kolaborator->map(fn (Report $baris) => $baris->technician?->name)->filter()->values()->all();
+
+        // Lokasi & alat diwarisi lewat resolver bersama (funcloc_id, area_id, kode).
+        $state = $this->lengkapiStateLokasi($state, null, $asal->asset);
+
+        if ($asal->asset !== null) {
+            $state['equipment_id']      = $asal->asset->id;
+            $state['equipment_ident']   = $asal->asset->tech_ident_no;
+            $state['equipment_funcloc'] = $asal->asset->functional_loc;
+        }
+
+        // Tanggal laporan = hari ini (pekerjaan lanjutan pasti beda hari) dan
+        // durasi dikosongkan supaya WAJIB diisi ulang oleh teknisi.
+        $state['report_date']           = now()->toDateString();
+        $state['report_date_status']    = 'today';
+        $state['work_duration_minutes'] = null;
+        $state['start_time']            = null;
+        $state['end_time']              = null;
+
+        $state['step'] = self::STEP_WORK_DURATION;
+        $this->saveState($chatId, $state);
+
+        return $this->buildWorkDurationPrompt($state, autoDetected: false);
     }
 
     /**

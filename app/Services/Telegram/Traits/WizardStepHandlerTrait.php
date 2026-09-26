@@ -190,6 +190,18 @@ trait WizardStepHandlerTrait
     {
         $equipmentLabel = $this->equipmentLabel($state);
 
+        // Catatan khusus laporan lanjutan: jam kerja wajib diisi ulang karena
+        // pekerjaannya berlangsung di hari yang berbeda, sedangkan data lain
+        // (deskripsi, root cause, lokasi/alat, foto, kolaborator) diwarisi dari
+        // laporan asal dan masih bisa ditambah/diubah di langkah berikutnya.
+        $catatanLanjutan = '';
+
+        if (!empty($state['lanjutan_dari_id'])) {
+            $catatanLanjutan = "*Lanjutan dari* " . ($state['lanjutan_kode'] ?? '') . "\n"
+                . "Deskripsi, root cause, lokasi/alat, foto, dan kolaborator diwarisi dari laporan itu "
+                . "(opsional — bisa ditambah/diubah di langkah berikutnya).\n\n";
+        }
+
         if ($autoDetected && !empty($state['work_duration_minutes'])) {
             $formatted = $this->formatDuration($state['work_duration_minutes']);
             $keyboard  = array_merge(
@@ -208,7 +220,8 @@ trait WizardStepHandlerTrait
         }
 
         return [
-            'message'  => "Equipment dikunci: *{$equipmentLabel}*\n\n" .
+            'message'  => $catatanLanjutan .
+                "Equipment dikunci: *{$equipmentLabel}*\n\n" .
                 "*Step 4/8* — Berapa lama pekerjaan berlangsung?\n" .
                 "Ketik rentang waktu, contoh:\n" .
                 "`08:00 sampai 09:00`, `08:00-10:00`\n" .
