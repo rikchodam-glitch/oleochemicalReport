@@ -88,8 +88,13 @@
                                 Mencakup {{ $report->multiItems->count() }} alat/lokasi lain
                             </span>
                             @foreach($report->multiItems as $item)
-                                <a href="{{ route('reports.show', $item) }}"
-                                   class="text-xs font-medium font-mono text-blue-600 hover:text-blue-700">
+                                <a href="{{ $item->asset
+                                        ? route('assets.show', $item->asset)
+                                        : ($item->functionalLocation
+                                            ? route('locations.show', $item->functionalLocation)
+                                            : route('reports.show', $report)) }}"
+                                   title="{{ $item->asset ? 'Detail equipment' : 'Detail lokasi' }}"
+                                   class="text-xs font-medium font-mono text-teal-700 hover:underline">
                                     {{ $item->asset?->tech_ident_no ?? $item->functionalLocation?->code ?? ('#' . $item->id) }}
                                 </a>
                             @endforeach

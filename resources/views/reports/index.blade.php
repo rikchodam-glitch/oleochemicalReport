@@ -279,22 +279,23 @@
                             ->filter()
                             ->values();
 
-                        // Data alat/lokasi kolaborasi (multi equipment) untuk popup "Lihat".
+                        // Data alat/lokasi kolaborasi (multi equipment) untuk daftar singkat
+                        // dan popup "Lihat": cukup keterangan + tautan ke detail lokasi/alat,
+                        // bukan halaman laporan terpisah karena pekerjaan ini satu kesatuan.
                         $kolaborasiPerLaporan[$report->id] = $report->multiItems
                             ->map(fn ($item) => [
-                                'tipe'        => $item->asset ? 'Alat' : 'Lokasi',
-                                'kode'        => $item->asset?->tech_ident_no
+                                'tipe' => $item->asset ? 'Alat' : 'Lokasi',
+                                'kode' => $item->asset?->tech_ident_no
                                     ?? $item->functionalLocation?->code
                                     ?? ('#' . $item->id),
-                                'nama'        => $item->asset?->description
+                                'nama' => $item->asset?->description
                                     ?? $item->functionalLocation?->name
                                     ?? '-',
-                                'url_laporan' => route('reports.show', $item),
-                                'url_detail'  => $item->asset
+                                'url'  => $item->asset
                                     ? route('assets.show', $item->asset)
                                     : ($item->functionalLocation
                                         ? route('locations.show', $item->functionalLocation)
-                                        : route('reports.show', $item)),
+                                        : route('reports.show', $report)),
                             ])
                             ->values()
                             ->all();
@@ -411,12 +412,12 @@
                                         </button>
                                     </div>
                                     <div class="mt-1 space-y-0.5">
-                                        @foreach($report->multiItems->take(2) as $item)
-                                            <a href="{{ route('reports.show', $item) }}"
+                                        @foreach(array_slice($kolaborasiPerLaporan[$report->id], 0, 2) as $kolab)
+                                            <a href="{{ $kolab['url'] }}"
                                                onclick="event.stopPropagation()"
-                                               title="Buka laporan kolaborasi"
-                                               class="block text-xs font-medium font-mono text-blue-600 hover:text-blue-700 hover:underline">
-                                                {{ $item->asset?->tech_ident_no ?? $item->functionalLocation?->code ?? ('#' . $item->id) }}
+                                               title="Buka detail {{ strtolower($kolab['tipe']) }} {{ $kolab['kode'] }}"
+                                               class="block text-xs font-medium font-mono text-teal-700 hover:underline">
+                                                {{ $kolab['kode'] }}
                                             </a>
                                         @endforeach
                                         @if($report->multiItems->count() > 2)
@@ -708,8 +709,9 @@
                 tipe.className = 'text-[10px] font-semibold uppercase tracking-wide text-slate-400';
                 tipe.textContent = item.tipe;
 
-                var kode = document.createElement('p');
-                kode.className = 'text-sm font-mono text-slate-800 truncate';
+                var kode = document.createElement('a');
+                kode.href = item.url;
+                kode.className = 'block text-sm font-mono text-teal-700 hover:underline truncate';
                 kode.textContent = item.kode;
 
                 var nama = document.createElement('p');
@@ -723,17 +725,13 @@
                 var aksi = document.createElement('div');
                 aksi.className = 'flex items-center gap-2 shrink-0';
 
-                var tautanLaporan = document.createElement('a');
-                tautanLaporan.href = item.url_laporan;
-                tautanLaporan.className = 'px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700';
-                tautanLaporan.textContent = 'Lihat Laporan';
-
+                // Hanya tautan ke detail lokasi/equipment: kolaborasi ini satu kesatuan
+                // pekerjaan, tidak dipecah jadi laporan terpisah yang bisa dibuka.
                 var tautanDetail = document.createElement('a');
-                tautanDetail.href = item.url_detail;
-                tautanDetail.className = 'px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50';
-                tautanDetail.textContent = item.tipe === 'Alat' ? 'Detail Alat' : 'Detail Lokasi';
+                tautanDetail.href = item.url;
+                tautanDetail.className = 'px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700';
+                tautanDetail.textContent = item.tipe === 'Alat' ? 'Detail Equipment' : 'Detail Lokasi';
 
-                aksi.appendChild(tautanLaporan);
                 aksi.appendChild(tautanDetail);
 
                 baris.appendChild(kiri);

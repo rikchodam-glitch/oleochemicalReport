@@ -256,13 +256,21 @@ test('halaman laporan hanya menampilkan baris induk dengan daftar alatnya', func
         ->assertSee('tampilkanKolaborasi', false)
         ->assertSee('modal-kolaborasi', false)
         ->assertSee('MUL-M-02', false)
+        // Kolaborasi satu kesatuan pekerjaan: hanya tautan detail alat, tanpa
+        // tautan ke halaman laporan salinan maupun tombol "Lihat Laporan".
+        ->assertSee(route('assets.show', $this->asetTambahan), false)
+        ->assertDontSee('Lihat Laporan', false)
+        ->assertDontSee('/reports/' . $salinan->id, false)
         ->assertDontSee('RPT-20260926-0012', false);
 
-    // Detail laporan induk mencantumkan alat lain, detail salinan menautkan induk.
+    // Detail laporan induk mencantumkan alat lain (tautan ke detail alat, bukan
+    // ke halaman laporan salinan); detail salinan menautkan induk.
     $this->actingAs($this->admin)
         ->get('/reports/' . $induk->id)
         ->assertStatus(200)
-        ->assertSee('Mencakup 1 alat/lokasi lain', false);
+        ->assertSee('Mencakup 1 alat/lokasi lain', false)
+        ->assertSee(route('assets.show', $this->asetTambahan), false)
+        ->assertDontSee('/reports/' . $salinan->id, false);
 
     $this->actingAs($this->admin)
         ->get('/reports/' . $salinan->id)
