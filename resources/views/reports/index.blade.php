@@ -330,9 +330,34 @@
 
                         {{-- Lokasi / alat --}}
                         <td class="px-4 py-3.5 align-top whitespace-nowrap">
-                            <p class="text-xs font-medium text-slate-700">{{ $report->area?->code ?? '-' }}</p>
+                            @if($report->functionalLocation)
+                                <a href="{{ route('locations.show', $report->functionalLocation) }}"
+                                   onclick="event.stopPropagation()"
+                                   title="Detail lokasi {{ $report->functionalLocation->name ?? $report->functionalLocation->code }}"
+                                   class="text-xs font-medium font-mono text-teal-700 hover:underline">
+                                    {{ $report->functionalLocation->code }}
+                                </a>
+                            @elseif($report->area)
+                                <a href="{{ route('assets.index', ['area_id' => $report->area->id]) }}"
+                                   onclick="event.stopPropagation()"
+                                   title="Lihat alat di area {{ $report->area->code }}"
+                                   class="text-xs font-medium text-slate-700 hover:text-teal-700 hover:underline">
+                                    {{ $report->area->code }}
+                                </a>
+                            @else
+                                <span class="text-xs font-medium text-slate-300">Tanpa lokasi</span>
+                            @endif
                             <p class="text-xs text-slate-400 mt-0.5 font-mono">
-                                {{ $report->asset?->tech_ident_no ?? $report->equipment_tag ?? '-' }}
+                                @if($report->asset)
+                                    <a href="{{ route('assets.show', $report->asset) }}"
+                                       onclick="event.stopPropagation()"
+                                       title="Detail alat {{ $report->asset->description ?? $report->asset->tech_ident_no }}"
+                                       class="text-teal-700 hover:underline">
+                                        {{ $report->asset->tech_ident_no ?? $report->asset->equipment_no ?? ('#' . $report->asset->id) }}
+                                    </a>
+                                @else
+                                    {{ $report->equipment_tag ?: '-' }}
+                                @endif
                             </p>
                             @if($report->linkedFinding)
                                 <span class="inline-flex mt-1 px-2 py-0.5 rounded-md text-xs font-medium bg-rose-50 text-rose-600 border border-rose-100">
@@ -440,8 +465,8 @@
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-                <label class="block text-xs text-slate-500 mb-1">Deskripsi Pekerjaan</label>
-                <input type="text" name="search" value="{{ request('search') }}" placeholder="Cari pekerjaan..."
+                <label class="block text-xs text-slate-500 mb-1">Pekerjaan / Lokasi / Alat</label>
+                <input type="text" name="search" value="{{ request('search') }}" placeholder="Cari pekerjaan, kode lokasi, atau alat..."
                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
             </div>
             <div>

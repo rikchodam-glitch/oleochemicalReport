@@ -3,6 +3,9 @@
 namespace App\Services\Telegram\Traits;
 
 use App\Enums\WorkClassification;
+use App\Models\Asset;
+use App\Models\FunctionalLocation;
+use App\Services\LocationResolver;
 use Illuminate\Support\Carbon;
 
 /**
@@ -493,6 +496,50 @@ trait WizardUtilityTrait
             'zpm7' => 'Sipil',
             default => null,
         };
+    }
+
+    /**
+     * Lengkapi state lokasi laporan supaya kolom funcloc_id & area_id SELALU
+     * terisi bila datanya bisa diketahui.
+     *
+     * Sebelumnya jalur penguncian equipment hanya menyimpan kode lokasi sebagai
+     * teks (equipment_funcloc) tanpa funcloc_id, sehingga banyak laporan
+     * perbaikan alat tampil tanpa lokasi di halaman laporan. Area juga sering
+     * kosong karena node FuncLoc/aset tidak selalu punya area_id — untuk kasus
+     * itu area diturunkan dari segmen ke-3 kode FuncLoc (mis. EPE-PROD-BD02-6153
+     * -> area BD02).
+     *
+     * @param  array                    $state  State wizard saat ini
+     * @param  FunctionalLocation|null  $node   Node lokasi yang dikunci (bila ada)
+     * @param  Asset|null               $aset   Aset yang dikunci (bila ada)
+     * @return array  State dengan funcloc_id/area_id yang sudah dilengkapi
+     */
+    protected function lengkapiStateLokasi(array $state, ?FunctionalLocation $node, ?Asset $aset = null): array
+    {
+        return $this->locationResolver()->lengkapiState($state, $node, $aset);
+    }
+
+    /**
+     * Turunkan area_id dari kode FuncLoc (segmen ke-3), dipakai bila node/aset
+     * tidak punya area_id. Contoh: "EPE-PROD-BD02-6153" -> kode area "BD02".
+     *
+     * @param  string|null  $kode  Kode FunctionalLocation
+     * @return int|null  ID Area, atau null bila tidak ditemukan
+     */
+    protected function areaIdDariKodeFuncLoc(?string $kode): ?int
+    {
+        return $this->locationResolver()->areaIdDariKode($kode);
+    }
+
+    /**
+     * Resolver lokasi (funcloc_id/area_id) yang dipakai bersama command
+     * perbaikan data laporan lama.
+     *
+     * @return LocationResolver
+     */
+    protected function locationResolver(): LocationResolver
+    {
+        return app(LocationResolver::class);
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Services\Telegram\Traits;
 
+use App\Models\Asset;
 use App\Models\Report;
 use App\Models\ReportAiSuggestion;
 use App\Models\Technician;
@@ -145,6 +146,24 @@ trait WizardReportSaverTrait
                 $reportType = 'area_work';
             } elseif (!empty($state['equipment_id'])) {
                 $reportType = 'equipment_repair';
+            }
+
+            // Jaring pengaman: bila laporan punya alat tapi kolom lokasinya kosong
+            // (mis. laporan dari jalur lain/sesi lama), lengkapi dari relasi aset
+            // supaya halaman laporan tidak menampilkan lokasi kosong.
+            if (!empty($state['equipment_id']) && (empty($state['funcloc_id']) || empty($state['area_id']))) {
+                $asetLaporan = Asset::with('functionalLocation')->find($state['equipment_id']);
+
+                if ($asetLaporan !== null) {
+                    if (empty($state['funcloc_id']) && $asetLaporan->funcloc_id !== null) {
+                        $state['funcloc_id'] = $asetLaporan->funcloc_id;
+                    }
+
+                    if (empty($state['area_id'])) {
+                        $state['area_id'] = $asetLaporan->area_id
+                            ?? $this->areaIdDariKodeFuncLoc($asetLaporan->functional_loc);
+                    }
+                }
             }
 
             $reportCode = $this->generateReportCode();

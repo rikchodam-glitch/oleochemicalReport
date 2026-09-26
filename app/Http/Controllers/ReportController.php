@@ -34,7 +34,7 @@ class ReportController extends Controller
         $countSipil     = (clone $query)->where('jenis_pekerjaan', 'Sipil')->count();
 
         $reports = $query
-            ->with(['technician', 'area', 'asset', 'linkedFinding', 'collaboratorReports.technician'])
+            ->with(['technician', 'area', 'asset', 'functionalLocation', 'linkedFinding', 'collaboratorReports.technician'])
             // Laporan terbaru di paling atas; dalam satu tanggal diurutkan dari
             // yang paling akhir dibuat (created_at, lalu id sebagai penentu).
             ->orderByDesc('report_date')
@@ -126,9 +126,18 @@ class ReportController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
+            $search = trim((string) $request->search);
+
+            // Pencarian lapangan: deskripsi pekerjaan, kode laporan, kode lokasi
+            // (Functional Location), serta lokasi/kode alat — supaya pencarian
+            // seperti "EPE-PROD-BD02-6153" atau "LOK-P-01" ikut ketemu.
             $query->where(function ($q) use ($search) {
-                $q->where('work_description', 'like', "%{$search}%");
+                $q->where('work_description', 'like', "%{$search}%")
+                    ->orWhere('report_code', 'like', "%{$search}%")
+                    ->orWhereHas('functionalLocation', fn ($sub) => $sub->where('code', 'like', "%{$search}%"))
+                    ->orWhereHas('asset', fn ($sub) => $sub
+                        ->where('functional_loc', 'like', "%{$search}%")
+                        ->orWhere('tech_ident_no', 'like', "%{$search}%"));
             });
         }
 

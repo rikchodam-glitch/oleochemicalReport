@@ -203,19 +203,41 @@
                 <div>
                     <p class="text-xs text-slate-500">Area</p>
                     <p class="font-medium text-slate-700">
-                        {{ $report->area ? $report->area->code . ' - ' . $report->area->name : '-' }}
+                        @if($report->functionalLocation)
+                            <a href="{{ route('locations.show', $report->functionalLocation) }}"
+                               class="text-teal-700 hover:underline">{{ $report->functionalLocation->code }}</a>
+                        @elseif($report->area)
+                            <a href="{{ route('assets.index', ['area_id' => $report->area->id]) }}"
+                               class="text-slate-700 hover:text-teal-700 hover:underline">{{ $report->area->code }} - {{ $report->area->name }}</a>
+                        @else
+                            -
+                        @endif
                     </p>
                 </div>
                 <div>
                     <p class="text-xs text-slate-500">Functional Location</p>
                     <p class="font-medium text-slate-700">
-                        {{ $report->asset?->functional_loc ?? '-' }}
+                        @if($report->functionalLocation)
+                            <a href="{{ route('locations.show', $report->functionalLocation) }}"
+                               class="font-mono text-teal-700 hover:underline">{{ $report->functionalLocation->code }}</a>
+                        @elseif($report->asset?->functional_loc)
+                            <span class="font-mono">{{ $report->asset->functional_loc }}</span>
+                        @else
+                            -
+                        @endif
                     </p>
                 </div>
                 <div>
                     <p class="text-xs text-slate-500">Kode Alat</p>
                     <p class="font-medium text-slate-700">
-                        {{ $report->asset?->tech_ident_no ?? $report->asset?->equipment_no ?? '-' }}
+                        @if($report->asset)
+                            <a href="{{ route('assets.show', $report->asset) }}"
+                               class="font-mono text-teal-700 hover:underline">{{ $report->asset->tech_ident_no ?? $report->asset->equipment_no ?? ('#' . $report->asset->id) }}</a>
+                        @elseif($report->equipment_tag)
+                            <span class="font-mono">{{ $report->equipment_tag }}</span>
+                        @else
+                            -
+                        @endif
                     </p>
                 </div>
             </div>

@@ -12,6 +12,7 @@ use App\Http\Controllers\IpAddressController;
 use App\Http\Controllers\ItAssetController;
 use App\Http\Controllers\ItLayoutController;
 use App\Http\Controllers\LoginController;
+use App\Http\Controllers\LocationController;
 use App\Http\Controllers\PanelRuanganController;
 use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\CollaborationController;
@@ -85,6 +86,10 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     Route::post('/func-locs/sync/preview', [FunctionalLocationController::class, 'previewSync'])->name('func-locs.sync.preview');
     Route::post('/func-locs/sync/execute', [FunctionalLocationController::class, 'executeSync'])->name('func-locs.sync.execute');
     Route::resource('func-locs', FunctionalLocationController::class)->except(['show']);
+
+    // Halaman detail lokasi: menampilkan alat + seluruh laporan pada satu lokasi
+    // (dipakai dari kolom "Lokasi / Alat" halaman Laporan dan halaman detail Asset).
+    Route::get('/locations/{location}', [LocationController::class, 'show'])->name('locations.show');
 
     // Technicians
     Route::resource('technicians', TechnicianController::class);

@@ -789,17 +789,11 @@ trait WizardFuncLocPickerTrait
         // Kunci FuncLoc sebagai pekerjaan area (tanpa equipment spesifik).
         // is_area_work dipaksa true karena konfirmasi lokasi = laporan area,
         // apapun mode picker-nya (area maupun equipment).
+        $state = $this->lengkapiStateLokasi($state, $node);
+
         $state['is_area_work']    = true;
         $state['equipment_id']    = null;
         $state['equipment_ident'] = null;
-        $state['funcloc_id']      = $node->id;
-        $state['funcloc_code']    = $node->code;
-        $state['funcloc_name']    = $node->name;
-
-        // Sinkronisasi area_id dari relasi FuncLoc jika ada
-        if ($node->area_id) {
-            $state['area_id'] = $node->area_id;
-        }
 
         Log::info("WizardFuncLocPicker: FuncLoc dikunci untuk chat {$chatId}", [
             'funcloc_id'   => $node->id,

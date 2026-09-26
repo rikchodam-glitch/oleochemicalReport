@@ -32,7 +32,13 @@
                                     EQ: <span class="font-mono">{{ $asset->equipment_no }}</span>
                                 @endif
                                 @if($asset->functional_loc)
-                                    &middot; FL: <span class="font-mono">{{ $asset->functional_loc }}</span>
+                                    &middot; FL:
+                                    @if($asset->functionalLocation)
+                                        <a href="{{ route('locations.show', $asset->functionalLocation) }}"
+                                           class="font-mono text-teal-700 hover:underline">{{ $asset->functional_loc }}</a>
+                                    @else
+                                        <span class="font-mono">{{ $asset->functional_loc }}</span>
+                                    @endif
                                 @endif
                             </p>
                         </div>
@@ -113,7 +119,14 @@
                         @if($asset->functional_loc)
                         <div class="border-t border-slate-100 pt-3">
                             <div class="flex items-center gap-2 text-xs text-slate-400 mb-2">Functional Loc</div>
-                            <p class="text-sm font-mono text-slate-900">{{ $asset->functional_loc }}</p>
+                            <p class="text-sm font-mono text-slate-900">
+                                @if($asset->functionalLocation)
+                                    <a href="{{ route('locations.show', $asset->functionalLocation) }}"
+                                       class="text-teal-700 hover:underline">{{ $asset->functional_loc }}</a>
+                                @else
+                                    {{ $asset->functional_loc }}
+                                @endif
+                            </p>
                         </div>
                         @endif
                     </div>

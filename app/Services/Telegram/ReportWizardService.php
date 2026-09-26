@@ -1274,11 +1274,10 @@ class ReportWizardService
         $state['equipment_ident']   = $asset->tech_ident_no;
         $state['equipment_funcloc'] = $asset->functional_loc;
 
-        if ($asset->area_id) {
-            $state['area_id']   = $asset->area_id;
-            $area               = Area::find($asset->area_id);
-            $state['area_code'] = $area ? $area->code : null;
-        }
+        // Lengkapi funcloc_id & area_id dari aset (area juga diturunkan dari kode
+        // FuncLoc bila node/aset tidak punya area_id) supaya kolom lokasi pada
+        // halaman laporan tidak kosong.
+        $state = $this->lengkapiStateLokasi($state, null, $asset);
 
         if (!empty($state['using_clarification_service'])) {
             $this->clarificationService->destroySession($chatId);
@@ -1335,14 +1334,12 @@ class ReportWizardService
         $state['is_area_work']    = true;
         $state['equipment_id']    = null;
         $state['equipment_ident'] = null;
-        $state['funcloc_id']      = $funcLoc->id;
-        $state['funcloc_code']    = $funcLoc->code;
-        $state['funcloc_name']    = $funcLoc->name;
-        $state['area_id']         = $areaId;
+        $state = $this->lengkapiStateLokasi($state, $funcLoc);
 
         if ($areaId) {
-            $area                = Area::find($areaId);
-            $state['area_code']  = $area ? $area->code : null;
+            // Area dari kandidat AI diutamakan bila ada.
+            $state['area_id']   = $areaId;
+            $state['area_code'] = Area::where('id', $areaId)->value('code');
         }
 
         $state = $this->logAiSuggestionDecision($state, 'area', null, $areaId, true);
