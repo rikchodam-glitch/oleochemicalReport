@@ -43,6 +43,12 @@ class PollTelegramUpdates extends Command
     protected $signature   = 'telegram:poll {--action= : start|stop|status}';
     protected $description = 'Poll Telegram updates continuously (long polling)';
 
+    /**
+     * Lama penanda anti-proses-ganda disimpan (detik). Cukup lama untuk menutup
+     * kemungkinan batch terulang, tanpa menyimpan data selamanya.
+     */
+    private const DEDUPE_TTL_DETIK = 900;
+
     private AiService $aiService;
     private PhotoStorageService $photoStorage;
     private ReportWizardService $reportWizard;
@@ -84,6 +90,22 @@ class PollTelegramUpdates extends Command
 
         // Default: mulai polling
         $this->startPolling();
+    }
+
+    /**
+     * Penanda anti-proses-ganda untuk satu update Telegram.
+     *
+     * Dipakai loop polling: bila update_id ini sudah pernah ditandai (mis. dua
+     * poller sempat jalan bersamaan, atau batch terulang setelah proses
+     * berhenti), update tersebut dilewati supaya pesan tidak terkirim dua kali
+     * dan foto tidak tersimpan dua kali.
+     *
+     * @param  int  $updateId  ID update dari Telegram
+     * @return bool  True bila update SUDAH pernah diproses
+     */
+    public function updateSudahDiproses(int $updateId): bool
+    {
+        return !Cache::add('telegram_update_' . $updateId, 1, self::DEDUPE_TTL_DETIK);
     }
 
     /**
@@ -147,6 +169,20 @@ class PollTelegramUpdates extends Command
                 foreach ($updates as $update) {
                     $updateId = $update['update_id'];
                     $offset   = $updateId + 1;
+
+                    // Penjaga anti-proses-ganda: satu update Telegram hanya
+                    // diproses SEKALI. Tanpa penjaga ini, dua poller yang sempat
+                    // berjalan bersamaan (atau batch yang terulang karena proses
+                    // berhenti di tengah) membuat pesan terkirim dua kali dan
+                    // foto tersimpan dua kali.
+                    if ($this->updateSudahDiproses($updateId)) {
+                        Log::warning('PollTelegramUpdates: update dilewati karena sudah diproses', [
+                            'update_id' => $updateId,
+                        ]);
+                        $this->warn("Update {$updateId} sudah diproses sebelumnya — dilewati.");
+
+                        continue;
+                    }
 
                     if (isset($update['callback_query'])) {
                         $this->processCallbackQuery($update);

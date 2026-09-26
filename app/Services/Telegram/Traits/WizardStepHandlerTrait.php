@@ -564,15 +564,28 @@ trait WizardStepHandlerTrait
         }
 
         $state[$key]   = $state[$key] ?? [];
-        $state[$key][] = $fileId;
-        $count         = count($state[$key]);
+        $sudahAda      = in_array($fileId, $state[$key], true);
+
+        // Cegah entri ganda untuk path yang sama: bisa terjadi bila satu update
+        // Telegram terproses dua kali (mis. dua poller sempat berjalan) atau
+        // teknisi mengirim ulang foto yang sama.
+        if (!$sudahAda) {
+            $state[$key][] = $fileId;
+        }
+
+        $count = count($state[$key]);
         $this->saveState($chatId, $state);
 
         $callbackKey = $this->photoCallbackKey($photoStep);
 
+        $pesan = $sudahAda
+            ? "Foto ini sudah tersimpan (total {$count} foto).\n" .
+                "Kirim foto berikutnya, atau tekan *Selesai* untuk lanjut."
+            : "Foto {$count} diterima.\n" .
+                "Kirim foto berikutnya, atau tekan *Selesai* untuk lanjut.";
+
         return [
-            'message'  => "Foto {$count} diterima.\n" .
-                "Kirim foto berikutnya, atau tekan *Selesai* untuk lanjut.",
+            'message'  => $pesan,
             'keyboard' => array_merge(
                 [
                     ['text' => $this->photoDoneButtonLabel($photoStep), 'callback_data' => 'wizard:confirm:photo_' . $callbackKey . '_done'],

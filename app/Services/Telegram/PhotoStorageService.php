@@ -76,9 +76,17 @@ class PhotoStorageService
                 return null;
             }
 
-            // 4. Buat path & simpan
-            $path = $this->buildPath($chatId, $fileUrl);
-            Storage::disk($this->disk)->put($path, $content);
+            // 4. Buat path & simpan. Nama file memakai hash konten (md5) supaya
+            //    foto yang SAMA tidak tersimpan berkali-kali — misalnya ketika
+            //    satu update Telegram terproses dua kali (dua poller) atau
+            //    teknisi mengirim ulang foto yang sama. Path yang sudah ada
+            //    dipakai ulang tanpa menulis file baru.
+            $hash = md5($content);
+            $path = $this->buildPath($chatId, $fileUrl, $hash);
+
+            if (!Storage::disk($this->disk)->exists($path)) {
+                Storage::disk($this->disk)->put($path, $content);
+            }
 
             Log::info("PhotoStorage: Foto disimpan", [
                 'path'    => $path,
@@ -294,9 +302,17 @@ class PhotoStorageService
 
     /**
      * Bangun path penyimpanan terstruktur.
-     * Format: reports/YYYY/MM/DD/{chat_id}/{uniqid}.{ext}
+     * Format: reports/YYYY/MM/DD/{chat_id}/photo_{md5}.{ext}
+     *
+     * Nama file memakai hash konten (md5) supaya foto yang sama menghasilkan
+     * path yang sama — mencegah file kembar saat satu update terproses dua kali.
+     *
+     * @param  string  $chatId     Chat ID pengirim (subfolder)
+     * @param  string  $sourceUrl  URL sumber Telegram (dipakai untuk ekstensi)
+     * @param  string  $hash       Hash konten foto (md5)
+     * @return string  Path relatif di dalam disk
      */
-    protected function buildPath(string $chatId, string $sourceUrl): string
+    protected function buildPath(string $chatId, string $sourceUrl, string $hash = ''): string
     {
         $now      = now();
         $year     = $now->format('Y');
@@ -312,7 +328,7 @@ class PhotoStorageService
         // Sanitasi chat_id agar aman jadi nama folder
         $safeChatId = preg_replace('/[^A-Za-z0-9_\-]/', '', (string) $chatId);
 
-        $filename = uniqid('photo_', true) . '.' . $ext;
+        $filename = $hash !== '' ? 'photo_' . $hash . '.' . $ext : uniqid('photo_', true) . '.' . $ext;
 
         return "{$this->rootFolder}/{$year}/{$month}/{$day}/{$safeChatId}/{$filename}";
     }
