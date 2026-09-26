@@ -455,6 +455,68 @@ test('target shift 8 jam penuh tanpa potong istirahat', function () {
         ->and($libur->jendela('grub_a'))->toBeNull();
 });
 
+test('ringkasan man hour menyertakan laju per minggu dan per hari kerja', function () {
+    // Jadwal 3 hari: 26 (Shift 2), 27 (OFF), 28 (Shift 1).
+    foreach (['2026-09-26' => '2', '2026-09-27' => 'x', '2026-09-28' => '1'] as $tanggal => $kode) {
+        TechnicianShift::create([
+            'technician_id' => $this->teknisiShift->id,
+            'nik'           => 'NIK-LAIN-2',
+            'nama'          => 'Teknisi Shift Uji',
+            'group_code'    => 'A',
+            'section_label' => 'NAME SHIFT',
+            'shift_date'    => $tanggal,
+            'shift_code'    => $kode,
+        ]);
+    }
+
+    buatLaporanManHour($this->teknisiShift, '2026-09-26', 480, '16:30');
+    buatLaporanManHour($this->teknisiShift, '2026-09-27', 300, '09:00');
+    buatLaporanManHour($this->teknisiShift, '2026-09-28', 480, '09:00');
+
+    $layanan   = app(ManHourService::class);
+    $ringkasan = $layanan->ringkasan($layanan->harian(
+        $this->teknisiShift->fresh(),
+        Carbon::parse('2026-09-26'),
+        Carbon::parse('2026-09-28')
+    ));
+
+    // 3 hari = 3/7 minggu; realisasi 1.260 menit = 21 jam -> 21 / (3/7) = 49 j/minggu.
+    // Target 960 menit = 16 jam -> 16 / (3/7) = 37,3 j/minggu; 2 hari kerja terhitung.
+    expect($ringkasan['jumlah_hari'])->toBe(3)
+        ->and($ringkasan['hari_kerja'])->toBe(2)
+        ->and($ringkasan['realisasi_per_minggu'])->toBe(49.0)
+        ->and($ringkasan['target_per_minggu'])->toBe(37.3)
+        ->and($ringkasan['realisasi_per_hari_kerja'])->toBe(10.5)
+        ->and($ringkasan['target_per_hari_kerja'])->toBe(8.0);
+});
+
+test('halaman teknisi menampilkan indikator laju per minggu', function () {
+    TechnicianShift::create([
+        'technician_id' => $this->teknisiStaf->id,
+        'nik'           => 'NIK-STAF-1',
+        'nama'          => 'Teknisi Staf Uji',
+        'section_label' => 'NAME STAF',
+        'shift_date'    => now()->toDateString(),
+        'shift_code'    => 'R',
+    ]);
+
+    buatLaporanManHour($this->teknisiStaf, now()->toDateString(), 240, '08:00');
+
+    // Daftar teknisi: laju target per minggu di kolom Jam Kerja.
+    $this->actingAs($this->admin)
+        ->get('/technicians')
+        ->assertStatus(200)
+        ->assertSee('j/minggu', false);
+
+    // Detail teknisi: laju realisasi & target per minggu + per hari kerja.
+    $this->actingAs($this->admin)
+        ->get('/technicians/' . $this->teknisiStaf->id)
+        ->assertStatus(200)
+        ->assertSee('Laju per minggu', false)
+        ->assertSee('per hari kerja', false)
+        ->assertSee('Pembanding setara antar tipe', false);
+});
+
 test('popup jadwal bulanan bisa digeser ke bulan berikutnya', function () {
     $this->actingAs($this->admin)
         ->get('/technicians?jadwal_bulan=2026-11')

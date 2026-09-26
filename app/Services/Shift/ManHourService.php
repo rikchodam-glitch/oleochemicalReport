@@ -123,10 +123,13 @@ class ManHourService
     }
 
     /**
-     * Ringkasan (total) dari rincian harian.
+     * Ringkasan (total) dari rincian harian, termasuk laju per minggu dan per
+     * hari kerja supaya perbandingan antar tipe jadwal (reguler / reguler staff /
+     * shift) menjadi setara — total mentah tidak bisa dibandingkan langsung
+     * karena jumlah hari kerjanya berbeda.
      *
      * @param  array<int, array<string, mixed>> $harian Rincian dari harian()
-     * @return array<string, int|null> Ringkasan total menit, target, dan jumlah hari
+     * @return array<string, int|float|null> Ringkasan total menit, target, hari, dan laju
      */
     public function ringkasan(array $harian): array
     {
@@ -169,17 +172,28 @@ class ManHourService
             }
         }
 
+        // Laju: dibagi jumlah hari dalam rentang (per minggu) dan jumlah hari
+        // kerja menurut jadwal (per hari kerja).
+        $jumlahHari   = max(1, count($harian));
+        $minggu       = $jumlahHari / 7;
+        $pembagiKerja = max(1, $hariKerja);
+
         return [
-            'hari_kerja'         => $hariKerja,
-            'hari_libur'         => $hariLibur,
-            'total_menit'        => $totalMenit,
-            'total_target_menit' => $totalTarget,
-            'persen'             => $totalTarget > 0 ? (int) round($totalMenit / $totalTarget * 100) : null,
-            'hari_terpenuhi'     => $terpenuhi,
-            'hari_kurang'        => $kurang,
-            'hari_lebih'         => $lebih,
-            'hari_kerja_off'     => $kerjaOff,
-            'laporan_luar_shift' => $luarShift,
+            'hari_kerja'                => $hariKerja,
+            'hari_libur'                => $hariLibur,
+            'jumlah_hari'               => $jumlahHari,
+            'total_menit'               => $totalMenit,
+            'total_target_menit'        => $totalTarget,
+            'persen'                    => $totalTarget > 0 ? (int) round($totalMenit / $totalTarget * 100) : null,
+            'hari_terpenuhi'            => $terpenuhi,
+            'hari_kurang'               => $kurang,
+            'hari_lebih'                => $lebih,
+            'hari_kerja_off'            => $kerjaOff,
+            'laporan_luar_shift'        => $luarShift,
+            'realisasi_per_minggu'      => round($totalMenit / 60 / $minggu, 1),
+            'target_per_minggu'         => round($totalTarget / 60 / $minggu, 1),
+            'realisasi_per_hari_kerja'  => round($totalMenit / 60 / $pembagiKerja, 1),
+            'target_per_hari_kerja'     => round($totalTarget / 60 / $pembagiKerja, 1),
         ];
     }
 

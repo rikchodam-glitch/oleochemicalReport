@@ -58,6 +58,10 @@ class TechnicianController extends Controller
 
         [$mulaiManHour, $selesaiManHour, $labelPeriode] = $this->rentangManHour();
 
+        // Jumlah hari rentang dipakai untuk menghitung laju per minggu sehingga
+        // perbandingan antar tipe jadwal setara (39 jam/minggu vs 42 jam/minggu).
+        $jumlahHariPeriode = (int) $mulaiManHour->diffInDays($selesaiManHour) + 1;
+
         $idTeknisi   = $technicians->pluck('id')->all();
         $menitKerja  = $manHour->menitPerTeknisi($idTeknisi, $mulaiManHour, $selesaiManHour);
         $targetKerja = $manHour->targetPerTeknisi($idTeknisi, $mulaiManHour, $selesaiManHour);
@@ -87,6 +91,7 @@ class TechnicianController extends Controller
             'menitKerja',
             'targetKerja',
             'labelPeriode',
+            'jumlahHariPeriode',
             'shiftTerakhir',
             'ringkasanJadwal',
             'jadwalBulanan'

@@ -166,6 +166,11 @@
                                             {{ $persenTeknisi }}%
                                         </span>
                                     </div>
+                                    {{-- Laju mingguan: pembanding setara antar tipe jadwal
+                                         (reguler/reguler staff 39 j/minggu, shift 42 j/minggu). --}}
+                                    <p class="text-xs text-slate-400 mt-1 whitespace-nowrap">
+                                        Target {{ number_format($targetTeknisi / 60 / max(1, $jumlahHariPeriode / 7), 1, ',', '.') }} j/minggu
+                                    </p>
                                 @else
                                     <span class="text-xs text-slate-400">Tanpa jadwal</span>
                                 @endif

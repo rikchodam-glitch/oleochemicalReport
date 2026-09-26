@@ -284,6 +284,30 @@
                 </div>
             </div>
 
+            {{-- Laju per minggu & per hari kerja: pembanding setara antar tipe jadwal,
+                 karena jumlah hari kerja tiap tipe berbeda (total mentah tidak sebanding). --}}
+            <div class="mx-5 mt-3 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+                <p class="text-xs text-slate-600">
+                    Laju per minggu:
+                    <span class="font-semibold text-slate-800">{{ number_format($manHourRingkasan['realisasi_per_minggu'], 1, ',', '.') }} j</span>
+                    dari target
+                    <span class="font-semibold text-slate-800">{{ number_format($manHourRingkasan['target_per_minggu'], 1, ',', '.') }} j</span>
+                    <span class="text-slate-400 mx-1">|</span>
+                    per hari kerja:
+                    <span class="font-semibold text-slate-800">{{ number_format($manHourRingkasan['realisasi_per_hari_kerja'], 1, ',', '.') }} j</span>
+                    dari
+                    <span class="font-semibold text-slate-800">{{ number_format($manHourRingkasan['target_per_hari_kerja'], 1, ',', '.') }} j</span>
+                    <span class="text-slate-400">
+                        ({{ $manHourRingkasan['hari_kerja'] }} hari kerja dari {{ $manHourRingkasan['jumlah_hari'] }} hari)
+                    </span>
+                </p>
+                <p class="text-xs text-slate-400 mt-0.5">
+                    Pembanding setara antar tipe: reguler &amp; reguler staff 39 jam/minggu, pekerja shift 42 jam/minggu
+                    (8 jam penuh tanpa potong istirahat, rata-rata 15 hari kerja per 20 hari). Angka shift bisa
+                    bervariasi per orang karena siklus 20 hari terpotong di titik berbeda oleh periode yang dipilih.
+                </p>
+            </div>
+
             <div class="px-5 py-4">
                 <canvas id="grafikManHour" height="110"></canvas>
             </div>
