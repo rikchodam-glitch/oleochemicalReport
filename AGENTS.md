@@ -123,6 +123,10 @@ ulang.
      reguler 420/420/420/420/360/300/0 menit dan reguler staff
      480/480/480/480/420/0/0 menit (Senin s.d. Minggu) — lihat
      `config('cm.man_hour.jam_kerja')`.
+     Pekerja shift **tanpa potong istirahat** (8 jam penuh = 480 menit per hari
+     kerja, dikonfirmasi 26/09/2026), jadi total mingguannya lebih besar
+     (±42 jam) bukan karena salah hitung: reguler/reguler staff 39 jam/minggu,
+     sedangkan pekerja shift rata-rata 15 hari kerja per 20 hari (5,25 hari/minggu).
 
 11. **Status laporan `draft` TIDAK dipakai lagi (diputuskan 26/09/2026).**
    Laporan hanya berstatus `completed` (Done) atau `continue` (belum selesai),

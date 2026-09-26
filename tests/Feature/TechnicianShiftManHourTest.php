@@ -426,6 +426,35 @@ test('sel shift 3 pada popup jadwal memakai warna biru yang terbaca', function (
         ->assertDontSee('bg-indigo-500', false);
 });
 
+test('target shift 8 jam penuh tanpa potong istirahat', function () {
+    // Aturan yang dikonfirmasi 26/09/2026: pekerja shift tidak dipotong istirahat.
+    foreach (['1' => 'Shift 1 (08.00-16.00)', '2' => 'Shift 2 (16.00-24.00)', '3' => 'Shift 3 (00.00-08.00)'] as $kode => $label) {
+        $shift = new TechnicianShift([
+            'technician_id' => $this->teknisiShift->id,
+            'nik'           => 'NIK-LAIN-2',
+            'nama'          => 'Teknisi Shift Uji',
+            'shift_date'    => '2026-09-28',
+            'shift_code'    => $kode,
+        ]);
+
+        expect($shift->label('grub_a'))->toBe($label)
+            ->and($shift->targetMenit('grub_a'))->toBe(480)
+            ->and($shift->jendela('grub_a'))->toBe(['mulai' => (string) config('cm.man_hour.windows.' . $kode . '.mulai'), 'selesai' => (string) config('cm.man_hour.windows.' . $kode . '.selesai')]);
+    }
+
+    // Hari OFF tetap tanpa target.
+    $libur = new TechnicianShift([
+        'technician_id' => $this->teknisiShift->id,
+        'nik'           => 'NIK-LAIN-2',
+        'nama'          => 'Teknisi Shift Uji',
+        'shift_date'    => '2026-09-28',
+        'shift_code'    => 'x',
+    ]);
+
+    expect($libur->targetMenit('grub_a'))->toBe(0)
+        ->and($libur->jendela('grub_a'))->toBeNull();
+});
+
 test('popup jadwal bulanan bisa digeser ke bulan berikutnya', function () {
     $this->actingAs($this->admin)
         ->get('/technicians?jadwal_bulan=2026-11')
