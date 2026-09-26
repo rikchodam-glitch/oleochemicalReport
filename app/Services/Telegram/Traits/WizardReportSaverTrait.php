@@ -7,6 +7,7 @@ use App\Models\Report;
 use App\Models\ReportAiSuggestion;
 use App\Models\Technician;
 use App\Services\CollaborationService;
+use App\Services\ReportContinuationMatcher;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -100,18 +101,38 @@ trait WizardReportSaverTrait
             $msg .= "\n*Lanjutan dari*: " . ($state['lanjutan_kode'] ?? ('#' . $state['lanjutan_dari_id'])) . "\n";
         }
 
+        // Tawarkan penautan otomatis: bila ada laporan 'continue' yang mirip
+        // (deskripsi/root cause/lokasi) dan teknisi belum menolaknya, tampilkan
+        // tombol konfirmasi — penautan TIDAK dilakukan tanpa persetujuan.
+        $kandidat = null;
+
+        if (empty($state['lanjutan_dari_id']) && empty($state['lanjutan_ditolak'])) {
+            $kandidat = app(ReportContinuationMatcher::class)->cariKandidat($state);
+
+            if ($kandidat !== null) {
+                $msg .= "\n*Kemungkinan lanjutan* dari `" . $kandidat->report_code . "`"
+                    . " (" . ($kandidat->report_date?->format('d/m/Y') ?? '-') . ")\n"
+                    . "Deskripsi/root cause/lokasi pekerjaan ini mirip dengan laporan itu. "
+                    . "Ketuk *Ya, Lanjutan* bila benar.\n";
+            }
+        }
+
         $msg .= "\nSimpan laporan ini?";
+
+        $tombolUtama = [
+            ['text' => 'Done (Selesai)',          'callback_data' => 'wizard:confirm:save_done'],
+            ['text' => 'Continue (Lanjut besok)', 'callback_data' => 'wizard:confirm:save_continue'],
+            ['text' => 'Batalkan',                'callback_data' => 'wizard:confirm:cancel_report'],
+        ];
+
+        if ($kandidat !== null) {
+            $tombolUtama[] = ['text' => 'Ya, Lanjutan dari ' . $kandidat->report_code, 'callback_data' => 'wizard:confirm:lanjutan_ya'];
+            $tombolUtama[] = ['text' => 'Bukan lanjutan',                            'callback_data' => 'wizard:confirm:lanjutan_tidak'];
+        }
 
         return [
             'message'  => $msg,
-            'keyboard' => array_merge(
-                [
-                    ['text' => 'Done (Selesai)',            'callback_data' => 'wizard:confirm:save_done'],
-                    ['text' => 'Continue (Lanjut besok)',   'callback_data' => 'wizard:confirm:save_continue'],
-                    ['text' => 'Batalkan',                  'callback_data' => 'wizard:confirm:cancel_report'],
-                ],
-                $this->navigationButtons($state)
-            ),
+            'keyboard' => array_merge($tombolUtama, $this->navigationButtons($state)),
         ];
     }
 

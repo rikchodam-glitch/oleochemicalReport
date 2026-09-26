@@ -8,6 +8,7 @@ use App\Models\Department;
 use App\Models\FunctionalLocation;
 use App\Models\SubArea;
 use App\Models\Technician;
+use App\Services\ReportContinuationMatcher;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -704,6 +705,31 @@ trait WizardCallbackHandlerTrait
                 $state          = $this->pushStepHistory($state, self::STEP_COLLABORATOR);
                 $state['step']  = self::STEP_CONFIRMATION;
                 $this->saveState($chatId, $state);
+                return $this->buildConfirmationSummary($state);
+
+            // Penautan otomatis ke laporan 'continue' yang mirip (ditawarkan di
+            // Step 8 berdasarkan deskripsi/root cause/lokasi).
+            case 'lanjutan_ya':
+                $kandidat = app(ReportContinuationMatcher::class)->cariKandidat($state);
+
+                if ($kandidat === null) {
+                    return $this->errorResponse(
+                        'Laporan lanjutan yang mirip sudah tidak tersedia (mungkin sudah dilanjutkan). ' .
+                        'Silakan simpan laporan seperti biasa.'
+                    );
+                }
+
+                $state['lanjutan_dari_id'] = $kandidat->id;
+                $state['lanjutan_kode']    = $kandidat->report_code;
+                $this->saveState($chatId, $state);
+
+                return $this->buildConfirmationSummary($state);
+
+            case 'lanjutan_tidak':
+                // Tandai ditolak supaya tawaran tidak muncul lagi di ringkasan.
+                $state['lanjutan_ditolak'] = true;
+                $this->saveState($chatId, $state);
+
                 return $this->buildConfirmationSummary($state);
 
             // Step 8 — simpan laporan. Tombol lama 'save_report' dipertahankan
