@@ -57,7 +57,9 @@ class ReportController extends Controller
 
         $areas       = Area::orderBy('code')->get();
         $technicians = Technician::orderBy('name')->get(['id', 'name', 'nik']);
-        $grubOptions = collect(Technician::GROUPS)->except(['reguler'])->all();
+        // Pilihan grub hanya untuk pekerja shift (Grub A-D); reguler & reguler
+        // staff masuk ke tampilan Reguler, bukan ke daftar grub.
+        $grubOptions = array_intersect_key(Technician::GROUPS, array_flip(Technician::GRUP_SHIFT));
 
         return view('reports.index', compact(
             'reports', 'areas', 'technicians', 'grubOptions',
@@ -74,7 +76,10 @@ class ReportController extends Controller
      *   - Laporan kolaborasi tampil sebagai SATU baris: hanya laporan induk
      *     (collaborator_of NULL) yang diambil; daftar kolaborator dibaca dari
      *     relasi collaboratorReports.
-     *   - Tampilan "reguler" memuat laporan teknisi grup 'reguler' (termasuk
+     *   - Tampilan "reguler" memuat laporan teknisi non-shift: grup 'reguler'
+     *     dan 'reguler_staff' (termasuk teknisi yang grupnya belum diisi);
+     *     tampilan "shift" memuat laporan teknisi grub (A/B/C/D) saja dan bisa
+     *     dipersempit ke satu grub.
      *     teknisi yang grupnya belum diisi), tampilan "shift" memuat laporan
      *     teknisi grub (A/B/C/D) dan bisa dipersempit ke satu grub.
      *   - Tanggal: satu hari (default hari ini), atau rentang bila date_from /
@@ -170,7 +175,9 @@ class ReportController extends Controller
     private function applyGroupFilter($query, string $tampilan, ?string $grubAktif): void
     {
         if ($tampilan === 'shift') {
-            $grubShift = array_keys(collect(Technician::GROUPS)->except(['reguler'])->all());
+            // Tampilan Shift hanya memuat pekerja shift (Grub A-D). Reguler dan
+            // Reguler Staff BUKAN shift, jadi tidak boleh ikut di sini.
+            $grubShift = Technician::GRUP_SHIFT;
 
             $query->whereHas('technician', function ($q) use ($grubAktif, $grubShift) {
                 if ($grubAktif !== null) {
@@ -185,9 +192,10 @@ class ReportController extends Controller
             return;
         }
 
-        // Reguler: grup 'reguler' atau grup yang belum diisi (bukan teknisi shift).
+        // Reguler: grup 'reguler' DAN 'reguler_staff' (keduanya non-shift),
+        // termasuk teknisi yang grupnya belum diisi.
         $query->whereHas('technician', function ($q) {
-            $q->where('group', 'reguler')->orWhereNull('group');
+            $q->whereIn('group', Technician::GRUP_NON_SHIFT)->orWhereNull('group');
         });
     }
 

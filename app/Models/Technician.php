@@ -42,6 +42,30 @@ class Technician extends Model
         'grub_d'        => 'Grub D',
     ];
 
+    /**
+     * Group pekerja shift (dipakai untuk tampilan Shift, pola rotasi, dan
+     * penentuan target man hour berbasis shift). Jangan memakai
+     * "GROUPS kecuali reguler" karena group non-shift ada dua.
+     */
+    public const GRUP_SHIFT = ['grub_a', 'grub_b', 'grub_c', 'grub_d'];
+
+    /**
+     * Group non-shift: reguler (Senin-Sabtu) dan reguler staff (Senin-Jumat).
+     * Laporan kedua group ini masuk ke tampilan "Reguler" di halaman Laporan.
+     */
+    public const GRUP_NON_SHIFT = ['reguler', 'reguler_staff'];
+
+    /**
+     * Apakah group teknisi termasuk pekerja shift (Grub A-D).
+     *
+     * @param  string|null $grup Group teknisi
+     * @return bool               True bila pekerja shift
+     */
+    public static function grupShift(?string $grup): bool
+    {
+        return in_array((string) $grup, self::GRUP_SHIFT, true);
+    }
+
     public const SECTIONS = [
         'mekanik'   => 'Mekanik',
         'ei'        => 'EI',

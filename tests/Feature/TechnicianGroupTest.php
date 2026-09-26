@@ -17,9 +17,18 @@ beforeEach(function () {
 // DAFTAR GRUP TEKNISI
 // ============================================================
 
-test('konstanta GROUPS memuat Reguler dan Grub A sampai Grub D', function () {
-    expect(Technician::GROUPS)->toHaveKeys(['reguler', 'grub_a', 'grub_b', 'grub_c', 'grub_d'])
-        ->and(Technician::GROUPS['grub_d'])->toBe('Grub D');
+test('konstanta GROUPS memuat Reguler, Reguler Staff, dan Grub A sampai Grub D', function () {
+    expect(Technician::GROUPS)->toHaveKeys(['reguler', 'reguler_staff', 'grub_a', 'grub_b', 'grub_c', 'grub_d'])
+        ->and(Technician::GROUPS['grub_d'])->toBe('Grub D')
+        ->and(Technician::GROUPS['reguler_staff'])->toBe('Reguler Staff')
+        // Daftar group shift & non-shift dipakai filter tampilan halaman Laporan,
+        // jangan dihitung sebagai "GROUPS kecuali reguler" (non-shift ada dua).
+        ->and(Technician::GRUP_SHIFT)->toBe(['grub_a', 'grub_b', 'grub_c', 'grub_d'])
+        ->and(Technician::GRUP_NON_SHIFT)->toBe(['reguler', 'reguler_staff'])
+        ->and(Technician::grupShift('grub_b'))->toBeTrue()
+        ->and(Technician::grupShift('reguler_staff'))->toBeFalse()
+        ->and(Technician::grupShift('reguler'))->toBeFalse()
+        ->and(Technician::grupShift(null))->toBeFalse();
 });
 
 test('form tambah dan edit teknisi menampilkan pilihan Grub D', function () {

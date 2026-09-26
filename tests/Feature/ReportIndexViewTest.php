@@ -113,6 +113,42 @@ test('tampilan shift bisa dipersempit ke satu grub', function () {
         ->assertDontSee('Ganti bearing pompa reguler uji', false);
 });
 
+test('tampilan reguler memuat reguler staff, tampilan shift tidak', function () {
+    // Teknisi Reguler Staff (non-shift) dengan laporan sendiri.
+    $staf = Technician::create([
+        'name'   => 'Teknisi Staf Uji',
+        'nik'    => 'STAF001',
+        'group'  => 'reguler_staff',
+        'status' => 'active',
+    ]);
+
+    Report::create([
+        'technician_id'    => $staf->id,
+        'creator_id'       => $staf->id,
+        'report_date'      => $this->tanggal,
+        'report_code'      => 'STAF-KERJA-01',
+        'work_description' => 'Administrasi jadwal reguler staff uji',
+        'jenis_pekerjaan'  => 'PM',
+        'status'           => 'submitted',
+    ]);
+
+    // Reguler Staff BUKAN pekerja shift: laporannya harus muncul di tampilan
+    // Reguler (bersama teknisi reguler).
+    $this->actingAs($this->admin)
+        ->get('/reports?tanggal=' . $this->tanggal . '&tampilan=reguler')
+        ->assertStatus(200)
+        ->assertSee('Administrasi jadwal reguler staff uji', false)
+        ->assertSee('Ganti bearing pompa reguler uji', false);
+
+    // Dan tidak boleh muncul di tampilan Shift, juga tidak menjadi pilihan grub.
+    $this->actingAs($this->admin)
+        ->get('/reports?tanggal=' . $this->tanggal . '&tampilan=shift')
+        ->assertStatus(200)
+        ->assertSee('Pengecekan motor grub D uji', false)
+        ->assertDontSee('Administrasi jadwal reguler staff uji', false)
+        ->assertDontSee('Reguler Staff</option>', false);
+});
+
 test('tampilan shift tanpa pilih grub memuat semua grub shift', function () {
     $respons = $this->actingAs($this->admin)
         ->get('/reports?tanggal=' . $this->tanggal . '&tampilan=shift');

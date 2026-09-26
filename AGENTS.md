@@ -530,6 +530,22 @@ ulang.
     dan SQLite; jangan pernah memakai `whereBetween` dengan tanggal polos.**
 
 
+24. **Menentukan "pekerja shift" dengan pola `GROUPS kecuali reguler` membuat
+    Reguler Staff ikut dianggap shift.** Pada 26/09/2026 ditambahkan group
+    `reguler_staff`, tetapi `ReportController` masih memakai
+    `collect(Technician::GROUPS)->except(['reguler'])` untuk dua hal: isi
+    tampilan "Shift" dan pilihan Grub. Akibatnya laporan teknisi Reguler Staff
+    muncul di tampilan **Shift** dan hilang dari tampilan **Reguler**, padahal
+    Reguler Staff bukan pekerja shift. Perbaikan: konstanta eksplisit
+    `Technician::GRUP_SHIFT` dan `Technician::GRUP_NON_SHIFT` (+ helper
+    `grupShift()`) dipakai di filter tampilan, dan tampilan Reguler memuat kedua
+    group non-shift. **Pelajaran: daftar "semua kecuali X" harus ditulis
+    eksplisit; setiap kali menambah anggota baru pada sekumpulan nilai
+    (group/status/kategori), cari dulu semua tempat yang memakai pola
+    "kecuali X"/"selain X" dan ujilah — penambahan anggota baru mengubah arti
+    daftar itu tanpa error apa pun.**
+
+
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
 
 ## ATURAN PENULISAN KODE
