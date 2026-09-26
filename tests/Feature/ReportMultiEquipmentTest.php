@@ -251,9 +251,9 @@ test('halaman laporan hanya menampilkan baris induk dengan daftar alatnya', func
         ->get('/reports?tanggal=' . now()->toDateString())
         ->assertStatus(200)
         ->assertSee('RPT-20260926-0011', false)
+        // Cukup penanda jumlah kolaborasi yang bisa diklik untuk membuka popup.
         ->assertSee('1 KOLABORASI', false)
-        ->assertSee('Lihat', false)
-        ->assertSee('tampilkanKolaborasi', false)
+        ->assertSee('tampilkanKolaborasi(' . $induk->id . ')', false)
         ->assertSee('modal-kolaborasi', false)
         ->assertSee('MUL-M-02', false)
         // Kolaborasi satu kesatuan pekerjaan: hanya tautan detail alat, tanpa

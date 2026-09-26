@@ -397,35 +397,19 @@
                                 @endif
                             </p>
 
-                            {{-- Alat/lokasi yang dikolaborasikan (pekerjaan multi equipment) --}}
+                            {{-- Alat/lokasi yang dikolaborasikan (pekerjaan multi equipment):
+                                 cukup penanda jumlahnya, diklik untuk membuka popup daftarnya. --}}
                             @if($report->multiItems->isNotEmpty())
-                                <div class="mt-1.5 pt-1.5 border-t border-slate-100" onclick="event.stopPropagation()">
-                                    <div class="flex items-center gap-2">
-                                        <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-100">
-                                            {{ $report->multiItems->count() }} KOLABORASI
-                                        </span>
-                                        <button type="button"
-                                                onclick="tampilkanKolaborasi({{ $report->id }})"
-                                                title="Lihat daftar alat/lokasi kolaborasi"
-                                                class="text-[11px] font-semibold text-teal-700 hover:text-teal-800 hover:underline">
-                                            Lihat
-                                        </button>
-                                    </div>
-                                    <div class="mt-1 space-y-0.5">
-                                        @foreach(array_slice($kolaborasiPerLaporan[$report->id], 0, 2) as $kolab)
-                                            <a href="{{ $kolab['url'] }}"
-                                               onclick="event.stopPropagation()"
-                                               title="Buka detail {{ strtolower($kolab['tipe']) }} {{ $kolab['kode'] }}"
-                                               class="block text-xs font-medium font-mono text-teal-700 hover:underline">
-                                                {{ $kolab['kode'] }}
-                                            </a>
-                                        @endforeach
-                                        @if($report->multiItems->count() > 2)
-                                            <p class="text-[11px] text-slate-400">
-                                                +{{ $report->multiItems->count() - 2 }} lainnya
-                                            </p>
-                                        @endif
-                                    </div>
+                                <div class="mt-1.5 pt-1.5 border-t border-slate-100">
+                                    <button type="button"
+                                            onclick="event.stopPropagation(); tampilkanKolaborasi({{ $report->id }})"
+                                            title="Klik untuk melihat daftar alat/lokasi kolaborasi"
+                                            class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-100 hover:bg-teal-100 transition-colors">
+                                        {{ $report->multiItems->count() }} KOLABORASI
+                                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </button>
                                 </div>
                             @endif
 
@@ -679,7 +663,7 @@
 @push('scripts')
     <script>
         // Data alat/lokasi kolaborasi per laporan, dipakai tombol "Lihat" pada kolom Lokasi / Alat.
-        var dataKolaborasi = {!! json_encode($kolaborasiPerLaporan ?? [], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) !!};
+        var dataKolaborasi = {!! json_encode($kolaborasiPerLaporan ?? [], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!};
 
         /**
          * Tampilkan popup daftar alat/lokasi kolaborasi untuk satu laporan.
