@@ -203,9 +203,11 @@ trait WizardReportSaverTrait
                 'area_id'                 => $areaId,
                 'report_type'             => $asetId !== null ? 'equipment_repair' : 'area_work',
                 'multi_of'                => $induk->id,
-                // Foto hanya disimpan di laporan induk (keputusan bisnis).
-                'photo_documentation'     => [],
-                'photo_hygiene_clearance' => [],
+                // Dokumentasi & HC disamakan dengan laporan induk: pekerjaan pada
+                // beberapa alat/lokasi memakai bukti foto yang sama. Path fotonya
+                // sama persis, jadi tidak ada file foto duplikat di penyimpanan.
+                'photo_documentation'     => $induk->photo_documentation ?? [],
+                'photo_hygiene_clearance' => $induk->photo_hygiene_clearance ?? [],
             ]));
 
             $jumlah++;

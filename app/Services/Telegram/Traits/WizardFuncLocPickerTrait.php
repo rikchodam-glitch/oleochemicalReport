@@ -583,22 +583,13 @@ trait WizardFuncLocPickerTrait
         }
 
         // Section (LEVEL_SECTION) dipilih:
-        // - Mode area: kunci langsung (Section = level terdalam).
-        // - Mode equipment: lanjut ke layar Section yang menampilkan daftar
-        //   TechIdentNo/equipment di bawahnya (FuncLoc -> TechIdentNo berkolaborasi).
+        // - Mode area: kunci langsung sebagai lokasi utama (Section = level terdalam).
+        // - Mode equipment/multi: lanjut ke layar Section yang menampilkan daftar
+        //   TechIdentNo/equipment di bawahnya (FuncLoc -> TechIdentNo berkolaborasi),
+        //   plus tombol Konfirmasi bila teknisi memang ingin memakai lokasi itu
+        //   sendiri (di mode multi lokasi itu DITAMBAHKAN sebagai item pekerjaan).
         if ($level === FunctionalLocation::LEVEL_SECTION
-            && ($state['funcloc_picker_mode'] ?? 'area') !== 'equipment') {
-            // Mode multi: lokasi yang dipilih ditambahkan sebagai item pekerjaan,
-            // bukan dikunci sebagai lokasi utama laporan.
-            if (($state['funcloc_picker_mode'] ?? 'area') === 'multi') {
-                return $this->selesaikanPickerMulti($chatId, [
-                    'asset_id'   => null,
-                    'funcloc_id' => $node->id,
-                    'label'      => $node->code,
-                    'sub'        => $node->name,
-                ], $state);
-            }
-
+            && !in_array($state['funcloc_picker_mode'] ?? 'area', ['equipment', 'multi'], true)) {
             return $this->lockFuncLocAndAdvance($chatId, $node, $state);
         }
 
@@ -743,9 +734,14 @@ trait WizardFuncLocPickerTrait
         $mode     = $state['funcloc_picker_mode'] ?? 'area';
         $options  = $this->buildFuncLocLevelKeyboard($level, $parentId);
 
-        // Equipment langsung di bawah node yang sedang dilihat (hanya mode equipment).
+        // Daftar equipment di bawah node yang sedang dilihat dipakai oleh mode
+        // 'equipment' DAN mode 'multi' (menambah alat/lokasi pada pekerjaan),
+        // supaya teknisi bisa langsung memilih alat, bukan hanya lokasi.
+        $modeDenganEquipment = in_array($mode, ['equipment', 'multi'], true);
+
+        // Equipment langsung di bawah node yang sedang dilihat.
         $equipmentCount = 0;
-        if ($mode === 'equipment' && $parentId) {
+        if ($modeDenganEquipment && $parentId) {
             $equipmentCount = $this->countAssetsUnderNode($parentId, $this->isItPool($state));
         }
 
@@ -753,10 +749,22 @@ trait WizardFuncLocPickerTrait
             if ($parentEntry) {
                 $node = FunctionalLocation::active()->find($parentEntry['id']);
                 if ($node) {
-                    Log::info("WizardFuncLocPicker: Tidak ada anak L{$level} untuk node {$node->code}, langsung lock.", [
+                    Log::info("WizardFuncLocPicker: Tidak ada anak L{$level} untuk node {$node->code}, langsung selesai.", [
                         'chat_id'    => $chatId,
                         'funcloc_id' => $node->id,
+                        'mode'       => $mode,
                     ]);
+
+                    // Mode multi: node ini DITAMBAHKAN sebagai alat/lokasi pekerjaan
+                    // (bukan dikunci sebagai lokasi utama laporan).
+                    if ($mode === 'multi') {
+                        return $this->selesaikanPickerMulti($chatId, [
+                            'asset_id'   => null,
+                            'funcloc_id' => $node->id,
+                            'label'      => $node->code,
+                            'sub'        => $node->name,
+                        ], $state);
+                    }
 
                     return $this->lockFuncLocAndAdvance($chatId, $node, $state);
                 }
@@ -801,7 +809,7 @@ trait WizardFuncLocPickerTrait
 
         if ($parentEntry) {
             $currentLabel = $this->funcLocLevelLabel($parentEntry['level']);
-            if ($mode === 'equipment' && $equipmentCount > 0) {
+            if ($modeDenganEquipment && $equipmentCount > 0) {
                 $message = "*{$currentLabel} dipilih:* {$parentEntry['code']} — {$parentEntry['name']}\n\n" .
                            "Pilih equipment di lokasi ini, atau konfirmasi lokasi saja:";
             } else {

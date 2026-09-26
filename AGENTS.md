@@ -433,6 +433,28 @@ ulang.
     dipastikan bersih, karena dua poller = bot mati total (409) tanpa pesan error
     ke pengguna.**
 
+22. **Mode picker baru ("multi") hanya diuji di level terdalam (Section), sehingga
+    di level Area/Sub Area picker malah MENGUNCI lokasi utama laporan.** Pada
+    26/09/2026, laporan RPT-20260926-0020 tidak bisa menambah alat/lokasi
+    kolaborasi: begitu teknisi memilih Area/Sub Area pada "Pilih Hirarki", picker
+    menjalankan jalur `lockFuncLocAndAdvance()` (perilaku mode 'area') sehingga
+    lokasi itu dikunci sebagai lokasi utama laporan, bukan ditambahkan sebagai
+    item pekerjaan. Penyebab: `buildFuncLocScreen()` menggantungkan daftar
+    equipment pada `$mode === 'equipment'` dan pada cabang "tidak ada anak/tidak
+    ada equipment" langsung mengunci lokasi; mode 'multi' tidak masuk ke
+    keduanya, dan `handleFuncLocPick()` juga hanya mengecualikan 'equipment' dari
+    penguncian di level Section. Perbaikan: mode 'multi' diperlakukan sama seperti
+    'equipment' (pakai `in_array($mode, ['equipment', 'multi'], true)`) untuk
+    daftar equipment, cabang otomatis memanggil `selesaikanPickerMulti()` alih-alih
+    mengunci, dan pemilihan alat (`funcloc_asset_pick`) menambah item bukan
+    mengganti alat utama. **Pelajaran: (1) setiap mode baru pada picker WAJIB diuji
+    di SEMUA level hirarki (PT/Departemen/Area/Section), bukan hanya level
+    terdalam yang dipakai saat menulis fitur; (2) jangan mengandalkan
+    `$mode === 'equipment'` sebagai satu-satunya penanda "tampilkan equipment" —
+    mode yang berperilaku serupa harus dikelompokkan eksplisit; (3) cabang
+    "auto-lock" pada picker adalah tempat paling rawan: pastikan cabang itu tidak
+    pernah dijalankan oleh mode yang niatnya hanya "menambah item".**
+
 
 
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->

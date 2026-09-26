@@ -151,7 +151,7 @@ test('alat utama dan item duplikat tidak ditambahkan dua kali', function () {
     $wizard->destroyWizard($this->chatId);
 });
 
-test('menyimpan laporan membuat baris salinan per alat tanpa foto di salinan', function () {
+test('menyimpan laporan membuat baris salinan per alat dengan dokumentasi sama', function () {
     $wizard = app(ReportWizardService::class);
 
     $wizard->saveState($this->chatId, stateMultiEquipment($this->chatId, $this->asetUtama->id));
@@ -186,8 +186,10 @@ test('menyimpan laporan membuat baris salinan per alat tanpa foto di salinan', f
     expect($salinan)->toHaveCount(1)
         ->and($salinan[0]->asset_id)->toBe($this->asetTambahan->id)
         ->and($salinan[0]->work_description)->toBe('Overhaul pompa dan motor multi')
-        // Foto hanya disimpan di laporan induk.
-        ->and($salinan[0]->photo_documentation)->toBe([])
+        // Dokumentasi & HC disamakan dengan laporan induk (path foto yang sama,
+        // bukan salinan file baru) supaya bukti pekerjaan terlihat di tiap alat.
+        ->and($salinan[0]->photo_documentation)->toBe($induk->photo_documentation)
+        ->and($salinan[0]->photo_documentation)->toHaveCount(1)
         ->and($salinan[0]->status)->toBe('completed')
         ->and($induk->multiItems)->toHaveCount(1);
 
@@ -242,13 +244,17 @@ test('halaman laporan hanya menampilkan baris induk dengan daftar alatnya', func
         'status'           => 'completed',
     ]);
 
-    // Halaman laporan: baris induk tampil dengan penanda alatnya, salinan tidak
-    // tampil sebagai baris tersendiri.
+    // Halaman laporan: baris induk tampil dengan penanda kolaborasi, salinan tidak
+    // tampil sebagai baris tersendiri. Daftar alat/lokasi kolaborasi ada di kolom
+    // Lokasi / Alat dengan tombol "Lihat" (popup).
     $this->actingAs($this->admin)
         ->get('/reports?tanggal=' . now()->toDateString())
         ->assertStatus(200)
         ->assertSee('RPT-20260926-0011', false)
-        ->assertSee('1 ALAT', false)
+        ->assertSee('1 KOLABORASI', false)
+        ->assertSee('Lihat', false)
+        ->assertSee('tampilkanKolaborasi', false)
+        ->assertSee('modal-kolaborasi', false)
         ->assertSee('MUL-M-02', false)
         ->assertDontSee('RPT-20260926-0012', false);
 
@@ -263,4 +269,66 @@ test('halaman laporan hanya menampilkan baris induk dengan daftar alatnya', func
         ->assertStatus(200)
         ->assertSee('Bagian dari pekerjaan bersama', false)
         ->assertSee('RPT-20260926-0011', false);
+});
+
+test('hirarki mode multi menampilkan daftar equipment dan tidak mengunci lokasi utama', function () {
+    $wizard = app(ReportWizardService::class);
+
+    $wizard->saveState($this->chatId, stateMultiEquipment($this->chatId, $this->asetUtama->id));
+
+    // Masuk mode hirarki untuk mencari alat/lokasi tambahan.
+    $wizard->handleCallback($this->chatId, 'multi_hirarki');
+
+    // Teknisi memilih node Section (level 3) yang punya 2 alat di bawahnya.
+    $layar = $wizard->handleCallback($this->chatId, 'funcloc_pick:3:' . $this->flSection->id);
+    $state = $wizard->getState($this->chatId);
+
+    // Bukan konfirmasi lokasi utama: laporan tetap memakai alat utama, dan layar
+    // menawarkan daftar equipment di lokasi tersebut.
+    expect($state['equipment_id'])->toBe($this->asetUtama->id)
+        ->and($state['funcloc_id'] ?? null)->toBeNull()
+        ->and(json_encode($layar['keyboard']))->toContain('funcloc_assets:' . $this->flSection->id)
+        ->and($layar['message'])->toContain('Pilih equipment di lokasi ini');
+
+    // Memilih equipment menambahkannya sebagai item pekerjaan, bukan alat utama baru.
+    $hasil = $wizard->handleCallback($this->chatId, 'funcloc_asset_pick:' . $this->asetTambahan->id);
+    $state = $wizard->getState($this->chatId);
+
+    expect($state['multi_items'])->toHaveCount(1)
+        ->and($state['multi_items'][0]['asset_id'])->toBe($this->asetTambahan->id)
+        ->and($state['equipment_id'])->toBe($this->asetUtama->id)
+        ->and($state['step'])->toBe(ReportWizardService::STEP_MULTI_EQUIPMENT)
+        ->and($hasil['message'])->toContain('Ditambahkan dari hirarki');
+
+    $wizard->destroyWizard($this->chatId);
+});
+
+test('hirarki mode multi: lokasi tanpa anak ditambahkan sebagai item, bukan lokasi utama', function () {
+    $lokasiKosong = FunctionalLocation::create([
+        'code'          => 'PTMUL-DEPMUL-AREAMUL-99',
+        'segment'       => '99',
+        'name'          => 'Section Kosong',
+        'level'         => FunctionalLocation::LEVEL_SECTION,
+        'company_id'    => $this->company->id,
+        'department_id' => $this->dept->id,
+        'is_active'     => true,
+    ]);
+
+    $wizard = app(ReportWizardService::class);
+
+    $wizard->saveState($this->chatId, stateMultiEquipment($this->chatId, $this->asetUtama->id));
+    $wizard->handleCallback($this->chatId, 'multi_hirarki');
+
+    // Node tanpa anak dan tanpa equipment tidak boleh mengunci lokasi utama laporan.
+    $hasil = $wizard->handleCallback($this->chatId, 'funcloc_pick:3:' . $lokasiKosong->id);
+    $state = $wizard->getState($this->chatId);
+
+    expect($state['multi_items'])->toHaveCount(1)
+        ->and($state['multi_items'][0]['funcloc_id'])->toBe($lokasiKosong->id)
+        ->and($state['equipment_id'])->toBe($this->asetUtama->id)
+        ->and($state['funcloc_id'] ?? null)->toBeNull()
+        ->and($state['step'])->toBe(ReportWizardService::STEP_MULTI_EQUIPMENT)
+        ->and($hasil['message'])->toContain('Ditambahkan dari hirarki');
+
+    $wizard->destroyWizard($this->chatId);
 });
