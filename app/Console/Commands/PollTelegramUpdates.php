@@ -157,6 +157,10 @@ class PollTelegramUpdates extends Command
                     }
                 }
 
+                // Notifikasi foto yang ditahan selama batch ini dikirim sekarang,
+                // supaya satu kiriman berisi banyak foto hanya dibalas sekali.
+                $this->kirimNotifikasiFotoTertahan();
+
                 $this->saveLastOffset($offset);
                 $this->updateLock();
 

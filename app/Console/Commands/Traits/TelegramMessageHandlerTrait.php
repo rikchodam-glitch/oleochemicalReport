@@ -5,6 +5,7 @@ namespace App\Console\Commands\Traits;
 use App\Models\BotRegistration;
 use App\Models\Technician;
 use App\Services\Telegram\AssetInfoService;
+use App\Services\Telegram\PhotoNotificationBuffer;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -30,6 +31,14 @@ use Illuminate\Support\Str;
  */
 trait TelegramMessageHandlerTrait
 {
+    /**
+     * Penahan notifikasi foto: satu kiriman berisi banyak foto (media group)
+     * hanya menghasilkan satu pesan balasan. Diisi lewat bufferNotifFoto().
+     *
+     * @var PhotoNotificationBuffer|null
+     */
+    private ?PhotoNotificationBuffer $photoNotifBuffer = null;
+
     /**
      * Proses satu update pesan dari Telegram (routing utama).
      *
@@ -91,7 +100,7 @@ trait TelegramMessageHandlerTrait
 
         // Routing foto
         if ($hasPhoto) {
-            $this->handlePhotoMessage($chatId, $message, $technician, $caption);
+            $this->handlePhotoMessage($chatId, $message, $technician, $caption, $message['media_group_id'] ?? null);
             return;
         }
 
@@ -111,17 +120,19 @@ trait TelegramMessageHandlerTrait
      *   B) Caption mengandung kode RPT-... → tambah foto ke laporan lama
      *   C) Tidak keduanya → mulai wizard baru, foto sebagai foto awal Step 1
      *
-     * @param int|string $chatId     ID chat pengirim
-     * @param array      $message    Pesan lengkap dari Telegram
-     * @param Technician $technician Objek teknisi yang mengirim
-     * @param string     $caption    Caption foto (bisa kosong)
+     * @param int|string  $chatId       ID chat pengirim
+     * @param array       $message      Pesan lengkap dari Telegram
+     * @param Technician  $technician   Objek teknisi yang mengirim
+     * @param string      $caption      Caption foto (bisa kosong)
+     * @param string|null $mediaGroupId ID grup media bila foto dikirim sekaligus
      * @return void
      */
     private function handlePhotoMessage(
         int|string $chatId,
         array $message,
         Technician $technician,
-        string $caption
+        string $caption,
+        ?string $mediaGroupId = null
     ): void {
         $this->sendChatAction($chatId);
 
@@ -150,7 +161,7 @@ trait TelegramMessageHandlerTrait
             }
 
             $response = $this->reportWizard->handlePhotoInput((string) $chatId, $path, $caption);
-            $this->dispatchWizardResponse($chatId, $response);
+            $this->kirimAtauTahanResponsFoto($chatId, $mediaGroupId, $response);
             return;
         }
 
@@ -172,7 +183,7 @@ trait TelegramMessageHandlerTrait
                 $this->photoStorage->delete($path);
             }
 
-            $this->sendMessage($chatId, $response['message'] ?? 'Foto ditambahkan.');
+            $this->kirimAtauTahanResponsFoto($chatId, $mediaGroupId, $response);
             return;
         }
 
@@ -200,7 +211,58 @@ trait TelegramMessageHandlerTrait
             $this->photoStorage->delete($localPath);
         }
 
+        $this->kirimAtauTahanResponsFoto($chatId, $mediaGroupId, $response);
+    }
+
+    /**
+     * Kirim respons foto ke Telegram, atau tahan dulu bila foto datang sebagai
+     * bagian dari satu kiriman berisi banyak foto (media group).
+     *
+     * Penahanan diperlukan karena Telegram mengirim setiap foto dalam satu
+     * kiriman sebagai update terpisah — tanpa penahan, teknisi menerima satu
+     * pesan balasan per foto. Isi penahan dikirim sekali di akhir batch
+     * getUpdates lewat kirimNotifikasiFotoTertahan().
+     *
+     * @param  int|string   $chatId       ID chat tujuan
+     * @param  string|null  $mediaGroupId ID grup media (null bila foto tunggal)
+     * @param  array        $response     Respons wizard/pesan biasa
+     * @return void
+     */
+    private function kirimAtauTahanResponsFoto(int|string $chatId, ?string $mediaGroupId, array $response): void
+    {
+        if ($mediaGroupId !== null && $mediaGroupId !== '') {
+            $this->bufferNotifFoto()->tahan($chatId, $mediaGroupId, $response);
+            return;
+        }
+
         $this->dispatchWizardResponse($chatId, $response);
+    }
+
+    /**
+     * Kirim semua notifikasi foto yang ditahan (satu pesan per kiriman foto)
+     * lalu kosongkan penahannya. Dipanggil PollTelegramUpdates setelah satu
+     * batch getUpdates selesai diproses.
+     *
+     * @return void
+     */
+    private function kirimNotifikasiFotoTertahan(): void
+    {
+        foreach ($this->bufferNotifFoto()->ambilSemua() as $notif) {
+            $this->dispatchWizardResponse($notif['chat_id'], [
+                'message'  => $notif['message'],
+                'keyboard' => $notif['keyboard'],
+            ]);
+        }
+    }
+
+    /**
+     * Ambil penahan notifikasi foto (dipakai bersama dalam satu proses polling).
+     *
+     * @return PhotoNotificationBuffer
+     */
+    private function bufferNotifFoto(): PhotoNotificationBuffer
+    {
+        return $this->photoNotifBuffer ??= app(PhotoNotificationBuffer::class);
     }
 
     /**

@@ -173,14 +173,13 @@ trait WizardCallbackHandlerTrait
             return $this->handleBackNavigation($chatId, $state);
         }
 
-        // Pembatalan wizard dari mana saja
+        // Pembatalan wizard dari mana saja: tidak langsung menghapus laporan,
+        // tetapi minta konfirmasi YAKIN/TIDAK lebih dulu (lihat
+        // buildCancelConfirmPrompt). Jika teknisi memilih TIDAK, wizard
+        // dikembalikan ke step terakhir yang sedang dikerjakan tanpa mengulang
+        // riwayat alur (step_history tidak diubah).
         if ($callbackData === 'wizard:cancel_wizard') {
-            $this->clarificationService->destroySession($chatId);
-            $this->destroyWizard($chatId);
-            return [
-                'message'  => "Laporan dibatalkan. Wizard ditutup.\nKirim laporan baru kapan saja.",
-                'keyboard' => [],
-            ];
+            return $this->buildCancelConfirmPrompt($state);
         }
 
         // Callback pemilihan klasifikasi pekerjaan (step paling awal wizard,
@@ -259,7 +258,7 @@ trait WizardCallbackHandlerTrait
 
         // Tombol "Batal" dari dalam navigasi hierarki equipment
         if ($callbackData === 'hierarchy:cancel') {
-            return $this->handleHierarchyCancel($chatId, $state);
+            return $this->buildCancelConfirmPrompt($state);
         }
 
         // Callback pemilihan node FuncLoc dari FuncLoc picker (alur area/section)
@@ -711,17 +710,55 @@ trait WizardCallbackHandlerTrait
             case 'save_report':
                 return $this->saveReport($chatId, $state);
 
-            // Step 8 — batalkan laporan
+            // Step 8 — batalkan laporan: minta konfirmasi YAKIN/TIDAK lebih dulu
             case 'cancel_report':
-                $this->destroyWizard($chatId);
-                return [
-                    'message'  => "Laporan dibatalkan. Wizard ditutup.\nKirim laporan baru kapan saja.",
-                    'keyboard' => [],
-                ];
+                return $this->buildCancelConfirmPrompt($state);
+
+            // Jawaban konfirmasi pembatalan (lihat buildCancelConfirmPrompt):
+            // YAKIN menghapus wizard dan sesi klarifikasi, TIDAK mengembalikan
+            // prompt step terakhir tanpa mengubah step_history.
+            case 'cancel_yes':
+                return $this->handleHierarchyCancel($chatId, $state);
+
+            case 'cancel_no':
+                $respons = $this->rebuildPromptForStep($chatId, $state['step'], $state);
+
+                if (!empty($respons['message'])) {
+                    $respons['message'] = "Baik, laporan dilanjutkan.\n\n" . $respons['message'];
+                }
+
+                return $respons;
 
             default:
                 return $this->errorResponse("Callback tidak dikenal: {$action}");
         }
+    }
+
+    /**
+     * Bangun pesan konfirmasi pembatalan laporan (YAKIN / TIDAK).
+     *
+     * Dipakai oleh tombol "Batalkan Laporan" (wizard:cancel_wizard), tombol
+     * "Batalkan" pada konfirmasi Step 8 (wizard:confirm:cancel_report), dan
+     * tombol "Batalkan Laporan" di navigasi hierarki (hierarchy:cancel).
+     *
+     * Teknisi bisa keliru menekan tombol batal di tengah wizard, jadi laporan
+     * tidak langsung dihapus. Pilihan TIDAK dikembalikan ke prompt step terakhir
+     * tanpa mengubah step_history, sehingga alurnya tidak terulang dari awal.
+     *
+     * @param  array  $state  State wizard saat ini
+     * @return array  Respons dengan keyboard YAKIN/TIDAK
+     */
+    protected function buildCancelConfirmPrompt(array $state): array
+    {
+        return [
+            'message'  => "Batalkan laporan ini?\n\n" .
+                "Seluruh data yang sudah diisi (lokasi/alat, durasi, root cause, foto) akan hilang.\n" .
+                "Pilih *YAKIN* untuk membatalkan, atau *TIDAK* untuk kembali ke langkah terakhir.",
+            'keyboard' => [
+                ['text' => 'YAKIN - Batalkan', 'callback_data' => 'wizard:confirm:cancel_yes'],
+                ['text' => 'TIDAK - Lanjutkan', 'callback_data' => 'wizard:confirm:cancel_no'],
+            ],
+        ];
     }
 
     /**
