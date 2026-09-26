@@ -412,6 +412,29 @@ ulang.
 
 
 
+21. **Restart bot Telegram sempat meninggalkan DUA proses polling sekaligus (HTTP 409).**
+    Pada 26/09/2026, saat menjalankan ulang bot setelah perubahan kode wizard:
+    file `storage/app/telegram_poll.stop` dibuat dan **memang terhapus dalam 5 detik**
+    sehingga terlihat seolah loop lama sudah berhenti — TETAPI proses lama
+    (`php artisan telegram:poll`) masih hidup. Proses baru yang dijalankan
+    berikutnya bertabrakan dengannya, dan log produksi berulang kali memuat
+    `409 Conflict: terminated by other getUpdates request; make sure that only one
+    bot instance is running` — artinya bot justru tidak melayani update sama sekali
+    walau terlihat "ada proses yang jalan".
+    Perbaikan: matikan semua proses dengan `Stop-Process` berdasarkan daftar
+    `Get-CimInstance Win32_Process -Filter "Name='php.exe'"` yang command line-nya
+    memuat `telegram:poll`, pastikan **tidak ada sisa** sebelum menyalakan satu
+    proses baru, lalu verifikasi (a) jumlah proses polling tepat 1, (b) log
+    `storage/logs/telegram-poll.out.log` TIDAK memuat `Conflict` setelah ~60 detik,
+    (c) `storage/app/telegram_offset.txt` bergerak naik.
+    **Pelajaran: sinyal stop yang "terkonsumsi" BUKAN bukti proses berhenti —
+    verifikasi lewat daftar proses (PID/command line), bukan lewat ada/tidaknya
+    file penanda. Jangan pernah menyalakan poller baru sebelum daftar proses
+    dipastikan bersih, karena dua poller = bot mati total (409) tanpa pesan error
+    ke pengguna.**
+
+
+
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
 
 ## ATURAN PENULISAN KODE
