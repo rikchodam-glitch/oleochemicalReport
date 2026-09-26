@@ -2,15 +2,15 @@
 
 namespace App\Console\Commands;
 
-use App\Models\TechnicianShift;
 use App\Services\Shift\ShiftPatternService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Throwable;
 
 /**
- * Buat jadwal shift otomatis dari pola rotasi 20 hari, sehingga periode
- * berikutnya tidak perlu upload Excel lagi. Tanpa opsi --execute hanya
- * menampilkan rencana (tidak menyimpan).
+ * Pastikan jadwal shift semua teknisi pekerja shift tersedia otomatis dari pola
+ * rotasi 20 hari sampai beberapa bulan ke depan, sehingga jadwal bulanan tidak
+ * perlu diupload lagi. Tanpa opsi --execute hanya menampilkan rencana.
  */
 class ShiftGenerateCommand extends Command
 {
@@ -20,8 +20,8 @@ class ShiftGenerateCommand extends Command
      * @var string
      */
     protected $signature = 'shifts:generate
-                            {--mulai= : Tanggal awal Y-m-d (default: sehari setelah jadwal terakhir)}
-                            {--sampai= : Tanggal akhir Y-m-d (default: 29 hari setelah tanggal awal)}
+                            {--bulan=3 : Berapa bulan ke depan yang dipastikan tersedia}
+                            {--sampai= : Tanggal akhir Y-m-d (menimpa opsi bulan)}
                             {--execute : Simpan ke database}';
 
     /**
@@ -29,7 +29,7 @@ class ShiftGenerateCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Buat jadwal shift otomatis dari pola rotasi (tanpa upload jadwal bulanan)';
+    protected $description = 'Buat/rapikan jadwal shift otomatis dari pola rotasi (tanpa upload jadwal bulanan)';
 
     /**
      * Jalankan command.
@@ -39,30 +39,16 @@ class ShiftGenerateCommand extends Command
      */
     public function handle(ShiftPatternService $pola): int
     {
-        $terakhir = TechnicianShift::max('shift_date');
-
-        $mulai = $this->option('mulai') !== null
-            ? Carbon::parse((string) $this->option('mulai'))->startOfDay()
-            : ($terakhir !== null ? Carbon::parse((string) $terakhir)->addDay()->startOfDay() : now()->startOfDay());
-
-        $selesai = $this->option('sampai') !== null
+        $sampai = $this->option('sampai') !== null
             ? Carbon::parse((string) $this->option('sampai'))->startOfDay()
-            : $mulai->copy()->addDays(29);
-
-        if ($selesai->lt($mulai)) {
-            $this->error('Tanggal selesai lebih awal dari tanggal mulai.');
-
-            return self::FAILURE;
-        }
+            : now()->startOfMonth()->addMonths(max(1, (int) $this->option('bulan')))->endOfMonth();
 
         $this->newLine();
-        $this->line(sprintf('Rentang proyeksi: %s s/d %s', $mulai->toDateString(), $selesai->toDateString()));
-        $this->line('Siklus: ' . implode('', $pola->siklus()));
+        $this->line(sprintf('Jadwal dipastikan tersedia sampai: %s', $sampai->toDateString()));
+        $this->line('Siklus pola: ' . implode('', $pola->siklus()));
 
         foreach ((array) config('cm.shift_pattern.grup_ke_huruf', []) as $grup => $huruf) {
-            $contoh = $pola->kode((string) $grup, $mulai);
-
-            $this->line(sprintf('  %-8s (group %s): %s -> kode %s', $grup, $huruf, $mulai->toDateString(), strtoupper((string) $contoh)));
+            $this->line(sprintf('  %-8s (group %s): %s -> kode %s', $grup, $huruf, now()->toDateString(), strtoupper((string) $pola->kode((string) $grup, now()))));
         }
 
         if (!$this->option('execute')) {
@@ -73,13 +59,25 @@ class ShiftGenerateCommand extends Command
             return self::SUCCESS;
         }
 
-        $jumlah = $pola->simpanProyeksi($mulai, $selesai);
+        try {
+            $jumlah = $pola->pastikanSampai($sampai);
+        } catch (Throwable $e) {
+            $this->error('Gagal membuat jadwal: ' . $e->getMessage());
+
+            return self::FAILURE;
+        }
 
         $this->newLine();
-        $this->info(sprintf('Selesai: %d baris jadwal ditulis untuk rentang %s s/d %s.',
-            $jumlah, $mulai->toDateString(), $selesai->toDateString()));
+
+        if ($jumlah === 0) {
+            $this->info(sprintf('Tidak ada yang perlu ditambahkan: jadwal sudah tersedia sampai %s.', $sampai->toDateString()));
+        } else {
+            $this->info(sprintf('Selesai: %d baris jadwal ditulis sampai %s.', $jumlah, $sampai->toDateString()));
+        }
+
         $this->newLine();
 
         return self::SUCCESS;
     }
 }
+

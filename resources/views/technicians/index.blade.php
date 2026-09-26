@@ -65,14 +65,12 @@
         </form>
     </div>
 
-    <!-- Jadwal Shift & Man Hour -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <div class="lg:col-span-1 bg-white rounded-xl border border-slate-200 p-5">
+    <!-- Jadwal Shift (otomatis dari pola rotasi) -->
+    <div class="bg-white rounded-xl border border-slate-200 p-5 mb-6">
             <h3 class="text-sm font-semibold text-slate-900">Jadwal Shift</h3>
             <p class="text-xs text-slate-400 mt-1 leading-snug">
                 Pola rotasi 20 hari (5 hari Shift 1, 2 OFF, 5 hari Shift 3, 2 OFF, 5 hari Shift 2, 1 OFF)
-                sudah dikenali sistem, jadi periode berikutnya tidak perlu upload lagi. Upload Excel hanya
-                bila ada perubahan komposisi group atau koreksi manual.
+                sudah dikenali sistem, jadi jadwal bulan berikutnya dibuat otomatis tanpa perlu upload.
             </p>
 
             @if($shiftTerakhir)
@@ -90,75 +88,14 @@
                 <p class="text-xs text-amber-600 mt-3">Belum ada jadwal shift yang diimport.</p>
             @endif
 
-            <form method="POST" action="{{ route('technicians.shift-schedule.generate') }}" class="mt-4">
-                @csrf
-                <button type="submit"
-                        class="w-full px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
-                    Buat Jadwal Otomatis (30 hari)
-                </button>
-                <p class="text-xs text-slate-400 mt-1.5">
-                    Mengisi jadwal teknisi group A-D dari pola rotasi, dimulai sehari setelah jadwal terakhir.
-                </p>
-            </form>
-
             <button type="button" onclick="bukaJadwalBulanan()"
-                    class="mt-3 w-full px-4 py-2 border border-teal-300 hover:bg-teal-50 text-teal-700 text-sm font-medium rounded-lg transition-colors">
+                    class="mt-3 w-full px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
                 Lihat Jadwal Bulanan
             </button>
             <p class="text-xs text-slate-400 mt-1.5">
-                Preview jadwal shift per group (bulan berjalan dan bulan berikutnya) beserta rekapan harinya.
+                Preview jadwal shift per group untuk bulan berjalan dan bulan-bulan berikutnya beserta rekapan harinya.
             </p>
         </div>
-
-        <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div class="px-5 py-4 border-b border-slate-100">
-                <h3 class="text-sm font-semibold text-slate-900">Riwayat Import Jadwal</h3>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="bg-slate-50 border-b border-slate-100">
-                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Waktu Import</th>
-                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">File</th>
-                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Periode</th>
-                            <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Orang</th>
-                            <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Terpetakan</th>
-                            <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Belum Cocok</th>
-                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Oleh</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-50">
-                        @forelse($riwayatJadwal as $jadwal)
-                            <tr class="hover:bg-slate-50 transition-colors">
-                                <td class="px-5 py-3.5 align-top whitespace-nowrap">
-                                    <p class="text-slate-700">{{ $jadwal->created_at?->format('d/m/Y H:i') ?? '-' }}</p>
-                                    <p class="text-xs text-slate-400">{{ $jadwal->created_at?->diffForHumans() }}</p>
-                                </td>
-                                <td class="px-4 py-3.5 align-top">
-                                    <p class="text-xs text-slate-600 break-words max-w-xs">{{ $jadwal->nama_file }}</p>
-                                </td>
-                                <td class="px-4 py-3.5 align-top whitespace-nowrap text-xs text-slate-600">
-                                    {{ $jadwal->periode_label ?? '-' }}
-                                </td>
-                                <td class="px-4 py-3.5 align-top text-center text-xs text-slate-700">{{ $jadwal->jumlah_baris }}</td>
-                                <td class="px-4 py-3.5 align-top text-center text-xs font-semibold text-teal-700">{{ $jadwal->jumlah_terpetakan }}</td>
-                                <td class="px-4 py-3.5 align-top text-center text-xs {{ $jadwal->jumlah_tidak_cocok > 0 ? 'font-semibold text-amber-600' : 'text-slate-400' }}">
-                                    {{ $jadwal->jumlah_tidak_cocok }}
-                                </td>
-                                <td class="px-4 py-3.5 align-top whitespace-nowrap text-xs text-slate-600">
-                                    {{ $jadwal->uploader?->name ?? 'sistem' }}
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="7" class="px-5 py-8 text-center text-sm text-slate-400">Belum ada riwayat import jadwal.</td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
 
     <!-- Table -->
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">

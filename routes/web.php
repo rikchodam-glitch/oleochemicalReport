@@ -94,7 +94,6 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
 
     // Technicians
     Route::post('/technicians/shift-schedule', [ShiftScheduleController::class, 'store'])->name('technicians.shift-schedule.store');
-    Route::post('/technicians/shift-schedule/generate', [ShiftScheduleController::class, 'generate'])->name('technicians.shift-schedule.generate');
     Route::resource('technicians', TechnicianController::class);
     Route::post('/technicians/{technician}/approve', [TechnicianController::class, 'approve'])->name('technicians.approve');
     Route::post('/technicians/{technician}/suspend', [TechnicianController::class, 'suspend'])->name('technicians.suspend');

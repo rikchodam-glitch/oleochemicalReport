@@ -236,9 +236,10 @@ test('halaman teknisi menampilkan man hour, rincian harian, dan kolom jam kerja'
         ->assertStatus(200)
         ->assertSee('Jam Kerja', false)
         ->assertSee('Jadwal Shift', false)
-        ->assertSee('Buat Jadwal Otomatis', false)
-        ->assertSee('Riwayat Import Jadwal', false)
-        // Popup preview jadwal bulanan (pengganti form upload jadwal).
+        // Tampilan import sudah dihapus: hanya tombol lihat jadwal.
+        ->assertDontSee('Buat Jadwal Otomatis', false)
+        ->assertDontSee('Riwayat Import Jadwal', false)
+        ->assertDontSee('Upload jadwal', false)
         ->assertSee('Lihat Jadwal Bulanan', false)
         ->assertSee('Jadwal Shift Bulanan', false)
         ->assertSee('modal-jadwal-bulanan', false)
@@ -343,21 +344,24 @@ test('man hour memakai proyeksi pola saat jadwal belum diimport', function () {
         ->and($harian[2]['target_menit'])->toBe(480);
 });
 
-test('tombol buat jadwal otomatis mengisi jadwal dari pola rotasi', function () {
+test('jadwal shift dipastikan otomatis sampai beberapa bulan ke depan dan idempoten', function () {
     TechnicianShift::query()->delete();
 
-    $this->actingAs($this->admin)
-        ->post(route('technicians.shift-schedule.generate'))
-        ->assertRedirect()
-        ->assertSessionHas('success');
+    $pola   = app(ShiftPatternService::class);
+    $sampai = now()->startOfMonth()->addMonths(3)->endOfMonth();
 
-    $baris = TechnicianShift::where('technician_id', $this->teknisiShift->id)->orderBy('shift_date')->get();
+    $jumlah = $pola->pastikanSampai($sampai);
+    $hari   = (int) now()->startOfDay()->diffInDays($sampai) + 1;
 
-    expect($baris)->toHaveCount(30)
-        ->and($baris->first()->section_label)->toBe('POLA')
-        ->and($baris->first()->group_code)->toBe('A')
+    expect($jumlah)->toBe($hari)
+        ->and(TechnicianShift::where('technician_id', $this->teknisiShift->id)->count())->toBe($hari)
+        ->and(TechnicianShift::where('technician_id', $this->teknisiShift->id)->orderBy('shift_date')->first()->section_label)->toBe('POLA')
         // Teknisi reguler tidak dibuatkan jadwal shift.
         ->and(TechnicianShift::where('technician_id', $this->teknisiStaf->id)->count())->toBe(0);
+
+    // Dijalankan ulang tidak menambah baris (idempoten).
+    expect($pola->pastikanSampai($sampai))->toBe(0)
+        ->and(TechnicianShift::where('technician_id', $this->teknisiShift->id)->count())->toBe($hari);
 });
 
 test('preview jadwal bulanan berisi 4 group dan rekap hari', function () {

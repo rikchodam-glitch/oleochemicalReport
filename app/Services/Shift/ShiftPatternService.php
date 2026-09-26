@@ -197,6 +197,37 @@ class ShiftPatternService
     }
 
     /**
+     * Susun baris jadwal (siap upsert) untuk satu teknisi pada rentang tanggal.
+     *
+     * @param  Technician      $orang   Teknisi pekerja shift
+     * @param  CarbonInterface $mulai   Tanggal awal (inklusif)
+     * @param  CarbonInterface $selesai Tanggal akhir (inklusif)
+     * @return array<int, array<string, mixed>> Baris siap upsert ke technician_shifts
+     */
+    private function barisProyeksi(Technician $orang, CarbonInterface $mulai, CarbonInterface $selesai): array
+    {
+        $sekarang = now();
+        $baris    = [];
+
+        foreach ($this->proyeksi($orang->group, $mulai, $selesai) as $tanggal => $kode) {
+            $baris[] = [
+                'shift_schedule_id' => null,
+                'technician_id'     => $orang->id,
+                'nik'               => (string) $orang->nik,
+                'nama'              => (string) $orang->name,
+                'group_code'        => $this->hurufGrup($orang->group),
+                'section_label'     => 'POLA',
+                'shift_date'        => $tanggal,
+                'shift_code'        => $kode,
+                'created_at'        => $sekarang,
+                'updated_at'        => $sekarang,
+            ];
+        }
+
+        return $baris;
+    }
+
+    /**
      * Simpan hasil proyeksi pola ke tabel technician_shifts untuk semua teknisi
      * pekerja shift (group A-D) pada rentang tanggal tertentu. Baris dengan
      * (nik, tanggal) yang sama akan diperbarui, jadi bisa dijalankan berkali-kali.
@@ -207,33 +238,71 @@ class ShiftPatternService
      */
     public function simpanProyeksi(CarbonInterface $mulai, CarbonInterface $selesai): int
     {
-        $baris    = [];
-        $sekarang = now();
+        $baris = [];
 
+        foreach ($this->teknisiShift() as $orang) {
+            $baris = array_merge($baris, $this->barisProyeksi($orang, $mulai, $selesai));
+        }
+
+        return $this->simpanBaris($baris);
+    }
+
+    /**
+     * Pastikan jadwal semua teknisi pekerja shift tersedia sampai tanggal
+     * tertentu: hanya tanggal yang belum ada yang ditulis (idempoten), sehingga
+     * aman dijalankan berkala oleh penjadwal otomatis.
+     *
+     * @param  CarbonInterface $sampai Tanggal akhir yang ingin dipastikan
+     * @return int                      Jumlah baris jadwal yang ditulis
+     */
+    public function pastikanSampai(CarbonInterface $sampai): int
+    {
+        $batas = $sampai->copy()->startOfDay();
+        $baris = [];
+
+        foreach ($this->teknisiShift() as $orang) {
+            $terakhir = TechnicianShift::query()
+                ->where('technician_id', $orang->id)
+                ->max('shift_date');
+
+            // Lanjutkan dari sehari setelah baris terakhir; teknisi baru mulai hari ini.
+            $mulai = $terakhir !== null
+                ? Carbon::parse((string) $terakhir)->addDay()->startOfDay()
+                : now()->startOfDay();
+
+            if ($mulai->gt($batas)) {
+                continue;
+            }
+
+            $baris = array_merge($baris, $this->barisProyeksi($orang, $mulai, $batas));
+        }
+
+        return $this->simpanBaris($baris);
+    }
+
+    /**
+     * Daftar teknisi pekerja shift (group A-D) yang punya NIK.
+     *
+     * @return \Illuminate\Support\Collection<int, Technician> Daftar teknisi
+     */
+    private function teknisiShift(): \Illuminate\Support\Collection
+    {
         $grupShift = array_keys((array) config('cm.shift_pattern.grup_ke_huruf', []));
 
-        $teknisi = Technician::query()
+        return Technician::query()
             ->whereIn('group', $grupShift)
             ->whereNotNull('nik')
             ->get(['id', 'nik', 'name', 'group']);
+    }
 
-        foreach ($teknisi as $orang) {
-            foreach ($this->proyeksi($orang->group, $mulai, $selesai) as $tanggal => $kode) {
-                $baris[] = [
-                    'shift_schedule_id' => null,
-                    'technician_id'     => $orang->id,
-                    'nik'               => (string) $orang->nik,
-                    'nama'              => (string) $orang->name,
-                    'group_code'        => $this->hurufGrup($orang->group),
-                    'section_label'     => 'POLA',
-                    'shift_date'        => $tanggal,
-                    'shift_code'        => $kode,
-                    'created_at'        => $sekarang,
-                    'updated_at'        => $sekarang,
-                ];
-            }
-        }
-
+    /**
+     * Upsert baris jadwal per potongan 500 baris.
+     *
+     * @param  array<int, array<string, mixed>> $baris Baris siap upsert
+     * @return int                                     Jumlah baris yang ditulis
+     */
+    private function simpanBaris(array $baris): int
+    {
         foreach (array_chunk($baris, 500) as $potongan) {
             TechnicianShift::upsert(
                 $potongan,

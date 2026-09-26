@@ -37,6 +37,13 @@ if ((bool) config('it.snapshot.enabled', true)) {
         ->withoutOverlapping();
 }
 
+// Jadwal shift teknisi selalu tersedia otomatis dari pola rotasi 20 hari
+// (config cm.shift_pattern), sehingga jadwal bulanan tidak perlu diupload lagi.
+// Command ini hanya menulis tanggal yang belum ada (idempoten).
+Schedule::command('shifts:generate --execute')
+    ->dailyAt('00:20')
+    ->withoutOverlapping();
+
 // Pembersih otomatis snapshot CCTV lama supaya pemakaian disk tidak tumbuh
 // terus (retensi hari diatur di config/storage.php, default 30 hari).
 if ((int) config('storage.snapshot_retention_days', 30) > 0) {
