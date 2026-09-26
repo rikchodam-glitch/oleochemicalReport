@@ -189,6 +189,12 @@ trait WizardCallbackHandlerTrait
             return $this->handleMultiPick($chatId, $callbackData, $state);
         }
 
+        if ($callbackData === 'multi_hirarki') {
+            // Penelusuran lokasi lewat hirarki PT → Departemen → Area → Sub Area
+            // untuk menambah alat/lokasi pada pekerjaan ini (mode 'multi').
+            return $this->startFuncLocPicker($chatId, $state, 'multi');
+        }
+
         if ($callbackData === 'multi_batal') {
             unset($state['multi_kandidat']);
             $this->saveState($chatId, $state);
@@ -650,7 +656,7 @@ trait WizardCallbackHandlerTrait
         $state['equipment_ident'] = null;
         $this->saveState($chatId, $state);
 
-        return $this->advanceToWorkDuration($chatId, $state);
+        return $this->advanceToMultiEquipment($chatId, $state);
     }
 
     /**
@@ -716,7 +722,7 @@ trait WizardCallbackHandlerTrait
                 return $this->advanceFromPhotoStep($chatId, $state, 'hygiene');
 
             // Step 8a — kolaborator dilewati: hapus semua data kolaborator termasuk
-            // state hierarki, push riwayat, lalu lanjut ke langkah alat tambahan
+            // state hierarki, push riwayat, lalu langsung ke Step 8 konfirmasi
             case 'collab_skip':
                 unset(
                     $state['collaborator_niks'],
@@ -725,25 +731,22 @@ trait WizardCallbackHandlerTrait
                 );
                 $state          = $this->clearCollabHierarchyState($state);
                 $state          = $this->pushStepHistory($state, self::STEP_COLLABORATOR);
-                $state['step']  = self::STEP_MULTI_EQUIPMENT;
-                $this->saveState($chatId, $state);
-                return $this->buildMultiEquipmentPrompt($state);
-
-            // Step 8a — kolaborator selesai: pertahankan NIK dan nama yang ada,
-            // bersihkan state hierarki, push riwayat, lalu lanjut ke langkah alat tambahan
-            case 'collab_done':
-                $state          = $this->clearCollabHierarchyState($state);
-                $state          = $this->pushStepHistory($state, self::STEP_COLLABORATOR);
-                $state['step']  = self::STEP_MULTI_EQUIPMENT;
-                $this->saveState($chatId, $state);
-                return $this->buildMultiEquipmentPrompt($state);
-
-            // Step 8b — alat/lokasi tambahan selesai: lanjut ke konfirmasi.
-            case 'multi_done':
-                $state          = $this->pushStepHistory($state, self::STEP_MULTI_EQUIPMENT);
                 $state['step']  = self::STEP_CONFIRMATION;
                 $this->saveState($chatId, $state);
                 return $this->buildConfirmationSummary($state);
+
+            // Step 8a — kolaborator selesai: pertahankan NIK dan nama yang ada,
+            // bersihkan state hierarki, push riwayat, lalu ke Step 8 konfirmasi
+            case 'collab_done':
+                $state          = $this->clearCollabHierarchyState($state);
+                $state          = $this->pushStepHistory($state, self::STEP_COLLABORATOR);
+                $state['step']  = self::STEP_CONFIRMATION;
+                $this->saveState($chatId, $state);
+                return $this->buildConfirmationSummary($state);
+
+            // Step 8b — alat/lokasi tambahan selesai: lanjut ke input jam kerja.
+            case 'multi_done':
+                return $this->advanceToWorkDuration($chatId, $state);
 
             // Penautan otomatis ke laporan 'continue' yang mirip (ditawarkan di
             // Step 8 berdasarkan deskripsi/root cause/lokasi).
@@ -1380,7 +1383,7 @@ trait WizardCallbackHandlerTrait
         $state['using_clarification_service'] = false;
         $this->clarificationService->destroySession($chatId);
 
-        return $this->advanceToWorkDuration($chatId, $state);
+        return $this->advanceToMultiEquipment($chatId, $state);
     }
 
     // =========================================================

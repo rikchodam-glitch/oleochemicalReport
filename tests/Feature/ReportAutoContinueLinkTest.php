@@ -111,11 +111,9 @@ test('Step 8 menawarkan penautan dan menyimpannya saat teknisi menekan Ya', func
         'created_at'              => now()->toIso8601String(),
     ]);
 
-    // Ringkasan Step 8 (dibangun lewat penutupan step kolaborator lalu langkah
-    // alat tambahan) menawarkan tautan ke laporan continue yang mirip.
-    $wizard->handleCallback($this->chatId, 'wizard:confirm:collab_done');
-
-    $ringkasan = $wizard->handleCallback($this->chatId, 'wizard:confirm:multi_done');
+    // Ringkasan Step 8 (dibangun lewat penutupan step kolaborator) menawarkan
+    // tautan ke laporan continue yang mirip.
+    $ringkasan = $wizard->handleCallback($this->chatId, 'wizard:confirm:collab_done');
     $keyboard  = json_encode($ringkasan['keyboard']);
 
     expect($ringkasan['message'])->toContain('Kemungkinan lanjutan')
@@ -159,7 +157,6 @@ test('menekan Bukan lanjutan menghilangkan tawaran tanpa menautkan', function ()
     ]);
 
     $wizard->handleCallback($this->chatId, 'wizard:confirm:collab_done');
-    $wizard->handleCallback($this->chatId, 'wizard:confirm:multi_done');
     $tolak = $wizard->handleCallback($this->chatId, 'wizard:confirm:lanjutan_tidak');
 
     expect($tolak['message'])->not->toContain('Kemungkinan lanjutan')

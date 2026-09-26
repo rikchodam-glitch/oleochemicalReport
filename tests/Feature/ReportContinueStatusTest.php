@@ -93,7 +93,8 @@ test('wizard lanjutan mewarisi data asal tetapi jam kerja wajib diisi ulang', fu
         ->and($state['jenis_pekerjaan'])->toBe('CM/PM')
         // Durasi dikosongkan → wajib diisi teknisi karena beda hari.
         ->and($state['work_duration_minutes'])->toBeNull()
-        ->and($state['step'])->toBe(ReportWizardService::STEP_WORK_DURATION)
+        // Langkah pertama setelah memilih alat: tawaran alat/lokasi tambahan.
+        ->and($state['step'])->toBe(ReportWizardService::STEP_MULTI_EQUIPMENT)
         ->and($state['report_date'])->toBe(now()->toDateString());
 
     $wizard->destroyWizard($this->chatId);

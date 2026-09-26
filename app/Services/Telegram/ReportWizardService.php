@@ -393,10 +393,9 @@ class ReportWizardService
         $state['start_time']            = null;
         $state['end_time']              = null;
 
-        $state['step'] = self::STEP_WORK_DURATION;
-        $this->saveState($chatId, $state);
-
-        return $this->buildWorkDurationPrompt($state, autoDetected: false);
+        // Lanjut ke tawaran alat/lokasi tambahan (sama seperti alur normal):
+        // setelah itu barulah teknisi mengisi jam kerja hari ini.
+        return $this->advanceToMultiEquipment($chatId, $state);
     }
 
     /**
@@ -530,9 +529,9 @@ class ReportWizardService
     {
         // Equipment sudah terkunci sebelum pencarian dijalankan (mis. laporan
         // dimulai dari tombol "Buat Laporan" pada asisten /info): lewati
-        // pencarian dan langsung lanjut ke step durasi kerja.
+        // pencarian dan lanjut ke tawaran alat/lokasi tambahan.
         if (! empty($state['equipment_id'])) {
-            return $this->advanceToWorkDuration($chatId, $state);
+            return $this->advanceToMultiEquipment($chatId, $state);
         }
 
         $text    = $state['text'];
@@ -1415,7 +1414,7 @@ class ReportWizardService
             $state['using_clarification_service'] = false;
         }
 
-        return $this->advanceToWorkDuration($chatId, $state);
+        return $this->advanceToMultiEquipment($chatId, $state);
     }
 
     /**
@@ -1484,7 +1483,7 @@ class ReportWizardService
             $state['pending_location_candidates']
         );
 
-        return $this->advanceToWorkDuration($chatId, $state);
+        return $this->advanceToMultiEquipment($chatId, $state);
     }
 
     /**

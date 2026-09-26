@@ -163,6 +163,28 @@ trait WizardStepHandlerTrait
     // =========================================================
 
     /**
+     * Transisi ke langkah alat/lokasi tambahan (gerbang dari semua jalur
+     * penguncian equipment/FuncLoc) — DIJALANKAN SEBELUM input jam kerja.
+     *
+     * Dipisah dari advanceToWorkDuration() supaya urutan wizard menjadi:
+     * pilih alat/lokasi → tawaran tambah alat/lokasi lain → input jam kerja.
+     * Seluruh jalur penguncian (lockEquipmentAndAdvance, lockFuncLocAndAdvance,
+     * finalisasi hierarki, konfirmasi saran lokasi AI) memanggil method ini.
+     *
+     * @param  string $chatId Chat ID Telegram
+     * @param  array  $state  State wizard saat ini
+     * @return array  Respons prompt alat/lokasi tambahan
+     */
+    protected function advanceToMultiEquipment(string $chatId, array $state): array
+    {
+        $state          = $this->pushStepHistory($state, $state['step']);
+        $state['step']  = self::STEP_MULTI_EQUIPMENT;
+        $this->saveState($chatId, $state);
+
+        return $this->buildMultiEquipmentPrompt($state);
+    }
+
+    /**
      * Transisi ke Step 4 dan tampilkan prompt durasi.
      *
      * PERBAIKAN SESI 6: sebelumnya method ini langsung mengubah $state['step']
@@ -988,13 +1010,22 @@ trait WizardStepHandlerTrait
      */
     protected function buildMultiEquipmentPrompt(array $state): array
     {
-        $daftar = $state['multi_items'] ?? [];
-        $msg    = "*Alat/Lokasi Tambahan*\n\n";
+        $daftar  = $state['multi_items'] ?? [];
+        $catatan = '';
+
+        // Bila ini laporan lanjutan, jelaskan bahwa data diwarisi dari laporan asal.
+        if (!empty($state['lanjutan_dari_id'])) {
+            $catatan = "*Lanjutan dari* " . ($state['lanjutan_kode'] ?? '') . "\n"
+                . "Deskripsi, root cause, lokasi/alat, foto, dan kolaborator diwarisi dari laporan itu.\n\n";
+        }
+
+        $msg = $catatan . "*Alat/Lokasi Tambahan*\n\n";
 
         if ($daftar === []) {
-            $msg .= "Belum ada alat/lokasi tambahan.\n\n";
+            $msg .= "Alat/lokasi utama laporan ini: *" . $this->equipmentLabel($state) . "*\n\n";
         } else {
-            $msg .= "Sudah ditambahkan (" . count($daftar) . "):\n";
+            $msg .= "Alat/lokasi utama: *" . $this->equipmentLabel($state) . "*\n";
+            $msg .= "Ditambahkan (" . count($daftar) . "):\n";
 
             foreach ($daftar as $index => $item) {
                 $msg .= ($index + 1) . '. ' . ($item['label'] ?? '-')
@@ -1004,12 +1035,16 @@ trait WizardStepHandlerTrait
             $msg .= "\n";
         }
 
-        $msg .= "Bila satu pekerjaan ini menyentuh alat/lokasi LAIN, ketik kodenya "
-            . "(Tech Ident No / Equipment No / kode lokasi). Beberapa kode boleh sekaligus, pisahkan dengan koma.\n\n"
-            . "Laporan induk menyimpan detail & foto; tiap alat tambahan mendapat baris riwayatnya sendiri.";
+        $msg .= "Apakah pekerjaan ini juga menyentuh alat/lokasi LAIN?\n\n"
+            . "• Ketik kodenya (Tech Ident No / Equipment No / kode lokasi), beberapa kode boleh dipisah koma.\n"
+            . "• Atau tekan *Pilih Hirarki* untuk menelusuri PT → Departemen → Area → Sub Area.\n"
+            . "• Tekan *Tidak* bila hanya alat/lokasi ini saja, lanjut mengisi jam kerja.";
 
         $keyboard = array_merge(
-            [['text' => 'Selesai (Lanjut Konfirmasi)', 'callback_data' => 'wizard:confirm:multi_done']],
+            [
+                ['text' => 'Tidak (Lanjut Isi Jam)', 'callback_data' => 'wizard:confirm:multi_done'],
+                ['text' => 'Pilih Hirarki',          'callback_data' => 'multi_hirarki'],
+            ],
             $this->navigationButtons($state)
         );
 

@@ -446,7 +446,12 @@ trait WizardFuncLocPickerTrait
      */
     protected function startFuncLocPicker(string $chatId, array $state, string $mode = 'area'): array
     {
-        $state['is_area_work']          = ($mode === 'area');
+        // Mode 'multi' hanya menambah alat/lokasi pada pekerjaan yang sudah terkunci,
+        // jadi jenis pekerjaan laporan (is_area_work) TIDAK diubah.
+        if ($mode !== 'multi') {
+            $state['is_area_work'] = ($mode === 'area');
+        }
+
         $state['funcloc_picker_active'] = true;
         $state['funcloc_picker_mode']   = $mode;
         $state['funcloc_path']          = [];
@@ -583,6 +588,17 @@ trait WizardFuncLocPickerTrait
         //   TechIdentNo/equipment di bawahnya (FuncLoc -> TechIdentNo berkolaborasi).
         if ($level === FunctionalLocation::LEVEL_SECTION
             && ($state['funcloc_picker_mode'] ?? 'area') !== 'equipment') {
+            // Mode multi: lokasi yang dipilih ditambahkan sebagai item pekerjaan,
+            // bukan dikunci sebagai lokasi utama laporan.
+            if (($state['funcloc_picker_mode'] ?? 'area') === 'multi') {
+                return $this->selesaikanPickerMulti($chatId, [
+                    'asset_id'   => null,
+                    'funcloc_id' => $node->id,
+                    'label'      => $node->code,
+                    'sub'        => $node->name,
+                ], $state);
+            }
+
             return $this->lockFuncLocAndAdvance($chatId, $node, $state);
         }
 
@@ -631,7 +647,44 @@ trait WizardFuncLocPickerTrait
             return $this->errorResponse('Lokasi tidak ditemukan atau sudah tidak aktif.');
         }
 
+        // Mode multi: tombol Konfirmasi menambahkan lokasi sebagai item pekerjaan.
+        if (($state['funcloc_picker_mode'] ?? 'area') === 'multi') {
+            return $this->selesaikanPickerMulti($chatId, [
+                'asset_id'   => null,
+                'funcloc_id' => $node->id,
+                'label'      => $node->code,
+                'sub'        => $node->name,
+            ], $state);
+        }
+
         return $this->lockFuncLocAndAdvance($chatId, $node, $state);
+    }
+
+    /**
+     * Selesaikan picker hirarki dalam mode 'multi': tambahkan alat/lokasi terpilih
+     * sebagai item pekerjaan, lalu kembalikan prompt alat/lokasi tambahan.
+     *
+     * @param  string  $chatId  Chat ID Telegram
+     * @param  array   $item    Entri item (asset_id/funcloc_id/label/sub)
+     * @param  array   $state   State wizard saat ini
+     * @return array   Respons prompt alat/lokasi tambahan
+     */
+    protected function selesaikanPickerMulti(string $chatId, array $item, array $state): array
+    {
+        unset(
+            $state['funcloc_picker_active'],
+            $state['funcloc_picker_mode'],
+            $state['funcloc_path'],
+            $state['multi_kandidat']
+        );
+
+        $state = $this->tambahMultiItem($state, $item);
+        $this->saveState($chatId, $state);
+
+        $respons = $this->buildMultiEquipmentPrompt($state);
+        $respons['message'] = 'Ditambahkan dari hirarki: ' . ($item['label'] ?? '-') . "\n\n" . $respons['message'];
+
+        return $respons;
     }
 
     /**
@@ -801,7 +854,7 @@ trait WizardFuncLocPickerTrait
             'level'        => $node->level,
         ]);
 
-        return $this->advanceToWorkDuration($chatId, $state);
+        return $this->advanceToMultiEquipment($chatId, $state);
     }
 
     /**
@@ -993,6 +1046,12 @@ trait WizardFuncLocPickerTrait
         $asset = $assetId ? Asset::find($assetId) : null;
         if (!$asset) {
             return $this->errorResponse('Equipment tidak ditemukan. Silakan pilih ulang.');
+        }
+
+        // Mode multi: alat yang dipilih ditambahkan sebagai item pekerjaan,
+        // bukan dikunci sebagai equipment utama laporan.
+        if (($state['funcloc_picker_mode'] ?? 'area') === 'multi') {
+            return $this->selesaikanPickerMulti($chatId, $this->itemDariAset($asset), $state);
         }
 
         // Sinkronkan funcloc dari asset agar laporan menyimpan lokasi numeriknya.

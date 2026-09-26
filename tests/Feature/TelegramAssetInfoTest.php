@@ -477,8 +477,16 @@ test('tombol Buat Laporan membuka wizard dengan alat terkunci dan langsung ke je
     expect($jenis['message'])->toContain('Pilih jenis pekerjaan');
 
     // Setelah jenis pekerjaan dipilih, pencarian equipment DILEWATI karena alat
-    // sudah terkunci - teknisi langsung masuk ke step durasi kerja.
-    $durasi = $wizard->handleCallback($chatId, 'jenis_pekerjaan:Mekanik');
+    // sudah terkunci. Teknisi lebih dulu ditawari menambah alat/lokasi lain,
+    // lalu barulah mengisi jam kerja.
+    $tambahAlat = $wizard->handleCallback($chatId, 'jenis_pekerjaan:Mekanik');
+
+    expect($tambahAlat['message'])->toContain('Alat/Lokasi Tambahan')
+        ->and($tambahAlat['message'])->not->toContain('Pilih Equipment')
+        ->and(json_encode($tambahAlat['keyboard']))->toContain('wizard:confirm:multi_done')
+        ->and(json_encode($tambahAlat['keyboard']))->toContain('multi_hirarki');
+
+    $durasi = $wizard->handleCallback($chatId, 'wizard:confirm:multi_done');
 
     expect($durasi['message'])->toContain('Ketik rentang waktu')
         ->and($durasi['message'])->not->toContain('Pilih Equipment');

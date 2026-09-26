@@ -113,8 +113,11 @@ test('mengetik kode alat tambahan menambahkannya ke daftar pekerjaan', function 
     expect($state['multi_items'])->toHaveCount(1)
         ->and($state['multi_items'][0]['asset_id'])->toBe($this->asetTambahan->id)
         ->and($state['multi_items'][0]['label'])->toBe('MUL-M-02')
-        ->and($respons['message'])->toContain('Sudah ditambahkan')
-        ->and(json_encode($respons['keyboard']))->toContain('wizard:confirm:multi_done');
+        ->and($respons['message'])->toContain('Ditambahkan (1)')
+        // Pilihan yang dilihat teknisi: Tidak / Pilih Hirarki (plus bisa mengetik).
+        ->and(json_encode($respons['keyboard']))->toContain('wizard:confirm:multi_done')
+        ->and(json_encode($respons['keyboard']))->toContain('multi_hirarki')
+        ->and($respons['message'])->toContain('Pilih Hirarki');
 
     // Kode yang tidak dikenal tetap memberi tahu teknisi.
     $gagal = $wizard->handleTextInput($this->chatId, 'KODE-NGAWUR-99');
@@ -154,8 +157,18 @@ test('menyimpan laporan membuat baris salinan per alat tanpa foto di salinan', f
     $wizard->saveState($this->chatId, stateMultiEquipment($this->chatId, $this->asetUtama->id));
     $wizard->handleTextInput($this->chatId, 'MUL-M-02');
 
-    // Ringkasan Step 8 mencantumkan alat tambahan.
-    $ringkasan = $wizard->handleCallback($this->chatId, 'wizard:confirm:multi_done');
+    // Tekan "Tidak (Lanjut Isi Jam)" → barulah jam kerja ditampilkan/diminta.
+    $lanjutJam = $wizard->handleCallback($this->chatId, 'wizard:confirm:multi_done');
+
+    expect($lanjutJam['message'])->toContain('Durasi pekerjaan terdeteksi')
+        ->and($wizard->getState($this->chatId)['step'])->toBe(ReportWizardService::STEP_WORK_DURATION);
+
+    // Konfirmasi jam kerja, lalu jalani sisa langkah sampai ringkasan konfirmasi.
+    $wizard->handleCallback($this->chatId, 'wizard:confirm:duration_ok');
+    $wizard->handleCallback($this->chatId, 'wizard:confirm:rootcause_ok');
+    $wizard->handleCallback($this->chatId, 'wizard:confirm:photo_doc_skip');
+    $wizard->handleCallback($this->chatId, 'wizard:confirm:photo_hygiene_skip');
+    $ringkasan = $wizard->handleCallback($this->chatId, 'wizard:confirm:collab_skip');
 
     expect($ringkasan['message'])->toContain('Alat Tambahan')
         ->and($ringkasan['message'])->toContain('MUL-M-02');
@@ -177,6 +190,30 @@ test('menyimpan laporan membuat baris salinan per alat tanpa foto di salinan', f
         ->and($salinan[0]->photo_documentation)->toBe([])
         ->and($salinan[0]->status)->toBe('completed')
         ->and($induk->multiItems)->toHaveCount(1);
+
+    $wizard->destroyWizard($this->chatId);
+});
+
+test('tombol Pilih Hirarki menambahkan lokasi dari penelusuran hirarki', function () {
+    $wizard = app(ReportWizardService::class);
+
+    $wizard->saveState($this->chatId, stateMultiEquipment($this->chatId, $this->asetUtama->id));
+
+    $layar = $wizard->handleCallback($this->chatId, 'multi_hirarki');
+
+    expect($wizard->getState($this->chatId)['funcloc_picker_mode'])->toBe('multi')
+        ->and(json_encode($layar['keyboard']))->toContain('funcloc_');
+
+    // Pilih lokasi lewat tombol Konfirmasi pada node Section.
+    $hasil = $wizard->handleCallback($this->chatId, 'funcloc_confirm:' . $this->flSection->id);
+    $state = $wizard->getState($this->chatId);
+
+    expect($state['multi_items'])->toHaveCount(1)
+        ->and($state['multi_items'][0]['funcloc_id'])->toBe($this->flSection->id)
+        ->and($state['multi_items'][0]['label'])->toBe('PTMUL-DEPMUL-AREAMUL-01')
+        // Picker ditutup kembali ke prompt alat/lokasi tambahan.
+        ->and($state['funcloc_picker_active'] ?? false)->toBeFalse()
+        ->and($hasil['message'])->toContain('Ditambahkan dari hirarki');
 
     $wizard->destroyWizard($this->chatId);
 });
