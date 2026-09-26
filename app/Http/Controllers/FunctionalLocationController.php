@@ -6,6 +6,7 @@ use App\Models\Area;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\FunctionalLocation;
+use App\Models\Report;
 use App\Models\SubArea;
 use App\Services\FuncLocSyncService;
 use Illuminate\Http\JsonResponse;
@@ -44,10 +45,11 @@ class FunctionalLocationController extends Controller
 
         $hasFilter = collect($filters)->filter(fn ($value) => $value !== null && $value !== '')->isNotEmpty();
 
-        // Muat seluruh node sekaligus (lengkap dengan jumlah asset langsung)
-        // supaya jumlah kumulatif per node bisa dihitung dalam satu lintasan.
-        $all    = FunctionalLocation::withCount('assets')->orderBy('code')->get();
-        $totals = $this->attachSubtreeAssetTotals($all);
+        // Muat seluruh node sekaligus (lengkap dengan jumlah asset & laporan
+        // langsung) supaya jumlah kumulatif per node bisa dihitung dalam satu
+        // lintasan.
+        $all    = FunctionalLocation::withCount(['assets', 'reports'])->orderBy('code')->get();
+        $totals = $this->attachSubtreeTotals($all);
 
         $tree  = null;
         $items = null;
@@ -73,7 +75,8 @@ class FunctionalLocationController extends Controller
             // sehingga jumlah kumulatif disalin dari peta totals yang sudah
             // dihitung dari seluruh node.
             $items->each(function (FunctionalLocation $node) use ($totals) {
-                $node->setAttribute('assets_total', $totals[$node->id] ?? (int) $node->assets_count);
+                $node->setAttribute('assets_total', $totals[$node->id]['assets'] ?? (int) $node->assets_count);
+                $node->setAttribute('reports_total', $totals[$node->id]['reports'] ?? (int) $node->reports_count);
             });
         } else {
             $tree = $this->buildTree($all);
@@ -85,7 +88,7 @@ class FunctionalLocationController extends Controller
             'total'         => FunctionalLocation::count(),
             'active'        => FunctionalLocation::active()->count(),
             'inactive'      => FunctionalLocation::where('is_active', false)->count(),
-            'without_asset' => $all->filter(fn (FunctionalLocation $node) => ($totals[$node->id] ?? 0) === 0)->count(),
+            'without_asset' => $all->filter(fn (FunctionalLocation $node) => ($totals[$node->id]['assets'] ?? 0) === 0)->count(),
         ];
 
         return view('func-locs.index', [
@@ -965,30 +968,39 @@ class FunctionalLocationController extends Controller
     }
 
     /**
-     * Hitung jumlah asset kumulatif untuk setiap node (asset yang menempel
-     * langsung pada node ditambah seluruh asset di semua keturunannya), lalu
-     * simpan hasilnya sebagai atribut `assets_total` pada model yang sama.
+     * Hitung jumlah asset & laporan kumulatif untuk setiap node (yang menempel
+     * langsung pada node ditambah seluruh keturunannya), lalu simpan hasilnya
+     * sebagai atribut `assets_total` dan `reports_total` pada model yang sama.
      *
-     * Dipakai agar angka asset pada node induk (misal level PT) tidak tampil 0
-     * hanya karena tidak ada asset yang funcloc_id-nya persis menunjuk ke node
-     * tersebut, padahal di bawahnya banyak asset.
+     * Dipakai agar angka asset/laporan pada node induk (misal level PT) tidak
+     * tampil 0 hanya karena tidak ada baris yang funcloc_id-nya persis menunjuk
+     * ke node tersebut, padahal di bawahnya banyak.
      *
      * @param  Collection<int, FunctionalLocation>  $all
-     * @return array<int, int>
+     * @return array<int, array{assets: int, reports: int}>  Total per ID node
      */
-    private function attachSubtreeAssetTotals(Collection $all): array
+    private function attachSubtreeTotals(Collection $all): array
     {
         $grouped = $all->groupBy(fn (FunctionalLocation $node) => $node->parent_id ?? 'root');
+        $laporan = $this->laporanLangsungPerNode();
         $totals  = [];
 
-        $sum = function ($parentKey) use (&$sum, $grouped, &$totals) {
-            $subtotal = 0;
+        $sum = function ($parentKey) use (&$sum, $grouped, $laporan, &$totals) {
+            $subtotal = ['assets' => 0, 'reports' => 0];
 
             foreach ($grouped->get($parentKey) ?? collect() as $node) {
-                $nodeTotal = (int) $node->assets_count + $sum($node->id);
-                $totals[$node->id]   = $nodeTotal;
-                $node->setAttribute('assets_total', $nodeTotal);
-                $subtotal += $nodeTotal;
+                $anak = $sum($node->id);
+
+                $aset    = (int) $node->assets_count + $anak['assets'];
+                $laporanNode = ($laporan[$node->id] ?? 0) + $anak['reports'];
+
+                $node->setAttribute('assets_total', $aset);
+                $node->setAttribute('reports_total', $laporanNode);
+
+                $totals[$node->id] = ['assets' => $aset, 'reports' => $laporanNode];
+
+                $subtotal['assets'] += $aset;
+                $subtotal['reports'] += $laporanNode;
             }
 
             return $subtotal;
@@ -997,6 +1009,46 @@ class FunctionalLocationController extends Controller
         $sum('root');
 
         return $totals;
+    }
+
+    /**
+     * Hitung jumlah laporan LANGSUNG per node (bukan kumulatif): laporan yang
+     * lokasinya node itu, atau laporan yang alatnya berlokasi di node itu.
+     *
+     * Satu laporan hanya dihitung satu kali per node (walau lokasi laporan dan
+     * lokasi alatnya sama) supaya angkanya sama dengan daftar laporan pada
+     * halaman detail lokasi.
+     *
+     * @return array<int, int>  Jumlah laporan per ID node
+     */
+    private function laporanLangsungPerNode(): array
+    {
+        $jumlah = [];
+
+        Report::query()
+            ->leftJoin('assets', 'assets.id', '=', 'reports.asset_id')
+            ->where(function ($q) {
+                $q->whereNotNull('reports.funcloc_id')
+                    ->orWhereNotNull('assets.funcloc_id');
+            })
+            ->get(['reports.funcloc_id', 'assets.funcloc_id as funcloc_aset'])
+            ->each(function ($baris) use (&$jumlah) {
+                $node = [];
+
+                if ($baris->funcloc_id !== null) {
+                    $node[] = (int) $baris->funcloc_id;
+                }
+
+                if ($baris->funcloc_aset !== null) {
+                    $node[] = (int) $baris->funcloc_aset;
+                }
+
+                foreach (array_unique($node) as $id) {
+                    $jumlah[$id] = ($jumlah[$id] ?? 0) + 1;
+                }
+            });
+
+        return $jumlah;
     }
 
     /**

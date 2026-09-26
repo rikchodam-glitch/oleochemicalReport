@@ -118,6 +118,7 @@
                 <div class="flex-1">Nama</div>
                 <div class="w-24 shrink-0">Level</div>
                 <div class="w-20 shrink-0">Asset</div>
+                <div class="w-20 shrink-0">Laporan</div>
                 <div class="w-24 shrink-0">Status</div>
                 <div class="flex-1 shrink-0 text-right">Aksi</div>
             </div>
@@ -135,7 +136,7 @@
         @endphp
 
         <x-data-table
-            :headers="['Code', 'Nama', 'Level', 'Asset', 'Status', 'Aksi']"
+            :headers="['Code', 'Nama', 'Level', 'Asset', 'Laporan', 'Status', 'Aksi']"
             :rows="$rows"
             :searchable="false"
             empty-message="Tidak ada Functional Location yang cocok dengan filter."

@@ -320,40 +320,14 @@
             @endif
         </div>
 
-        <!-- Riwayat Perbaikan -->
-        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div class="px-6 py-4 border-b border-slate-100">
-                <h3 class="text-sm font-semibold text-slate-900">Riwayat Perbaikan</h3>
-            </div>
-            @if($reports->isNotEmpty())
-                <div class="divide-y divide-slate-50">
-                    @foreach($reports as $report)
-                        <div class="px-6 py-4 hover:bg-slate-50 transition-colors">
-                            <div class="flex items-start justify-between gap-4">
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-2 mb-1">
-                                        <span class="text-sm font-medium text-slate-900">{{ $report->technician?->name ?? 'Unknown' }}</span>
-                                        <span class="text-xs text-slate-400">&middot;</span>
-                                        <span class="text-xs text-slate-500">{{ $report->report_date->format('d M Y') }}</span>
-                                        @if($report->report_type)
-                                            <span class="text-xs text-slate-400">&middot;</span>
-                                            <span class="inline-flex px-2 py-0.5 text-[10px] font-medium bg-slate-100 text-slate-600 rounded">{{ ucfirst($report->report_type) }}</span>
-                                        @endif
-                                    </div>
-                                    <p class="text-sm text-slate-700 leading-relaxed">{{ $report->work_description }}</p>
-                                    @if($report->status === 'completed' && $report->completed_at)
-                                        <p class="text-xs text-green-600 mt-1">Selesai {{ $report->completed_at->format('d M Y H:i') }}</p>
-                                    @endif
-                                </div>
-                                <div class="shrink-0"><x-status-badge :status="$report->status" /></div>
-                            </div>
-                        </div>
-                    @endforeach
-                </div>
-            @else
-                <div class="px-6 py-10 text-center text-sm text-slate-400">Belum ada riwayat perbaikan untuk asset ini.</div>
-            @endif
-        </div>
+        @include('assets.partials._riwayat-perbaikan', [
+            'asset'          => $asset,
+            'riwayat'        => $riwayat,
+            'riwayatPerHari' => $riwayatPerHari,
+            'technicians'    => $technicians,
+            'filterRiwayat'  => $filterRiwayat,
+            'totalReports'   => $totalReports,
+        ])
 
         <!-- Modal Assign Teknisi -->
         <div x-show="showAssignModal"

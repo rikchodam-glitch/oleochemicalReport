@@ -15,11 +15,15 @@
         </button>
 
         <div class="w-40 shrink-0">
-            <span class="font-mono text-xs text-slate-700">{{ $node->code }}</span>
+            <a href="{{ route('locations.show', $node) }}"
+               title="Buka detail lokasi {{ $node->name }}"
+               class="font-mono text-xs text-teal-700 hover:underline">{{ $node->code }}</a>
         </div>
 
         <div class="flex-1 min-w-0">
-            <span class="text-sm text-slate-900 truncate block">{{ $node->name }}</span>
+            <a href="{{ route('locations.show', $node) }}"
+               title="Buka detail lokasi {{ $node->code }}"
+               class="text-sm text-slate-900 truncate block hover:text-teal-700 hover:underline">{{ $node->name }}</a>
         </div>
 
         <div class="w-24 shrink-0">
@@ -28,6 +32,14 @@
 
         <div class="w-20 shrink-0 text-sm text-slate-600">
             {{ $node->assets_total ?? $node->assets_count }} asset
+        </div>
+
+        <div class="w-20 shrink-0">
+            <a href="{{ route('locations.show', $node) }}"
+               title="Lihat {{ $node->reports_total ?? $node->reports_count }} laporan di lokasi ini"
+               class="text-sm text-teal-700 hover:underline font-medium">
+                {{ $node->reports_total ?? $node->reports_count }} laporan
+            </a>
         </div>
 
         <div class="w-24 shrink-0">

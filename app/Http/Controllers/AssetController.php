@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesReportFilters;
 use App\Http\Controllers\Traits\AssetExportTrait;
 use App\Http\Controllers\Traits\AssetLocationTrait;
 use App\Http\Controllers\Traits\AssetTechnicianTrait;
@@ -24,6 +25,7 @@ class AssetController extends Controller
     use AssetExportTrait;
     use AssetTechnicianTrait;
     use AssetLocationTrait;
+    use ResolvesReportFilters;
 
     /**
      * @var AssetNumberService Pembuat nomor equipment otomatis untuk asset
@@ -117,35 +119,42 @@ class AssetController extends Controller
      * @param  Asset  $asset
      * @return \Illuminate\View\View
      */
-    public function show(Asset $asset)
+    public function show(Request $request, Asset $asset)
     {
         $asset->load(['company', 'department', 'area', 'subArea', 'technicians']);
 
-        // Laporan terkait asset — berdasarkan asset_id, tech_ident_no, atau equipment_no
-        $reports = Report::with('technician')
-            ->where(function ($q) use ($asset) {
-                $q->where('asset_id', $asset->id);
-                if ($asset->tech_ident_no) {
-                    $q->orWhere('work_description', 'like', '%' . $asset->tech_ident_no . '%');
-                }
-                if ($asset->equipment_no) {
-                    $q->orWhere('work_description', 'like', '%' . $asset->equipment_no . '%');
-                }
-            })
+        // Seluruh laporan asset ini TANPA filter — dipakai untuk statistik kartu,
+        // daftar teknisi, dan grafik tren supaya angkanya tetap menyeluruh.
+        $reports = $this->queryLaporanAset($asset)
+            ->with('technician')
             ->latest('report_date')
             ->get();
 
+        // ---- Filter riwayat perbaikan (tanggal per-hari + teknisi) ----
+        $tanggal = $this->tanggalValid($request->query('tanggal'));
+        $dari    = $this->tanggalValid($request->query('date_from'));
+        $sampai  = $this->tanggalValid($request->query('date_to'));
+        $teknisi = $request->filled('teknisi') ? (int) $request->query('teknisi') : null;
+
+        $riwayat = $this->terapkanFilterTanggal(
+            $this->queryLaporanAset($asset)->with('technician'),
+            $tanggal,
+            $dari,
+            $sampai
+        )
+            ->when($teknisi !== null, fn ($q) => $q->where('technician_id', $teknisi))
+            ->latest('report_date')
+            ->get();
+
+        // Riwayat dikelompokkan PER HARI seperti halaman Laporan.
+        $riwayatPerHari = $riwayat->groupBy(
+            fn (Report $item) => $item->report_date?->toDateString() ?? 'tanpa-tanggal'
+        );
+
         // Statistik per jenis laporan
-        $statsByType = Report::select('report_type', DB::raw('count(*) as total'))
-            ->where(function ($q) use ($asset) {
-                $q->where('asset_id', $asset->id);
-                if ($asset->tech_ident_no) {
-                    $q->orWhere('work_description', 'like', '%' . $asset->tech_ident_no . '%');
-                }
-                if ($asset->equipment_no) {
-                    $q->orWhere('work_description', 'like', '%' . $asset->equipment_no . '%');
-                }
-            })
+        $statsByType = $this->queryLaporanAset($asset)
+            ->reorder()
+            ->select('report_type', DB::raw('count(*) as total'))
             ->groupBy('report_type')
             ->pluck('total', 'report_type');
 
@@ -154,19 +163,9 @@ class AssetController extends Controller
             ? "strftime('%Y-%m', report_date)"
             : "DATE_FORMAT(report_date, '%Y-%m')";
 
-        $statsByMonth = Report::select(
-                DB::raw("{$dateFormat} as month"),
-                DB::raw('count(*) as total')
-            )
-            ->where(function ($q) use ($asset) {
-                $q->where('asset_id', $asset->id);
-                if ($asset->tech_ident_no) {
-                    $q->orWhere('work_description', 'like', '%' . $asset->tech_ident_no . '%');
-                }
-                if ($asset->equipment_no) {
-                    $q->orWhere('work_description', 'like', '%' . $asset->equipment_no . '%');
-                }
-            })
+        $statsByMonth = $this->queryLaporanAset($asset)
+            ->reorder()
+            ->select(DB::raw("{$dateFormat} as month"), DB::raw('count(*) as total'))
             ->groupBy('month')
             ->orderBy('month')
             ->pluck('total', 'month');
@@ -188,11 +187,45 @@ class AssetController extends Controller
         // Semua teknisi aktif untuk dropdown penugasan
         $allTechnicians = Technician::where('status', 'active')->orderBy('name')->get();
 
+        // Data filter riwayat (per-hari + teknisi) yang sedang aktif.
+        $filterRiwayat = [
+            'tanggal'   => $tanggal,
+            'date_from' => $dari,
+            'date_to'   => $sampai,
+            'teknisi'   => $teknisi,
+            'jumlah'    => $riwayat->count(),
+        ];
+
         return view('assets.show', compact(
-            'asset', 'reports', 'statsByType', 'statsByMonth',
+            'asset', 'reports', 'riwayat', 'riwayatPerHari', 'filterRiwayat',
+            'statsByType', 'statsByMonth',
             'technicians', 'totalReports', 'completedReports', 'needsReviewReports',
             'allTechnicians'
         ));
+    }
+
+    /**
+     * Query laporan milik satu asset: lewat relasi asset_id, atau lewat kode
+     * (Tech Ident No / Equipment No) yang tertulis di deskripsi pekerjaan —
+     * supaya laporan lama yang belum punya asset_id tetap ikut terbaca.
+     *
+     * @param  Asset  $asset  Asset yang dibuka
+     * @return \Illuminate\Database\Eloquent\Builder  Query laporan asset tersebut
+     */
+    private function queryLaporanAset(Asset $asset)
+    {
+        return Report::query()
+            ->where(function ($q) use ($asset) {
+                $q->where('asset_id', $asset->id);
+
+                if ($asset->tech_ident_no) {
+                    $q->orWhere('work_description', 'like', '%' . $asset->tech_ident_no . '%');
+                }
+
+                if ($asset->equipment_no) {
+                    $q->orWhere('work_description', 'like', '%' . $asset->equipment_no . '%');
+                }
+            });
     }
 
     /**

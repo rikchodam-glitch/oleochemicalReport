@@ -1,12 +1,26 @@
 @php
     /** @var \App\Models\FunctionalLocation $item */
 @endphp
-<td class="px-5 py-3.5 font-mono text-xs text-slate-700">{{ $item->code }}</td>
-<td class="px-5 py-3.5 text-slate-900">{{ $item->name }}</td>
+<td class="px-5 py-3.5 font-mono text-xs text-teal-700">
+    <a href="{{ route('locations.show', $item) }}" title="Buka detail lokasi {{ $item->name }}" class="hover:underline">
+        {{ $item->code }}
+    </a>
+</td>
+<td class="px-5 py-3.5 text-slate-900">
+    <a href="{{ route('locations.show', $item) }}" title="Buka detail lokasi {{ $item->code }}"
+       class="hover:text-teal-700 hover:underline">{{ $item->name }}</a>
+</td>
 <td class="px-5 py-3.5">
     <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 rounded">{{ $item->level_label }}</span>
 </td>
 <td class="px-5 py-3.5 text-slate-600">{{ $item->assets_total ?? $item->assets_count }} asset</td>
+<td class="px-5 py-3.5">
+    <a href="{{ route('locations.show', $item) }}"
+       title="Lihat {{ $item->reports_total ?? $item->reports_count }} laporan di lokasi ini"
+       class="text-teal-700 hover:underline font-medium text-xs">
+        {{ $item->reports_total ?? $item->reports_count }} laporan
+    </a>
+</td>
 <td class="px-5 py-3.5">
     <x-status-badge :status="$item->is_active ? 'active' : 'inactive'" :label="$item->is_active ? 'Aktif' : 'Nonaktif'" />
 </td>
