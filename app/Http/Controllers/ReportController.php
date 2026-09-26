@@ -32,6 +32,7 @@ class ReportController extends Controller
         $countCmPm      = (clone $query)->where('jenis_pekerjaan', 'CM/PM')->count();
         $countFabrikasi = (clone $query)->where('jenis_pekerjaan', 'Fabrikasi')->count();
         $countSipil     = (clone $query)->where('jenis_pekerjaan', 'Sipil')->count();
+        $countProject   = (clone $query)->where('jenis_pekerjaan', 'Project')->count();
 
         $reports = $query
             ->with(['technician', 'area', 'asset', 'functionalLocation', 'linkedFinding', 'collaboratorReports.technician'])
@@ -61,6 +62,7 @@ class ReportController extends Controller
         return view('reports.index', compact(
             'reports', 'areas', 'technicians', 'grubOptions',
             'totalLaporan', 'countEI', 'countMekanik', 'countCmPm', 'countFabrikasi', 'countSipil',
+            'countProject',
             'tampilan', 'grubAktif', 'tanggalAktif', 'pakaiRentang', 'tanggalSekitar'
         ));
     }
@@ -289,8 +291,8 @@ class ReportController extends Controller
             'funcloc_id'              => 'nullable|exists:functional_locations,id',
             'asset_id'                => 'nullable|exists:assets,id',
             'report_type'             => 'required|in:equipment_repair,area_work,general',
-            'work_classification'     => 'nullable|in:zpm1,zpm3,zpm6,zpm5,zpm7',
-            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil,IT',
+            'work_classification'     => 'nullable|in:zpm1,zpm3,zpm6,zpm5,zpm7,zpm8',
+            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil,IT,Project',
             'linked_finding_id'       => 'nullable|exists:cm_findings,id',
             'sesuai_rencana'          => 'nullable|in:ya,tidak',
             'tanggal_kejadian'        => 'nullable|date',
@@ -392,8 +394,8 @@ class ReportController extends Controller
             'area_id'                 => 'nullable|exists:areas,id',
             'funcloc_id'              => 'nullable|exists:functional_locations,id',
             'asset_id'                => 'nullable|exists:assets,id',
-            'work_classification'     => 'nullable|in:zpm1,zpm3,zpm6,zpm5,zpm7',
-            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil,IT',
+            'work_classification'     => 'nullable|in:zpm1,zpm3,zpm6,zpm5,zpm7,zpm8',
+            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil,IT,Project',
             'linked_finding_id'       => 'nullable|exists:cm_findings,id',
             'sesuai_rencana'          => 'nullable|in:ya,tidak',
             'tanggal_kejadian'        => 'nullable|date',

@@ -96,7 +96,7 @@
                 <div class="flex items-center gap-1.5">
                     @if($report->work_classification)
                         <x-status-badge :status="$report->work_classification"
-                            :label="['zpm1' => 'ZPM 1', 'zpm3' => 'ZPM 3', 'zpm6' => 'ZPM 6', 'zpm5' => 'ZPM 5', 'zpm7' => 'ZPM 7'][$report->work_classification] ?? null" />
+                            :label="['zpm1' => 'ZPM 1', 'zpm3' => 'ZPM 3', 'zpm6' => 'ZPM 6', 'zpm5' => 'ZPM 5', 'zpm7' => 'ZPM 7', 'zpm8' => 'ZPM 8'][$report->work_classification] ?? null" />
                     @else
                         <span class="text-xs text-slate-400">Klasifikasi: -</span>
                     @endif
@@ -115,6 +115,8 @@
                                 'CM/PM'     => 'bg-emerald-100 text-emerald-700 border-emerald-200',
                                 'Fabrikasi' => 'bg-violet-100 text-violet-700 border-violet-200',
                                 'Sipil'     => 'bg-orange-100 text-orange-700 border-orange-200',
+                                'IT'        => 'bg-indigo-100 text-indigo-700 border-indigo-200',
+                                'Project'   => 'bg-rose-100 text-rose-700 border-rose-200',
                             ];
                             $jColor = $jenisColors[$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-400';
                         @endphp
@@ -347,6 +349,8 @@
                                     'CM/PM'     => 'bg-emerald-100 text-emerald-700 border-emerald-200',
                                     'Fabrikasi' => 'bg-violet-100 text-violet-700 border-violet-200',
                                     'Sipil'     => 'bg-orange-100 text-orange-700 border-orange-200',
+                                    'IT'        => 'bg-indigo-100 text-indigo-700 border-indigo-200',
+                                    'Project'   => 'bg-rose-100 text-rose-700 border-rose-200',
                                 ];
                                 $jColor = $jenisColors[$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-400';
                             @endphp

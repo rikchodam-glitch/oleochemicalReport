@@ -90,12 +90,12 @@ trait WizardStepHandlerTrait
 
     /**
      * Bangun pesan prompt step paling awal wizard: pilih klasifikasi
-     * pekerjaan (ZPM 1/3/6/5/7) sebelum pencarian equipment
+     * pekerjaan (ZPM 1/3/5/6/7/8) sebelum pencarian equipment
      * dijalankan. Callback_data mengikuti pola 'classification:<kode>',
      * ditangani WizardCallbackHandlerTrait::handleWorkClassificationCallback().
      *
      * @param  array $state State wizard saat ini
-     * @return array Respons dengan message dan keyboard 5 pilihan klasifikasi
+     * @return array Respons dengan message dan keyboard 6 pilihan klasifikasi
      */
     protected function buildWorkClassificationPrompt(array $state): array
     {
@@ -105,6 +105,7 @@ trait WizardStepHandlerTrait
             ['text' => 'ZPM 6 - Planned Maintenance',    'callback_data' => 'classification:zpm6'],
             ['text' => 'ZPM 5 - Fabrikasi',              'callback_data' => 'classification:zpm5'],
             ['text' => 'ZPM 7 - Sipil',                  'callback_data' => 'classification:zpm7'],
+            ['text' => 'ZPM 8 - Project',                'callback_data' => 'classification:zpm8'],
         ];
 
         foreach ($this->navigationButtons($state) as $navButton) {

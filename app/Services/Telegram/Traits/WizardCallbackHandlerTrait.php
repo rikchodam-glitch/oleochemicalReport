@@ -459,7 +459,8 @@ trait WizardCallbackHandlerTrait
      * Proses pilihan klasifikasi pekerjaan (step paling awal wizard).
      * Simpan pilihan ke state, catat step ke riwayat, lalu lanjutkan wizard.
      * Untuk ZPM 1/6 dilanjutkan ke step pilihan jenis pekerjaan EI vs Mekanik,
-     * sedangkan ZPM 3/5/7 langsung ditentukan jenis pekerjaannya secara otomatis.
+     * sedangkan ZPM 3/5/7/8 langsung ditentukan jenis pekerjaannya secara
+     * otomatis (ZPM 8 = Project).
      *
      * @param  string $chatId       Chat ID Telegram
      * @param  string $callbackData Data callback classification:<kode>
@@ -469,7 +470,7 @@ trait WizardCallbackHandlerTrait
     protected function handleWorkClassificationCallback(string $chatId, string $callbackData, array $state): array
     {
         $classification = str_replace('classification:', '', $callbackData);
-        $allowed        = ['zpm1', 'zpm3', 'zpm6', 'zpm5', 'zpm7'];
+        $allowed        = ['zpm1', 'zpm3', 'zpm6', 'zpm5', 'zpm7', 'zpm8'];
 
         if (!in_array($classification, $allowed, true)) {
             return $this->errorResponse('Klasifikasi pekerjaan tidak dikenali.');

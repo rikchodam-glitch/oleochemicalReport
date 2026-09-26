@@ -19,6 +19,7 @@ enum WorkClassification: string
     case Zpm6 = 'zpm6';
     case Zpm5 = 'zpm5';
     case Zpm7 = 'zpm7';
+    case Zpm8 = 'zpm8';
 
     public function label(): string
     {
@@ -28,6 +29,7 @@ enum WorkClassification: string
             self::Zpm6 => 'ZPM 6 - Planned Maintenance',
             self::Zpm5 => 'ZPM 5 - Fabrikasi',
             self::Zpm7 => 'ZPM 7 - Sipil',
+            self::Zpm8 => 'ZPM 8 - Project',
         };
     }
 
@@ -43,6 +45,7 @@ enum WorkClassification: string
             self::Zpm6 => 'ZPM 6',
             self::Zpm5 => 'ZPM 5',
             self::Zpm7 => 'ZPM 7',
+            self::Zpm8 => 'ZPM 8',
         };
     }
 }

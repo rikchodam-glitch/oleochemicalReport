@@ -66,11 +66,12 @@
         'Fabrikasi' => 'bg-violet-100 text-violet-700 border-violet-200',
         'Sipil'     => 'bg-orange-100 text-orange-700 border-orange-200',
         'IT'        => 'bg-indigo-100 text-indigo-700 border-indigo-200',
+        'Project'   => 'bg-rose-100 text-rose-700 border-rose-200',
     ];
 
     $zpmLabels = [
         'zpm1' => 'ZPM 1', 'zpm3' => 'ZPM 3', 'zpm6' => 'ZPM 6',
-        'zpm5' => 'ZPM 5', 'zpm7' => 'ZPM 7',
+        'zpm5' => 'ZPM 5', 'zpm7' => 'ZPM 7', 'zpm8' => 'ZPM 8',
     ];
 
     $adaFilterLanjutan = collect([
@@ -218,7 +219,7 @@
 </div>
 
 {{-- ── Kolom ringkasan jenis pekerjaan ─────────────────────── --}}
-<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mb-4">
     <div class="bg-white rounded-xl border border-cyan-200 px-4 py-3">
         <p class="text-xl font-bold text-cyan-600">{{ number_format($countEI) }}</p>
         <p class="text-xs text-slate-500 mt-0.5">EI</p>
@@ -238,6 +239,10 @@
     <div class="bg-white rounded-xl border border-orange-200 px-4 py-3">
         <p class="text-xl font-bold text-orange-600">{{ number_format($countSipil) }}</p>
         <p class="text-xs text-slate-500 mt-0.5">Sipil</p>
+    </div>
+    <div class="bg-white rounded-xl border border-rose-200 px-4 py-3">
+        <p class="text-xl font-bold text-rose-600">{{ number_format($countProject) }}</p>
+        <p class="text-xs text-slate-500 mt-0.5">Project</p>
     </div>
     <div class="bg-white rounded-xl border border-teal-200 px-4 py-3">
         <p class="text-xl font-bold text-teal-600">{{ number_format($totalLaporan) }}</p>
@@ -525,7 +530,7 @@
                 <select name="jenis_pekerjaan"
                         class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
                     <option value="">Semua Jenis</option>
-                    @foreach(['EI', 'Mekanik', 'CM/PM', 'Fabrikasi', 'Sipil', 'IT'] as $jenisOpsi)
+                    @foreach(['EI', 'Mekanik', 'CM/PM', 'Fabrikasi', 'Sipil', 'IT', 'Project'] as $jenisOpsi)
                         <option value="{{ $jenisOpsi }}" {{ request('jenis_pekerjaan') === $jenisOpsi ? 'selected' : '' }}>{{ $jenisOpsi }}</option>
                     @endforeach
                 </select>
@@ -540,6 +545,7 @@
                     <option value="zpm6" {{ request('work_classification') === 'zpm6' ? 'selected' : '' }}>ZPM 6 - Planned</option>
                     <option value="zpm5" {{ request('work_classification') === 'zpm5' ? 'selected' : '' }}>ZPM 5 - Fabrikasi</option>
                     <option value="zpm7" {{ request('work_classification') === 'zpm7' ? 'selected' : '' }}>ZPM 7 - Sipil</option>
+                    <option value="zpm8" {{ request('work_classification') === 'zpm8' ? 'selected' : '' }}>ZPM 8 - Project</option>
                 </select>
             </div>
             <div>

@@ -1084,6 +1084,7 @@ class AssetInfoService
             'zpm5'  => 'Fabrikasi',
             'zpm6'  => 'PM terencana',
             'zpm7'  => 'Sipil',
+            'zpm8'  => 'Project',
             default => '-',
         };
     }

@@ -485,7 +485,10 @@ trait WizardUtilityTrait
      * Mengembalikan null untuk ZPM 1/6 karena butuh pilihan EI vs Mekanik
      * dari teknisi di step tambahan wizard.
      *
-     * @param  string      $classification Kode ZPM (zpm1/zpm3/zpm6/zpm5/zpm7)
+     * ZPM 8 (Project) langsung menentukan jenis pekerjaan 'Project' tanpa step
+     * tambahan.
+     *
+     * @param  string      $classification Kode ZPM (zpm1/zpm3/zpm5/zpm6/zpm7/zpm8)
      * @return string|null Nilai jenis_pekerjaan atau null
      */
     protected function autoJenisPekerjaan(string $classification): ?string
@@ -494,6 +497,7 @@ trait WizardUtilityTrait
             'zpm3' => 'CM/PM',
             'zpm5' => 'Fabrikasi',
             'zpm7' => 'Sipil',
+            'zpm8' => 'Project',
             default => null,
         };
     }

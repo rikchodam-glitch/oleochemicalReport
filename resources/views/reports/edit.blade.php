@@ -38,6 +38,7 @@
                         <option value="zpm6" {{ old('work_classification', $report->work_classification) === 'zpm6' ? 'selected' : '' }}>ZPM 6 - Planned Maintenance</option>
                         <option value="zpm5" {{ old('work_classification', $report->work_classification) === 'zpm5' ? 'selected' : '' }}>ZPM 5 - Fabrikasi</option>
                         <option value="zpm7" {{ old('work_classification', $report->work_classification) === 'zpm7' ? 'selected' : '' }}>ZPM 7 - Sipil</option>
+                        <option value="zpm8" {{ old('work_classification', $report->work_classification) === 'zpm8' ? 'selected' : '' }}>ZPM 8 - Project</option>
                     </select>
                     @error('work_classification')
                         <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
@@ -138,6 +139,7 @@
                                 <option value="CM" {{ old('jenis_pekerjaan', $report->jenis_pekerjaan) === 'CM' ? 'selected' : '' }}>CM (Corrective)</option>
                                 <option value="dCM" {{ old('jenis_pekerjaan', $report->jenis_pekerjaan) === 'dCM' ? 'selected' : '' }}>dCM (Deferred)</option>
                                 <option value="PM" {{ old('jenis_pekerjaan', $report->jenis_pekerjaan) === 'PM' ? 'selected' : '' }}>PM (Preventive)</option>
+                                <option value="Project" {{ old('jenis_pekerjaan', $report->jenis_pekerjaan) === 'Project' ? 'selected' : '' }}>Project</option>
                             </select>
                             @error('jenis_pekerjaan')
                                 <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
@@ -256,6 +258,7 @@ function reportLocationManager() {
 // - ZPM 3          : otomatis CM/PM
 // - ZPM 5          : otomatis Fabrikasi
 // - ZPM 7          : otomatis Sipil
+// - ZPM 8          : otomatis Project
 function syncJenisPekerjaan() {
     var wcSelect = document.getElementById('work_classification');
     var jenisSelect = document.getElementById('jenis_pekerjaan');
@@ -269,7 +272,8 @@ function syncJenisPekerjaan() {
         'zpm3': [['CM/PM', 'CM/PM']],
         'zpm5': [['Fabrikasi', 'Fabrikasi']],
         'zpm7': [['Sipil', 'Sipil']],
-        '': [['CM', 'CM (Corrective)'], ['dCM', 'dCM (Deferred)'], ['PM', 'PM (Preventive)']]
+        'zpm8': [['Project', 'Project']],
+        '': [['CM', 'CM (Corrective)'], ['dCM', 'dCM (Deferred)'], ['PM', 'PM (Preventive)'], ['Project', 'Project']]
     };
 
     var wc = wcSelect.value;
