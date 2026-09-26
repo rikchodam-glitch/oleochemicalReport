@@ -3,6 +3,7 @@
 namespace App\Services\Telegram\Traits;
 
 use App\Models\Asset;
+use App\Models\FunctionalLocation;
 use App\Models\Report;
 use App\Models\ReportAiSuggestion;
 use App\Models\Technician;
@@ -95,6 +96,19 @@ trait WizardReportSaverTrait
             $msg .= "\n_Laporan akan dibuat untuk {$jumlah} kolaborator secara otomatis._\n";
         }
 
+        // Daftar alat/lokasi tambahan pada pekerjaan multi equipment/lokasi.
+        $multiItems = $state['multi_items'] ?? [];
+
+        if ($multiItems !== []) {
+            $labelMulti = collect($multiItems)
+                ->map(fn (array $item) => $item['label'] ?? '-')
+                ->implode(', ');
+
+            $msg .= "*Alat Tambahan*: {$labelMulti}\n";
+            $msg .= "\n_Laporan induk menyimpan detail & foto; " . count($multiItems)
+                . " alat/lokasi tambahan mendapat baris riwayatnya sendiri._\n";
+        }
+
         // Info bila laporan ini merupakan lanjutan dari laporan 'continue'
         // sebelumnya, supaya teknisi tahu deskripsi/lokasi diwarisi dari sana.
         if (!empty($state['lanjutan_dari_id'])) {
@@ -134,6 +148,70 @@ trait WizardReportSaverTrait
             'message'  => $msg,
             'keyboard' => array_merge($tombolUtama, $this->navigationButtons($state)),
         ];
+    }
+
+    /**
+     * Buat baris salinan laporan untuk setiap alat/lokasi tambahan pekerjaan ini.
+     *
+     * Mengikuti pola kolaborasi: baris salinan memakai detail pekerjaan yang sama
+     * (deskripsi, root cause, durasi, klasifikasi/jenis, status, penautan lanjutan)
+     * tetapi TIDAK menyimpan foto — foto hanya ada di laporan induk sesuai
+     * keputusan bisnis — dan menunjuk balik ke induk lewat kolom multi_of.
+     * Area baris salinan dihitung ulang dari alat/lokasinya masing-masing.
+     *
+     * @param  Report      $induk        Laporan induk yang baru dibuat
+     * @param  array       $dataLaporan  Data laporan induk (dibagi ke baris salinan)
+     * @param  Technician  $technician   Teknisi pembuat laporan
+     * @param  array       $state        State wizard
+     * @return int  Jumlah baris salinan yang dibuat
+     */
+    protected function buatSalinanMultiEquipment(
+        Report $induk,
+        array $dataLaporan,
+        Technician $technician,
+        array $state
+    ): int {
+        $jumlah = 0;
+
+        foreach ($state['multi_items'] ?? [] as $item) {
+            $asetId    = $item['asset_id'] ?? null;
+            $funclocId = $item['funcloc_id'] ?? null;
+
+            // Area dihitung dari alat/lokasi tambahan; fallback ke area induk.
+            $areaId = null;
+
+            if ($asetId !== null) {
+                $asetItem = Asset::find($asetId);
+                $areaId   = $asetItem?->area_id ?? $this->areaIdDariKodeFuncLoc($asetItem?->functional_loc);
+            }
+
+            if ($funclocId !== null) {
+                $nodeItem = FunctionalLocation::find($funclocId);
+                $areaId   = $areaId ?? $nodeItem?->area_id ?? $this->areaIdDariKodeFuncLoc($nodeItem?->code);
+            }
+
+            if ($areaId === null) {
+                $areaId = $dataLaporan['area_id'] ?? null;
+            }
+
+            Report::create(array_merge($dataLaporan, [
+                'report_code'             => $this->generateReportCode(),
+                'technician_id'           => $technician->id,
+                'creator_id'              => $technician->id,
+                'asset_id'                => $asetId,
+                'funcloc_id'              => $funclocId,
+                'area_id'                 => $areaId,
+                'report_type'             => $asetId !== null ? 'equipment_repair' : 'area_work',
+                'multi_of'                => $induk->id,
+                // Foto hanya disimpan di laporan induk (keputusan bisnis).
+                'photo_documentation'     => [],
+                'photo_hygiene_clearance' => [],
+            ]));
+
+            $jumlah++;
+        }
+
+        return $jumlah;
     }
 
     /**
@@ -298,6 +376,12 @@ trait WizardReportSaverTrait
                 $jumlahKolaborator++;
                 $kolaboratorBerhasil[] = $kolaborator->name . ' (' . $nik . ')';
             }
+
+            // Baris salinan per alat/lokasi tambahan (pekerjaan multi equipment).
+            // Laporan INDUK menyimpan detail pekerjaan + foto; setiap baris salinan
+            // hanya memuat identitas alat/lokasi (agar riwayat alat & halaman lokasi
+            // ikut menampilkan pekerjaan ini) dan menunjuk balik lewat multi_of.
+            $jumlahMulti = $this->buatSalinanMultiEquipment($report, $dataLaporan, $technician, $state);
 
             $this->destroyWizard($chatId);
 

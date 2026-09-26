@@ -43,6 +43,7 @@ class Report extends Model
         'ai_suggestion_json',
         'status',
         'continued_from_id',
+        'multi_of',
         'completed_at',
         'telegram_message_id',
     ];
@@ -191,6 +192,26 @@ class Report extends Model
     public function scopeBelumDilanjutkan($query)
     {
         return $query->where('status', 'continue')->whereDoesntHave('continuedBy');
+    }
+
+    /**
+     * Laporan induk dari baris salinan pekerjaan multi equipment/lokasi.
+     *
+     * @return BelongsTo<Report, Report>
+     */
+    public function multiOf(): BelongsTo
+    {
+        return $this->belongsTo(Report::class, 'multi_of');
+    }
+
+    /**
+     * Baris salinan per alat/lokasi tambahan pada pekerjaan ini.
+     *
+     * @return HasMany<Report>
+     */
+    public function multiItems(): HasMany
+    {
+        return $this->hasMany(Report::class, 'multi_of');
     }
 
     // =========================================================

@@ -134,6 +134,7 @@ class ReportWizardService
     const STEP_PHOTO_DOCUMENTATION = 'photo_documentation';
     const STEP_PHOTO_HYGIENE       = 'photo_hygiene';
     const STEP_COLLABORATOR        = 'collaborator';
+    const STEP_MULTI_EQUIPMENT     = 'multi_equipment';
     const STEP_CONFIRMATION        = 'confirmation';
     const STEP_DONE                = 'done';
 
@@ -441,6 +442,9 @@ class ReportWizardService
 
             case self::STEP_COLLABORATOR:
                 return $this->handleCollaboratorInput($chatId, $text, $state);
+
+            case self::STEP_MULTI_EQUIPMENT:
+                return $this->handleMultiEquipmentInput($chatId, $text, $state);
 
             case self::STEP_CONFIRMATION:
                 return $this->handleConfirmation($chatId, $text, $state);

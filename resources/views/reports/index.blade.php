@@ -323,6 +323,19 @@
                                     <span class="text-slate-700">{{ $kolaborator->implode(', ') }}</span>
                                 </p>
                             @endif
+
+                            {{-- Daftar alat/lokasi tambahan (pekerjaan multi equipment) --}}
+                            @if($report->multiItems->isNotEmpty())
+                                <p class="text-xs text-slate-500 mt-1 leading-snug">
+                                    <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-100 mr-1">
+                                        {{ $report->multiItems->count() }} ALAT
+                                    </span>
+                                    Alat/lokasi lain:
+                                    <span class="text-slate-700">
+                                        {{ $report->multiItems->map(fn ($item) => $item->asset?->tech_ident_no ?? $item->functionalLocation?->code ?? ('#' . $item->id))->implode(', ') }}
+                                    </span>
+                                </p>
+                            @endif
                         </td>
 
 

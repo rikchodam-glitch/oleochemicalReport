@@ -68,6 +68,34 @@
                             @endforeach
                         </div>
                     @endif
+                    {{-- Bagian dari pekerjaan multi alat/lokasi --}}
+                    @if($report->multiOf)
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                            <span class="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-teal-50 text-teal-700 border border-teal-100">
+                                Bagian dari pekerjaan bersama
+                            </span>
+                            <a href="{{ route('reports.show', $report->multiOf) }}"
+                               class="text-xs font-medium font-mono text-blue-600 hover:text-blue-700">
+                                {{ $report->multiOf->report_code ?? ('#' . $report->multiOf->id) }}
+                            </a>
+                        </div>
+                    @endif
+
+                    {{-- Daftar alat/lokasi lain pada pekerjaan ini --}}
+                    @if($report->multiItems->isNotEmpty())
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                            <span class="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-teal-50 text-teal-700 border border-teal-100">
+                                Mencakup {{ $report->multiItems->count() }} alat/lokasi lain
+                            </span>
+                            @foreach($report->multiItems as $item)
+                                <a href="{{ route('reports.show', $item) }}"
+                                   class="text-xs font-medium font-mono text-blue-600 hover:text-blue-700">
+                                    {{ $item->asset?->tech_ident_no ?? $item->functionalLocation?->code ?? ('#' . $item->id) }}
+                                </a>
+                            @endforeach
+                        </div>
+                    @endif
+
                 </div>
                 <x-status-badge :status="$report->status" />
             </div>

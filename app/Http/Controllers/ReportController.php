@@ -35,7 +35,7 @@ class ReportController extends Controller
         $countProject   = (clone $query)->where('jenis_pekerjaan', 'Project')->count();
 
         $reports = $query
-            ->with(['technician', 'area', 'asset', 'functionalLocation', 'linkedFinding', 'collaboratorReports.technician'])
+            ->with(['technician', 'area', 'asset', 'functionalLocation', 'linkedFinding', 'multiItems', 'collaboratorReports.technician'])
             // Laporan terbaru di paling atas; dalam satu tanggal diurutkan dari
             // yang paling akhir dibuat (created_at, lalu id sebagai penentu).
             ->orderByDesc('report_date')
@@ -88,7 +88,7 @@ class ReportController extends Controller
      */
     private function buildReportQuery(Request $request, string $tampilan, ?string $grubAktif, $tanggalAktif)
     {
-        $query = Report::query()->whereNull('collaborator_of');
+        $query = Report::query()->whereNull('collaborator_of')->whereNull('multi_of');
 
         $this->applyGroupFilter($query, $tampilan, $grubAktif);
 

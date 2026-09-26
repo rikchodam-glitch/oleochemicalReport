@@ -2,9 +2,12 @@
 
 namespace App\Services\Telegram\Traits;
 
+use App\Models\Asset;
+use App\Models\FunctionalLocation;
 use App\Models\Technician;
 use App\Services\CollaborationService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * WizardStepHandlerTrait
@@ -83,6 +86,12 @@ trait WizardStepHandlerTrait
 {
     // Batas maksimum kolaborator per laporan
     const MAX_COLLABORATORS = 5;
+
+    /**
+     * Jumlah maksimum kandidat alat tambahan yang ditampilkan sebagai tombol
+     * pada pekerjaan multi equipment/lokasi.
+     */
+    const MAX_MULTI_CANDIDATES = 6;
 
     // =========================================================
     // STEP AWAL — KLASIFIKASI PEKERJAAN
@@ -938,6 +947,15 @@ trait WizardStepHandlerTrait
         $text = strtolower(trim($text));
 
         if (in_array($text, ['ya', 'yes', 'ok', 'oke', 'simpan', 'confirm'])) {
+            // Konfirmasi teks dianggap memilih Done (perilaku lama).
+            $state['final_status'] = 'completed';
+
+            return $this->saveReport($chatId, $state);
+        }
+
+        if (in_array($text, ['continue', 'lanjut', 'lanjutkan'])) {
+            $state['final_status'] = 'continue';
+
             return $this->saveReport($chatId, $state);
         }
 
@@ -951,5 +969,244 @@ trait WizardStepHandlerTrait
 
         // Input tidak dikenali — tampilkan ulang ringkasan konfirmasi
         return $this->buildConfirmationSummary($state);
+    }
+
+    // =========================================================
+    // STEP 8b — ALAT/LOKASI TAMBAHAN (PEKERJAAN MULTI EQUIPMENT)
+    // =========================================================
+
+    /**
+     * Bangun prompt langkah alat/lokasi tambahan.
+     *
+     * Dipakai untuk pekerjaan yang menyentuh lebih dari satu alat/lokasi:
+     * laporan induk tetap menyimpan detail pekerjaan + foto, sedangkan setiap
+     * alat/lokasi tambahan mendapat baris salinan sendiri saat laporan disimpan
+     * (lihat WizardReportSaverTrait::saveReport()).
+     *
+     * @param  array  $state  State wizard saat ini
+     * @return array  Respons prompt dengan daftar item + tombol selesai/hapus
+     */
+    protected function buildMultiEquipmentPrompt(array $state): array
+    {
+        $daftar = $state['multi_items'] ?? [];
+        $msg    = "*Alat/Lokasi Tambahan*\n\n";
+
+        if ($daftar === []) {
+            $msg .= "Belum ada alat/lokasi tambahan.\n\n";
+        } else {
+            $msg .= "Sudah ditambahkan (" . count($daftar) . "):\n";
+
+            foreach ($daftar as $index => $item) {
+                $msg .= ($index + 1) . '. ' . ($item['label'] ?? '-')
+                    . (!empty($item['sub']) ? ' — ' . $item['sub'] : '') . "\n";
+            }
+
+            $msg .= "\n";
+        }
+
+        $msg .= "Bila satu pekerjaan ini menyentuh alat/lokasi LAIN, ketik kodenya "
+            . "(Tech Ident No / Equipment No / kode lokasi). Beberapa kode boleh sekaligus, pisahkan dengan koma.\n\n"
+            . "Laporan induk menyimpan detail & foto; tiap alat tambahan mendapat baris riwayatnya sendiri.";
+
+        $keyboard = array_merge(
+            [['text' => 'Selesai (Lanjut Konfirmasi)', 'callback_data' => 'wizard:confirm:multi_done']],
+            $this->navigationButtons($state)
+        );
+
+        foreach (array_keys($daftar) as $index) {
+            $keyboard[] = ['text' => 'Hapus ' . ($index + 1), 'callback_data' => 'multi_hapus:' . $index];
+        }
+
+        return [
+            'message'  => $msg,
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Proses teks berisi kode alat/lokasi tambahan (boleh beberapa, dipisah koma).
+     *
+     * @param  string  $chatId  Chat ID Telegram
+     * @param  string  $text    Kode alat/lokasi dari teknisi
+     * @param  array   $state   State wizard saat ini
+     * @return array   Respons prompt alat tambahan yang sudah diperbarui
+     */
+    protected function handleMultiEquipmentInput(string $chatId, string $text, array $state): array
+    {
+        $kodeList       = preg_split('/[,\n;]+/', $text) ?: [];
+        $tidakDitemukan = [];
+
+        foreach ($kodeList as $kode) {
+            $kode = trim($kode);
+
+            if ($kode === '') {
+                continue;
+            }
+
+            $hasil = $this->resolveMultiItem($kode, $state);
+
+            if ($hasil['status'] === 'kandidat') {
+                $state['multi_kandidat'] = $hasil['kandidat'];
+                $this->saveState($chatId, $state);
+
+                return $this->buildMultiCandidateKeyboard($hasil['kandidat'], $kode);
+            }
+
+            if ($hasil['status'] === 'tidak_ada') {
+                $tidakDitemukan[] = $kode;
+                continue;
+            }
+
+            $state = $this->tambahMultiItem($state, $hasil['item']);
+        }
+
+        $this->saveState($chatId, $state);
+
+        $respons = $this->buildMultiEquipmentPrompt($state);
+
+        if ($tidakDitemukan !== []) {
+            $respons['message'] = 'Tidak ditemukan: ' . implode(', ', $tidakDitemukan) . "\n\n" . $respons['message'];
+        }
+
+        return $respons;
+    }
+
+    /**
+     * Cari satu alat/lokasi tambahan dari kode yang diketik teknisi.
+     *
+     * Urutan pencarian: kode alat persis (Tech Ident No / Equipment No) → kode
+     * Functional Location persis → pencarian mirip lewat TechIdentSearchService
+     * (exact match atau daftar kandidat untuk dipilih teknisi).
+     *
+     * @param  string  $kode   Kode yang diketik teknisi
+     * @param  array   $state  State wizard (area_id dipakai untuk memprioritaskan hasil)
+     * @return array{status: string, item?: array, kandidat?: array}
+     */
+    protected function resolveMultiItem(string $kode, array $state): array
+    {
+        $kodeUpper = mb_strtoupper(trim($kode));
+
+        if ($kodeUpper === '') {
+            return ['status' => 'tidak_ada'];
+        }
+
+        $aset = Asset::query()
+            ->whereRaw('UPPER(TRIM(tech_ident_no)) = ?', [$kodeUpper])
+            ->orWhereRaw('UPPER(TRIM(equipment_no)) = ?', [$kodeUpper])
+            ->first();
+
+        if ($aset !== null) {
+            return ['status' => 'ok', 'item' => $this->itemDariAset($aset)];
+        }
+
+        $node = FunctionalLocation::query()
+            ->whereRaw('UPPER(TRIM(code)) = ?', [$kodeUpper])
+            ->first();
+
+        if ($node !== null) {
+            return [
+                'status' => 'ok',
+                'item'   => [
+                    'asset_id'   => null,
+                    'funcloc_id' => $node->id,
+                    'label'      => $node->code,
+                    'sub'        => $node->name,
+                ],
+            ];
+        }
+
+        $hasil    = $this->techIdentSearch->search($kode, $state['area_id'] ?? null, false);
+        $exact    = $hasil['exact_match'] ?? null;
+        $kandidat = array_values(array_slice($hasil['candidates'] ?? [], 0, self::MAX_MULTI_CANDIDATES));
+
+        if ($exact !== null && !empty($exact['id'])) {
+            $asetExact = Asset::find($exact['id']);
+
+            if ($asetExact !== null) {
+                return ['status' => 'ok', 'item' => $this->itemDariAset($asetExact)];
+            }
+        }
+
+        if ($kandidat === []) {
+            return ['status' => 'tidak_ada'];
+        }
+
+        return ['status' => 'kandidat', 'kandidat' => $kandidat];
+    }
+
+    /**
+     * Susun satu entri alat tambahan dari model Asset.
+     *
+     * @param  Asset  $aset  Alat yang dipilih
+     * @return array  Entri item siap disimpan ke state
+     */
+    protected function itemDariAset(Asset $aset): array
+    {
+        return [
+            'asset_id'   => $aset->id,
+            'funcloc_id' => $aset->funcloc_id,
+            'label'      => $aset->tech_ident_no ?: ($aset->equipment_no ?: ('#' . $aset->id)),
+            'sub'        => $aset->description,
+        ];
+    }
+
+    /**
+     * Tambahkan item alat/lokasi ke state dengan penjagaan duplikat.
+     *
+     * Item yang sama dengan equipment/lokasi utama laporan atau yang sudah
+     * pernah ditambahkan akan diabaikan.
+     *
+     * @param  array  $state  State wizard
+     * @param  array  $item   Entri item hasil resolveMultiItem()
+     * @return array  State yang sudah diperbarui
+     */
+    protected function tambahMultiItem(array $state, array $item): array
+    {
+        $state['multi_items'] = $state['multi_items'] ?? [];
+
+        $samaDenganUtama = (!empty($item['asset_id']) && (int) $item['asset_id'] === (int) ($state['equipment_id'] ?? 0))
+            || (!empty($item['funcloc_id']) && (int) $item['funcloc_id'] === (int) ($state['funcloc_id'] ?? 0));
+
+        if ($samaDenganUtama) {
+            return $state;
+        }
+
+        foreach ($state['multi_items'] as $ada) {
+            if ((int) ($ada['asset_id'] ?? 0) === (int) ($item['asset_id'] ?? 0)
+                && (int) ($ada['funcloc_id'] ?? 0) === (int) ($item['funcloc_id'] ?? 0)) {
+                return $state;
+            }
+        }
+
+        $state['multi_items'][] = $item;
+
+        return $state;
+    }
+
+    /**
+     * Keyboard pilihan kandidat alat tambahan (bila satu kode cocok ke beberapa alat).
+     *
+     * @param  array   $kandidat  Daftar kandidat dari TechIdentSearchService
+     * @param  string  $kode      Kode yang diketik teknisi
+     * @return array   Respons dengan tombol pilihan kandidat
+     */
+    protected function buildMultiCandidateKeyboard(array $kandidat, string $kode): array
+    {
+        $keyboard = [];
+
+        foreach ($kandidat as $index => $calon) {
+            $keyboard[] = [
+                'text'          => ($index + 1) . '. ' . ($calon['tech_ident_no'] ?? '-')
+                    . ' — ' . Str::limit((string) ($calon['description'] ?? ''), 28),
+                'callback_data' => 'multi_pick:' . $index,
+            ];
+        }
+
+        $keyboard[] = ['text' => 'Batal Tambah Ini', 'callback_data' => 'multi_batal'];
+
+        return [
+            'message'  => "Kode *{$kode}* cocok dengan beberapa alat. Pilih salah satu:",
+            'keyboard' => $keyboard,
+        ];
     }
 }

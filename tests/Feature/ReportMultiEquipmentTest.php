@@ -1,0 +1,229 @@
+<?php
+
+use App\Models\Area;
+use App\Models\Asset;
+use App\Models\Company;
+use App\Models\Department;
+use App\Models\FunctionalLocation;
+use App\Models\Report;
+use App\Models\Technician;
+use App\Models\User;
+use App\Services\Telegram\ReportWizardService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+uses(RefreshDatabase::class);
+
+/**
+ * Pekerjaan multi equipment/lokasi (mekanisme seperti kolaborasi):
+ * laporan INDUK menyimpan detail + foto, setiap alat/lokasi tambahan mendapat
+ * baris salinan sendiri (multi_of) agar riwayat alat & halaman lokasi ikut
+ * menampilkan pekerjaan tersebut, sedangkan halaman laporan tetap menampilkan
+ * satu baris induk dengan daftar alat terkait.
+ */
+beforeEach(function () {
+    $this->seed();
+
+    $this->admin = User::where('email', 'admin@oleochemical.pro')->firstOrFail();
+
+    $this->company = Company::firstOrCreate(['code' => 'PTMUL'], ['name' => 'PT Multi']);
+    $this->dept    = Department::firstOrCreate(
+        ['company_id' => $this->company->id, 'code' => 'DEPMUL'],
+        ['name' => 'Departemen Multi']
+    );
+    $this->area = Area::firstOrCreate(
+        ['department_id' => $this->dept->id, 'code' => 'AREAMUL'],
+        ['name' => 'Area Multi']
+    );
+
+    $this->flSection = FunctionalLocation::create([
+        'code'         => 'PTMUL-DEPMUL-AREAMUL-01',
+        'segment'      => '01',
+        'name'         => 'Section Multi',
+        'level'        => FunctionalLocation::LEVEL_SECTION,
+        'company_id'   => $this->company->id,
+        'department_id'=> $this->dept->id,
+        'is_active'    => true,
+    ]);
+
+    $this->teknisi = Technician::create([
+        'name' => 'Teknisi Multi', 'nik' => 'MUL001', 'group' => 'reguler',
+        'status' => 'active', 'telegram_id' => '55001',
+    ]);
+
+    $this->chatId = '55001';
+
+    $this->asetUtama = Asset::create([
+        'equipment_no'   => 'EQ-MUL-001',
+        'description'    => 'Pompa Multi Utama',
+        'tech_ident_no'  => 'MUL-P-01',
+        'functional_loc' => $this->flSection->code,
+        'funcloc_id'     => $this->flSection->id,
+        'status'         => 'active',
+    ]);
+
+    $this->asetTambahan = Asset::create([
+        'equipment_no'   => 'EQ-MUL-002',
+        'description'    => 'Motor Multi Kedua',
+        'tech_ident_no'  => 'MUL-M-02',
+        'functional_loc' => $this->flSection->code,
+        'funcloc_id'     => $this->flSection->id,
+        'status'         => 'active',
+    ]);
+});
+
+/**
+ * State wizard pada langkah alat/lokasi tambahan.
+ *
+ * @return array  State siap dipakai handleTextInput/handleCallback
+ */
+function stateMultiEquipment(string $chatId, int $asetUtamaId): array
+{
+    return [
+        'chat_id'                 => $chatId,
+        'text'                    => 'Overhaul pompa dan motor multi',
+        'step'                    => ReportWizardService::STEP_MULTI_EQUIPMENT,
+        'step_history'            => [],
+        'work_classification'     => 'zpm3',
+        'jenis_pekerjaan'         => 'CM/PM',
+        'equipment_id'            => $asetUtamaId,
+        'equipment_ident'         => 'MUL-P-01',
+        'is_area_work'            => false,
+        'area_id'                 => null,
+        'funcloc_id'              => null,
+        'work_duration_minutes'   => 120,
+        'start_time'              => '08:00',
+        'end_time'                => '10:00',
+        'root_cause'              => 'Bearing aus',
+        'report_date'             => now()->toDateString(),
+        'photo_documentation'     => ['reports/2026/09/26/55001/foto.jpg'],
+        'photo_hygiene_clearance' => [],
+        'collaborator_niks'       => [],
+        'collaborator_names'      => [],
+        'created_at'              => now()->toIso8601String(),
+    ];
+}
+
+test('mengetik kode alat tambahan menambahkannya ke daftar pekerjaan', function () {
+    $wizard = app(ReportWizardService::class);
+
+    $wizard->saveState($this->chatId, stateMultiEquipment($this->chatId, $this->asetUtama->id));
+    $respons = $wizard->handleTextInput($this->chatId, 'MUL-M-02');
+    $state   = $wizard->getState($this->chatId);
+
+    expect($state['multi_items'])->toHaveCount(1)
+        ->and($state['multi_items'][0]['asset_id'])->toBe($this->asetTambahan->id)
+        ->and($state['multi_items'][0]['label'])->toBe('MUL-M-02')
+        ->and($respons['message'])->toContain('Sudah ditambahkan')
+        ->and(json_encode($respons['keyboard']))->toContain('wizard:confirm:multi_done');
+
+    // Kode yang tidak dikenal tetap memberi tahu teknisi.
+    $gagal = $wizard->handleTextInput($this->chatId, 'KODE-NGAWUR-99');
+
+    expect($gagal['message'])->toContain('Tidak ditemukan: KODE-NGAWUR-99');
+
+    $wizard->destroyWizard($this->chatId);
+});
+
+test('alat utama dan item duplikat tidak ditambahkan dua kali', function () {
+    $wizard = app(ReportWizardService::class);
+
+    $wizard->saveState($this->chatId, stateMultiEquipment($this->chatId, $this->asetUtama->id));
+
+    // Alat utama laporan tidak boleh masuk daftar tambahan.
+    $wizard->handleTextInput($this->chatId, 'MUL-P-01');
+    expect($wizard->getState($this->chatId)['multi_items'] ?? [])->toBe([]);
+
+    // Item yang sama dua kali juga hanya tercatat sekali.
+    $wizard->handleTextInput($this->chatId, 'MUL-M-02');
+    $wizard->handleTextInput($this->chatId, 'MUL-M-02');
+
+    expect($wizard->getState($this->chatId)['multi_items'])->toHaveCount(1);
+
+    // Tombol hapus membuang item dari daftar.
+    $hapus = $wizard->handleCallback($this->chatId, 'multi_hapus:0');
+
+    expect($wizard->getState($this->chatId)['multi_items'] ?? [])->toBe([])
+        ->and($hapus['message'])->toContain('Dihapus: MUL-M-02');
+
+    $wizard->destroyWizard($this->chatId);
+});
+
+test('menyimpan laporan membuat baris salinan per alat tanpa foto di salinan', function () {
+    $wizard = app(ReportWizardService::class);
+
+    $wizard->saveState($this->chatId, stateMultiEquipment($this->chatId, $this->asetUtama->id));
+    $wizard->handleTextInput($this->chatId, 'MUL-M-02');
+
+    // Ringkasan Step 8 mencantumkan alat tambahan.
+    $ringkasan = $wizard->handleCallback($this->chatId, 'wizard:confirm:multi_done');
+
+    expect($ringkasan['message'])->toContain('Alat Tambahan')
+        ->and($ringkasan['message'])->toContain('MUL-M-02');
+
+    $wizard->handleCallback($this->chatId, 'wizard:confirm:save_done');
+
+    $induk = Report::where('asset_id', $this->asetUtama->id)->whereNull('multi_of')->latest('id')->first();
+
+    expect($induk)->not->toBeNull()
+        ->and($induk->photo_documentation)->toHaveCount(1)
+        ->and($induk->status)->toBe('completed');
+
+    $salinan = Report::where('multi_of', $induk->id)->get();
+
+    expect($salinan)->toHaveCount(1)
+        ->and($salinan[0]->asset_id)->toBe($this->asetTambahan->id)
+        ->and($salinan[0]->work_description)->toBe('Overhaul pompa dan motor multi')
+        // Foto hanya disimpan di laporan induk.
+        ->and($salinan[0]->photo_documentation)->toBe([])
+        ->and($salinan[0]->status)->toBe('completed')
+        ->and($induk->multiItems)->toHaveCount(1);
+
+    $wizard->destroyWizard($this->chatId);
+});
+
+test('halaman laporan hanya menampilkan baris induk dengan daftar alatnya', function () {
+    $induk = Report::create([
+        'technician_id'    => $this->teknisi->id,
+        'creator_id'       => $this->teknisi->id,
+        'report_date'      => now()->toDateString(),
+        'report_code'      => 'RPT-20260926-0011',
+        'work_description' => 'Overhaul pompa dan motor multi',
+        'asset_id'         => $this->asetUtama->id,
+        'report_type'      => 'equipment_repair',
+        'status'           => 'completed',
+    ]);
+
+    $salinan = Report::create([
+        'technician_id'    => $this->teknisi->id,
+        'creator_id'       => $this->teknisi->id,
+        'report_date'      => now()->toDateString(),
+        'report_code'      => 'RPT-20260926-0012',
+        'work_description' => 'Overhaul pompa dan motor multi',
+        'asset_id'         => $this->asetTambahan->id,
+        'multi_of'         => $induk->id,
+        'report_type'      => 'equipment_repair',
+        'status'           => 'completed',
+    ]);
+
+    // Halaman laporan: baris induk tampil dengan penanda alatnya, salinan tidak
+    // tampil sebagai baris tersendiri.
+    $this->actingAs($this->admin)
+        ->get('/reports?tanggal=' . now()->toDateString())
+        ->assertStatus(200)
+        ->assertSee('RPT-20260926-0011', false)
+        ->assertSee('1 ALAT', false)
+        ->assertSee('MUL-M-02', false)
+        ->assertDontSee('RPT-20260926-0012', false);
+
+    // Detail laporan induk mencantumkan alat lain, detail salinan menautkan induk.
+    $this->actingAs($this->admin)
+        ->get('/reports/' . $induk->id)
+        ->assertStatus(200)
+        ->assertSee('Mencakup 1 alat/lokasi lain', false);
+
+    $this->actingAs($this->admin)
+        ->get('/reports/' . $salinan->id)
+        ->assertStatus(200)
+        ->assertSee('Bagian dari pekerjaan bersama', false)
+        ->assertSee('RPT-20260926-0011', false);
+});

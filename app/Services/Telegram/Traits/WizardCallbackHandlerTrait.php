@@ -183,7 +183,38 @@ trait WizardCallbackHandlerTrait
             return $this->buildCancelConfirmPrompt($state);
         }
 
-        // Callback pemilihan klasifikasi pekerjaan (step paling awal wizard,
+        // Callback pilihan alat/lokasi tambahan (pekerjaan multi equipment):
+        // pilih kandidat, batalkan penambahan, atau hapus item yang sudah masuk.
+        if (str_starts_with($callbackData, 'multi_pick:')) {
+            return $this->handleMultiPick($chatId, $callbackData, $state);
+        }
+
+        if ($callbackData === 'multi_batal') {
+            unset($state['multi_kandidat']);
+            $this->saveState($chatId, $state);
+
+            return $this->buildMultiEquipmentPrompt($state);
+        }
+
+        if (str_starts_with($callbackData, 'multi_hapus:')) {
+            $index = (int) substr($callbackData, strlen('multi_hapus:'));
+            $item  = $state['multi_items'][$index] ?? null;
+
+            if ($item === null) {
+                return $this->errorResponse('Item alat/lokasi tambahan tidak ditemukan.');
+            }
+
+            unset($state['multi_items'][$index]);
+            $state['multi_items'] = array_values($state['multi_items']);
+            $this->saveState($chatId, $state);
+
+            $respons = $this->buildMultiEquipmentPrompt($state);
+            $respons['message'] = 'Dihapus: ' . ($item['label'] ?? '-') . "\n\n" . $respons['message'];
+
+            return $respons;
+        }
+
+        // Callback pilihan klasifikasi pekerjaan (step paling awal wizard,
         // sebelum pencarian equipment). Guard step ditambahkan agar callback
         // lama yang mungkin masih tersimpan di riwayat chat Telegram tidak
         // diproses di luar step ini.
@@ -685,7 +716,7 @@ trait WizardCallbackHandlerTrait
                 return $this->advanceFromPhotoStep($chatId, $state, 'hygiene');
 
             // Step 8a — kolaborator dilewati: hapus semua data kolaborator termasuk
-            // state hierarki, push riwayat, lalu langsung ke Step 8 konfirmasi
+            // state hierarki, push riwayat, lalu lanjut ke langkah alat tambahan
             case 'collab_skip':
                 unset(
                     $state['collaborator_niks'],
@@ -694,15 +725,22 @@ trait WizardCallbackHandlerTrait
                 );
                 $state          = $this->clearCollabHierarchyState($state);
                 $state          = $this->pushStepHistory($state, self::STEP_COLLABORATOR);
-                $state['step']  = self::STEP_CONFIRMATION;
+                $state['step']  = self::STEP_MULTI_EQUIPMENT;
                 $this->saveState($chatId, $state);
-                return $this->buildConfirmationSummary($state);
+                return $this->buildMultiEquipmentPrompt($state);
 
             // Step 8a — kolaborator selesai: pertahankan NIK dan nama yang ada,
-            // bersihkan state hierarki, push riwayat, lalu ke Step 8 konfirmasi
+            // bersihkan state hierarki, push riwayat, lalu lanjut ke langkah alat tambahan
             case 'collab_done':
                 $state          = $this->clearCollabHierarchyState($state);
                 $state          = $this->pushStepHistory($state, self::STEP_COLLABORATOR);
+                $state['step']  = self::STEP_MULTI_EQUIPMENT;
+                $this->saveState($chatId, $state);
+                return $this->buildMultiEquipmentPrompt($state);
+
+            // Step 8b — alat/lokasi tambahan selesai: lanjut ke konfirmasi.
+            case 'multi_done':
+                $state          = $this->pushStepHistory($state, self::STEP_MULTI_EQUIPMENT);
                 $state['step']  = self::STEP_CONFIRMATION;
                 $this->saveState($chatId, $state);
                 return $this->buildConfirmationSummary($state);
@@ -770,6 +808,41 @@ trait WizardCallbackHandlerTrait
             default:
                 return $this->errorResponse("Callback tidak dikenal: {$action}");
         }
+    }
+
+    /**
+     * Proses pilihan kandidat alat tambahan (callback 'multi_pick:<index>').
+     *
+     * @param  string  $chatId        Chat ID Telegram
+     * @param  string  $callbackData  Data callback multi_pick:<index>
+     * @param  array   $state         State wizard saat ini
+     * @return array   Respons prompt alat/lokasi tambahan yang sudah diperbarui
+     */
+    protected function handleMultiPick(string $chatId, string $callbackData, array $state): array
+    {
+        $index    = (int) substr($callbackData, strlen('multi_pick:'));
+        $kandidat = $state['multi_kandidat'][$index] ?? null;
+
+        if ($kandidat === null) {
+            return $this->errorResponse('Pilihan alat tambahan tidak ditemukan. Ketik ulang kodenya.');
+        }
+
+        $aset = Asset::find($kandidat['id'] ?? null);
+
+        unset($state['multi_kandidat']);
+
+        if ($aset === null) {
+            return $this->errorResponse('Alat tidak ditemukan di database. Ketik kode lain.');
+        }
+
+        $state = $this->tambahMultiItem($state, $this->itemDariAset($aset));
+        $this->saveState($chatId, $state);
+
+        $respons = $this->buildMultiEquipmentPrompt($state);
+        $respons['message'] = 'Ditambahkan: ' . ($aset->tech_ident_no ?? $aset->equipment_no ?? ('#' . $aset->id))
+            . "\n\n" . $respons['message'];
+
+        return $respons;
     }
 
     /**
@@ -1727,6 +1800,9 @@ trait WizardCallbackHandlerTrait
 
             case self::STEP_COLLABORATOR:
                 return $this->buildCollaboratorPrompt($state);
+
+            case self::STEP_MULTI_EQUIPMENT:
+                return $this->buildMultiEquipmentPrompt($state);
 
             case self::STEP_CONFIRMATION:
                 return $this->buildConfirmationSummary($state);
