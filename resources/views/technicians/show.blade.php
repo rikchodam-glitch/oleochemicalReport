@@ -226,38 +226,157 @@
             </div>
         </div>
 
-        <!-- Recent Reports -->
+        <!-- Pekerjaan Harian -->
         <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div class="px-5 py-4 border-b border-slate-100">
-                <h3 class="font-medium text-slate-900">Riwayat Laporan</h3>
+            <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap items-start justify-between gap-2">
+                <div>
+                    <h3 class="font-medium text-slate-900">Pekerjaan Harian</h3>
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        {{ $laporanTerbaru->count() }} pekerjaan terbaru. Klik baris untuk membuka detail laporan.
+                    </p>
+                </div>
+                <a href="{{ route('reports.index', ['technician_id' => $technician->id]) }}"
+                   class="inline-flex items-center gap-1 text-xs font-medium text-teal-700 hover:text-teal-800">
+                    Lihat semua di halaman Laporan
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                </a>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="bg-slate-50 border-b border-slate-100">
-                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Tanggal</th>
-                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Deskripsi</th>
-                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Tipe</th>
-                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Status</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Tanggal</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Jam</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Durasi</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Pekerjaan</th>
+                            <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Jenis</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Lokasi / Alat</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Foto</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Status</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
-                        @forelse($technician->reports as $report)
-                            <tr class="hover:bg-slate-50 transition-colors">
-                                <td class="px-5 py-3.5 text-slate-600">{{ $report->report_date->format('d/m/Y') }}</td>
-                                <td class="px-5 py-3.5">
-                                    <p class="text-slate-700 truncate max-w-xs">{{ Str::limit($report->work_description, 50) }}</p>
+                        @forelse($laporanTerbaru as $report)
+                            @php
+                                $jenisWarna = [
+                                    'EI'        => 'bg-sky-50 text-sky-700 border-sky-100',
+                                    'Mekanik'   => 'bg-amber-50 text-amber-700 border-amber-100',
+                                    'CM/PM'     => 'bg-teal-50 text-teal-700 border-teal-100',
+                                    'Fabrikasi' => 'bg-violet-50 text-violet-700 border-violet-100',
+                                    'Sipil'     => 'bg-lime-50 text-lime-700 border-lime-100',
+                                    'IT'        => 'bg-indigo-50 text-indigo-700 border-indigo-100',
+                                    'Project'   => 'bg-rose-50 text-rose-700 border-rose-100',
+                                ][$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-500 border-slate-200';
+
+                                $jumlahDok = count($report->photo_documentation ?? []);
+                                $jumlahHc  = count($report->photo_hygiene_clearance ?? []);
+                            @endphp
+                            <tr class="hover:bg-slate-50 transition-colors cursor-pointer"
+                                title="Buka {{ $report->report_code ?? 'laporan' }}"
+                                onclick="window.location='{{ route('reports.show', $report) }}'">
+                                <td class="px-5 py-3.5 align-top whitespace-nowrap">
+                                    <p class="text-slate-700 font-medium">{{ $report->report_date?->format('d/m/Y') ?? '-' }}</p>
+                                    <p class="text-xs text-slate-400">{{ $report->report_date?->translatedFormat('l') ?? '' }}</p>
                                 </td>
-                                <td class="px-5 py-3.5">
-                                    <x-status-badge :status="$report->report_type" />
+                                <td class="px-4 py-3.5 align-top whitespace-nowrap text-xs text-slate-600">
+                                    {{ $report->time_range ?? '-' }}
                                 </td>
-                                <td class="px-5 py-3.5">
+                                <td class="px-4 py-3.5 align-top whitespace-nowrap">
+                                    @if($report->duration_label)
+                                        <span class="inline-flex px-2 py-0.5 rounded text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100">
+                                            {{ $report->duration_label }}
+                                        </span>
+                                    @else
+                                        <span class="text-xs text-slate-300">-</span>
+                                    @endif
+                                </td>
+                                <td class="px-4 py-3.5 align-top max-w-sm">
+                                    <p class="text-slate-800 text-sm font-medium leading-snug whitespace-normal break-words">
+                                        {{ $report->work_description ?: '(tanpa deskripsi pekerjaan)' }}
+                                    </p>
+                                    <p class="text-xs text-slate-400 mt-0.5">
+                                        {{ $report->report_code ?? '-' }}
+                                        @if($report->status === 'continue')
+                                            <span class="inline-flex ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                                                CONTINUE
+                                            </span>
+                                        @endif
+                                        @if($report->continued_from_id)
+                                            <span class="inline-flex ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-100">
+                                                LANJUTAN
+                                            </span>
+                                        @endif
+                                        @if($report->collaborator_of)
+                                            <span class="inline-flex ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                                KOLABORASI
+                                            </span>
+                                        @endif
+                                    </p>
+                                    @if($report->root_cause)
+                                        <p class="text-xs text-slate-400 mt-0.5">
+                                            Penyebab: {{ \Illuminate\Support\Str::limit($report->root_cause, 60) }}
+                                        </p>
+                                    @endif
+                                </td>
+                                <td class="px-4 py-3.5 align-top text-center whitespace-nowrap">
+                                    @if($report->jenis_pekerjaan)
+                                        <span class="inline-flex px-2 py-0.5 rounded-md text-xs font-medium border {{ $jenisWarna }}">
+                                            {{ $report->jenis_pekerjaan }}
+                                        </span>
+                                    @else
+                                        <span class="text-xs text-slate-300">-</span>
+                                    @endif
+                                    @if($report->work_classification)
+                                        <p class="text-xs text-slate-400 mt-1">
+                                            {{ \App\Enums\WorkClassification::tryFrom($report->work_classification)?->label() ?? $report->work_classification }}
+                                        </p>
+                                    @endif
+                                </td>
+                                <td class="px-4 py-3.5 align-top whitespace-nowrap" onclick="event.stopPropagation()">
+                                    @if($report->functionalLocation)
+                                        <a href="{{ route('locations.show', $report->functionalLocation) }}"
+                                           title="Detail lokasi {{ $report->functionalLocation->name }}"
+                                           class="text-xs font-medium font-mono text-teal-700 hover:underline">
+                                            {{ $report->functionalLocation->code }}
+                                        </a>
+                                    @elseif($report->area)
+                                        <a href="{{ route('assets.index', ['area_id' => $report->area->id]) }}"
+                                           title="Lihat alat di area {{ $report->area->code }}"
+                                           class="text-xs font-medium text-slate-700 hover:text-teal-700 hover:underline">
+                                            {{ $report->area->code }}
+                                        </a>
+                                    @else
+                                        <span class="text-xs text-slate-300">Tanpa lokasi</span>
+                                    @endif
+                                    <p class="text-xs text-slate-400 mt-0.5 font-mono">
+                                        @if($report->asset)
+                                            <a href="{{ route('assets.show', $report->asset) }}"
+                                               title="Detail alat {{ $report->asset->description }}"
+                                               class="text-teal-700 hover:underline">
+                                                {{ $report->asset->tech_ident_no ?? $report->asset->equipment_no ?? ('#' . $report->asset->id) }}
+                                            </a>
+                                        @else
+                                            {{ $report->equipment_tag ?: '-' }}
+                                        @endif
+                                    </p>
+                                </td>
+                                <td class="px-4 py-3.5 align-top whitespace-nowrap">
+                                    @if($jumlahDok > 0 || $jumlahHc > 0)
+                                        <p class="text-xs text-slate-600">Dokumentasi: <span class="font-semibold">{{ $jumlahDok }}</span></p>
+                                        <p class="text-xs text-slate-600">HC: <span class="font-semibold">{{ $jumlahHc }}</span></p>
+                                    @else
+                                        <span class="text-xs text-slate-300">-</span>
+                                    @endif
+                                </td>
+                                <td class="px-4 py-3.5 align-top whitespace-nowrap">
                                     <x-status-badge :status="$report->status" />
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="4" class="px-5 py-8 text-center text-sm text-slate-400">Belum ada laporan.</td>
+                                <td colspan="8" class="px-5 py-8 text-center text-sm text-slate-400">Belum ada pekerjaan tercatat.</td>
                             </tr>
                         @endforelse
                     </tbody>

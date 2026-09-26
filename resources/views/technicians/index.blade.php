@@ -76,16 +76,16 @@
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Group</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Bagian</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Departemen</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Status</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Telegram</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Aksi</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-50">
                     @forelse($technicians as $technician)
-                        <tr class="hover:bg-slate-50 transition-colors">
+                        <tr class="hover:bg-slate-50 transition-colors cursor-pointer"
+                            title="Klik untuk membuka detail {{ $technician->name }}"
+                            onclick="window.location='{{ route('technicians.show', $technician) }}'">
                             <td class="px-5 py-3.5">
-                                <a href="{{ route('technicians.show', $technician) }}" class="font-medium text-slate-900 hover:text-blue-600">{{ $technician->name }}</a>
+                                <a href="{{ route('technicians.show', $technician) }}" class="font-medium text-slate-900 hover:text-teal-700">{{ $technician->name }}</a>
                             </td>
                             <td class="px-5 py-3.5 font-mono text-slate-600">{{ $technician->nik ?? '-' }}</td>
                             <td class="px-5 py-3.5">
@@ -103,40 +103,9 @@
                                 @endif
                             </td>
                             <td class="px-5 py-3.5 text-slate-600">{{ $technician->department?->code ?? '-' }}</td>
-                            <td class="px-5 py-3.5"><x-status-badge :status="$technician->status" /></td>
                             <td class="px-5 py-3.5">
-                                @if($technician->telegram_id)
-                                    @php
-                                        $lastActive = $technician->last_active_at;
-                                        if ($lastActive && $lastActive->gt(now()->subDays(7))) {
-                                            $botKelas = 'bg-green-100 text-green-700';
-                                            $botLabel = $technician->telegram_username ? '@' . $technician->telegram_username : 'Terhubung';
-                                            $dotKelas = 'bg-green-500';
-                                            $titleLabel = 'Aktif dalam 7 hari terakhir';
-                                        } elseif ($lastActive) {
-                                            $botKelas = 'bg-amber-100 text-amber-700';
-                                            $botLabel = $technician->telegram_username ? '@' . $technician->telegram_username : 'Tidak Aktif';
-                                            $dotKelas = 'bg-amber-400';
-                                            $titleLabel = 'Terakhir aktif ' . $lastActive->diffForHumans();
-                                        } else {
-                                            $botKelas = 'bg-slate-100 text-slate-500';
-                                            $botLabel = $technician->telegram_username ? '@' . $technician->telegram_username : 'Belum Aktif';
-                                            $dotKelas = 'bg-slate-400';
-                                            $titleLabel = 'Belum pernah aktif';
-                                        }
-                                    @endphp
-                                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium {{ $botKelas }}"
-                                          title="{{ $titleLabel }}">
-                                        <span class="w-1.5 h-1.5 rounded-full {{ $dotKelas }}"></span>
-                                        {{ $botLabel }}
-                                    </span>
-                                @else
-                                    <span class="text-slate-400 text-xs">-</span>
-                                @endif
-                            </td>
-                            <td class="px-5 py-3.5">
-                                <div class="flex items-center gap-2">
-                                    <a href="{{ route('technicians.show', $technician) }}" class="text-blue-600 hover:text-blue-700 text-xs font-medium">Detail</a>
+                                <div class="flex items-center gap-2" onclick="event.stopPropagation()">
+                                    <a href="{{ route('technicians.show', $technician) }}" class="text-teal-700 hover:text-teal-800 text-xs font-medium">Detail</a>
                                     @if($technician->status === 'pending')
                                         <form method="POST" action="{{ route('technicians.approve', $technician) }}" class="inline">
                                             @csrf
@@ -161,7 +130,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="px-5 py-8 text-center text-sm text-slate-400">Belum ada teknisi.</td>
+                            <td colspan="6" class="px-5 py-8 text-center text-sm text-slate-400">Belum ada teknisi.</td>
                         </tr>
                     @endforelse
                 </tbody>

@@ -155,9 +155,16 @@ class TechnicianController extends Controller
 
     public function show(Technician $technician)
     {
-        $technician->load(['department', 'approver', 'reports' => function ($q) {
-            $q->latest()->take(20);
-        }]);
+        $technician->load(['department', 'approver']);
+
+        // Pekerjaan harian teknisi untuk tabel di halaman detail: seluruh riwayat
+        // terbaru (bukan hanya 20) dengan relasi lokasi/alat agar bisa diklik.
+        $laporanTerbaru = $technician->reports()
+            ->with(['asset', 'functionalLocation', 'area'])
+            ->orderByDesc('report_date')
+            ->orderByDesc('id')
+            ->take(60)
+            ->get();
 
         $stats = [
             'total_reports' => $technician->reports()->count(),
@@ -181,7 +188,7 @@ class TechnicianController extends Controller
                 ->value('report_date'),
         ];
 
-    return view('technicians.show', compact('technician', 'stats', 'botStats'));
+        return view('technicians.show', compact('technician', 'stats', 'botStats', 'laporanTerbaru'));
     }
 
     public function approve(Technician $technician)
