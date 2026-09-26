@@ -384,6 +384,37 @@ test('preview jadwal bulanan berisi 4 group dan rekap hari', function () {
         ->and($jadwal['bulan_berikutnya'])->toBe('2026-11');
 });
 
+test('panel jadwal menampilkan ringkasan data aktual bukan angka import lama', function () {
+    TechnicianShift::create([
+        'technician_id' => $this->teknisiShift->id,
+        'nik'           => 'NIK-LAIN-2',
+        'nama'          => 'Teknisi Shift Uji',
+        'group_code'    => 'A',
+        'section_label' => 'POLA',
+        'shift_date'    => '2026-09-26',
+        'shift_code'    => '2',
+    ]);
+
+    // Satu baris tanpa teknisi (mis. NIK belum terdaftar) tetap terhitung.
+    TechnicianShift::create([
+        'nik'           => 'NIK-BELUM-ADA',
+        'nama'          => 'Belum Terdaftar',
+        'section_label' => 'POLA',
+        'shift_date'    => '2026-09-26',
+        'shift_code'    => '1',
+    ]);
+
+    $this->actingAs($this->admin)
+        ->get('/technicians')
+        ->assertStatus(200)
+        ->assertSee('Jadwal tersimpan: 2 baris', false)
+        ->assertSee('untuk 1 teknisi', false)
+        ->assertSee('1 baris belum tersambung ke teknisi', false)
+        // Angka historis hasil import tidak ditampilkan lagi.
+        ->assertDontSee('orang dibaca', false)
+        ->assertDontSee('belum cocok', false);
+});
+
 test('popup jadwal bulanan bisa digeser ke bulan berikutnya', function () {
     $this->actingAs($this->admin)
         ->get('/technicians?jadwal_bulan=2026-11')

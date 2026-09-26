@@ -62,8 +62,18 @@ class TechnicianController extends Controller
         $menitKerja  = $manHour->menitPerTeknisi($idTeknisi, $mulaiManHour, $selesaiManHour);
         $targetKerja = $manHour->targetPerTeknisi($idTeknisi, $mulaiManHour, $selesaiManHour);
 
-        // Info jadwal shift: periode terakhir (acuan pola rotasi otomatis).
+        // Info jadwal shift: file terakhir yang diimport (acuan pola rotasi).
         $shiftTerakhir = ShiftSchedule::latest('id')->first();
+
+        // Ringkasan jadwal yang tersimpan sekarang (dihitung dari data aktual,
+        // bukan angka historis hasil import) supaya keterangannya selalu benar.
+        $ringkasanJadwal = [
+            'jumlah_baris'     => TechnicianShift::count(),
+            'jumlah_teknisi'   => TechnicianShift::whereNotNull('technician_id')->distinct()->count('technician_id'),
+            'belum_terhubung'  => TechnicianShift::whereNull('technician_id')->count(),
+            'periode_mulai'    => TechnicianShift::min('shift_date'),
+            'periode_selesai'  => TechnicianShift::max('shift_date'),
+        ];
 
         // Preview jadwal bulanan (popup): default bulan berjalan, bisa digeser
         // lewat parameter ?jadwal_bulan=YYYY-MM.
@@ -78,6 +88,7 @@ class TechnicianController extends Controller
             'targetKerja',
             'labelPeriode',
             'shiftTerakhir',
+            'ringkasanJadwal',
             'jadwalBulanan'
         ));
     }

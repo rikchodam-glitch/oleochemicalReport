@@ -73,20 +73,28 @@
                 sudah dikenali sistem, jadi jadwal bulan berikutnya dibuat otomatis tanpa perlu upload.
             </p>
 
-            @if($shiftTerakhir)
-                <div class="mt-3 rounded-lg bg-teal-50 border border-teal-100 px-3 py-2">
-                    <p class="text-xs font-semibold text-teal-800">
-                        Periode terakhir: {{ $shiftTerakhir->periode_label ?? '-' }}
+            <div class="mt-3 rounded-lg bg-teal-50 border border-teal-100 px-3 py-2">
+                <p class="text-xs font-semibold text-teal-800">
+                    Jadwal tersimpan: {{ number_format($ringkasanJadwal['jumlah_baris']) }} baris
+                    untuk {{ $ringkasanJadwal['jumlah_teknisi'] }} teknisi
+                </p>
+                <p class="text-xs text-teal-700 mt-0.5">
+                    @if($ringkasanJadwal['periode_mulai'] !== null)
+                        Rentang {{ \Illuminate\Support\Carbon::parse($ringkasanJadwal['periode_mulai'])->format('d/m/Y') }}
+                        s/d {{ \Illuminate\Support\Carbon::parse($ringkasanJadwal['periode_selesai'])->format('d/m/Y') }}.
+                    @endif
+                    @if($ringkasanJadwal['belum_terhubung'] === 0)
+                        Semua baris sudah tersambung ke teknisi.
+                    @else
+                        {{ $ringkasanJadwal['belum_terhubung'] }} baris belum tersambung ke teknisi.
+                    @endif
+                </p>
+                @if($shiftTerakhir)
+                    <p class="text-xs text-teal-600 mt-1 break-words">
+                        Acuan pola dari file: {{ $shiftTerakhir->nama_file }} ({{ $shiftTerakhir->periode_label ?? '-' }})
                     </p>
-                    <p class="text-xs text-teal-700 mt-0.5">
-                        {{ $shiftTerakhir->jumlah_baris }} orang dibaca,
-                        {{ $shiftTerakhir->jumlah_terpetakan }} terpetakan,
-                        {{ $shiftTerakhir->jumlah_tidak_cocok }} belum cocok
-                    </p>
-                </div>
-            @else
-                <p class="text-xs text-amber-600 mt-3">Belum ada jadwal shift yang diimport.</p>
-            @endif
+                @endif
+            </div>
 
             <button type="button" onclick="bukaJadwalBulanan()"
                     class="mt-3 w-full px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
