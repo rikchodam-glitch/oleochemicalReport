@@ -28,4 +28,11 @@ return [
         'bot_username' => env('TELEGRAM_BOT_USERNAME', 'oleochemical_bot'),
     ],
 
+    'google_drive' => [
+        'enabled'                  => env('GOOGLE_DRIVE_ENABLED', false),
+        'credentials_path'         => env('GOOGLE_DRIVE_CREDENTIALS_PATH'),
+        'finding_photos_folder_id' => env('GOOGLE_DRIVE_FINDING_PHOTOS_FOLDER_ID'),
+        'make_public'              => env('GOOGLE_DRIVE_MAKE_PUBLIC', true),
+    ],
+
 ];
