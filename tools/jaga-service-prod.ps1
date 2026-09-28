@@ -74,12 +74,51 @@ Nyalakan -Argumen 'schedule:work' -Pola 'artisan schedule:work'
 Nyalakan -Argumen 'telegram:poll' -Pola 'artisan telegram:poll' -Poller
 Nyalakan -Argumen 'serve --host=0.0.0.0 --port=8000' -Pola 'artisan serve'
 
-# Cloudflare Tunnel: hanya dijalankan bila konfigurasinya sudah diisi
-# (tunnel id + domain, bukan lagi placeholder TUNNEL-ID).
+# Cloudflare Tunnel: dua mode yang didukung.
+#   1. Mode token  : file token-prod.txt berisi connector token dari dashboard
+#                    (dipakai kalau file itu ada).
+#   2. Mode config : config-prod.yml berisi tunnel id + credentials-file hasil
+#                    "cloudflared tunnel login" + "tunnel create".
 $KonfigTunnel = 'C:\laragon\cloudflared\config-prod.yml'
+$FileToken    = 'C:\laragon\cloudflared\token-prod.txt'
 $Cloudflared  = 'C:\laragon\bin\cloudflared\cloudflared.exe'
 
-if ((Test-Path $KonfigTunnel) -and (Test-Path $Cloudflared)) {
+if (-not (Test-Path $Cloudflared)) {
+    Catat 'tunnel cloudflared: dilewati (biner cloudflared tidak ada)'
+} elseif (Test-Path $FileToken) {
+    $tokenTunnel = (Get-Content $FileToken -Raw).Trim()
+
+    if ($tokenTunnel -eq '') {
+        Catat 'tunnel cloudflared (mode token): dilewati (file token kosong)'
+    } else {
+        $prosesTunnel = Get-CimInstance Win32_Process -Filter "Name='cloudflared.exe'" | Where-Object {
+            [string]$_.CommandLine -like '*tunnel run*'
+        }
+
+        if (($prosesTunnel | Measure-Object).Count -eq 1) {
+            Catat 'tunnel cloudflared (mode token): OK (1 proses)'
+        } else {
+            if ($prosesTunnel) {
+                Catat ('tunnel cloudflared (mode token): ada ' + ($prosesTunnel | Measure-Object).Count + ' proses -> dibersihkan')
+                $prosesTunnel | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+                Start-Sleep -Seconds 3
+            }
+
+            # Token dilewatkan lewat variabel lingkungan, bukan argumen perintah,
+            # supaya tidak terlihat di daftar proses.
+            $env:TUNNEL_TOKEN = $tokenTunnel
+            try {
+                Start-Process -FilePath $Cloudflared -ArgumentList 'tunnel', 'run' -WindowStyle Hidden `
+                    -RedirectStandardOutput (Join-Path $ProdPath 'storage\logs\tunnel.out.log') `
+                    -RedirectStandardError (Join-Path $ProdPath 'storage\logs\tunnel.err.log')
+            } finally {
+                Remove-Item Env:\TUNNEL_TOKEN -ErrorAction SilentlyContinue
+            }
+
+            Catat 'tunnel cloudflared (mode token): dinyalakan'
+        }
+    }
+} elseif (Test-Path $KonfigTunnel) {
     $isiKonfig = Get-Content $KonfigTunnel -Raw
 
     if ($isiKonfig -match 'TUNNEL-ID') {
