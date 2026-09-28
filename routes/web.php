@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AiProviderController;
 use App\Http\Controllers\AssetController;
+use App\Http\Controllers\BagianAccessController;
 use App\Http\Controllers\BotController;
 use App\Http\Controllers\CmController;
 use App\Http\Controllers\CmImportController;
@@ -21,6 +22,7 @@ use App\Http\Controllers\StorageController;
 use App\Http\Controllers\ShiftScheduleController;
 use App\Http\Controllers\TechnicianController;
 use App\Http\Controllers\TelegramWebhookController;
+use App\Http\Controllers\UserController;
 use App\Http\Controllers\WorkOrderController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -42,7 +44,7 @@ if (app()->environment('local')) {
 }
 
 // Admin routes (with auth)
-Route::middleware('admin')->group(function () {
+Route::middleware(['admin', 'akses'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     // Assets - import routes MUST be before resource to avoid 404
@@ -252,6 +254,20 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     Route::post('/panel/ruangan/{panelRuangan}/tarik', [PanelRuanganController::class, 'tarik'])->name('panel.ruangan.tarik');
     Route::put('/panel/ruangan/{panelRuangan}', [PanelRuanganController::class, 'update'])->name('panel.ruangan.update');
     Route::delete('/panel/ruangan/{panelRuangan}', [PanelRuanganController::class, 'destroy'])->name('panel.ruangan.destroy');
+
+    // Manajemen user (akun teknisi) dan hak akses halaman per Bagian.
+    // Route statis WAJIB ditulis sebelum route berparameter /users/{user}
+    // supaya tidak tertangkap wildcard.
+    Route::get('/users', [UserController::class, 'index'])->name('users.index');
+    Route::get('/users/create', [UserController::class, 'create'])->name('users.create');
+    Route::post('/users', [UserController::class, 'store'])->name('users.store');
+    Route::post('/users/generate-teknisi', [UserController::class, 'generateTeknisi'])->name('users.generate-teknisi');
+    Route::get('/users/akses', [BagianAccessController::class, 'index'])->name('akses.index');
+    Route::post('/users/akses/{bagian}', [BagianAccessController::class, 'update'])->name('akses.update');
+    Route::get('/users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
+    Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
+    Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
+    Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('users.reset-password');
 });
 
 // Redirect root to dashboard

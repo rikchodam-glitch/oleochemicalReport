@@ -23,7 +23,7 @@
 
             @if (isset($errors) && $errors->any())
                 <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                    {{ $errors->first('email') }}
+                    {{ $errors->first('username') ?: $errors->first('email') }}
                 </div>
             @endif
 
@@ -37,17 +37,16 @@
                 @csrf
 
                 <div class="space-y-1.5">
-                    <label class="block text-sm font-medium text-slate-700">Email</label>
-                    <input type="email" name="email" value="{{ old('email') }}" required autofocus
-                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-400"
-                           placeholder="admin@oleochemical.pro">
+                    <label class="block text-sm font-medium text-slate-700">NIK / Email</label>
+                    <input type="text" name="username" value="{{ old('username') }}" required autofocus
+                           autocomplete="username"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
 
                 <div class="space-y-1.5">
                     <label class="block text-sm font-medium text-slate-700">Password</label>
-                    <input type="password" name="password" required
-                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-400"
-                           placeholder="password123">
+                    <input type="password" name="password" required autocomplete="current-password"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
 
                 <div class="flex items-center justify-between">
@@ -62,6 +61,11 @@
                     Masuk
                 </button>
             </form>
+
+            <p class="mt-4 text-xs text-slate-400 text-center">
+                Gunakan NIK atau email terdaftar, lalu masukkan password akun Anda.
+                Hubungi administrator bila lupa password.
+            </p>
         </div>
 
         <p class="text-center text-xs text-slate-400 mt-6">

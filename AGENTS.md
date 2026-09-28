@@ -137,6 +137,38 @@ ulang.
    Draft, dan kartu "Draft" di halaman Teknisi (diganti "Continue") sudah
    dihapus — jangan dihidupkan lagi tanpa instruksi user.
 
+12. **Manajemen user berbasis Bagian (diputuskan 27/09/2026, sudah ada
+   kodenya — jangan diubah tanpa instruksi user):**
+   - Login memakai **username**; untuk akun teknisi username = **NIK** dan
+     password awal = **NIK huruf kecil** (`mb_strtolower`). Akun lama tetap
+     bisa login memakai email (deteksi bentuk isian ada di
+     `app/Http/Controllers/LoginController.php`).
+   - Role akun berisi **kode Bagian** (kolom `section` teknisi: mekanik, ei,
+     it, sipil, fabrikasi, general, cm_pm, lainnya) atau `admin`/`supervisor`.
+     Kolom `role` di tabel `users` karena itu diubah dari enum menjadi
+     varchar(50) — **nilai bawaannya tetap `admin`** supaya akun lama dan
+     akun buatan `UserFactory` tidak berubah perilakunya (perubahan default
+     ini pernah hampir merusak seluruh pengujian).
+   - Hak akses halaman diatur per Bagian di tabel `bagian_accesses`
+     (`bagian` unik + `permissions` json); daftar modulnya di
+     `config/akses.php` (label, grup menu, pola nama route, nama route menu
+     sidebar, penanda `khusus_admin`). Akun `admin`/`supervisor` SELALU akses
+     penuh dan tidak bisa dibatasi; modul bertanda `khusus_admin` (mis.
+     Manajemen User) tidak bisa diberikan ke Bagian mana pun.
+   - Penegakan izin ada di `App\Http\Middleware\AksesMiddleware` (alias
+     `akses`, dipasang bersama `admin` pada grup route di `routes/web.php`).
+     Route yang tidak terpetakan ke modul mana pun dilewatkan, karena itu
+     ada test penjaga "semua route bernama punya modul hak akses" yang WAJIB
+     tetap hijau setiap kali menambah route baru.
+   - Sidebar menyembunyikan menu tanpa hak akses lewat partial
+     `resources/views/layouts/partials/sidebar-akses.blade.php` (dipanggil
+     dengan SATU baris dari `layouts/app.blade.php`, sengaja tidak mengubah
+     547 baris layout). Penyembunyian ini hanya tampilan; pengamannya tetap
+     AksesMiddleware di sisi server.
+   - Kolom `users.email` dibuat nullable (akun teknisi tidak punya email);
+     index unik `users_email_unique`, `users_username_unique`, dan
+     `users_technician_id_unique` tetap dipertahankan.
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file
