@@ -32,6 +32,40 @@ begini"), WAJIB sertakan path lengkap absolut yang benar-benar dibaca saat
 itu juga, dan sebutkan apakah yang dibaca itu copy DEV atau PROD. Jangan
 mengandalkan laporan dari sesi sebelumnya tanpa verifikasi ulang.
 
+## DOMAIN PUBLIK (CLOUDFLARE TUNNEL) — STATUS PERSIAPAN
+
+Metode yang dipilih user: **Cloudflare Tunnel** (tanpa port forwarding, tetap
+berjalan di belakang CGNAT, HTTPS otomatis dari Cloudflare). Yang SUDAH
+disiapkan di komputer ini (terverifikasi 28/09/2026):
+
+- Biner: `C:\laragon\bin\cloudflared\cloudflared.exe` (versi 2026.9.3).
+- Konfigurasi: `C:\laragon\cloudflared\config-prod.yml` — ingress ke
+  `http://localhost:80` dengan `httpHostHeader: oleo-prod.lvh.me` sehingga
+  permintaan domain publik dilayani vhost PROD (tanpa menyentuh vhost DEV).
+- Panduan: `tools\siapkan-tunnel-prod.ps1`.
+- Vhost PROD: `C:\laragon\etc\apache2\sites-enabled\oleo-prod.conf`.
+
+Langkah yang MASIH perlu dijalankan user (jangan diasumsikan sudah selesai):
+1. `cloudflared tunnel login` (butuh akun Cloudflare + browser).
+2. `cloudflared tunnel create oleo-report` (catat TUNNEL ID).
+3. `cloudflared tunnel route dns oleo-report <domain>`.
+4. Isi TUNNEL ID + domain di `config-prod.yml` (atau pakai parameter
+   `-Domain`/`-TunnelId` pada `tools\siapkan-tunnel-prod.ps1`).
+5. Jalankan tunnel dari copy PROD.
+6. Ubah `.env` PROD: `APP_URL=https://<domain>` lalu
+   `php artisan config:clear` + `php artisan config:cache`.
+7. Tunnel permanen: `cloudflared service install` (butuh hak admin).
+
+Batasan penting lingkungan ini:
+- Akun Windows **TIDAK punya hak admin**: file `hosts` tidak bisa diubah dan
+  vhost Apache BARU tidak aktif sebelum Laragon di-reload
+  (Laragon > Apache > Reload). Selama vhost belum aktif, uji dengan
+  `curl.exe -H "Host: oleo-prod.lvh.me" http://127.0.0.1/login`.
+- Karena entri `hosts` tidak bisa ditambah, hostname uji lokal memakai
+  `localhost` dan `*.lvh.me` (DNS publik yang selalu menunjuk 127.0.0.1).
+- Sebelum dipublikasikan, pastikan `.env` PROD sudah `APP_ENV=production` dan
+  `APP_DEBUG=false` (ini juga mematikan route `debug-login`).
+
 ## KEPUTUSAN ARSITEKTUR FINAL (JANGAN TANYA ULANG, SUDAH DIPUTUSKAN)
 
 1. Modul utama: **Condition Monitoring (CM)** — singkatan "CM" di project ini
