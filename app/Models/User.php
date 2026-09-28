@@ -89,6 +89,19 @@ class User extends Authenticatable
     }
 
     /**
+     * Apakah akun ini boleh mengubah data (tambah/ubah/hapus/import).
+     *
+     * Akun selain administrator hanya bisa membaca; daftar role penulis ada di
+     * config('akses.role_penulis').
+     *
+     * @return bool
+     */
+    public function bolehMenulis(): bool
+    {
+        return in_array((string) $this->role, (array) config('akses.role_penulis', ['admin']), true);
+    }
+
+    /**
      * Kode Bagian akun ini (kolom role bila bukan akun akses penuh).
      *
      * @return string|null Null bila akun ini akses penuh

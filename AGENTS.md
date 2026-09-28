@@ -169,6 +169,37 @@ ulang.
      index unik `users_email_unique`, `users_username_unique`, dan
      `users_technician_id_unique` tetap dipertahankan.
 
+13. **Mode hanya baca untuk akun non-administrator + relokasi menu sidebar
+   (diputuskan 28/09/2026, sudah ada kodenya):**
+   - `config('akses.role_penulis')` = `['admin']`: HANYA administrator yang
+     boleh mengubah data. Semua akun lain (termasuk `supervisor` dan semua
+     Bagian) hanya bisa membaca; permintaan POST/PUT/PATCH/DELETE ditolak
+     `App\Http\Middleware\HanyaBacaMiddleware` (alias `hanya_baca`, dipasang
+     pada grup route bersama `admin` dan `akses`). Route yang dikecualikan
+     (mis. `logout` dan penanda notifikasi dibaca) ada di
+     `config('akses.route_hanya_baca_bebas')`. Tambahkan `supervisor` ke
+     `role_penulis` kalau supervisor juga perlu menulis — hanya itu yang
+     perlu diubah.
+   - Tampilan akun hanya baca: partial
+     `resources/views/layouts/partials/mode-hanya-baca.blade.php` (dipanggil
+     SATU baris sebelum `<main>` di `layouts/app.blade.php`) menampilkan
+     penanda "Mode hanya baca" dan menyembunyikan form non-GET, tautan
+     tambah/ubah/impor, dan tombol modal "Tambah...". Penyembunyian ini hanya
+     tampilan; pengamannya tetap middleware.
+   - **Relokasi menu sidebar JANGAN dilakukan dengan menulis ulang
+     `layouts/app.blade.php` (547 baris — lihat riwayat insiden #3/#10/#12).**
+     Pola yang dipakai: render menu di partial + buang tautan lama dengan
+     skrip. Kolaborasi dirender `partials/sidebar-menu-utama.blade.php`
+     (di-include setelah menu Laporan), Manajemen User + Hak Akses Bagian +
+     Storage dirender `partials/sidebar-pengaturan.blade.php` (di-include
+     sebelum judul "Sistem"), lalu `partials/sidebar-akses.blade.php`
+     membuang tautan Storage/Kolaborasi posisi lama dan judul grup "Sistem"
+     yang jadi kosong. Tautan baru diberi kelas `menu-pindahan` supaya tidak
+     ikut terbuang. Ikuti pola ini untuk pemindahan menu berikutnya.
+   - Ikon menu Kolaborasi memakai ikon "share" supaya tidak sama dengan menu
+     Teknisi; Manajemen User memakai ikon kunci, Hak Akses memakai ikon
+     perisai.
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file
@@ -576,6 +607,17 @@ ulang.
     (group/status/kategori), cari dulu semua tempat yang memakai pola
     "kecuali X"/"selain X" dan ujilah — penambahan anggota baru mengubah arti
     daftar itu tanpa error apa pun.**
+
+
+25. **Test penolakan 403 pada route ber-parameter bisa salah dibaca sebagai bug
+    middleware, padahal route model binding yang jalan lebih dulu.** Pada
+    28/09/2026, test "akun hanya baca" memakai `DELETE /assets/1` dan gagal
+    dengan 404 (bukan 403). Penyebabnya: `SubstituteBindings` (bagian grup
+    `web`) menyelesaikan `{asset}` SEBELUM middleware route berjalan, sehingga
+    record yang tidak ada menghasilkan 404 lebih dulu. **Pelajaran: untuk
+    membuktikan penolakan 403, pakai route tulis tanpa parameter model
+    (mis. `POST /assets`, `POST /technicians`) atau buat dulu record-nya;
+    jangan memakai id yang tidak ada.**
 
 
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->

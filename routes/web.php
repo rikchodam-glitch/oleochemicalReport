@@ -44,7 +44,7 @@ if (app()->environment('local')) {
 }
 
 // Admin routes (with auth)
-Route::middleware(['admin', 'akses'])->group(function () {
+Route::middleware(['admin', 'akses', 'hanya_baca'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     // Assets - import routes MUST be before resource to avoid 404

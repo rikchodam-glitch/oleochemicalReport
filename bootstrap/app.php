@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\AdminMiddleware;
 use App\Http\Middleware\AksesMiddleware;
+use App\Http\Middleware\HanyaBacaMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -15,8 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'admin' => AdminMiddleware::class,
-            'akses' => AksesMiddleware::class,
+            'admin'      => AdminMiddleware::class,
+            'akses'      => AksesMiddleware::class,
+            'hanya_baca' => HanyaBacaMiddleware::class,
         ]);
 
         $middleware->validateCsrfTokens(except: [

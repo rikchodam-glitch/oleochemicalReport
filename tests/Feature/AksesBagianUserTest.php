@@ -281,3 +281,64 @@ test('halaman manajemen user dan hak akses bisa dibuka administrator', function 
         ->assertStatus(200)
         ->assertSee('Mekanik');
 });
+
+// ============================================================
+// MODE HANYA BACA (SELAIN ADMINISTRATOR)
+// ============================================================
+
+test('akun bagian hanya bisa membaca walaupun halamannya boleh dibuka', function () {
+    $akun = akunBagian('mekanik', ['dashboard', 'assets'], '900000007');
+
+    expect($akun->bolehMenulis())->toBeFalse();
+
+    $this->actingAs($akun)->get('/assets')->assertStatus(200);
+    $this->actingAs($akun)->post('/assets', ['equipment_no' => 'TES-1'])->assertStatus(403);
+    $this->actingAs($akun)->post('/technicians', ['name' => 'Tes'])->assertStatus(403);
+    $this->actingAs($akun)->post('/reports', [])->assertStatus(403);
+});
+
+test('supervisor juga hanya bisa membaca', function () {
+    $supervisor = User::where('email', 'supervisor@oleochemical.pro')->firstOrFail();
+
+    expect($supervisor->bolehMenulis())->toBeFalse();
+
+    $this->actingAs($supervisor)->get('/assets')->assertStatus(200);
+    $this->actingAs($supervisor)->post('/assets', ['equipment_no' => 'TES-2'])->assertStatus(403);
+});
+
+test('administrator tetap bisa menambah data', function () {
+    expect($this->admin->bolehMenulis())->toBeTrue();
+
+    $this->actingAs($this->admin)
+        ->post(route('users.store'), [
+            'name'     => 'Akun Admin Baru',
+            'username' => 'admin2',
+            'role'     => 'admin',
+        ])
+        ->assertRedirect(route('users.index'));
+});
+
+test('akun hanya baca tetap bisa logout', function () {
+    $akun = akunBagian('mekanik', ['dashboard'], '900000008');
+
+    $this->actingAs($akun)->post(route('logout'))->assertRedirect('/login');
+
+    $this->assertGuest();
+});
+
+test('penanda mode hanya baca tampil untuk akun bagian, tidak untuk administrator', function () {
+    $akun = akunBagian('mekanik', ['dashboard'], '900000009');
+
+    $this->actingAs($akun)->get('/dashboard')->assertStatus(200)->assertSee('Mode hanya baca');
+    $this->actingAs($this->admin)->get('/dashboard')->assertStatus(200)->assertDontSee('Mode hanya baca');
+});
+
+test('menu kolaborasi dan kelompok pengaturan dirender pada halaman', function () {
+    $this->actingAs($this->admin)
+        ->get('/dashboard')
+        ->assertStatus(200)
+        ->assertSee(route('collaboration.index'))
+        ->assertSee('Manajemen User')
+        ->assertSee('Hak Akses Bagian')
+        ->assertSee(route('storage.index'));
+});

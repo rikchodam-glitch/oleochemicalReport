@@ -139,4 +139,26 @@ return [
     ],
 
     'pesan_tolak' => 'Bagian Anda tidak memiliki akses ke halaman ini.',
+
+    /**
+     * Role yang boleh MENGUBAH data (tambah/ubah/hapus/import). Role lain
+     * hanya bisa membaca: semua permintaan POST/PUT/PATCH/DELETE dari akun
+     * non-penulis ditolak HanyaBacaMiddleware. Halaman yang boleh dibuka tetap
+     * diatur per Bagian pada tabel bagian_accesses.
+     *
+     * Tambahkan 'supervisor' di sini bila supervisor juga perlu menulis.
+     */
+    'role_penulis' => ['admin'],
+
+    /**
+     * Route yang boleh memakai metode tulis walau akunnya hanya baca
+     * (mis. logout supaya pengguna tetap bisa keluar).
+     */
+    'route_hanya_baca_bebas' => [
+        'logout',
+        'it-assets.notifications.read',
+        'it-assets.notifications.read-all',
+    ],
+
+    'pesan_hanya_baca' => 'Akun Anda hanya bisa melihat data (read only). Hubungi administrator untuk mengubah data.',
 ];
