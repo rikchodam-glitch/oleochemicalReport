@@ -12,6 +12,11 @@ $FileKonfig  = 'C:\laragon\cloudflared\config-prod.yml'
 $Domain      = 'app.saranapendidik.com'
 $VhostLokal  = 'oleo-prod.lvh.me'
 $FolderKred  = Join-Path $env:USERPROFILE '.cloudflared'
+$FileToken   = 'C:\laragon\cloudflared\token-prod.txt'
+
+# Mode token dipakai bila token-prod.txt sudah diisi (tunnel dibuat dari
+# dashboard); kalau tidak, dipakai mode config (config-prod.yml).
+$modeToken = (Test-Path $FileToken) -and ((Get-Content $FileToken -Raw).Trim() -ne '')
 
 $jumlahGagal = 0
 
@@ -39,15 +44,21 @@ if (Test-Path $Cloudflared) {
 }
 
 # 2. Login Cloudflare (cert.pem)
-$cert    = Join-Path $FolderKred 'cert.pem'
-$adaCert = Test-Path $cert
-$ketCert = 'belum: jalankan "cloudflared tunnel login"'
-if ($adaCert) { $ketCert = $cert }
-Lapor 'Login Cloudflare (cert.pem)' $adaCert $ketCert
+if ($modeToken) {
+    Lapor 'Login Cloudflare (cert.pem)' $true 'tidak diperlukan pada mode token dashboard'
+} else {
+    $cert    = Join-Path $FolderKred 'cert.pem'
+    $adaCert = Test-Path $cert
+    $ketCert = 'belum: jalankan "cloudflared tunnel login"'
+    if ($adaCert) { $ketCert = $cert }
+    Lapor 'Login Cloudflare (cert.pem)' $adaCert $ketCert
+}
 
-# 3. Konfigurasi tunnel + Tunnel ID
+# 3. Sumber konfigurasi tunnel
 $idTunnel = ''
-if (Test-Path $FileKonfig) {
+if ($modeToken) {
+    Lapor 'Sumber konfigurasi tunnel' $true 'mode token dashboard (C:\laragon\cloudflared\token-prod.txt)'
+} elseif (Test-Path $FileKonfig) {
     $isiKonfig = Get-Content $FileKonfig -Raw
 
     if ($isiKonfig -match 'tunnel:\s*(\S+)') {
@@ -63,8 +74,8 @@ if (Test-Path $FileKonfig) {
     Lapor 'Tunnel ID di config-prod.yml' $false ('file tidak ada: ' + $FileKonfig)
 }
 
-# 4. File kredensial tunnel
-if ($idTunnel -ne '' -and $idTunnel -ne 'TUNNEL-ID') {
+# 4. File kredensial tunnel (mode config saja)
+if (-not $modeToken -and $idTunnel -ne '' -and $idTunnel -ne 'TUNNEL-ID') {
     $fileKred = Join-Path $FolderKred ($idTunnel + '.json')
     $adaKred  = Test-Path $fileKred
     $ketKred  = 'tidak ada: pastikan "tunnel create" sudah jalan & ID benar'
@@ -73,7 +84,9 @@ if ($idTunnel -ne '' -and $idTunnel -ne 'TUNNEL-ID') {
 }
 
 # 5. Proses tunnel berjalan
-$prosesTunnel = Get-CimInstance Win32_Process -Filter "Name='cloudflared.exe'" | Where-Object { [string]$_.CommandLine -like '*config-prod.yml*' }
+$polaProses = '*config-prod.yml*'
+if ($modeToken) { $polaProses = '*tunnel run*' }
+$prosesTunnel = Get-CimInstance Win32_Process -Filter "Name='cloudflared.exe'" | Where-Object { [string]$_.CommandLine -like $polaProses }
 Lapor 'Proses tunnel berjalan' (($prosesTunnel | Measure-Object).Count -eq 1) (($prosesTunnel | Measure-Object).Count.ToString() + ' proses (harus 1)')
 
 # 6. DNS domain publik
