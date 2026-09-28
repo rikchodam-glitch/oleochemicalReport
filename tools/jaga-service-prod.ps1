@@ -72,7 +72,35 @@ if (-not (Test-Path $ProdPath)) {
 Nyalakan -Argumen 'queue:work --tries=1' -Pola 'artisan queue:work'
 Nyalakan -Argumen 'schedule:work' -Pola 'artisan schedule:work'
 Nyalakan -Argumen 'telegram:poll' -Pola 'artisan telegram:poll' -Poller
-Nyalakan -Argumen 'serve --host=0.0.0.0 --port=8000' -Pola 'artisan serve'
+
+# Web port 8000 harus menyajikan copy PROD. Route /debug-login hanya ada di DEV
+# (APP_ENV=local), jadi: 404 = PROD (benar), 302/200 = copy lain -> nyalakan ulang.
+$prosesServe = Get-CimInstance Win32_Process -Filter "Name='php.exe'" | Where-Object {
+    [string]$_.CommandLine -like '*artisan serve*'
+}
+$serveDariProd = $false
+
+try {
+    $kodeServe = curl.exe -s -o NUL -w '%{http_code}' -m 10 http://127.0.0.1:8000/debug-login
+    $serveDariProd = ($kodeServe -eq '404')
+} catch {
+    $serveDariProd = $false
+}
+
+if ((($prosesServe | Measure-Object).Count -eq 1) -and $serveDariProd) {
+    Catat 'serve --host=0.0.0.0 --port=8000: OK (1 proses, copy PROD)'
+} else {
+    if ($prosesServe) {
+        Catat ('serve 8000: proses ada tapi bukan PROD (' + ($prosesServe | Measure-Object).Count + ' proses) -> dinyalakan ulang dari PROD')
+        $prosesServe | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 3
+    } else {
+        Catat 'serve 8000: tidak ada proses -> dinyalakan dari PROD'
+    }
+
+    Start-Process -FilePath $PhpExe -ArgumentList 'artisan', 'serve', '--host=0.0.0.0', '--port=8000' -WorkingDirectory $ProdPath -WindowStyle Hidden
+    Start-Sleep -Seconds 4
+}
 
 # Cloudflare Tunnel: dua mode yang didukung.
 #   1. Mode token  : file token-prod.txt berisi connector token dari dashboard

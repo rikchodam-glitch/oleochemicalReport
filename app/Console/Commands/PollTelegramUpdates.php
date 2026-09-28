@@ -40,7 +40,7 @@ class PollTelegramUpdates extends Command
     use TelegramSenderTrait;
     use TelegramMessageHandlerTrait;
 
-    protected $signature   = 'telegram:poll {--action= : start|stop|status}';
+    protected $signature   = 'telegram:poll {--action= : start|stop|status} {--force : jalankan walau bukan di PROD (pengujian khusus)}';
     protected $description = 'Poll Telegram updates continuously (long polling)';
 
     /**
@@ -86,6 +86,16 @@ class PollTelegramUpdates extends Command
 
         if ($action === 'stop') {
             return $this->stopPolling();
+        }
+
+        // Poller Telegram HANYA boleh berjalan di copy PROD (APP_ENV=production).
+        // Dua poller sekaligus membuat bot mati total (HTTP 409 — lihat AGENTS.md
+        // insiden #21), dan poller di copy DEV akan menulis ke database DEV.
+        // Opsi --force hanya untuk pengujian dengan token bot yang terpisah.
+        if (! app()->environment('production') && ! $this->option('force')) {
+            $this->error('telegram:poll hanya boleh dijalankan di PROD (APP_ENV=production).');
+            $this->line('Di DEV tidak perlu poller. Untuk pengujian khusus, pakai token bot lain lalu tambahkan --force.');
+            return Command::FAILURE;
         }
 
         // Default: mulai polling

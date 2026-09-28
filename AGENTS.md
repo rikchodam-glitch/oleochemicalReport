@@ -30,6 +30,20 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   yang mati dan membuang proses duplikat; catatannya ada di
   `PROD\storage\logs\jaga-service.log`. Kalau ada service yang tidak jalan,
   jalankan `tools\jaga-service-prod.ps1` lebih dulu sebelum menyimpulkan bug.
+  **Tugas ini memanggil `wscript.exe` + `tools\jalankan-tersembunyi.vbs`**
+  (bukan `powershell.exe` langsung) supaya tidak ada jendela PowerShell yang
+  muncul-tutup setiap 5 menit — jangan diubah kembali ke `powershell.exe`.
+  Watchdog juga memverifikasi port 8000 benar-benar menyajikan copy PROD
+  (via `GET /debug-login`: 404 = PROD, 302 = DEV) dan menggantinya bila salah.
+- Dua tugas lama dari sesi sebelumnya — **`Oleo Serve`** dan **`Tele Poll`** —
+  menjalankan `php.exe artisan serve` dan `artisan telegram:poll` dengan
+  working directory **copy DEV** saat boot. Keduanya TIDAK bisa diubah lagi
+  tanpa password akun/admin (schtasks meminta password; `Set-ScheduledTask`
+  ditolak "Access is denied"). Dampaknya sudah dinetralkan: (a) perintah
+  `telegram:poll` kini MENOLAK jalan bila bukan `APP_ENV=production`
+  (opsi `--force` untuk pengujian khusus), dan (b) watchdog mengganti serve
+  port 8000 yang bukan dari copy PROD. Idealnya kedua tugas itu dinonaktifkan
+  manual lewat Task Scheduler (butuh hak admin).
 - `.env` PROD BOLEH diedit langsung (tidak dilacak git, memang beda per copy),
   tetapi WAJIB diikuti `php artisan config:clear` + `config:cache` di PROD.
   `APP_URL` PROD harus alamat yang bisa dibuka pengguna — sejak 28/09/2026
