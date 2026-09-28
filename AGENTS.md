@@ -52,7 +52,19 @@ Metode yang dipilih user: **Cloudflare Tunnel** (tanpa port forwarding, tetap
 berjalan di belakang CGNAT, HTTPS otomatis dari Cloudflare). Yang SUDAH
 disiapkan di komputer ini (terverifikasi 28/09/2026):
 
-- Biner: `C:\laragon\bin\cloudflared\cloudflared.exe` (versi 2026.9.3).
+- Biner cloudflared versi **2026.9.3** ada DUA salinan di komputer ini, keduanya
+  versi sama:
+  1. `C:\Program Files (x86)\cloudflared\cloudflared.exe` — hasil
+     `winget install --id Cloudflare.cloudflared` (terdaftar di winget:
+     `winget list` menampilkan `cloudflared | Cloudflare.cloudflared | 2026.9.3`).
+     Folder `C:\Program Files (x86)\cloudflared\` ada di PATH MESIN, jadi
+     perintah `cloudflared --version` bisa dipanggil dari terminal BARU.
+  2. `C:\laragon\bin\cloudflared\cloudflared.exe` — unduhan manual saat
+     persiapan awal; `tools\siapkan-tunnel-prod.ps1` sengaja memakai path
+     lengkap ini supaya tidak bergantung pada PATH.
+  Catatan: kalau `cloudflared` "tidak ditemukan" di terminal yang sedang
+  terbuka, itu karena PATH sesi itu disusun sebelum instalasi — buka terminal
+  baru, bukan berarti paketnya tidak terpasang (lihat insiden #27).
 - Konfigurasi: `C:\laragon\cloudflared\config-prod.yml` — ingress ke
   `http://localhost:80` dengan `httpHostHeader: oleo-prod.lvh.me` sehingga
   permintaan domain publik dilayani vhost PROD (tanpa menyentuh vhost DEV).
@@ -703,6 +715,22 @@ Batasan penting lingkungan ini:
     SEBELUM `config:cache`. **Pelajaran: kalau folder/data wajib belum ada saat
     `config:cache` dijalankan, gejalanya muncul belakangan di tempat lain (di
     sini: view compiler) — buat folder wajib dulu, baru cache config.**
+
+
+27. **PATH sesi terminal yang usang membuat instalasi yang BERHASIL disimpulkan
+    gagal.** Pada 28/09/2026, `winget install --id Cloudflare.cloudflared`
+    dijalankan dan setelahnya `Get-Command cloudflared` menjawab "tidak ada",
+    sehingga disimpulkan winget gagal dan binernya diunduh manual ke
+    `C:\laragon\bin\cloudflared\`. Ternyata winget SUDAH berhasil memasangnya di
+    `C:\Program Files (x86)\cloudflared\cloudflared.exe` (dengan folder itu di
+    PATH MESIN) — yang usang hanya PATH proses terminal yang dipakai memeriksa,
+    karena sesi itu dimulai sebelum instalasi. Ketahuan setelah memeriksa
+    `where cloudflared` dengan PATH yang disusun ulang dari registry. **Pelajaran:
+    (1) hasil "perintah tidak ditemukan" setelah instalasi BUKAN bukti paket
+    gagal — cek dulu folder instalasi, `winget list`, dan PATH mesin
+    (`[Environment]::GetEnvironmentVariable('Path','Machine')`); (2) pakai
+    `where.exe` dengan PATH yang dibangun ulang dari registry untuk memeriksa
+    perintah baru dalam sesi yang sama.**
 
 
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
