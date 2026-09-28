@@ -1,14 +1,36 @@
 # AGENTS.md — oleochemicalReport
 
-## PENTING — ROOT PROJECT
+## PENTING — DUA COPY PROJECT DI KOMPUTER INI (DEV & PROD)
 
-Project utama dan SATU-SATUNYA target semua perubahan:
-`C:\Users\rikchodam\Herd\projectoleochemical`
+Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
+(diputuskan user: agar pengeditan tidak langsung terlihat di server):
+
+| Peran | Path | Keterangan |
+|---|---|---|
+| **DEV** (tempat kerja agent) | `C:\laragon\www\oleochemicalReport` | SEMUA perubahan kode dikerjakan di sini. Database `oleochemical_dev`. Diuji lokal lewat `php artisan serve` di `http://localhost:8000`. |
+| **PROD** (yang disajikan) | `C:\laragon\www\oleochemicalReport-prod` | Hasil deploy. Disajikan Apache pada vhost `oleo-prod.lvh.me` (nanti domain publik). Database `oleochemical` (data asli) dan pemegang `storage/app` data asli (foto/laporan). **JANGAN pernah mengedit file di sini.** |
+
+- Repo hub lokal (perantara deploy): `C:\laragon\repo\oleochemicalReport.git`
+  (bare). DEV punya remote **`hub`** ke sana; PROD punya remote **`origin`**
+  ke sana. Remote `origin` di DEV = GitHub (cadangan, sering tertinggal).
+- Vhost produksi: `C:\laragon\etc\apache2\sites-enabled\oleo-prod.conf`
+  (DocumentRoot ke copy PROD, `ServerName oleo-prod.lvh.me` + `ServerAlias localhost`).
+- Alur perubahan yang WAJIB diikuti: edit & uji di DEV -> commit di DEV ->
+  `git push hub main` -> jalankan `tools\deploy-prod.ps1` (pull di PROD +
+  dependensi + migrasi + cache + restart service). JANGAN mengedit atau
+  menjalankan migrasi manual di PROD.
+- Service latar (`queue:work`, `schedule:work`, `telegram:poll`) HANYA jalan di
+  PROD; dua poller Telegram sekaligus = bot mati total (HTTP 409, insiden #21).
+  Di DEV cukup `php artisan serve --port=8000`.
+- Storage & database terpisah: DEV tidak memuat foto asli (gambar akan tampak
+  rusak di dev; itu normal, bukan bug).
+- `php artisan optimize` JANGAN dipakai — `routes/web.php` memakai closure
+  route (`/`) sehingga `route:cache` gagal. Pakai `config:cache` + `view:cache`.
 
 Setiap kali menyebutkan kondisi suatu file ("file X sudah ada", "kolom Y
 begini"), WAJIB sertakan path lengkap absolut yang benar-benar dibaca saat
-itu juga. Jangan mengandalkan laporan dari sesi sebelumnya tanpa verifikasi
-ulang.
+itu juga, dan sebutkan apakah yang dibaca itu copy DEV atau PROD. Jangan
+mengandalkan laporan dari sesi sebelumnya tanpa verifikasi ulang.
 
 ## KEPUTUSAN ARSITEKTUR FINAL (JANGAN TANYA ULANG, SUDAH DIPUTUSKAN)
 
@@ -618,6 +640,21 @@ ulang.
     membuktikan penolakan 403, pakai route tulis tanpa parameter model
     (mis. `POST /assets`, `POST /technicians`) atau buat dulu record-nya;
     jangan memakai id yang tidak ada.**
+
+
+26. **Clone baru tidak punya folder `storage/framework/views`, dan itu membuat
+    `config:cache` menyimpan path view KOSONG.** Pada 28/09/2026, copy produksi
+    hasil `git clone` langsung gagal `HTTP 500` dengan pesan "Please provide a
+    valid cache path". Dua sebab berantai: (a) repo tidak pernah menyimpan
+    `storage/framework/views/.gitignore` sehingga folder itu tidak ada di clone;
+    (b) `config/view.php` memakai
+    `realpath(storage_path('framework/views'))` yang mengembalikan `false` saat
+    folder belum ada, jadi `config:cache` menyimpan path kosong dan `view:cache`
+    menolak dengan "View path not found". Perbaikan: `storage/framework/views/.gitignore`
+    ditambahkan ke repo, dan `tools/deploy-prod.ps1` membuat folder storage wajib
+    SEBELUM `config:cache`. **Pelajaran: kalau folder/data wajib belum ada saat
+    `config:cache` dijalankan, gejalanya muncul belakangan di tempat lain (di
+    sini: view compiler) — buat folder wajib dulu, baru cache config.**
 
 
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
