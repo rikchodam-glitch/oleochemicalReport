@@ -22,6 +22,12 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
 - Service latar (`queue:work`, `schedule:work`, `telegram:poll`) HANYA jalan di
   PROD; dua poller Telegram sekaligus = bot mati total (HTTP 409, insiden #21).
   Di DEV cukup `php artisan serve --port=8000`.
+- Service PROD dijaga otomatis oleh `tools\jaga-service-prod.ps1`, dipasang
+  sebagai tugas Windows **`oleo-jaga-service-prod`** (berjalan tiap 5 menit,
+  dibuat oleh `tools\pasang-jadwal-jaga-service.ps1`). Skrip itu menyalakan
+  ulang service yang mati dan membuang proses duplikat; catatannya ada di
+  `PROD\storage\logs\jaga-service.log`. Kalau ada service yang tidak jalan,
+  jalankan `tools\jaga-service-prod.ps1` lebih dulu sebelum menyimpulkan bug.
 - Storage & database terpisah: DEV tidak memuat foto asli (gambar akan tampak
   rusak di dev; itu normal, bukan bug).
 - `php artisan optimize` JANGAN dipakai — `routes/web.php` memakai closure

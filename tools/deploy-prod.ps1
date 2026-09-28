@@ -185,12 +185,21 @@ if (-not $LewatiService) {
 
     Start-Sleep -Seconds 6
 
-    $jumlahPoller = (Get-CimInstance Win32_Process -Filter "Name='php.exe'" | Where-Object { [string]$_.CommandLine -like '*telegram:poll*' } | Measure-Object).Count
-    if ($jumlahPoller -ne 1) {
-        throw ("Jumlah proses telegram:poll = " + $jumlahPoller + " (harus tepat 1).")
+    $layanan = @(
+        @{ Nama = 'queue:work';    Pola = 'artisan queue:work' },
+        @{ Nama = 'schedule:work'; Pola = 'artisan schedule:work' },
+        @{ Nama = 'telegram:poll'; Pola = 'artisan telegram:poll' }
+    )
+
+    foreach ($item in $layanan) {
+        $jumlah = (Get-CimInstance Win32_Process -Filter "Name='php.exe'" | Where-Object { [string]$_.CommandLine -like ('*' + $item.Pola + '*') } | Measure-Object).Count
+
+        if ($jumlah -ne 1) {
+            throw ("Jumlah proses " + $item.Nama + " = " + $jumlah + " (harus tepat 1).")
+        }
     }
 
-    Tulis 'service PROD jalan: queue:work, schedule:work, telegram:poll (1 proses).'
+    Tulis 'service PROD jalan: queue:work, schedule:work, telegram:poll (masing-masing 1 proses).'
 }
 
 # ==== 7. Ringkasan ====
