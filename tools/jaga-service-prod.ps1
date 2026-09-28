@@ -73,3 +73,36 @@ Nyalakan -Argumen 'queue:work --tries=1' -Pola 'artisan queue:work'
 Nyalakan -Argumen 'schedule:work' -Pola 'artisan schedule:work'
 Nyalakan -Argumen 'telegram:poll' -Pola 'artisan telegram:poll' -Poller
 Nyalakan -Argumen 'serve --host=0.0.0.0 --port=8000' -Pola 'artisan serve'
+
+# Cloudflare Tunnel: hanya dijalankan bila konfigurasinya sudah diisi
+# (tunnel id + domain, bukan lagi placeholder TUNNEL-ID).
+$KonfigTunnel = 'C:\laragon\cloudflared\config-prod.yml'
+$Cloudflared  = 'C:\laragon\bin\cloudflared\cloudflared.exe'
+
+if ((Test-Path $KonfigTunnel) -and (Test-Path $Cloudflared)) {
+    $isiKonfig = Get-Content $KonfigTunnel -Raw
+
+    if ($isiKonfig -match 'TUNNEL-ID') {
+        Catat 'tunnel cloudflared: dilewati (konfigurasi masih placeholder TUNNEL-ID)'
+    } else {
+        $prosesTunnel = Get-CimInstance Win32_Process -Filter "Name='cloudflared.exe'" | Where-Object {
+            [string]$_.CommandLine -like '*config-prod.yml*'
+        }
+
+        if (($prosesTunnel | Measure-Object).Count -eq 1) {
+            Catat 'tunnel cloudflared: OK (1 proses)'
+        } else {
+            if ($prosesTunnel) {
+                Catat ('tunnel cloudflared: ada ' + ($prosesTunnel | Measure-Object).Count + ' proses -> dibersihkan')
+                $prosesTunnel | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+                Start-Sleep -Seconds 3
+            }
+
+            Start-Process -FilePath $Cloudflared -ArgumentList 'tunnel', '--config', $KonfigTunnel, 'run' -WindowStyle Hidden `
+                -RedirectStandardOutput (Join-Path $ProdPath 'storage\logs\tunnel.out.log') `
+                -RedirectStandardError (Join-Path $ProdPath 'storage\logs\tunnel.err.log')
+
+            Catat 'tunnel cloudflared: dinyalakan'
+        }
+    }
+}

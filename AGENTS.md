@@ -68,8 +68,27 @@ disiapkan di komputer ini (terverifikasi 28/09/2026):
 - Konfigurasi: `C:\laragon\cloudflared\config-prod.yml` — ingress ke
   `http://localhost:80` dengan `httpHostHeader: oleo-prod.lvh.me` sehingga
   permintaan domain publik dilayani vhost PROD (tanpa menyentuh vhost DEV).
+  **Kenapa 80 (Apache) dan bukan 8000 (`artisan serve`):** `artisan serve`
+  bawaan PHP melayani satu permintaan sekaligus (satu proses) sehingga rentan
+  lambat/timeout untuk pengguna dari internet; Apache multiproses dan sudah
+  dipakai vhost PROD.
 - Panduan: `tools\siapkan-tunnel-prod.ps1`.
 - Vhost PROD: `C:\laragon\etc\apache2\sites-enabled\oleo-prod.conf`.
+- Nama tunnel: **`oleo-report`** (seragam di semua skrip/dokumen), hostname
+  publik: **`app.saranapendidik.com`** (domain `saranapendidik.com` sudah aktif
+  di Cloudflare sejak 28/09/2026).
+- **Trusted proxy SUDAH dipasang** di `bootstrap/app.php`
+  (`$middleware->trustProxies(at: ['127.0.0.1', '::1'], headers: ...X_FORWARDED_*)`)
+  dengan pengujian di `tests/Feature/TrustedProxyTest.php`. JANGAN dihapus:
+  tanpa ini aplikasi menganggap skema `http` dan host `oleo-prod.lvh.me`,
+  sehingga halaman publik tampil tanpa CSS dan bisa terjadi redirect loop.
+- Tunnel dijalankan otomatis oleh watchdog (`tools\jaga-service-prod.ps1`,
+  kini menjaga 5 proses: queue:work, schedule:work, telegram:poll, serve:8000,
+  tunnel) setelah `config-prod.yml` diisi (bukan lagi placeholder `TUNNEL-ID`);
+  lognya di `PROD\storage\logs\tunnel.out.log` dan `tunnel.err.log`.
+- Saran keamanan (belum dikerjakan): aktifkan **Cloudflare Access (Zero Trust)**
+  untuk `app.saranapendidik.com` supaya hanya email tertentu yang bisa membuka
+  halaman login; login Laravel tetap jadi lapis kedua.
 
 Langkah yang MASIH perlu dijalankan user (jangan diasumsikan sudah selesai):
 1. `cloudflared tunnel login` (butuh akun Cloudflare + browser).

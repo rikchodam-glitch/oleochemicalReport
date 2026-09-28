@@ -21,6 +21,20 @@ return Application::configure(basePath: dirname(__DIR__))
             'hanya_baca' => HanyaBacaMiddleware::class,
         ]);
 
+        // Percayai proxy lokal saja (cloudflared berjalan di komputer ini dan
+        // meneruskan permintaan dari 127.0.0.1). Dengan begitu header
+        // X-Forwarded-Proto/Host dari tunnel ikut dikenali, sehingga aplikasi
+        // tahu alamat publiknya https://<domain> — mencegah halaman tampil
+        // tanpa CSS (mixed content) dan mencegah redirect loop.
+        $middleware->trustProxies(
+            at: ['127.0.0.1', '::1'],
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_HOST
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO
+                | Request::HEADER_X_FORWARDED_PREFIX
+        );
+
         $middleware->validateCsrfTokens(except: [
             'telegram/webhook',
         ]);
