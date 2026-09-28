@@ -82,6 +82,18 @@ disiapkan di komputer ini (terverifikasi 28/09/2026):
   dengan pengujian di `tests/Feature/TrustedProxyTest.php`. JANGAN dihapus:
   tanpa ini aplikasi menganggap skema `http` dan host `oleo-prod.lvh.me`,
   sehingga halaman publik tampil tanpa CSS dan bisa terjadi redirect loop.
+  Daftar `at:` itu BENAR selama cloudflared berjalan di komputer yang sama
+  (Apache melihat koneksi datang dari 127.0.0.1). Kalau cloudflared nanti
+  dipindah ke mesin lain, daftar `at:` WAJIB disesuaikan dengan IP mesin itu.
+- Audit endpoint yang bisa dipanggil TANPA login (28/09/2026): hanya
+  `POST /telegram/webhook` — selain itu `/` (redirect), `/login`, `/logout`,
+  dan `/up`. Bot Telegram saat ini memakai **polling keluar** (`telegram:poll`)
+  dan pemeriksaan `getWebhookInfo` membuktikan webhook-nya KOSONG, jadi
+  **Cloudflare Access boleh diaktifkan untuk seluruh hostname tanpa
+  pengecualian**. Kalau nanti bot diubah ke mode webhook (tombol "Set Webhook"
+  di halaman Bot Telegram), WAJIB tambahkan policy **Bypass** khusus path
+  `/telegram/webhook`, karena server Telegram tidak bisa melewati halaman login
+  Cloudflare Access.
 - Tunnel dijalankan otomatis oleh watchdog (`tools\jaga-service-prod.ps1`,
   kini menjaga 5 proses: queue:work, schedule:work, telegram:poll, serve:8000,
   tunnel) setelah `config-prod.yml` diisi (bukan lagi placeholder `TUNNEL-ID`);
