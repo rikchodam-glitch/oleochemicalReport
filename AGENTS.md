@@ -32,8 +32,9 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   jalankan `tools\jaga-service-prod.ps1` lebih dulu sebelum menyimpulkan bug.
 - `.env` PROD BOLEH diedit langsung (tidak dilacak git, memang beda per copy),
   tetapi WAJIB diikuti `php artisan config:clear` + `config:cache` di PROD.
-  `APP_URL` PROD harus alamat yang bisa dibuka pengguna — sekarang
-  `http://192.168.41.74:8000`, nanti `https://<domain>` — karena dipakai
+  `APP_URL` PROD harus alamat yang bisa dibuka pengguna — sejak 28/09/2026
+  `https://app.saranapendidik.com` (sebelum tunnel aktif sempat
+  `http://192.168.41.74:8000`) — karena dipakai
   membentuk link "Detail web" pada pesan Telegram
   (`app\Services\Telegram\AssetInfoService.php`).
 - Storage & database terpisah: DEV tidak memuat foto asli (gambar akan tampak
@@ -74,6 +75,25 @@ disiapkan di komputer ini (terverifikasi 28/09/2026):
   dipakai vhost PROD.
 - Panduan: `tools\siapkan-tunnel-prod.ps1`.
 - Vhost PROD: `C:\laragon\etc\apache2\sites-enabled\oleo-prod.conf`.
+- **STATUS 28/09/2026 — TUNNEL SUDAH JALAN.** `https://app.saranapendidik.com`
+  melayani copy PROD. Terverifikasi dari PC: `GET /login` → 200, `GET /` → 302
+  ke `https://app.saranapendidik.com/dashboard`, aset CSS memakai domain itu
+  (`/build/assets/app-*.css`), dan login admin end-to-end lewat domain publik →
+  302 ke `/dashboard` lalu 200.
+  Tunnel berjalan dalam **mode token dashboard** (dibuat dari dashboard
+  Cloudflare, bukan CLI): token disimpan di
+  `C:\laragon\cloudflared\token-prod.txt` dan diteruskan ke proses lewat
+  variabel lingkungan `TUNNEL_TOKEN` (tidak muncul di daftar proses).
+  `config-prod.yml` (mode config CLI) BELUM dipakai — baru berguna kalau
+  `cloudflared tunnel login` diselesaikan dan tunnel dibuat lewat CLI.
+  Aturan ingress (Public Hostname) untuk tunnel ini ada di DASHBOARD:
+  `app.saranapendidik.com` → HTTP → `localhost:80` + HTTP Host Header
+  `oleo-prod.lvh.me`. Catatan: token itu sempat terkirim di chat, jadi
+  idealnya dirotasi (hapus + buat ulang tunnel) atau pindah ke jalur CLI.
+- Pengaman akses publik **BELUM aktif** per 28/09/2026 — halaman login masih
+  bisa dibuka siapa saja yang tahu URL-nya. Langkah berikutnya: Cloudflare
+  Access (Zero Trust, tim mis. `saranapendidik`) atau Basic Auth Apache pada
+  vhost PROD. JANGAN bagikan URL itu sebelum salah satu pengaman aktif.
 - Nama tunnel: **`oleo-report`** (seragam di semua skrip/dokumen), hostname
   publik: **`app.saranapendidik.com`** (domain `saranapendidik.com` sudah aktif
   di Cloudflare sejak 28/09/2026).
