@@ -16,7 +16,8 @@ param(
     [string]$PesanCommit,
     [switch]$BangunAset,
     [switch]$LewatiService,
-    [switch]$LewatiComposer
+    [switch]$LewatiComposer,
+    [switch]$LewatiDev
 )
 
 $ErrorActionPreference = 'Stop'
@@ -88,28 +89,36 @@ Tulis ("DEV  : " + $DevPath)
 Tulis ("PROD : " + $ProdPath)
 
 # ==== 2. Commit DEV (opsional) ====
-if ($PesanCommit) {
-    git -C $DevPath add -A
-    git -C $DevPath commit -m $PesanCommit
-    Tulis ("commit DEV dibuat: " + $PesanCommit)
+# Dengan -LewatiDev, bagian DEV dilewati seluruhnya (tidak commit, tidak
+# periksa kebersihan, tidak push). Berguna bila copy DEV sedang dipakai sesi
+# lain: PROD tetap menarik commit terakhir yang SUDAH ada di repo hub.
+if ($LewatiDev) {
+    Tulis 'LewatiDev: pemeriksaan & push DEV dilewati (PROD menarik commit terakhir dari repo hub).'
+} else {
+    if ($PesanCommit) {
+        git -C $DevPath add -A
+        git -C $DevPath commit -m $PesanCommit
+        Tulis ("commit DEV dibuat: " + $PesanCommit)
+    }
+
+    $ubahBelumCommit = git -C $DevPath status --porcelain --untracked-files=no
+    if ($ubahBelumCommit) {
+        $ubahBelumCommit | ForEach-Object { Write-Host ("         " + $_) }
+        throw 'Masih ada perubahan pada file ter-track di DEV. Commit dulu, lalu jalankan ulang deploy.'
+    }
+
+    $fileBaru = git -C $DevPath status --porcelain --untracked-files=all | Where-Object { $_ -like '??*' }
+    if ($fileBaru) {
+        Tulis 'PERINGATAN: file baru berikut belum di-commit sehingga tidak ikut ter-deploy:'
+        $fileBaru | ForEach-Object { Write-Host ("         " + $_) }
+    }
+
+    # ==== 3. Push DEV -> hub ====
+    git -C $DevPath push $HubRemote $Branch
+    if ($LASTEXITCODE -ne 0) { throw 'Push ke repo hub gagal.' }
 }
 
-$ubahBelumCommit = git -C $DevPath status --porcelain --untracked-files=no
-if ($ubahBelumCommit) {
-    $ubahBelumCommit | ForEach-Object { Write-Host ("         " + $_) }
-    throw 'Masih ada perubahan pada file ter-track di DEV. Commit dulu, lalu jalankan ulang deploy.'
-}
-
-$fileBaru = git -C $DevPath status --porcelain --untracked-files=all | Where-Object { $_ -like '??*' }
-if ($fileBaru) {
-    Tulis 'PERINGATAN: file baru berikut belum di-commit sehingga tidak ikut ter-deploy:'
-    $fileBaru | ForEach-Object { Write-Host ("         " + $_) }
-}
-
-# ==== 3. Push DEV -> hub, pull hub -> PROD ====
-git -C $DevPath push $HubRemote $Branch
-if ($LASTEXITCODE -ne 0) { throw 'Push ke repo hub gagal.' }
-
+# ==== 3b. Pull hub -> PROD (selalu dijalankan) ====
 git -C $ProdPath pull --ff-only origin $Branch
 if ($LASTEXITCODE -ne 0) { throw 'Pull di PROD gagal (cek konflik atau branch).' }
 
