@@ -72,3 +72,4 @@ if (-not (Test-Path $ProdPath)) {
 Nyalakan -Argumen 'queue:work --tries=1' -Pola 'artisan queue:work'
 Nyalakan -Argumen 'schedule:work' -Pola 'artisan schedule:work'
 Nyalakan -Argumen 'telegram:poll' -Pola 'artisan telegram:poll' -Poller
+Nyalakan -Argumen 'serve --host=0.0.0.0 --port=8000' -Pola 'artisan serve'

@@ -7,8 +7,8 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
 
 | Peran | Path | Keterangan |
 |---|---|---|
-| **DEV** (tempat kerja agent) | `C:\laragon\www\oleochemicalReport` | SEMUA perubahan kode dikerjakan di sini. Database `oleochemical_dev`. Diuji lokal lewat `php artisan serve` di `http://localhost:8000`. |
-| **PROD** (yang disajikan) | `C:\laragon\www\oleochemicalReport-prod` | Hasil deploy. Disajikan Apache pada vhost `oleo-prod.lvh.me` (nanti domain publik). Database `oleochemical` (data asli) dan pemegang `storage/app` data asli (foto/laporan). **JANGAN pernah mengedit file di sini.** |
+| **DEV** (tempat kerja agent) | `C:\laragon\www\oleochemicalReport` | SEMUA perubahan kode dikerjakan di sini. Database `oleochemical_dev`. Diuji lokal di `http://oleochemicalReport.test` (Apache, vhost lama). |
+| **PROD** (yang disajikan) | `C:\laragon\www\oleochemicalReport-prod` | Hasil deploy. Disajikan Apache di `http://oleo-prod.lvh.me` + `http://localhost/`, dan `artisan serve` di **`http://192.168.41.74:8000`** (alamat yang dipakai orang di jaringan kantor); nanti domain publik. Database `oleochemical` (data asli) dan pemegang `storage/app` data asli (foto/laporan). **JANGAN pernah mengedit file di sini.** |
 
 - Repo hub lokal (perantara deploy): `C:\laragon\repo\oleochemicalReport.git`
   (bare). DEV punya remote **`hub`** ke sana; PROD punya remote **`origin`**
@@ -19,15 +19,23 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   `git push hub main` -> jalankan `tools\deploy-prod.ps1` (pull di PROD +
   dependensi + migrasi + cache + restart service). JANGAN mengedit atau
   menjalankan migrasi manual di PROD.
-- Service latar (`queue:work`, `schedule:work`, `telegram:poll`) HANYA jalan di
-  PROD; dua poller Telegram sekaligus = bot mati total (HTTP 409, insiden #21).
-  Di DEV cukup `php artisan serve --port=8000`.
+- Service latar (`queue:work`, `schedule:work`, `telegram:poll`) dan web
+  `artisan serve` port 8000 HANYA jalan di PROD; dua poller Telegram sekaligus =
+  bot mati total (HTTP 409, insiden #21). Di DEV tidak perlu service apa pun —
+  Apache sudah menyajikan DEV di `http://oleochemicalReport.test`.
 - Service PROD dijaga otomatis oleh `tools\jaga-service-prod.ps1`, dipasang
   sebagai tugas Windows **`oleo-jaga-service-prod`** (berjalan tiap 5 menit,
   dibuat oleh `tools\pasang-jadwal-jaga-service.ps1`). Skrip itu menyalakan
-  ulang service yang mati dan membuang proses duplikat; catatannya ada di
+  ulang keempat proses (queue:work, schedule:work, telegram:poll, serve:8000)
+  yang mati dan membuang proses duplikat; catatannya ada di
   `PROD\storage\logs\jaga-service.log`. Kalau ada service yang tidak jalan,
   jalankan `tools\jaga-service-prod.ps1` lebih dulu sebelum menyimpulkan bug.
+- `.env` PROD BOLEH diedit langsung (tidak dilacak git, memang beda per copy),
+  tetapi WAJIB diikuti `php artisan config:clear` + `config:cache` di PROD.
+  `APP_URL` PROD harus alamat yang bisa dibuka pengguna — sekarang
+  `http://192.168.41.74:8000`, nanti `https://<domain>` — karena dipakai
+  membentuk link "Detail web" pada pesan Telegram
+  (`app\Services\Telegram\AssetInfoService.php`).
 - Storage & database terpisah: DEV tidak memuat foto asli (gambar akan tampak
   rusak di dev; itu normal, bukan bug).
 - `php artisan optimize` JANGAN dipakai — `routes/web.php` memakai closure
