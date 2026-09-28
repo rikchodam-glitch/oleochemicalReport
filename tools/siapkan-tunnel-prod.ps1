@@ -50,6 +50,18 @@ if ($Domain -ne '' -and $TunnelId -ne '') {
     $isi = $isi -replace 'hostname: domain-anda.com', ("hostname: " + $Domain)
     Set-Content -Path $FileKonfig -Value $isi -Encoding UTF8
     Write-Host 'Konfigurasi tunnel diperbarui (tunnel id + domain).' -ForegroundColor Green
+
+    # Pastikan file kredensial hasil "cloudflared tunnel login" + "tunnel create"
+    # benar-benar ada, supaya tunnel tidak gagal jalan karena Tunnel ID salah.
+    $FileKredensial = Join-Path $env:USERPROFILE ('.cloudflared\' + $TunnelId + '.json')
+
+    if (Test-Path $FileKredensial) {
+        Write-Host ('Kredensial tunnel OK: ' + $FileKredensial) -ForegroundColor Green
+    } else {
+        Write-Host ('PERINGATAN: file kredensial tidak ditemukan: ' + $FileKredensial) -ForegroundColor Yellow
+        Write-Host 'Jalankan "cloudflared tunnel login" lalu "cloudflared tunnel create oleo-report"' -ForegroundColor Yellow
+        Write-Host '(atau periksa Tunnel ID dengan "cloudflared tunnel list").' -ForegroundColor Yellow
+    }
 }
 
 Write-Host ''
