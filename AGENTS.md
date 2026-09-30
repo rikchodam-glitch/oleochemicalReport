@@ -205,22 +205,30 @@ disiapkan di komputer ini (terverifikasi 28/09/2026):
      (`0ce4f072-7ed2-42db-b440-6d0b3904963d.cfargotunnel.com`, Proxied) —
      inilah langkah yang sampai 30/09/2026 14:1x WIB masih KURANG untuk
      `oleomtc.com` (zona aktif, tetapi belum ada record A/CNAME).
-  1a. STATUS 30/09/2026 14:3x WIB: token tunnel BARU
-     (`0ce4f072-7ed2-42db-b440-6d0b3904963d`) SUDAH pernah dipasang dan
-     terbukti tersambung (`Registered tunnel connection` 4 koneksi), TETAPI
-     tunnel baru itu BELUM punya Public Hostname sehingga
-     `app.saranapendidik.com` langsung 502 dan `www.oleomtc.com` tetap 530.
-     Karena itu connector DIKEMBALIKAN ke tunnel lama `3deca11e-…` supaya
-     domain publik hidup lagi (`/login` = 200, terverifikasi). Token tunnel
-     baru disimpan di
-     `C:\laragon\cloudflared\token-prod.txt.lama-20260930-143307.txt`;
-     setelah Public Hostname ditambahkan di dashboard, pasang ulang TANPA
-     menempel token:
-     `tools\pasang-token-tunnel-prod.ps1 -DariFile "C:\laragon\cloudflared\token-prod.txt.lama-20260930-143307.txt"`.
-     Catatan: hostname `oleomtc.com` dan `app.saranapendidik.com` saat ini
-     MASIH terpasang pada tunnel LAMA, jadi kemungkinan dashboard menolak
-     hostname yang sama pada tunnel baru — hapus dulu dari tunnel lama (apex
-     `oleomtc.com` sedang tidak resolve, jadi tidak ada kerugian).
+  1a. STATUS 30/09/2026 14:4x WIB — ROTASI TUNTAS, DOMAIN SUDAH PINDAH:
+     token tunnel BARU (`0ce4f072-7ed2-42db-b440-6d0b3904963d`) SUDAH
+     terpasang dan `https://oleomtc.com/login` = 200 (diverifikasi 3x curl;
+     aset HTML memakai host `https://oleomtc.com`). `APP_URL` copy PROD kini
+     `https://oleomtc.com` lewat `tools\set-domain-prod.ps1 -Domain oleomtc.com`
+     (config:clear + config:cache sudah ikut dijalankan).
+     Isi folder `C:\laragon\cloudflared` sekarang: `token-prod.txt` = token
+     BARU (aktif), `token-prod.txt.lama-20260930-143824.txt` = token LAMA,
+     `token-prod.txt.lama-20260930-143307.txt` = salinan token BARU.
+     SEMENTARA ada DUA proses connector cloudflared (`tunnel : 2` pada
+     `tools\cek-status-prod.ps1`) dan itu MEMANG DISENGAJA: proses kedua
+     memakai token tunnel LAMA sebagai cadangan supaya
+     `https://app.saranapendidik.com/login` tetap 200, karena route hostname
+     itu belum dipindah ke tunnel baru (DNS-nya masih menunjuk tunnel lama).
+     Log proses cadangan: `PROD\storage\logs\tunnel-cadangan.out.log` dan
+     `tunnel-cadangan.err.log`. Setelah hostname `app.saranapendidik.com`
+     ditambahkan pada tunnel baru di dashboard, hentikan proses cadangan itu
+     (Stop-Process pada cloudflared yang command line-nya memuat `tunnel run`).
+     Ingat: `tools\pasang-token-tunnel-prod.ps1` menghentikan SEMUA connector
+     saat memasang token, jadi proses cadangan itupun ikut mati — nyalakan
+     ulang secara manual kalau masih diperlukan.
+     Sisa pekerjaan di dashboard: hostname `app.saranapendidik.com` pada
+     tunnel baru, dan `www.oleomtc.com` (sekarang dijawab 404 oleh tunnel
+     karena belum didaftarkan sebagai Public Hostname).
   2a. Catatan cara pakai (30/09/2026): token TIDAK perlu ditempel di jendela
      hitam — skrip membuka Notepad dan membaca berkas
      `C:\laragon\cloudflared\token-baru.txt`. Menempel di jendela hitam pernah

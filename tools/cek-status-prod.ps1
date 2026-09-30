@@ -55,16 +55,18 @@ $DomainPublik = AmbilDomainPublik
     Return  : kode HTTP sebagai teks, atau keterangan bila tidak ada respons.
 #>
 function KodeHttp([string]$Url) {
-    try {
-        $respons = Invoke-WebRequest -Uri $Url -Method Get -TimeoutSec 15 -UseBasicParsing
-        return [string][int]$respons.StatusCode
-    } catch {
-        if ($_.Exception.Response) {
-            return [string][int]$_.Exception.Response.StatusCode
-        }
+    # Memakai curl.exe supaya hasilnya sama dengan pengujian manual. Invoke-WebRequest
+    # pernah melaporkan 'tidak ada respons' padahal curl menjawab 200 pada URL yang sama
+    # (diduga karena proxy/TLS bawaan .NET di komputer ini).
+    $kode = curl.exe -s -o NUL -w '%{http_code}' -m 20 $Url
 
-        return 'tidak ada respons'
-    }
+    if ($kode -is [array]) { $kode = $kode[-1] }
+
+    $kode = [string]$kode
+
+    if ($kode -match '^\d{3}$' -and $kode -ne '000') { return $kode }
+
+    return 'tidak ada respons'
 }
 
 <#

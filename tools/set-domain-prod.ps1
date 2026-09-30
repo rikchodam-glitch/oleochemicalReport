@@ -42,12 +42,33 @@ if (-not (Test-Path $FileEnv)) {
     exit 1
 }
 
-# 2. Periksa DNS domain baru.
-$dns = Resolve-DnsName $Domain -ErrorAction SilentlyContinue | Where-Object { $_.Type -eq 'A' -and $_.IPAddress }
+# 2. Periksa DNS domain baru: coba resolver lokal dan publik, terima A/AAAA
+#    (record proksied Cloudflare tampil sebagai A) maupun CNAME.
+$dns = @()
+
+foreach ($server in @('', '1.1.1.1', '8.8.8.8')) {
+    $opsi = @{
+        Name        = $Domain
+        Type        = 'A_AAAA'
+        ErrorAction = 'SilentlyContinue'
+    }
+
+    if ($server -ne '') { $opsi['Server'] = $server }
+
+    $hasil = @(Resolve-DnsName @opsi | Where-Object {
+        $_.Type -in @('A', 'AAAA') -and $_.IPAddress -and $_.IPAddress -notmatch '^(127\.|::1)'
+    })
+
+    if ($hasil.Count -gt 0) {
+        $dns = $hasil
+        Write-Host ('[domain] DNS sumber   : ' + $(if ($server -eq '') { 'resolver Windows' } else { $server }))
+        break
+    }
+}
 
 if ($dns) {
     $daftarIp   = ($dns | ForEach-Object { $_.IPAddress }) -join ', '
-    $cloudflare = ($dns | Where-Object { $_.IPAddress -match '^(104\.|172\.6[0-9]\.|188\.114\.)' } | Measure-Object).Count -gt 0
+    $cloudflare = ($dns | Where-Object { $_.IPAddress -match '^(104\.|172\.6[0-9]\.|188\.114\.|2606:4700:)' } | Measure-Object).Count -gt 0
     $ket        = $daftarIp
 
     if ($cloudflare) { $ket = $ket + ' (Cloudflare)' }
