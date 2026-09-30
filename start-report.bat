@@ -1,15 +1,34 @@
 @echo off
+REM ======================================================================
+REM  start-report.bat - menjalankan service latar PRODUKSI oleochemicalReport
+REM  (web port 8000, bot Telegram, queue worker, scheduler).
+REM
+REM  File ini SENGAJA menunjuk ke COPY PROD:
+REM    C:\laragon\www\oleochemicalReport-prod
+REM  JANGAN diarahkan ke copy DEV (C:\laragon\www\oleochemicalReport):
+REM  poller Telegram hanya boleh SATU dan hanya boleh jalan di PROD
+REM  (dua poller sekaligus = bot mati total, error 409).
+REM
+REM  Service dijalankan lewat tools\jaga-service-prod.ps1 supaya AMAN
+REM  dipanggil berulang: skrip itu hanya menyalakan yang belum jalan dan
+REM  membuang proses duplikat. Service ini juga dijaga otomatis tiap 5 menit
+REM  oleh tugas Windows "oleo-jaga-service-prod", jadi file ini hanya untuk
+REM  start / restart manual.
+REM ======================================================================
 set PHP=C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe
-set PROJECT=C:\laragon\www\oleochemicalReport
+set PROJECT=C:\laragon\www\oleochemicalReport-prod
 
-REM Jalankan php artisan serve
-start /min "Oleochemical Server" cmd /k "%PHP% %PROJECT%\artisan serve --host=0.0.0.0 --port=8000"
+echo Menjalankan dan memeriksa service PROD...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT%\tools\jaga-service-prod.ps1"
 
-REM Jalankan php artisan telegram:poll
-start /min "Telegram Poll" cmd /k "%PHP% %PROJECT%\artisan telegram:poll"
+echo.
+echo === Status service terakhir (log watchdog) ===
+powershell -NoProfile -Command "Get-Content '%PROJECT%\storage\logs\jaga-service.log' -Tail 5"
 
-REM Jalankan queue worker (wajib untuk proses import Sync Google Sheets, dll)
-start /min "Queue Worker" cmd /k "%PHP% %PROJECT%\artisan queue:work --tries=1"
+echo.
+echo === Status tunnel dan domain publik ===
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT%\tools\cek-tunnel-prod.ps1"
 
-REM Jalankan scheduler (wajib untuk ping otomatis it:ping & snapshot berkala it:snapshot)
-start /min "Scheduler" cmd /k "%PHP% %PROJECT%\artisan schedule:work"
+echo.
+echo Selesai. Log poller Telegram: %PROJECT%\storage\logs\telegram-poll.out.log
+pause
