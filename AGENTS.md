@@ -926,6 +926,30 @@ Batasan penting lingkungan ini:
     tepat 2 test baru gagal saat parameter pengecualian dikosongkan).**
 
 
+29. **`.bat` menutup seketika saat diklik: tanda kurung di dalam baris `echo`
+    pada blok `if (...)` memutus parsing `cmd.exe`.** Pada 30/09/2026 pintasan
+    baru `C:\Users\sapusr\Desktop\Pasang-Token-Tunnel.bat` dilaporkan user
+    "jendela CLI langsung menutup". Uji ulang dengan
+    `cmd.exe /c "\"<berkas>.bat\" < NUL > %TEMP%\out.txt 2>&1"` menghasilkan
+    `. was unexpected at this time.` dan exit 255 TANPA teks apa pun, padahal
+    berkas yang diperiksa ada sehingga semestinya hanya mencetak pesan.
+    Penyebabnya satu baris `echo Copy PROD mungkin dipindah atau belum siap
+    (jalankan tools\deploy-prod.ps1).` di dalam blok `if not exist "%X%" (`.
+    Tanda kurung tutup di dalam `echo` ditafsirkan sebagai penutup blok,
+    sehingga cmd menemukan sisa token dan MENGAKHIRI batch sebelum `pause`
+    → jendela menutup seketika. Perbaikan: struktur `goto`/label (tanpa blok)
+    dan tidak ada tanda kurung pada baris `echo`; tanda `>` pada baris `REM`
+    juga dihindari karena redirection tetap diproses walau di dalam REM.
+    **Pelajaran: (1) di `.bat`, jangan memakai tanda kurung di dalam `echo`
+    yang berada di blok `if`/`for`, pakai `goto`/label; (2) cara tercepat
+    mendiagnosis `.bat` yang menutup seketika adalah menjalankannya dengan
+    stdin NUL dan keluaran dialihkan ke berkas lalu baca berkas itu — JANGAN
+    lewat pipe; (3) bedakan dua kasus yang gejalanya mirip: batch yang gagal
+    parse (selesai instan tanpa teks) versus skrip yang menunggu masukan
+    manusia (mis. `Read-Host` pada `pasang-token-tunnel-prod.ps1`) — yang
+    terakhir memang akan tampak menggantung dan TIDAK bisa diuji otomatis.**
+
+
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
 
 ## ATURAN PENULISAN KODE
