@@ -462,6 +462,10 @@ trait WizardCallbackHandlerTrait
     /**
      * Hapus satu kolaborator dari state berdasarkan indeksnya.
      *
+     * NIK yang dihapus juga dicatat di collaborator_dikecualikan supaya
+     * penggabungan ulang rekan kelompok saat laporan disimpan tidak
+     * memunculkan kembali nama yang sudah dihapus teknisi.
+     *
      * @param  array  $state  State wizard saat ini
      * @param  int    $index  Indeks pada collaborator_niks
      * @return array{state: array, nama: string}  State baru dan nama yang dihapus
@@ -488,6 +492,16 @@ trait WizardCallbackHandlerTrait
             $auto,
             fn ($nik) => $nik !== $nikDihapus
         ));
+
+        // Catat sebagai pengecualian agar penggabungan ulang di
+        // WizardReportSaverTrait::saveReport() tidak memunculkannya kembali.
+        $dikecualikan = $state['collaborator_dikecualikan'] ?? [];
+
+        if (! in_array($nikDihapus, $dikecualikan, true)) {
+            $dikecualikan[] = $nikDihapus;
+        }
+
+        $state['collaborator_dikecualikan'] = array_values($dikecualikan);
 
         return ['state' => $state, 'nama' => $nama];
     }
@@ -724,11 +738,21 @@ trait WizardCallbackHandlerTrait
             // Step 8a — kolaborator dilewati: hapus semua data kolaborator termasuk
             // state hierarki, push riwayat, lalu langsung ke Step 8 konfirmasi
             case 'collab_skip':
+                // Semua nama yang batal dipakai masuk daftar pengecualian supaya
+                // penggabungan ulang rekan kelompok saat laporan disimpan tidak
+                // menghidupkan kembali kolaborator yang dilewati teknisi.
+                $dikecualikan = array_values(array_unique(array_merge(
+                    $state['collaborator_dikecualikan'] ?? [],
+                    $state['collaborator_niks'] ?? [],
+                    $state['collaborator_auto_niks'] ?? []
+                )));
+
                 unset(
                     $state['collaborator_niks'],
                     $state['collaborator_names'],
                     $state['collaborator_auto_niks']
                 );
+                $state['collaborator_dikecualikan'] = $dikecualikan;
                 $state          = $this->clearCollabHierarchyState($state);
                 $state          = $this->pushStepHistory($state, self::STEP_COLLABORATOR);
                 $state['step']  = self::STEP_CONFIRMATION;

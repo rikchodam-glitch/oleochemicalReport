@@ -329,10 +329,14 @@ trait WizardReportSaverTrait
             // rekan dari kelompok kolaborasi (mis. satu Grub shift). Penggabungan
             // dijalankan lagi di sini sebagai jaring pengaman supaya rekan
             // kelompok tetap ikut andil walau state belum sempat terisi.
+            // Nama yang sengaja dihapus teknisi (menu Sesuaikan atau tombol
+            // Lewati) tercatat di collaborator_dikecualikan sehingga tidak
+            // dimasukkan kembali saat laporan disimpan.
             $gabunganKolaborator = app(CollaborationService::class)->gabungKolaborator(
                 $technician,
                 $state['collaborator_niks'] ?? [],
-                $state['collaborator_names'] ?? []
+                $state['collaborator_names'] ?? [],
+                $state['collaborator_dikecualikan'] ?? []
             );
 
             $collabNiks          = $gabunganKolaborator['niks'];

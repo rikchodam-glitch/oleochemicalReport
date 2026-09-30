@@ -279,8 +279,9 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
 - Kelompok kolaborasi disimpan di `collaboration_groups` + `collaboration_group_members`
   (terpisah dari kolom `technicians.group` supaya susunan anggota bisa disesuaikan bebas)
 - `autoCollaboratorsFor($teknisi)` -> rekan satu kelompok (aktif + otomatis) di luar dirinya sendiri
-- `gabungKolaborator($pelapor, $manualNiks, $manualNames)` -> gabungan manual + otomatis tanpa duplikat, maks 5
-  (selaras `WizardStepHandlerTrait::MAX_COLLABORATORS`)
+- `gabungKolaborator($pelapor, $manualNiks, $manualNames, $dikecualikan)` -> gabungan manual + otomatis tanpa duplikat, maks 5
+  (selaras `WizardStepHandlerTrait::MAX_COLLABORATORS`); `$dikecualikan` = NIK yang TIDAK boleh
+  ditambahkan otomatis lagi (nama yang sengaja dihapus teknisi di Step 8a)
 - `selaraskanDariGrupTeknisi($group)` -> isi anggota dari teknisi yang `group`-nya sama dengan kode kelompok
 - `sinkronkanKelompokGrupTeknisi()` -> dipakai perintah `php artisan collab:sync-groups`
   (membuat Grub A samapi D dari grup teknisi; Reguler tidak dibuat kecuali opsi `--with-reguler`)
@@ -288,7 +289,9 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
   `WizardStepHandlerTrait`, sekali saja per laporan lewat penanda `collab_auto_applied`) dan
   `WizardReportSaverTrait::saveReport()` menggabungkan ulang sebelum membuat salinan kolaborasi
 - Menu "Sesuaikan" pada Step 8a (`collab_adjust`, `collab_hapus:<index>`, `collab_adjust_selesai`)
-  memungkinkan menghapus satu nama kolaborator untuk laporan itu saja
+  memungkinkan menghapus satu nama kolaborator untuk laporan itu saja; setiap NIK yang dihapus
+  (juga semua NIK saat tombol "Lewati" dipakai) dicatat di state `collaborator_dikecualikan`
+  sehingga `saveReport()` tidak mencantumkannya kembali saat laporan disimpan
 
 ### TechIdentSearchService
 - Pencarian 3-pass: exact match → normalized → section+type

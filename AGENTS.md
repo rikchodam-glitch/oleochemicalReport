@@ -798,6 +798,33 @@ Batasan penting lingkungan ini:
     perintah baru dalam sesi yang sama.**
 
 
+28. **Jaring pengaman yang menggabungkan ulang data otomatis saat menyimpan
+    membatalkan penghapusan manual pengguna.** Pada 30/09/2026 dilaporkan dari
+    produksi: teknisi menghapus kolaborator yang dicantumkan otomatis (menu
+    "Sesuaikan" pada Step 8a wizard Telegram) lalu menambahkan orang lain;
+    hasil akhir laporan tetap memuat nama yang sudah dihapus, sementara nama
+    penggantinya masuk. Penyebab: `WizardReportSaverTrait::saveReport()`
+    memanggil `CollaborationService::gabungKolaborator()` sekali lagi tepat
+    sebelum membuat salinan kolaborasi (jaring pengaman agar rekan kelompok
+    ikut andil walau state belum terisi), dan penggabungan itu membaca ulang
+    anggota kelompok dari database (`autoCollaboratorsFor()`) tanpa
+    memperhatikan nama yang sudah dihapus teknisi sehingga nama itu ditambahkan
+    kembali. Bug ini lolos pengujian karena test lama hanya memeriksa state dan
+    prompt wizard ("nama tidak muncul lagi di prompt"), bukan laporan yang
+    benar-benar tersimpan. Perbaikan: state wizard menyimpan daftar
+    `collaborator_dikecualikan` (diisi `hapusKolaboratorIndex()` dan tombol
+    "Lewati"), dan `gabungKolaborator()` menerima parameter `$dikecualikan`
+    sehingga rekan kelompok yang sudah dihapus tidak dimasukkan kembali.
+    **Pelajaran: (1) setiap proses yang menggabungkan ulang data otomatis saat
+    menyimpan (safety net) WAJIB menghormati keputusan manual pengguna yang
+    sudah tercatat di state, jangan menimpanya dengan data dari database;
+    (2) test fitur penghapusan WAJIB memeriksa HASIL AKHIR yang tersimpan
+    (baris database), bukan hanya tampilan/prompt, karena penggabungan ulang
+    terjadi di lapisan paling akhir; (3) pastikan test baru memang menangkap
+    bug dengan uji mutasi: netralkan perbaikannya, test harus GAGAL (di sini
+    tepat 2 test baru gagal saat parameter pengecualian dikosongkan).**
+
+
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
 
 ## ATURAN PENULISAN KODE

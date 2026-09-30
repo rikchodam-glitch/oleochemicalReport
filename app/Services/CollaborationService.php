@@ -100,12 +100,24 @@ class CollaborationService
     /**
      * Gabungkan kolaborator manual (NIK/nama dari wizard) dengan rekan otomatis.
      *
+     * Rekan otomatis dari kelompok HANYA ditambahkan bila NIK-nya tidak ada di
+     * $dikecualikan. Daftar pengecualian dipakai wizard untuk menghormati nama
+     * yang sengaja dihapus teknisi lewat menu "Sesuaikan" (atau tombol "Lewati")
+     * pada Step 8a. Tanpa pengecualian ini, penggabungan ulang saat laporan
+     * disimpan akan memasukkan kembali rekan kelompok yang sudah dihapus.
+     *
      * @param  Technician|null      $pelapor
      * @param  array<int, string>   $manualNiks
      * @param  array<int, string>   $manualNames
+     * @param  array<int, string>   $dikecualikan  NIK yang tidak boleh ditambahkan otomatis
      * @return array{niks: array<int, string>, names: array<int, string>, auto_niks: array<int, string>}
      */
-    public function gabungKolaborator(?Technician $pelapor, array $manualNiks, array $manualNames = []): array
+    public function gabungKolaborator(
+        ?Technician $pelapor,
+        array $manualNiks,
+        array $manualNames = [],
+        array $dikecualikan = []
+    ): array
     {
         $niks  = [];
         $names = [];
@@ -132,7 +144,10 @@ class CollaborationService
 
             $nikRekan = (string) $rekan->nik;
 
-            if ($nikRekan === '' || in_array($nikRekan, $niks, true)) {
+            // Nama yang sudah dihapus teknisi tidak dimasukkan kembali.
+            if ($nikRekan === ''
+                || in_array($nikRekan, $niks, true)
+                || in_array($nikRekan, $dikecualikan, true)) {
                 continue;
             }
 

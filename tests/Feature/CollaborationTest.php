@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\CollaborationGroup;
+use App\Models\Report;
 use App\Models\Technician;
 use App\Models\User;
 use App\Services\CollaborationService;
@@ -276,5 +277,139 @@ test('menu Sesuaikan bisa menghapus satu nama dan tidak muncul lagi', function (
         ->and($prompt['message'])->not->toContain('Rekan Grub D');
 
     $wizard->destroyWizard($chatId);
+});
+
+
+// ============================================================
+// PENGHAPUSAN KOLABORATOR OTOMATIS HARUS IKUT TERSIMPAN
+// ============================================================
+
+test('nama otomatis yang dihapus tidak ikut tersimpan, nama penggantinya masuk', function () {
+    $wizard = app(ReportWizardService::class);
+    $chatId = '9001';
+
+    $wizard->saveState($chatId, [
+        'chat_id'                 => $chatId,
+        'text'                    => 'Perbaikan pompa transfer',
+        'step'                    => ReportWizardService::STEP_COLLABORATOR,
+        'step_history'            => [],
+        'work_classification'     => 'zpm3',
+        'jenis_pekerjaan'         => 'CM/PM',
+        'equipment_id'            => null,
+        'is_area_work'            => true,
+        'work_duration_minutes'   => 60,
+        'start_time'              => '08:00',
+        'end_time'                => '09:00',
+        'root_cause'              => 'Impeller aus',
+        'report_date'             => now()->toDateString(),
+        'photo_documentation'     => [],
+        'photo_hygiene_clearance' => [],
+        'collaborator_niks'       => ['KD002'],
+        'collaborator_names'      => ['Rekan Grub D'],
+        'collaborator_auto_niks'  => ['KD002'],
+        'collab_auto_applied'     => true,
+        'created_at'              => now()->toIso8601String(),
+    ]);
+
+    // Rekan otomatis (tim) dihapus lewat menu Sesuaikan, lalu diganti orang lain.
+    $wizard->handleCallback($chatId, 'collab_hapus:0');
+    $wizard->handleTextInput($chatId, 'KR001');
+
+    $state = $wizard->getState($chatId);
+
+    expect($state['collaborator_niks'])->toBe(['KR001'])
+        ->and($state['collaborator_dikecualikan'])->toBe(['KD002']);
+
+    $wizard->handleCallback($chatId, 'wizard:confirm:collab_done');
+    $wizard->handleCallback($chatId, 'wizard:confirm:save_done');
+
+    $induk = Report::where('technician_id', $this->pelapor->id)
+        ->whereNull('collaborator_of')
+        ->latest('id')
+        ->firstOrFail();
+
+    // Hanya nama pengganti yang mendapat salinan kolaborasi.
+    expect(Report::where('collaborator_of', $induk->id)->pluck('technician_id')->all())
+        ->toBe([$this->orangReguler->id]);
+});
+
+test('tombol Lewati pada Step 8a menyimpan laporan tanpa salinan kolaborasi', function () {
+    $wizard = app(ReportWizardService::class);
+    $chatId = '9001';
+
+    $wizard->saveState($chatId, [
+        'chat_id'                 => $chatId,
+        'text'                    => 'Perbaikan pompa transfer',
+        'step'                    => ReportWizardService::STEP_COLLABORATOR,
+        'step_history'            => [],
+        'work_classification'     => 'zpm3',
+        'jenis_pekerjaan'         => 'CM/PM',
+        'equipment_id'            => null,
+        'is_area_work'            => true,
+        'work_duration_minutes'   => 60,
+        'start_time'              => '08:00',
+        'end_time'                => '09:00',
+        'root_cause'              => 'Impeller aus',
+        'report_date'             => now()->toDateString(),
+        'photo_documentation'     => [],
+        'photo_hygiene_clearance' => [],
+        'collaborator_niks'       => ['KD002'],
+        'collaborator_names'      => ['Rekan Grub D'],
+        'collaborator_auto_niks'  => ['KD002'],
+        'collab_auto_applied'     => true,
+        'created_at'              => now()->toIso8601String(),
+    ]);
+
+    $wizard->handleCallback($chatId, 'wizard:confirm:collab_skip');
+
+    $state = $wizard->getState($chatId);
+
+    expect($state['collaborator_niks'] ?? [])->toBe([])
+        ->and($state['collaborator_dikecualikan'])->toBe(['KD002']);
+
+    $wizard->handleCallback($chatId, 'wizard:confirm:save_done');
+
+    $induk = Report::where('technician_id', $this->pelapor->id)
+        ->whereNull('collaborator_of')
+        ->latest('id')
+        ->firstOrFail();
+
+    expect(Report::where('collaborator_of', $induk->id)->count())->toBe(0);
+});
+
+test('rekan kelompok tetap otomatis ikut tersimpan bila tidak ada yang dihapus', function () {
+    $wizard = app(ReportWizardService::class);
+    $chatId = '9001';
+
+    $wizard->saveState($chatId, [
+        'chat_id'                 => $chatId,
+        'text'                    => 'Perbaikan pompa transfer',
+        'step'                    => ReportWizardService::STEP_CONFIRMATION,
+        'step_history'            => [],
+        'work_classification'     => 'zpm3',
+        'jenis_pekerjaan'         => 'CM/PM',
+        'equipment_id'            => null,
+        'is_area_work'            => true,
+        'work_duration_minutes'   => 60,
+        'start_time'              => '08:00',
+        'end_time'                => '09:00',
+        'root_cause'              => 'Impeller aus',
+        'report_date'             => now()->toDateString(),
+        'photo_documentation'     => [],
+        'photo_hygiene_clearance' => [],
+        'collaborator_niks'       => [],
+        'collaborator_names'      => [],
+        'created_at'              => now()->toIso8601String(),
+    ]);
+
+    $wizard->handleCallback($chatId, 'wizard:confirm:save_done');
+
+    $induk = Report::where('technician_id', $this->pelapor->id)
+        ->whereNull('collaborator_of')
+        ->latest('id')
+        ->firstOrFail();
+
+    expect(Report::where('collaborator_of', $induk->id)->pluck('technician_id')->all())
+        ->toBe([$this->rekan->id]);
 });
 
