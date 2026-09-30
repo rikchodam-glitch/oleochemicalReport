@@ -63,11 +63,15 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
     `tools\pasang-jadwal-jaga-service.ps1`.
   - Pintasan Desktop untuk pengguna awam (dibuat 30/09/2026, di luar repo
     jadi tidak dilacak git): `C:\Users\sapusr\Desktop\Jalankan-Service-Laporan.bat`,
-    `C:\Users\sapusr\Desktop\Hentikan-Service-Laporan.bat`, dan
-    `C:\Users\sapusr\Desktop\Cek-Status-Laporan.bat`. Ketiganya hanya MEMANGGIL
+    `C:\Users\sapusr\Desktop\Hentikan-Service-Laporan.bat`,
+    `C:\Users\sapusr\Desktop\Cek-Status-Laporan.bat`, dan
+    `C:\Users\sapusr\Desktop\Pasang-Token-Tunnel.bat`. Semuanya hanya MEMANGGIL
     file resmi copy PROD (`start-report.bat`, `stop-report.bat`,
-    `tools\cek-status-prod.ps1`) supaya tidak ada dua versi logika; kalau file
+    `tools\cek-status-prod.ps1`, `tools\pasang-token-tunnel-prod.ps1`) supaya
+    tidak ada dua versi logika; kalau file
     di copy PROD tidak ditemukan, pintasan berhenti dengan pesan jelas.
+    `Pasang-Token-Tunnel.bat` bersifat INTERAKTIF (Read-Host untuk menempel
+    token tunnel baru), jadi JANGAN dijalankan lewat pipe/tanpa manusia.
   - Memeriksa status service TANPA mengubah apa pun: klik
     `Cek-Status-Laporan.bat`, atau
     `powershell -NoProfile -ExecutionPolicy Bypass -File tools\cek-status-prod.ps1`
@@ -87,11 +91,14 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
     di port 8000 — matikan lagi dengan `stop-report.bat`.
 - `.env` PROD BOLEH diedit langsung (tidak dilacak git, memang beda per copy),
   tetapi WAJIB diikuti `php artisan config:clear` + `config:cache` di PROD.
-  `APP_URL` PROD harus alamat yang bisa dibuka pengguna — sejak 28/09/2026
-  `https://app.saranapendidik.com` (sebelum tunnel aktif sempat
-  `http://192.168.41.74:8000`) — karena dipakai
+  `APP_URL` PROD harus alamat yang bisa dibuka pengguna, karena dipakai
   membentuk link "Detail web" pada pesan Telegram
-  (`app\Services\Telegram\AssetInfoService.php`).
+  (`app\Services\Telegram\AssetInfoService.php`). Nilainya per 30/09/2026
+  14:2x WIB masih `https://app.saranapendidik.com` (sebelum tunnel aktif
+  sempat `http://192.168.41.74:8000`); target berikutnya
+  `https://oleomtc.com` begitu record DNS-nya ada. Menggantinya JANGAN manual
+  satu-satu langkah: pakai `tools\set-domain-prod.ps1 -Domain oleomtc.com`
+  (normalisasi + cek DNS + tulis .env + `config:clear`/`config:cache` + uji).
 - Storage & database terpisah: DEV tidak memuat foto asli (gambar akan tampak
   rusak di dev; itu normal, bukan bug).
 - `php artisan optimize` JANGAN dipakai — `routes/web.php` memakai closure
