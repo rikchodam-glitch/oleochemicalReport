@@ -22,7 +22,8 @@
     langsung error 1033.
 #>
 param(
-    [string]$DariFile
+    [string]$DariFile,
+    [switch]$TanpaNotepad
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,52 +31,201 @@ $ErrorActionPreference = 'Stop'
 $ProdPath    = 'C:\laragon\www\oleochemicalReport-prod'
 $Cloudflared = 'C:\laragon\bin\cloudflared\cloudflared.exe'
 $FileToken   = 'C:\laragon\cloudflared\token-prod.txt'
+$FileTokenBaru = 'C:\laragon\cloudflared\token-baru.txt'
 $LogTunnel   = Join-Path $ProdPath 'storage\logs\tunnel.err.log'
 $PolaId      = 'Starting tunnel tunnelID=([0-9a-f\-]{36})'
 $PolaProses  = '*tunnel run*'
 
 <#
-    Ambil token dari berkas atau dari isian pengguna yang tidak ditampilkan.
+    Baca berkas token sementara (token-baru.txt) dan kembalikan isinya yang
+    sudah dibersihkan.
 
-    Parameter: $Berkas = path berkas token (boleh kosong -> pakai isian).
-    Return  : token sebagai teks tanpa spasi/baris baru.
+    Parameter: tidak ada.
+    Return  : token bersih sebagai teks, atau teks kosong bila berkas belum
+              ada atau isinya terlalu pendek untuk dianggap token.
 #>
-function AmbilToken([string]$Berkas) {
-    if ($Berkas) {
-        if (-not (Test-Path $Berkas)) { throw ('Berkas token tidak ditemukan: ' + $Berkas) }
+function BacaTokenBerkas {
+    if (-not (Test-Path $FileTokenBaru)) { return '' }
 
-        return ((Get-Content $Berkas -Raw) -replace '\s', '')
+    $bersih = (RapikanToken ((Get-Content $FileTokenBaru -Raw))).Token
+
+    if ($bersih.Length -lt 80) { return '' }
+
+    return $bersih
+}
+
+<#
+    Bersihkan teks calon token: buang spasi/BOM/NUL dan kutip pembungkus,
+    buang awalan perintah cloudflared bila ikut tersalin, lalu sisakan hanya
+    karakter base64. Isi token TIDAK pernah dicetak.
+
+    Parameter: $Token = teks mentah calon token.
+    Return  : objek berisi Token (hasil bersih), Buang (jumlah karakter aneh),
+              dan Rincian (daftar kode karakter yang dibuang).
+#>
+function RapikanToken([string]$Token) {
+    $teks = $Token
+
+    $teks = $teks -replace '(?i)cloudflared\s+service\s+install', ''
+    $teks = $teks -replace '(?i)cloudflared\s+tunnel\s+run', ''
+    $teks = $teks -replace '(?i)--token-file', ''
+    $teks = $teks -replace '(?i)--token', ''
+    $teks = $teks -replace '(?i)TUNNEL_TOKEN_FILE', ''
+    $teks = $teks -replace '(?i)TUNNEL_TOKEN', ''
+
+    $aneh  = [System.Collections.Generic.List[string]]::new()
+    $hasil = [System.Text.StringBuilder]::new()
+
+    foreach ($ch in $teks.ToCharArray()) {
+        if ([char]::IsWhiteSpace($ch) -or [int]$ch -eq 0 -or [int]$ch -eq 0xFEFF) { continue }
+
+        if ($ch -match '[A-Za-z0-9+/=_-]') {
+            [void]$hasil.Append($ch)
+        } else {
+            $aneh.Add(('U+{0:X4}' -f [int]$ch))
+        }
     }
 
-    Write-Host 'Tempel token tunnel dari dashboard Cloudflare lalu tekan Enter.'
-    Write-Host '(Isian tidak ditampilkan di layar.)'
-
-    $aman = Read-Host -AsSecureString
-    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($aman)
-
-    try {
-        return ([Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) -replace '\s', '')
-    } finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    return [pscustomobject]@{
+        Token   = $hasil.ToString()
+        Buang   = $aneh.Count
+        Rincian = ($aneh | Select-Object -Unique) -join ' '
     }
 }
 
 <#
-    Dekode token (base64 dari JSON) dan ambil Tunnel ID-nya.
+    Ambil token dari berkas atau dari isian pengguna yang tidak ditampilkan.
+    Bila -Berkas kosong, berkas token-baru.txt dipakai lebih dulu kalau ada.
+    Isian diulang sampai 3 kali bila hasil bersihnya jelas bukan token.
 
-    Parameter: $Token = token cloudflared.
+    Parameter: $Berkas = path berkas token (boleh kosong).
+    Return  : token bersih sebagai teks.
+#>
+function AmbilToken([string]$Berkas) {
+    if (-not $Berkas -and (Test-Path $FileTokenBaru)) { $Berkas = $FileTokenBaru }
+
+    if ($Berkas) {
+        if (-not (Test-Path $Berkas)) { throw ('Berkas token tidak ditemukan: ' + $Berkas) }
+
+        $bersih = (RapikanToken ((Get-Content $Berkas -Raw))).Token
+
+        Write-Host ('[token] token dibaca dari berkas: ' + $Berkas)
+
+        if ($bersih -eq '') { throw ('Isi berkas token kosong: ' + $Berkas) }
+
+        return $bersih
+    }
+
+    # Menempel token langsung di jendela hitam bisa terpotong, jadi berkas token
+    # dibuka lewat Notepad lebih dulu. Kalau berkas tetap kosong, isian
+    # tersembunyi tetap dipakai sebagai cadangan.
+    if (-not $TanpaNotepad) {
+        Write-Host ''
+        Write-Host '[token] Menempel di jendela hitam bisa terpotong, jadi Notepad dibuka.'
+        Write-Host '[token] Tempel token di Notepad, simpan berkasnya, lalu tutup Notepad.'
+        Write-Host ('[token] Berkas yang dipakai: ' + $FileTokenBaru)
+
+        $notepad = Start-Process -FilePath 'notepad.exe' -ArgumentList $FileTokenBaru -PassThru
+        $batas   = (Get-Date).AddSeconds(180)
+
+        while ((Get-Date) -lt $batas) {
+            Start-Sleep -Seconds 3
+
+            if ((BacaTokenBerkas) -ne '') { break }
+
+            if (-not (Get-Process -Id $notepad.Id -ErrorAction SilentlyContinue)) { break }
+        }
+
+        $bersih = BacaTokenBerkas
+
+        if ($bersih -ne '') {
+            Write-Host ('[token] token dibaca dari berkas: ' + $FileTokenBaru)
+
+            return $bersih
+        }
+
+        Write-Host '[token] Berkas belum terisi; lanjut ke isian tersembunyi.'
+    }
+
+    for ($coba = 1; $coba -le 3; $coba++) {
+        Write-Host 'Tempel token tunnel dari dashboard Cloudflare lalu tekan Enter.'
+        Write-Host '(Isian tidak ditampilkan di layar.)'
+
+        $aman = Read-Host -AsSecureString
+        $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($aman)
+
+        try {
+            $mentah = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+        } finally {
+            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        }
+
+        $hasil  = RapikanToken $mentah
+        $bersih = $hasil.Token
+
+        if ($bersih.Length -ge 80 -and $hasil.Buang -eq 0) { return $bersih }
+
+        Write-Host ''
+        Write-Host ('[token] isian ini belum bisa dipakai (percobaan ' + $coba + ' dari 3).')
+        Write-Host ('[token] panjang terpakai: ' + $bersih.Length + '; karakter aneh dibuang: ' + $hasil.Buang)
+
+        if ($hasil.Buang -gt 0) { Write-Host ('[token] kode karakter aneh: ' + $hasil.Rincian) }
+        if ($bersih.Length -lt 80) { Write-Host '[token] terlalu pendek: kemungkinan salinan terpotong.' }
+
+        Write-Host '[token] Cara paling aman: simpan token ke berkas lalu ulangi.'
+        Write-Host ('[token]   buka Notepad, tempel token, simpan sebagai ' + $FileTokenBaru)
+        Write-Host ''
+    }
+
+    throw ('Isian token gagal 3 kali. Simpan token ke ' + $FileTokenBaru + ' lalu jalankan ulang skrip ini.')
+}
+
+<#
+    Dekode token (base64 dari JSON) dan ambil Tunnel ID-nya. Base64 url-safe
+    ikut diterima. Bila gagal, pesan galat memuat ukuran dasar untuk
+    diagnosis tanpa membocorkan isi token.
+
+    Parameter: $Token = token cloudflared (sebaiknya sudah dibersihkan).
     Return  : Tunnel ID sebagai teks.
 #>
 function IdDariToken([string]$Token) {
-    $pad = $Token.Replace('-', '+').Replace('_', '/')
+    $info = RapikanToken $Token
+    $teks = $info.Token
 
-    while ($pad.Length % 4 -ne 0) { $pad += '=' }
+    if ($teks -eq '') { throw 'Token kosong.' }
 
-    $objek = ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($pad)) | ConvertFrom-Json)
+    $percobaan = @(
+        @{ Nama = 'base64 standar'; Nilai = $teks },
+        @{ Nama = 'base64 url-safe'; Nilai = ($teks.Replace('-', '+').Replace('_', '/')) }
+    )
 
-    if (-not $objek.t) { throw 'Token tidak memuat Tunnel ID (bukan token tunnel?).' }
+    $galat = ''
 
-    return [string]$objek.t
+    foreach ($coba in $percobaan) {
+        $pad = $coba.Nilai
+
+        while ($pad.Length % 4 -ne 0) { $pad += '=' }
+
+        try {
+            $objek = ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($pad)) | ConvertFrom-Json)
+        } catch {
+            $galat = $_.Exception.Message
+            continue
+        }
+
+        if (-not $objek.t) { throw 'Token terbaca, tetapi tidak memuat Tunnel ID (bukan token tunnel?).' }
+
+        return [string]$objek.t
+    }
+
+    $rincianBuang = ''
+
+    if ($info.Buang -gt 0) { $rincianBuang = '; karakter aneh dibuang: ' + $info.Buang + ' -> ' + $info.Rincian }
+
+    throw ('Token tidak bisa didekode. Panjang terpakai: ' + $teks.Length +
+        ' (sisa bagi 4: ' + ($teks.Length % 4) + ')' + $rincianBuang +
+        '. Pesan asli: ' + $galat +
+        '. Sisa bagi 4 selain 0 biasanya berarti salinan token terpotong.')
 }
 
 <#
@@ -228,6 +378,11 @@ Write-Host ''
 
 if ($jumlahDijalankan -eq 1 -and $idJalan -eq $idBaru) {
     Write-Host '[token] SELESAI: token baru sudah dipakai.' -ForegroundColor Green
+
+    if (Test-Path $FileTokenBaru) {
+        Remove-Item -Path $FileTokenBaru -Force
+        Write-Host ('[token] berkas sementara dihapus supaya token tidak tersimpan di dua tempat: ' + $FileTokenBaru)
+    }
 } else {
     Write-Host '[token] BELUM tuntas: periksa baris di atas dan log tunnel.err.log.' -ForegroundColor Yellow
 

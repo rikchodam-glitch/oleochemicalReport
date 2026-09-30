@@ -205,6 +205,12 @@ disiapkan di komputer ini (terverifikasi 28/09/2026):
      (`0ce4f072-7ed2-42db-b440-6d0b3904963d.cfargotunnel.com`, Proxied) —
      inilah langkah yang sampai 30/09/2026 14:1x WIB masih KURANG untuk
      `oleomtc.com` (zona aktif, tetapi belum ada record A/CNAME).
+  2a. Catatan cara pakai (30/09/2026): token TIDAK perlu ditempel di jendela
+     hitam — skrip membuka Notepad dan membaca berkas
+     `C:\laragon\cloudflared\token-baru.txt`. Menempel di jendela hitam pernah
+     TERPOTONG sehingga ditolak dengan pesan FromBase64String (insiden #30);
+     pesan galat skrip kini memuat panjang token dan sisa bagi 4 tanpa
+     membocorkan isinya. Opsi `-TanpaNotepad` hanya untuk pengujian otomatis.
   2. Pasang token tunnel baru memakai
      `tools\pasang-token-tunnel-prod.ps1` (cara pakai di kepala berkas itu;
      token dibaca dari berkas atau isian tersembunyi — JANGAN menempelkan
@@ -944,6 +950,32 @@ Batasan penting lingkungan ini:
     yang berada di blok `if`/`for`, pakai `goto`/label; (2) cara tercepat
     mendiagnosis `.bat` yang menutup seketika adalah menjalankannya dengan
     stdin NUL dan keluaran dialihkan ke berkas lalu baca berkas itu — JANGAN
+30. **Token tunnel hasil tempel di jendela hitam bisa TERPOTONG, dan gejalanya
+    menyesatkan.** Pada 30/09/2026 pengguna menjalankan pintasan
+    `Pasang-Token-Tunnel.bat`; skrip menolak dengan pesan
+    `Exception calling "FromBase64String" with "1" argument(s): "The input is
+    not a valid Base-64 string ..."`. Uji terisolasi membuktikan pesan itu
+    muncul justru saat panjang teks bersisa **1 mod 4**: baris
+    `while ($pad.Length % 4 -ne 0) { $pad += '=' }` menambah TIGA `=`
+    sehingga .NET menolak dengan "more than two padding characters" — jadi
+    artinya salinan token kurang atau lebih satu karakter, BUKAN masalah
+    library, token, atau dashboard. Perbaikan di
+    `tools\pasang-token-tunnel-prod.ps1`: token dibersihkan dulu
+    (`RapikanToken`: buang spasi/BOM/NUL/kutip, buang awalan
+    `cloudflared service install`/`--token`), isian diulang sampai 3 kali
+    dengan laporan panjang + kode karakter aneh, base64 url-safe ikut dicoba,
+    dan ada jalur BERKAS: `C:\laragon\cloudflared\token-baru.txt` dibaca lebih
+    dulu, kalau belum ada Notepad dibuka otomatis (opsi `-TanpaNotepad` untuk
+    pengujian otomatis). **Pelajaran: (1) periksa dulu `panjang % 4` pada
+    token base64 sebelum menuduh kunci/izin salah — sisa 1 mod 4 hampir
+    selalu berarti salinan terpotong; (2) simpan pesan asli decoder TAPI
+    tambahkan ukuran dasar (panjang, sisa bagi 4, kode karakter aneh) supaya
+    bisa didiagnosis tanpa membocorkan token; (3) untuk rahasia panjang,
+    sediakan jalur berkas sebagai alternatif tempel di TTY — isian panjang
+    pada `Read-Host` tidak bisa diuji otomatis (butuh manusia) dan sudah
+    terbukti pernah menghasilkan isian tidak utuh.**
+
+
     lewat pipe; (3) bedakan dua kasus yang gejalanya mirip: batch yang gagal
     parse (selesai instan tanpa teks) versus skrip yang menunggu masukan
     manusia (mis. `Read-Host` pada `pasang-token-tunnel-prod.ps1`) — yang
