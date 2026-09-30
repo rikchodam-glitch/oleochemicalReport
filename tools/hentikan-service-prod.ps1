@@ -6,7 +6,7 @@
       - schedule:work  (penjadwal: shifts:generate, ai:reset-quota, dsb)
       - telegram:poll  (bot Telegram)
       - serve:8000     (artisan serve + proses anak php -S 0.0.0.0:8000)
-      - tunnel cloudflared (domain publik app.saranapendidik.com)
+      - tunnel cloudflared (domain publik, hostname dibaca dari APP_URL di .env PROD)
 
     Sekaligus MENONAKTIFKAN tugas Windows "oleo-jaga-service-prod" (dipakai
     opsi -BiarkanJadwal kalau jadwal itu tidak ingin diubah) — tanpa itu

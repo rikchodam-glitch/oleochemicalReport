@@ -94,10 +94,9 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   `APP_URL` PROD harus alamat yang bisa dibuka pengguna, karena dipakai
   membentuk link "Detail web" pada pesan Telegram
   (`app\Services\Telegram\AssetInfoService.php`). Nilainya per 30/09/2026
-  14:2x WIB masih `https://app.saranapendidik.com` (sebelum tunnel aktif
-  sempat `http://192.168.41.74:8000`); target berikutnya
-  `https://oleomtc.com` begitu record DNS-nya ada. Menggantinya JANGAN manual
-  satu-satu langkah: pakai `tools\set-domain-prod.ps1 -Domain oleomtc.com`
+  14:4x WIB sudah `https://oleomtc.com` (sebelumnya `https://app.saranapendidik.com`,
+  dan sebelum tunnel aktif sempat `http://192.168.41.74:8000`). Menggantinya
+  JANGAN manual satu-satu langkah: pakai `tools\set-domain-prod.ps1 -Domain <domain>`
   (normalisasi + cek DNS + tulis .env + `config:clear`/`config:cache` + uji).
 - Storage & database terpisah: DEV tidak memuat foto asli (gambar akan tampak
   rusak di dev; itu normal, bukan bug).
