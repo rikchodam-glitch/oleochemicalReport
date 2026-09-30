@@ -182,6 +182,29 @@ disiapkan di komputer ini (terverifikasi 28/09/2026):
 - `tools\cek-tunnel-prod.ps1` dan `tools\cek-status-prod.ps1` TIDAK lagi
   mematok domain: hostname publik dibaca dari `APP_URL` di `.env` copy PROD,
   jadi penggantian domain berikutnya tidak perlu menyunting skrip apa pun.
+- **ROTASI TUNNEL SEDANG BERJALAN (30/09/2026).** User membuat tunnel BARU
+  dengan ID **`0ce4f072-7ed2-42db-b440-6d0b3904963d`** — tujuannya mengganti
+  token lama yang pernah bocor di chat. Status terverifikasi saat itu:
+  connector yang JALAN masih memakai token LAMA
+  (`C:\laragon\cloudflared\token-prod.txt` memuat token untuk tunnel
+  `3deca11e-4c25-42e0-bb0c-6469051ffd6d`, berkasnya belum berubah sejak
+  28/09/2026 11:41), dan tunnel lama itu memang sudah memuat hostname
+  `app.saranapendidik.com` + `oleomtc.com`.
+  Agar rotasi tuntas, tiga hal ini harus selesai:
+  1. Di DASHBOARD tunnel BARU, tambahkan Public Hostname `oleomtc.com` DAN
+     `app.saranapendidik.com`, masing-masing service HTTP `localhost:80` +
+     HTTP Host Header `oleo-prod.lvh.me`. Menyimpan hostname pada editor itu
+     sekaligus membuat/mengarahkan record DNS-nya ke tunnel baru
+     (`0ce4f072-7ed2-42db-b440-6d0b3904963d.cfargotunnel.com`, Proxied) —
+     inilah langkah yang sampai 30/09/2026 14:1x WIB masih KURANG untuk
+     `oleomtc.com` (zona aktif, tetapi belum ada record A/CNAME).
+  2. Pasang token tunnel baru memakai
+     `tools\pasang-token-tunnel-prod.ps1` (cara pakai di kepala berkas itu;
+     token dibaca dari berkas atau isian tersembunyi — JANGAN menempelkan
+     token ke chat). Skrip itu menyalakan ulang hanya proses connector.
+  3. Kalau record DNS `app` pada zona `saranapendidik.com` masih menunjuk
+     tunnel LAMA, arahkan ke target tunnel baru; kalau tidak, domain cadangan
+     itu akan error 1033 begitu connector pindah ke tunnel baru.
 - **Trusted proxy SUDAH dipasang** di `bootstrap/app.php`
   (`$middleware->trustProxies(at: ['127.0.0.1', '::1'], headers: ...X_FORWARDED_*)`)
   dengan pengujian di `tests/Feature/TrustedProxyTest.php`. JANGAN dihapus:
