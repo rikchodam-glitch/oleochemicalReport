@@ -60,6 +60,24 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   - Mengaktifkan kembali penjagaan otomatis:
     `Enable-ScheduledTask -TaskName oleo-jaga-service-prod` atau
     `tools\pasang-jadwal-jaga-service.ps1`.
+  - Pintasan Desktop untuk pengguna awam (dibuat 30/09/2026, di luar repo
+    jadi tidak dilacak git): `C:\Users\sapusr\Desktop\Jalankan-Service-Laporan.bat`,
+    `C:\Users\sapusr\Desktop\Hentikan-Service-Laporan.bat`, dan
+    `C:\Users\sapusr\Desktop\Cek-Status-Laporan.bat`. Ketiganya hanya MEMANGGIL
+    file resmi copy PROD (`start-report.bat`, `stop-report.bat`,
+    `tools\cek-status-prod.ps1`) supaya tidak ada dua versi logika; kalau file
+    di copy PROD tidak ditemukan, pintasan berhenti dengan pesan jelas.
+  - Memeriksa status service TANPA mengubah apa pun: klik
+    `Cek-Status-Laporan.bat`, atau
+    `powershell -NoProfile -ExecutionPolicy Bypass -File tools\cek-status-prod.ps1`
+    (ada di DEV dan PROD). Menampilkan status tugas Windows, jumlah proses
+    queue/schedule/poll/serve/tunnel, kode HTTP `/login` (port 8000, Apache,
+    domain publik), dan 6 baris terakhir log watchdog.
+  - **Jangan menguji `.bat` ini lewat pipe terminal** (`cmd /c "<file>.bat" | Select-Object`):
+    proses service yang baru dinyalakan mewarisi handle stdout sehingga
+    perintah tampak menggantung tanpa akhir padahal service sudah jalan.
+    Kalau perlu menangkap keluarannya, alihkan ke FILE
+    (`cmd /c "<file>.bat < NUL > %TEMP%\out.txt 2>&1`), lalu baca file itu.
   - Saat semua service mati, aplikasi TETAP bisa dibuka lewat Apache (vhost
     PROD: `http://localhost/` dan `http://oleo-prod.lvh.me`); yang mati hanya
     port 8000 dan domain publik. Dua tugas lama `Oleo Serve`/`Tele Poll`
