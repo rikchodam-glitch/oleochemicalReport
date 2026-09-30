@@ -11,9 +11,13 @@ REM  (dua poller sekaligus = bot mati total, error 409).
 REM
 REM  Service dijalankan lewat tools\jaga-service-prod.ps1 supaya AMAN
 REM  dipanggil berulang: skrip itu hanya menyalakan yang belum jalan dan
-REM  membuang proses duplikat. Service ini juga dijaga otomatis tiap 5 menit
-REM  oleh tugas Windows "oleo-jaga-service-prod", jadi file ini hanya untuk
-REM  start / restart manual.
+REM  membuang proses duplikat.
+REM
+REM  SEJAK 30/09/2026 PENJAGAAN OTOMATIS DIMATIKAN atas permintaan user:
+REM  tugas Windows "oleo-jaga-service-prod" dinonaktifkan, jadi service
+REM  HANYA jalan kalau file ini dijalankan. Menghentikan lagi: stop-report.bat.
+REM  Mengaktifkan kembali penjagaan otomatis:
+REM    Enable-ScheduledTask -TaskName oleo-jaga-service-prod
 REM ======================================================================
 set PHP=C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe
 set PROJECT=C:\laragon\www\oleochemicalReport-prod

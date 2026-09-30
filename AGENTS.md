@@ -44,6 +44,28 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   (opsi `--force` untuk pengujian khusus), dan (b) watchdog mengganti serve
   port 8000 yang bukan dari copy PROD. Idealnya kedua tugas itu dinonaktifkan
   manual lewat Task Scheduler (butuh hak admin).
+- **SEJAK 30/09/2026 SEMUA SERVICE LATAR PROD DIJALANKAN MANUAL (keputusan
+  user).** Tugas Windows `oleo-jaga-service-prod` sudah DINONAKTIFKAN
+  (`Disable-ScheduledTask`) sehingga tidak ada lagi yang menyalakan ulang
+  service tiap 5 menit. Konsekuensi penting untuk sesi berikutnya: kalau bot
+  Telegram diam, queue tidak memproses, `/login` di port 8000 atau
+  `https://app.saranapendidik.com` tidak jalan, JANGAN langsung menyimpulkan
+  bug — periksa dulu apakah service-nya memang sengaja tidak dinyalakan.
+  - Menyalakan (semua: queue, schedule, telegram:poll, serve:8000, tunnel):
+    klik dua kali `start-report.bat` (ada di copy DEV dan PROD) atau jalankan
+    `tools\jaga-service-prod.ps1`.
+  - Menghentikan (sekaligus menonaktifkan jadwal watchdog):
+    `stop-report.bat` atau `tools\hentikan-service-prod.ps1`
+    (opsi `-BiarkanJadwal` bila jadwal tidak ingin diubah).
+  - Mengaktifkan kembali penjagaan otomatis:
+    `Enable-ScheduledTask -TaskName oleo-jaga-service-prod` atau
+    `tools\pasang-jadwal-jaga-service.ps1`.
+  - Saat semua service mati, aplikasi TETAP bisa dibuka lewat Apache (vhost
+    PROD: `http://localhost/` dan `http://oleo-prod.lvh.me`); yang mati hanya
+    port 8000 dan domain publik. Dua tugas lama `Oleo Serve`/`Tele Poll`
+    masih berstatus Ready dan TIDAK bisa dinonaktifkan tanpa hak admin, jadi
+    setelah komputer reboot/login keduanya bisa menyalakan serve dari copy DEV
+    di port 8000 — matikan lagi dengan `stop-report.bat`.
 - `.env` PROD BOLEH diedit langsung (tidak dilacak git, memang beda per copy),
   tetapi WAJIB diikuti `php artisan config:clear` + `config:cache` di PROD.
   `APP_URL` PROD harus alamat yang bisa dibuka pengguna — sejak 28/09/2026
