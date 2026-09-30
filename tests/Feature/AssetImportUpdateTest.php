@@ -380,7 +380,7 @@ function csvExportBaru(array $baris): string
 {
     $info = [
         'DAFTAR ASSET — ASSET MANAGEMENT',
-        'Sistem Manajemen Pemeliharaan — Oleochemical Pro',
+        'Sistem Manajemen Pemeliharaan — Oleochemical Maintenance',
         'Diekspor: ' . now()->format('d/m/Y H:i') . ' WIB',
         'Filter: semua data',
         'Jumlah: ' . count($baris) . ' asset',
@@ -452,7 +452,7 @@ test('export excel memakai blok judul dan header tabel di baris ketujuh', functi
     }
 
     expect((string) $sheet->getCell('A1')->getValue())->toContain('DAFTAR ASSET')
-        ->and((string) $sheet->getCell('A2')->getValue())->toContain('Oleochemical Pro')
+        ->and((string) $sheet->getCell('A2')->getValue())->toContain('Oleochemical Maintenance')
         ->and((string) $sheet->getCell('A3')->getValue())->toContain('Diekspor:')
         ->and((string) $sheet->getCell('A4')->getValue())->toContain('Filter:')
         ->and((string) $sheet->getCell('A5')->getValue())->toContain('Jumlah:')

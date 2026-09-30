@@ -161,7 +161,7 @@ Lapor 'Origin lokal (Apache PROD)' ($lokal -eq '200') ('HTTP ' + $lokal + ' (har
 $publik = curl.exe -s -m 25 -w '|%{http_code}' -L ('https://' + $Domain + '/login') 2>$null
 $kode = ($publik -split '\|')[-1]
 
-if ($kode -eq '200' -and (($publik -join '') -match 'Oleochemical Pro|NIK / Email')) {
+if ($kode -eq '200' -and (($publik -join '') -match 'Oleochemical Maintenance|NIK / Email')) {
     Lapor 'Publik https://domain/login' $true 'HTTP 200 + halaman login aplikasi tampil'
 } elseif ($kode -eq '200' -or $kode -eq '302') {
     Lapor 'Publik https://domain/login' $true ('HTTP ' + $kode + ' (halaman login Cloudflare Access / redirect)')

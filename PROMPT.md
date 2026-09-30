@@ -1,4 +1,4 @@
-# PROMPT — Oleochemical Pro: Maintenance Management System
+# PROMPT — Oleochemical Maintenance: Maintenance Management System
 
 ## Konteks Project
 

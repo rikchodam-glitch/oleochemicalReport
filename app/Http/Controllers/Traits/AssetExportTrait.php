@@ -69,7 +69,7 @@ trait AssetExportTrait
         $sheet->getRowDimension(1)->setRowHeight(30);
 
         $barisInfo = [
-            2 => 'Sistem Manajemen Pemeliharaan — Oleochemical Pro',
+            2 => 'Sistem Manajemen Pemeliharaan — Oleochemical Maintenance',
             3 => 'Diekspor: ' . now()->format('d/m/Y H:i') . ' WIB'
                 . (auth()->check() ? ' oleh ' . auth()->user()->name : ''),
             4 => 'Filter: ' . $this->ringkasanFilterExport($request),
@@ -194,7 +194,7 @@ trait AssetExportTrait
         // Keterangan header (tanpa Equipment No, sama seperti export Excel).
         $info = [
             'DAFTAR ASSET — ASSET MANAGEMENT',
-            'Sistem Manajemen Pemeliharaan — Oleochemical Pro',
+            'Sistem Manajemen Pemeliharaan — Oleochemical Maintenance',
             'Diekspor: ' . now()->format('d/m/Y H:i') . ' WIB'
                 . (auth()->check() ? ' oleh ' . auth()->user()->name : ''),
             'Filter: ' . $this->ringkasanFilterExport($request),

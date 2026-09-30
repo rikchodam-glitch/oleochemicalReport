@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Masuk — Oleochemical Pro</title>
+    <title>Masuk — Oleochemical Maintenance</title>
     @vite('resources/css/app.css')
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
@@ -13,7 +13,7 @@
     <div class="w-full max-w-md">
         <!-- Logo -->
         <div class="text-center mb-8">
-            <h1 class="text-2xl font-bold text-slate-900">Oleochemical Pro</h1>
+            <h1 class="text-2xl font-bold text-slate-900">Oleochemical Maintenance</h1>
             <p class="text-sm text-slate-500 mt-1">Maintenance Management System</p>
         </div>
 
@@ -69,7 +69,7 @@
         </div>
 
         <p class="text-center text-xs text-slate-400 mt-6">
-            &copy; {{ date('Y') }} Oleochemical Pro. All rights reserved.
+            &copy; {{ date('Y') }} Oleochemical Maintenance. All rights reserved.
         </p>
     </div>
 </body>

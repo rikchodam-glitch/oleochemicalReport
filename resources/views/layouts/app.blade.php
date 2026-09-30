@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', 'Dashboard') — Oleochemical Pro</title>
+    <title>@yield('title', 'Dashboard') — Oleochemical Maintenance</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @vite('resources/css/app.css')
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -224,9 +224,9 @@
     <aside id="appSidebar" class="fixed top-0 left-0 z-40 bg-slate-800 sidebar-scroll">
         <!-- Logo -->
         <div class="px-4 pt-6 pb-4 border-b border-slate-700 sidebar-brand">
-            <button type="button" id="sidebarLogoBtn" class="sidebar-logo-mark" title="Perluas menu" aria-label="Perluas menu">OP</button>
+            <button type="button" id="sidebarLogoBtn" class="sidebar-logo-mark" title="Perluas menu" aria-label="Perluas menu">OM</button>
             <div class="sidebar-brand-text">
-                <h2 class="text-white font-bold text-lg tracking-tight">Oleochemical Pro</h2>
+                <h2 class="text-white font-bold text-lg tracking-tight">Oleochemical Maintenance</h2>
                 <p class="text-slate-400 text-xs mt-0.5">Maintenance System</p>
             </div>
         </div>
