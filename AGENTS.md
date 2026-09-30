@@ -205,6 +205,22 @@ disiapkan di komputer ini (terverifikasi 28/09/2026):
      (`0ce4f072-7ed2-42db-b440-6d0b3904963d.cfargotunnel.com`, Proxied) —
      inilah langkah yang sampai 30/09/2026 14:1x WIB masih KURANG untuk
      `oleomtc.com` (zona aktif, tetapi belum ada record A/CNAME).
+  1a. STATUS 30/09/2026 14:3x WIB: token tunnel BARU
+     (`0ce4f072-7ed2-42db-b440-6d0b3904963d`) SUDAH pernah dipasang dan
+     terbukti tersambung (`Registered tunnel connection` 4 koneksi), TETAPI
+     tunnel baru itu BELUM punya Public Hostname sehingga
+     `app.saranapendidik.com` langsung 502 dan `www.oleomtc.com` tetap 530.
+     Karena itu connector DIKEMBALIKAN ke tunnel lama `3deca11e-…` supaya
+     domain publik hidup lagi (`/login` = 200, terverifikasi). Token tunnel
+     baru disimpan di
+     `C:\laragon\cloudflared\token-prod.txt.lama-20260930-143307.txt`;
+     setelah Public Hostname ditambahkan di dashboard, pasang ulang TANPA
+     menempel token:
+     `tools\pasang-token-tunnel-prod.ps1 -DariFile "C:\laragon\cloudflared\token-prod.txt.lama-20260930-143307.txt"`.
+     Catatan: hostname `oleomtc.com` dan `app.saranapendidik.com` saat ini
+     MASIH terpasang pada tunnel LAMA, jadi kemungkinan dashboard menolak
+     hostname yang sama pada tunnel baru — hapus dulu dari tunnel lama (apex
+     `oleomtc.com` sedang tidak resolve, jadi tidak ada kerugian).
   2a. Catatan cara pakai (30/09/2026): token TIDAK perlu ditempel di jendela
      hitam — skrip membuka Notepad dan membaca berkas
      `C:\laragon\cloudflared\token-baru.txt`. Menempel di jendela hitam pernah
