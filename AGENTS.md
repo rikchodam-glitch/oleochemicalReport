@@ -1007,6 +1007,37 @@ Batasan penting lingkungan ini:
 
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
 
+## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN
+
+Nama resmi sistem per **30/09/2026** adalah **Oleochemical Maintenance**
+(sebelumnya "Oleochemical Pro"; diganti atas instruksi user). Nama ini
+**TIDAK** diambil dari `config('app.name')` — ia ditulis HARCODE di beberapa
+tempat, jadi mengubah satu tempat saja membuat tampilan tidak seragam:
+
+- `resources/views/auth/login.blade.php` baris 6 (judul tab), 16 (H1), 72 (footer).
+- `resources/views/layouts/app.blade.php` baris 6 (judul tab), 229 (nama di
+  sidebar), dan baris 227 penanda logo sidebar (kini **OM**, sebelumnya OP).
+- `app/Http/Controllers/Traits/AssetExportTrait.php` baris 72 (keterangan
+  export Excel) dan 197 (keterangan export CSV).
+- Penjaga otomatis yang ikut menyebut nama: `tests/Feature/AssetImportUpdateTest.php`
+  baris 383 dan 455 (harapan test) serta `tools/cek-tunnel-prod.ps1` baris 164
+  (pengenal "halaman login aplikasi tampil"). Kalau nama diubah lagi, KEDUA
+  berkas itu WAJIB ikut diubah, kalau tidak test gagal / cek tunnel berbunyi
+  salah. Jalankan `php artisan test --filter='AssetImportUpdateTest|PageSmokeTest'`
+  setelah menyentuh nama.
+- Tagline "Maintenance Management System" (login) dan "Maintenance System"
+  (sidebar) sengaja TIDAK diubah saat penggantian nama — jangan dianggap sisa
+  nama lama.
+
+Catatan penting: `APP_NAME` di `.env` copy DEV maupun PROD masih bernilai
+`DailyReport`, dan `.env.example` bernilai `Oleochemical Report`. Nilai itu
+TIDAK memengaruhi judul/teks yang tampak (kecuali halaman bawaan
+`welcome.blade.php`), tetapi dipakai membentuk **nama cookie sesi**, prefiks
+cache/session, dan `MAIL_FROM_NAME`. Karena itu JANGAN mengubah `APP_NAME`
+tanpa instruksi user: akibatnya semua pengguna ter-logout (harus login ulang).
+Nama perusahaan pada dokumen `PROMPT.md` baris 5 (brief awal project) juga
+dibiarkan apa adanya, sengaja, karena itu nama perusahaan bukan nama aplikasi.
+
 ## ATURAN PENULISAN KODE
 
 - Kode rapi, konsisten gaya yang sudah ada.
