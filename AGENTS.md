@@ -48,8 +48,9 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   user).** Tugas Windows `oleo-jaga-service-prod` sudah DINONAKTIFKAN
   (`Disable-ScheduledTask`) sehingga tidak ada lagi yang menyalakan ulang
   service tiap 5 menit. Konsekuensi penting untuk sesi berikutnya: kalau bot
-  Telegram diam, queue tidak memproses, `/login` di port 8000 atau
-  `https://app.saranapendidik.com` tidak jalan, JANGAN langsung menyimpulkan
+  Telegram diam, queue tidak memproses, `/login` di port 8000 atau domain
+  publik (`https://oleomtc.com`, cadangan `https://app.saranapendidik.com`)
+  tidak jalan, JANGAN langsung menyimpulkan
   bug — periksa dulu apakah service-nya memang sengaja tidak dinyalakan.
   - Menyalakan (semua: queue, schedule, telegram:poll, serve:8000, tunnel):
     klik dua kali `start-report.bat` (ada di copy DEV dan PROD) atau jalankan
@@ -141,16 +142,46 @@ disiapkan di komputer ini (terverifikasi 28/09/2026):
   `config-prod.yml` (mode config CLI) BELUM dipakai — baru berguna kalau
   `cloudflared tunnel login` diselesaikan dan tunnel dibuat lewat CLI.
   Aturan ingress (Public Hostname) untuk tunnel ini ada di DASHBOARD:
-  `app.saranapendidik.com` → HTTP → `localhost:80` + HTTP Host Header
-  `oleo-prod.lvh.me`. Catatan: token itu sempat terkirim di chat, jadi
+  `app.saranapendidik.com` DAN `oleomtc.com` → HTTP → `localhost:80` + HTTP
+  Host Header `oleo-prod.lvh.me` (keduanya terbaca di snapshot konfigurasi yang
+  diterima cloudflared 30/09/2026). Cloudflared mengambil perubahan ingress dari
+  dashboard SECARA OTOMATIS (log: `Updated to new configuration`), jadi
+  menambah/mengubah hostname TIDAK perlu me-restart proses tunnel.
+  Catatan: token itu sempat terkirim di chat, jadi
   idealnya dirotasi (hapus + buat ulang tunnel) atau pindah ke jalur CLI.
 - Pengaman akses publik **BELUM aktif** per 28/09/2026 — halaman login masih
   bisa dibuka siapa saja yang tahu URL-nya. Langkah berikutnya: Cloudflare
   Access (Zero Trust, tim mis. `saranapendidik`) atau Basic Auth Apache pada
   vhost PROD. JANGAN bagikan URL itu sebelum salah satu pengaman aktif.
-- Nama tunnel: **`oleo-report`** (seragam di semua skrip/dokumen), hostname
-  publik: **`app.saranapendidik.com`** (domain `saranapendidik.com` sudah aktif
-  di Cloudflare sejak 28/09/2026).
+- Nama tunnel: **`oleo-report`**, Tunnel ID
+  **`3deca11e-4c25-42e0-bb0c-6469051ffd6d`** (dibaca dari
+  `PROD\storage\logs\tunnel.err.log` baris `Starting tunnel tunnelID=...`).
+  Mode token TIDAK menyimpan berkas kredensial: folder `C:\Users\sapusr\.cloudflared`
+  memang KOSONG, jadi JANGAN mengandalkan isi folder itu.
+- **DOMAIN PUBLIK BERGANTI (30/09/2026):** hostname utama sekarang
+  **`https://oleomtc.com`** (apex, ditambahkan user sebagai Public Hostname);
+  `app.saranapendidik.com` DIPERTAHANKAN sebagai cadangan.
+  Status terverifikasi 30/09/2026 pukul 14:1x WIB: **zona `oleomtc.com` sudah
+  aktif di Cloudflare** (NS `zeus.ns.cloudflare.com` /
+  `sureena.ns.cloudflare.com`, SOA sudah dijawab sureena), TETAPI
+  **belum ada record A/CNAME untuk apex `oleomtc.com`** — jawaban otoritatif NS
+  hanya SOA, `www.oleomtc.com` punya record tetapi handshake TLS-nya gagal —
+  sehingga `https://oleomtc.com/login` masih gagal (curl code 000).
+  Tindakan tertinggal di sisi Cloudflare (MANUSIA, tidak bisa dari sini):
+  zona `oleomtc.com` > DNS > Records > Add record, Type `CNAME`, Name `@`,
+  Target `3deca11e-4c25-42e0-bb0c-6469051ffd6d.cfargotunnel.com`, Proxy
+  `Proxied`. Cara termudah: buka ulang editor Public Hostname `oleomtc.com`
+  pada tunnel `oleo-report` lalu Simpan, Cloudflare akan membuatkan recordnya.
+  Alternatif yang lebih mulus: pakai subdomain `app.oleomtc.com` sebagai
+  Public Hostname (Cloudflare otomatis membuat CNAME-nya).
+  Pengalihan `APP_URL` PROD + `config:clear`/`config:cache` ada di
+  `tools\set-domain-prod.ps1 -Domain oleomtc.com` (menolak jalan bila DNS
+  belum ada; tambahkan `-Paksa` untuk tetap lanjut). Jangan alihkan `APP_URL`
+  sebelum record DNS ada kalau tidak ingin tautan "Detail web" pada pesan
+  Telegram menunjuk domain yang tidak bisa dibuka.
+- `tools\cek-tunnel-prod.ps1` dan `tools\cek-status-prod.ps1` TIDAK lagi
+  mematok domain: hostname publik dibaca dari `APP_URL` di `.env` copy PROD,
+  jadi penggantian domain berikutnya tidak perlu menyunting skrip apa pun.
 - **Trusted proxy SUDAH dipasang** di `bootstrap/app.php`
   (`$middleware->trustProxies(at: ['127.0.0.1', '::1'], headers: ...X_FORWARDED_*)`)
   dengan pengujian di `tests/Feature/TrustedProxyTest.php`. JANGAN dihapus:
@@ -173,8 +204,8 @@ disiapkan di komputer ini (terverifikasi 28/09/2026):
   tunnel) setelah `config-prod.yml` diisi (bukan lagi placeholder `TUNNEL-ID`);
   lognya di `PROD\storage\logs\tunnel.out.log` dan `tunnel.err.log`.
 - Saran keamanan (belum dikerjakan): aktifkan **Cloudflare Access (Zero Trust)**
-  untuk `app.saranapendidik.com` supaya hanya email tertentu yang bisa membuka
-  halaman login; login Laravel tetap jadi lapis kedua.
+  untuk `oleomtc.com` DAN `app.saranapendidik.com` supaya hanya email tertentu
+  yang bisa membuka halaman login; login Laravel tetap jadi lapis kedua.
 
 Langkah yang MASIH perlu dijalankan user (jangan diasumsikan sudah selesai):
 1. `cloudflared tunnel login` (butuh akun Cloudflare + browser).

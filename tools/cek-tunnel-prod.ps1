@@ -9,10 +9,53 @@
 #>
 $Cloudflared = 'C:\laragon\bin\cloudflared\cloudflared.exe'
 $FileKonfig  = 'C:\laragon\cloudflared\config-prod.yml'
-$Domain      = 'app.saranapendidik.com'
 $VhostLokal  = 'oleo-prod.lvh.me'
 $FolderKred  = Join-Path $env:USERPROFILE '.cloudflared'
 $FileToken   = 'C:\laragon\cloudflared\token-prod.txt'
+$FileEnvProd = 'C:\laragon\www\oleochemicalReport-prod\.env'
+$LogTunnel   = 'C:\laragon\www\oleochemicalReport-prod\storage\logs\tunnel.err.log'
+
+<#
+    Ambil hostname domain publik dari baris APP_URL di .env copy PROD supaya
+    penggantian domain tidak perlu menyunting skrip ini lagi.
+
+    Parameter: tidak ada.
+    Return  : hostname tanpa skema (contoh: oleomtc.com).
+#>
+function AmbilDomainPublik {
+    if (Test-Path $FileEnvProd) {
+        $baris = Select-String -Path $FileEnvProd -Pattern '^APP_URL=' -ErrorAction SilentlyContinue | Select-Object -First 1
+
+        if ($baris) {
+            $nilai = $baris.Line -replace '^APP_URL=', ''
+            $nilai = $nilai -replace '^[a-zA-Z]+://', ''
+            $nilai = ($nilai -split '/')[0].Trim()
+
+            if ($nilai -ne '') { return $nilai }
+        }
+    }
+
+    return 'oleomtc.com'
+}
+
+<#
+    Ambil Tunnel ID dari log cloudflared (mode token dashboard tidak menyimpan
+    berkas kredensial, jadi ID diambil dari baris "Starting tunnel tunnelID=...").
+
+    Parameter: tidak ada.
+    Return  : Tunnel ID, atau teks kosong bila belum terbaca.
+#>
+function AmbilTunnelId {
+    if (-not (Test-Path $LogTunnel)) { return '' }
+
+    $baris = Select-String -Path $LogTunnel -Pattern 'Starting tunnel tunnelID=([0-9a-f\-]{36})' -ErrorAction SilentlyContinue | Select-Object -First 1
+
+    if ($baris -and $baris.Matches.Count -gt 0) { return $baris.Matches[0].Groups[1].Value }
+
+    return ''
+}
+
+$Domain = AmbilDomainPublik
 
 # Mode token dipakai bila token-prod.txt sudah diisi (tunnel dibuat dari
 # dashboard); kalau tidak, dipakai mode config (config-prod.yml).
@@ -33,7 +76,7 @@ function Lapor([string]$Nama, [bool]$Lulus, [string]$Keterangan) {
     }
 }
 
-Write-Host '=== Pemeriksaan Cloudflare Tunnel PROD ==='
+Write-Host ('=== Pemeriksaan Cloudflare Tunnel PROD (domain publik: ' + $Domain + ') ===')
 
 # 1. cloudflared
 if (Test-Path $Cloudflared) {
@@ -98,7 +141,16 @@ if ($dns) {
     if ($cloudflare) { $ketDns = $daftarIp + ' (Cloudflare)' }
     Lapor 'DNS ' $true $ketDns
 } else {
-    Lapor 'DNS ' $false ('belum ada record A untuk ' + $Domain + ' -> jalankan "cloudflared tunnel route dns"')
+    $idTunnel  = AmbilTunnelId
+    $petunjuk  = 'belum ada record A/CNAME untuk ' + $Domain
+
+    if ($idTunnel -ne '') {
+        $petunjuk = $petunjuk + (' -> di Cloudflare zona ' + $Domain + ': DNS > Records > Add record, Type CNAME, Name @, Target ' + $idTunnel + '.cfargotunnel.com, Proxy Proxied')
+    } else {
+        $petunjuk = $petunjuk + ' -> buat record CNAME ke <TUNNEL-ID>.cfargotunnel.com (Proxied), atau buka ulang editor Public Hostname tunnel supaya Cloudflare membuatkannya'
+    }
+
+    Lapor 'DNS ' $false $petunjuk
 }
 
 # 7. Uji lokal (seperti permintaan cloudflared: Host vhost + X-Forwarded)

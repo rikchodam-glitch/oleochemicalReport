@@ -5,7 +5,7 @@
       - status tugas Windows penjaga service (oleo-jaga-service-prod, Oleo Serve, Tele Poll)
       - jumlah proses queue:work, schedule:work, telegram:poll, serve:8000, tunnel
       - halaman /login lewat port 8000 dan lewat Apache (vhost PROD oleo-prod.lvh.me)
-      - halaman /login lewat domain publik https://app.saranapendidik.com
+      - halaman /login lewat domain publik (hostname dibaca dari APP_URL di .env PROD)
       - 6 baris terakhir log watchdog dan 4 baris terakhir log bot Telegram
 
     Aman dijalankan kapan saja (hanya membaca, tidak menyalakan/menghentikan
@@ -21,6 +21,32 @@ $ProgressPreference = 'SilentlyContinue'
 $ProdPath   = 'C:\laragon\www\oleochemicalReport-prod'
 $LogJaga    = Join-Path $ProdPath 'storage\logs\jaga-service.log'
 $LogPoller  = Join-Path $ProdPath 'storage\logs\telegram-poll.out.log'
+$FileEnv    = Join-Path $ProdPath '.env'
+
+<#
+    Ambil hostname domain publik dari baris APP_URL di .env copy PROD supaya
+    penggantian domain tidak perlu menyunting skrip ini lagi.
+
+    Parameter: tidak ada.
+    Return  : hostname tanpa skema (contoh: oleomtc.com).
+#>
+function AmbilDomainPublik {
+    if (Test-Path $FileEnv) {
+        $baris = Select-String -Path $FileEnv -Pattern '^APP_URL=' -ErrorAction SilentlyContinue | Select-Object -First 1
+
+        if ($baris) {
+            $nilai = $baris.Line -replace '^APP_URL=', ''
+            $nilai = $nilai -replace '^[a-zA-Z]+://', ''
+            $nilai = ($nilai -split '/')[0].Trim()
+
+            if ($nilai -ne '') { return $nilai }
+        }
+    }
+
+    return 'oleomtc.com'
+}
+
+$DomainPublik = AmbilDomainPublik
 
 <#
     Ambil kode HTTP sebuah URL.
@@ -80,7 +106,8 @@ Write-Host ''
 Write-Host '=== Halaman login ==='
 Write-Host ('http://127.0.0.1:8000/login          : ' + (KodeHttp 'http://127.0.0.1:8000/login') + '  (200 = jalan)')
 Write-Host ('http://oleo-prod.lvh.me/login (Apache): ' + (KodeHttp 'http://oleo-prod.lvh.me/login'))
-Write-Host ('https://app.saranapendidik.com/login : ' + (KodeHttp 'https://app.saranapendidik.com/login'))
+$UrlPublik = 'https://' + $DomainPublik + '/login'
+Write-Host ($UrlPublik.PadRight(38) + ': ' + (KodeHttp $UrlPublik))
 
 Write-Host ''
 Write-Host '=== Log watchdog (6 baris terakhir) ==='
