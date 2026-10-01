@@ -191,7 +191,8 @@ test('halaman laporan bisa difilter status continue dan menampilkan rantai lanju
         ->get('/reports?' . $rentang . '&status=continue')
         ->assertStatus(200)
         ->assertSee('RPT-20260925-0001', false)
-        ->assertSee('CONTINUE', false)
+        // Penanda status Continue kini tampil sebagai lencana pada kolom Status.
+        ->assertSee('data-status="continue"', false)
         ->assertDontSee('RPT-20260926-0003', false);
 
     // Halaman detail laporan lanjutan menunjuk ke laporan asalnya.
