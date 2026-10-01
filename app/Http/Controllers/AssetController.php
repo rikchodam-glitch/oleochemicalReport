@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\ReportType;
+use App\Http\Controllers\Concerns\ResolvesReportAnalytics;
 use App\Http\Controllers\Concerns\ResolvesReportFilters;
 use App\Http\Controllers\Traits\AssetExportTrait;
 use App\Http\Controllers\Traits\AssetLocationTrait;
@@ -20,8 +20,6 @@ use App\Services\AssetNumberService;
 use App\Services\FuncLocSyncService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 
 class AssetController extends Controller
 {
@@ -29,6 +27,7 @@ class AssetController extends Controller
     use AssetTechnicianTrait;
     use AssetLocationTrait;
     use ResolvesReportFilters;
+    use ResolvesReportAnalytics;
 
     /**
      * @var AssetNumberService Pembuat nomor equipment otomatis untuk asset
@@ -171,24 +170,8 @@ class AssetController extends Controller
             ->paginate(15)
             ->appends($request->query());
 
-        // Statistik per jenis laporan
-        $statsByType = $this->queryLaporanAset($asset)
-            ->reorder()
-            ->select('report_type', DB::raw('count(*) as total'))
-            ->groupBy('report_type')
-            ->pluck('total', 'report_type');
-
-        // Statistik per bulan untuk grafik tren
-        $dateFormat = DB::connection()->getDriverName() === 'sqlite'
-            ? "strftime('%Y-%m', report_date)"
-            : "DATE_FORMAT(report_date, '%Y-%m')";
-
-        $statsByMonth = $this->queryLaporanAset($asset)
-            ->reorder()
-            ->select(DB::raw("{$dateFormat} as month"), DB::raw('count(*) as total'))
-            ->groupBy('month')
-            ->orderBy('month')
-            ->pluck('total', 'month');
+        // Statistik per bulan untuk grafik tren (dipakai ringkasan angka).
+        $statsPerBulan = $this->susunStatsPerBulan($this->queryLaporanAset($asset));
 
         // Teknisi yang pernah menangani perbaikan asset ini — dipakai HANYA
         // sebagai pilihan filter tabel, bukan sebagai pengelompok data.
@@ -210,21 +193,10 @@ class AssetController extends Controller
         // Semua teknisi aktif untuk dropdown penugasan
         $allTechnicians = Technician::where('status', 'active')->orderBy('name')->get();
 
-        // Label jenis perbaikan (report_type) untuk kolom tabel & legenda grafik.
-        $labelTipe = [];
-        foreach ($reports->pluck('report_type')->unique()->values() as $tipe) {
-            $labelTipe[$tipe ?? ''] = $this->labelTipePerbaikan($tipe);
-        }
-
-        // Data grafik tren perbaikan per bulan, komposisi jenis, dan ringkasan.
-        $trenPerbaikan = $this->susunTrenPerbaikan($asset, $dateFormat);
-        $komposisiTipe = $statsByType
-            ->map(fn ($jumlah, $tipe) => [
-                'label'  => $this->labelTipePerbaikan($tipe),
-                'jumlah' => (int) $jumlah,
-            ])
-            ->values();
-        $ringkasanTren = $this->susunRingkasanTren($reports, $statsByMonth);
+        // Data grafik: tren per bulan, komposisi jenis pekerjaan, dan ringkasan.
+        $trenPerbaikan = $this->susunTrenPerbaikan($this->queryLaporanAset($asset));
+        $komposisiTipe = $this->susunKomposisiJenis($this->queryLaporanAset($asset));
+        $ringkasanTren = $this->susunRingkasanTren($reports, $statsPerBulan);
 
         // Data filter tabel perbaikan yang sedang aktif.
         $filterPerbaikan = [
@@ -253,7 +225,7 @@ class AssetController extends Controller
             ->all();
 
         return view('assets.show', compact(
-            'asset', 'perbaikan', 'filterPerbaikan', 'labelTipe',
+            'asset', 'perbaikan', 'filterPerbaikan',
             'komposisiTipe', 'trenPerbaikan', 'ringkasanTren',
             'teknisiPernahRepair', 'totalReports', 'completedReports', 'needsReviewReports',
             'allTechnicians', 'kolaboratorPerLaporan'
@@ -598,133 +570,6 @@ class AssetController extends Controller
      * @param  FunctionalLocation|null  $funcLoc
      * @return string|null
      */
-    /**
-     * Label tampilan jenis perbaikan (kolom report_type) untuk tabel & grafik.
-     *
-     * @param  string|null  $tipe  Nilai kolom report_type
-     * @return string
-     */
-    private function labelTipePerbaikan(?string $tipe): string
-    {
-        if ($tipe === null || $tipe === '') {
-            return 'Tanpa Tipe';
-        }
-
-        $enum = ReportType::tryFrom($tipe);
-
-        if ($enum !== null) {
-            return $enum->label();
-        }
-
-        return ucfirst(str_replace('_', ' ', $tipe));
-    }
-
-    /**
-     * Susun data grafik tren perbaikan per bulan (siap dipakai Chart.js):
-     * satu dataset per jenis perbaikan, masing-masing berisi jumlah per bulan.
-     *
-     * @param  Asset   $asset       Asset yang dibuka
-     * @param  string  $dateFormat  Ekspresi SQL format bulan sesuai driver database
-     * @return array{labels: array<int, string>, datasets: array<int, array<string, mixed>>, total: int}
-     */
-    private function susunTrenPerbaikan(Asset $asset, string $dateFormat): array
-    {
-        $baris = $this->queryLaporanAset($asset)
-            ->reorder()
-            ->whereNotNull('report_date')
-            ->select('report_type', DB::raw("{$dateFormat} as bulan"), DB::raw('count(*) as total'))
-            ->groupBy('report_type', 'bulan')
-            ->orderBy('bulan')
-            ->get();
-
-        $labelBulan = $baris->pluck('bulan')->unique()->sort()->values();
-        $warnaTipe  = [
-            'equipment_repair' => '#0E9E8E',
-            'area_work'        => '#6366F1',
-            'general'          => '#94A3B8',
-        ];
-
-        $datasets = [];
-
-        foreach ($baris->pluck('report_type')->unique()->values() as $tipe) {
-            $jumlahPerBulan = $baris->where('report_type', $tipe)->keyBy('bulan');
-
-            $datasets[] = [
-                'label' => $this->labelTipePerbaikan($tipe),
-                'color' => $warnaTipe[$tipe] ?? '#F59E0B',
-                'data'  => $labelBulan
-                    ->map(fn ($bulan) => (int) ($jumlahPerBulan[$bulan]->total ?? 0))
-                    ->all(),
-            ];
-        }
-
-        return [
-            'labels'   => $labelBulan
-                ->map(fn ($bulan) => Carbon::createFromFormat('Y-m', $bulan)->format('M Y'))
-                ->all(),
-            'datasets' => $datasets,
-            'total'    => (int) $baris->sum('total'),
-        ];
-    }
-
-    /**
-     * Ringkasan tren perbaikan asset: total, rata-rata per bulan, bulan
-     * tersibuk, interval rata-rata antar hari perbaikan, dan perbaikan terakhir.
-     *
-     * @param  \Illuminate\Support\Collection  $reports       Seluruh laporan asset
-     * @param  \Illuminate\Support\Collection  $statsByMonth  Jumlah perbaikan per bulan
-     * @return array<string, mixed>
-     */
-    private function susunRingkasanTren($reports, $statsByMonth): array
-    {
-        $total = $reports->count();
-
-        if ($total === 0) {
-            return [
-                'total'          => 0,
-                'rata_per_bulan' => 0.0,
-                'bulan_tersibuk' => null,
-                'jumlah_bulan'   => 0,
-                'interval_rata'  => null,
-                'terakhir'       => null,
-            ];
-        }
-
-        // Hari unik yang punya perbaikan — dipakai menghitung interval.
-        $hari = $reports
-            ->pluck('report_date')
-            ->filter()
-            ->map(fn ($tanggal) => $tanggal->toDateString())
-            ->unique()
-            ->sort()
-            ->values();
-
-        $interval = null;
-
-        if ($hari->count() >= 2) {
-            $selisih = [];
-
-            for ($i = 1; $i < $hari->count(); $i++) {
-                $selisih[] = Carbon::parse($hari[$i])->diffInDays(Carbon::parse($hari[$i - 1]));
-            }
-
-            $interval = round(array_sum($selisih) / count($selisih), 1);
-        }
-
-        $bulanTersibuk = $statsByMonth->sortDesc()->keys()->first();
-
-        return [
-            'total'          => $total,
-            'rata_per_bulan' => round($total / max(1, $statsByMonth->count()), 1),
-            'bulan_tersibuk' => $bulanTersibuk
-                ? Carbon::createFromFormat('Y-m', (string) $bulanTersibuk)->format('M Y')
-                : null,
-            'jumlah_bulan'   => $statsByMonth->count(),
-            'interval_rata'  => $interval,
-            'terakhir'       => $hari->last(),
-        ];
-    }
-
     private function funcLocLabel(?FunctionalLocation $funcLoc): ?string
     {
         if ($funcLoc === null) {

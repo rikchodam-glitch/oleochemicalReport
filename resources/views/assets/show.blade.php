@@ -220,7 +220,7 @@
         </div>
 
         {{-- Grafik tren perbaikan: lebar penuh + komposisi jenis + ringkasan --}}
-        @include('assets.partials._show-grafik-perbaikan')
+        @include('partials._grafik-perbaikan', ['konteks' => 'equipment ini'])
 
         {{-- Daftar perbaikan: satu baris = satu perbaikan (tombol Detail ke laporan) --}}
         @include('assets.partials._show-tabel-perbaikan')
@@ -275,7 +275,7 @@
 @endsection
 
 @push('scripts')
-@include('assets.partials._show-grafik-script')
+@include('partials._grafik-perbaikan-script')
 <script>
 function assetDetail() {
     return {

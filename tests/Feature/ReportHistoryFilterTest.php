@@ -179,9 +179,12 @@ test('tabel perbaikan pada detail equipment berisi satu baris per perbaikan dan 
         ->assertSee(route('reports.show', $this->laporanAlat), false)
         // Kolom Kode Laporan & Jenis sudah tidak ditampilkan lagi.
         ->assertDontSee('Kode Laporan', false)
-        // Grafik tren perbaikan ikut dirender.
+        // Grafik tren + komposisi jenis pekerjaan ikut dirender.
         ->assertSee('Tren Perbaikan per Bulan', false)
         ->assertSee('trenPerbaikanChart', false)
+        ->assertSee('Komposisi Jenis Perbaikan', false)
+        ->assertSee('komposisiTipeChart', false)
+        ->assertSee('Jenis Terbanyak', false)
         // Tabel lama yang mengelompokkan per teknisi sudah tidak dipakai.
         ->assertDontSee('Teknisi yang Pernah Memperbaiki', false);
 
@@ -293,5 +296,41 @@ test('pekerjaan kolaborasi pada halaman lokasi tampil satu baris dengan tombol p
         ->assertSee(route('reports.show', $kolab), false);
 
     expect(substr_count($halaman->getContent(), 'FLT-KOLAB-LOK-B'))->toBe(1);
+});
+
+
+test('komposisi halaman alat dikelompokkan per jenis pekerjaan', function () {
+    // Dua jenis pekerjaan berbeda pada satu alat: EI dan Mekanik.
+    $this->laporanAlat->update(['jenis_pekerjaan' => 'EI']);
+
+    Report::create([
+        'technician_id'    => $this->teknisiA->id,
+        'report_date'      => $this->hariKemarin,
+        'report_code'      => 'FLT-ALAT-A-MEKANIK',
+        'work_description' => 'Perbaikan mekanik pompa filter',
+        'asset_id'         => $this->aset->id,
+        'report_type'      => 'equipment_repair',
+        'jenis_pekerjaan'  => 'Mekanik',
+        'status'           => 'submitted',
+    ]);
+
+    $this->actingAs($this->admin)
+        ->get('/assets/' . $this->aset->id)
+        ->assertStatus(200)
+        // Label lama (per tipe laporan) tidak dipakai lagi sebagai komposisi.
+        ->assertDontSee('Perbaikan Equipment', false)
+        ->assertViewHas('komposisiTipe', function ($komposisi) {
+            $perJenis = collect($komposisi)->keyBy('label')->map(fn ($item) => (int) $item['jumlah']);
+
+            return $perJenis->count() === 2
+                && $perJenis->get('EI') === 1
+                && $perJenis->get('Mekanik') === 1;
+        })
+        // Grafik tren juga dipecah per jenis pekerjaan.
+        ->assertViewHas('trenPerbaikan', function ($tren) {
+            $label = collect($tren['datasets'])->pluck('label')->sort()->values()->all();
+
+            return $tren['total'] === 2 && $label === ['EI', 'Mekanik'];
+        });
 });
 

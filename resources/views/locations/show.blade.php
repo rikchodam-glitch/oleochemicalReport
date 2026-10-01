@@ -202,6 +202,9 @@
         </dl>
     </div>
 
+    {{-- Grafik analitik lokasi: tren per bulan + komposisi jenis pekerjaan --}}
+    @include('partials._grafik-perbaikan', ['konteks' => 'lokasi ini'])
+
     {{-- Daftar laporan pada lokasi ini --}}
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
@@ -455,6 +458,8 @@
 @endpush
 
 @push('scripts')
+    @include('partials._grafik-perbaikan-script')
+
     <script>
         // Data laporan kolaborator per laporan induk, dipakai tombol "N KOLABORATOR".
         var dataKolaborator = {!! json_encode($kolaboratorPerLaporan ?? [], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!};

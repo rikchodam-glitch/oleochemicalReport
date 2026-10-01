@@ -1,10 +1,11 @@
-{{-- Script grafik halaman detail equipment: tren perbaikan per bulan (batang
-     bertumpuk per jenis perbaikan) + komposisi jenis perbaikan (donut).
-     Data disiapkan oleh App\Http\Controllers\AssetController::show(). --}}
+{{-- Script grafik analitik perbaikan: tren per bulan (batang bertumpuk per
+     jenis pekerjaan) + komposisi jenis pekerjaan (donut).
+     Data disiapkan oleh App\Http\Controllers\Concerns\ResolvesReportAnalytics
+     lewat AssetController::show() dan LocationController::show(). --}}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 /**
- * Gambar grafik tren perbaikan dan komposisi jenis perbaikan.
+ * Gambar grafik tren perbaikan dan komposisi jenis pekerjaan.
  */
 (function () {
     if (typeof Chart === 'undefined') {
@@ -31,7 +32,7 @@
     /**
      * Susun dataset batang Chart.js dari data controller.
      *
-     * @param {Array} datasets Data per jenis perbaikan
+     * @param {Array} datasets Data per jenis pekerjaan
      * @param {number} mulai   Indeks awal (untuk pemilih rentang bulan)
      * @returns {Array} Dataset siap dipakai Chart.js
      */
@@ -107,7 +108,7 @@
                 datasets: [{
                     data: komposisi.map(function (item) { return item.jumlah; }),
                     backgroundColor: komposisi.map(function (item, index) {
-                        return warnaCadangan[index % warnaCadangan.length];
+                        return item.color || warnaCadangan[index % warnaCadangan.length];
                     }),
                     borderWidth: 2,
                     borderColor: '#FFFFFF',
@@ -119,7 +120,21 @@
                 cutout: '58%',
                 plugins: {
                     legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 }, color: '#64748B' } },
-                    tooltip: { backgroundColor: '#1E293B', padding: 10, cornerRadius: 8 },
+                    tooltip: {
+                        backgroundColor: '#1E293B',
+                        padding: 10,
+                        cornerRadius: 8,
+                        callbacks: {
+                            label: function (konteks) {
+                                var total = konteks.dataset.data.reduce(function (jumlah, nilai) {
+                                    return jumlah + nilai;
+                                }, 0);
+                                var persen = total > 0 ? Math.round((konteks.parsed / total) * 100) : 0;
+
+                                return konteks.label + ': ' + konteks.parsed + ' perbaikan (' + persen + '%)';
+                            },
+                        },
+                    },
                 },
             },
         });

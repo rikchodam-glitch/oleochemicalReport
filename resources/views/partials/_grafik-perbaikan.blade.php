@@ -1,12 +1,20 @@
-{{-- Grafik tren perbaikan equipment (lebar penuh) + komposisi jenis + ringkasan.
-     Dipakai oleh resources/views/assets/show.blade.php (halaman detail equipment).
-     Acuan tampilan: PER PERBAIKAN (bukan per teknisi yang memperbaiki). --}}
+{{-- Grafik analitik perbaikan: tren per bulan (batang bertumpuk per jenis
+     pekerjaan), komposisi jenis pekerjaan (donut), dan ringkasan angka.
+     Dipakai halaman detail equipment (resources/views/assets/show.blade.php)
+     dan halaman detail lokasi (resources/views/locations/show.blade.php) untuk
+     semua level: PT, Departemen, Area, maupun Sub Area.
+     Variabel yang dibutuhkan: $trenPerbaikan, $komposisiTipe, $ringkasanTren,
+     dan $konteks (teks pemilik data, mis. "equipment ini" / "lokasi ini"). --}}
+@php
+    $konteksGrafik = $konteks ?? 'ini';
+@endphp
+
 <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
     <div class="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
             <h3 class="text-sm font-semibold text-slate-900">Tren Perbaikan per Bulan</h3>
             <p class="text-xs text-slate-400 mt-0.5">
-                Seluruh riwayat perbaikan equipment ini &middot; {{ number_format($trenPerbaikan['total']) }} perbaikan
+                Seluruh riwayat perbaikan {{ $konteksGrafik }} &middot; {{ number_format($trenPerbaikan['total']) }} perbaikan
             </p>
         </div>
         <div class="flex items-center gap-2">
@@ -31,11 +39,11 @@
     </div>
 </div>
 
-{{-- Komposisi jenis perbaikan + ringkasan angka perbaikan --}}
+{{-- Komposisi jenis pekerjaan (CM/PM, EI, Mekanik, dst) + ringkasan angka perbaikan --}}
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <div class="bg-white rounded-xl border border-slate-200 p-6">
         <h3 class="text-sm font-semibold text-slate-900">Komposisi Jenis Perbaikan</h3>
-        <p class="text-xs text-slate-400 mt-0.5">Proporsi seluruh perbaikan</p>
+        <p class="text-xs text-slate-400 mt-0.5">Proporsi seluruh perbaikan menurut jenis pekerjaan</p>
         @if($komposisiTipe->isNotEmpty())
             <div class="relative mt-4" style="height: 260px;">
                 <canvas id="komposisiTipeChart" name="komposisiTipeChart"></canvas>
@@ -46,7 +54,7 @@
     </div>
     <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-6">
         <h3 class="text-sm font-semibold text-slate-900">Ringkasan Perbaikan</h3>
-        <p class="text-xs text-slate-400 mt-0.5">Dihitung dari seluruh riwayat perbaikan equipment ini</p>
+        <p class="text-xs text-slate-400 mt-0.5">Dihitung dari seluruh riwayat perbaikan {{ $konteksGrafik }}</p>
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-4">
             <div class="bg-slate-50 rounded-xl border border-slate-200 p-4">
                 <p class="text-[11px] text-slate-400 uppercase tracking-wide font-medium">Total Perbaikan</p>
@@ -55,7 +63,7 @@
             <div class="bg-slate-50 rounded-xl border border-slate-200 p-4">
                 <p class="text-[11px] text-slate-400 uppercase tracking-wide font-medium">Perbaikan Terakhir</p>
                 <p class="text-xl font-bold text-slate-900 mt-0.5">
-                    {{ $ringkasanTren['terakhir'] ? \Illuminate\Support\Carbon::parse($ringkasanTren['terakhir'])->format('d M Y') : '&mdash;' }}
+                    {{ $ringkasanTren['terakhir'] ? \Illuminate\Support\Carbon::parse($ringkasanTren['terakhir'])->format('d M Y') : '-' }}
                 </p>
             </div>
             <div class="bg-slate-50 rounded-xl border border-slate-200 p-4">
@@ -66,18 +74,20 @@
             <div class="bg-slate-50 rounded-xl border border-slate-200 p-4">
                 <p class="text-[11px] text-slate-400 uppercase tracking-wide font-medium">Interval Rata-rata</p>
                 <p class="text-xl font-bold text-slate-900 mt-0.5">
-                    {{ $ringkasanTren['interval_rata'] !== null ? number_format($ringkasanTren['interval_rata'], 1) . ' hari' : '&mdash;' }}
+                    {{ $ringkasanTren['interval_rata'] !== null ? number_format($ringkasanTren['interval_rata'], 1) . ' hari' : '-' }}
                 </p>
                 <p class="text-[11px] text-slate-400 mt-0.5">jarak antar hari ada perbaikan</p>
             </div>
             <div class="bg-slate-50 rounded-xl border border-slate-200 p-4">
                 <p class="text-[11px] text-slate-400 uppercase tracking-wide font-medium">Bulan Terbanyak</p>
-                <p class="text-xl font-bold text-slate-900 mt-0.5">{{ $ringkasanTren['bulan_tersibuk'] ?? '&mdash;' }}</p>
+                <p class="text-xl font-bold text-slate-900 mt-0.5">{{ $ringkasanTren['bulan_tersibuk'] ?? '-' }}</p>
             </div>
             <div class="bg-slate-50 rounded-xl border border-slate-200 p-4">
-                <p class="text-[11px] text-slate-400 uppercase tracking-wide font-medium">Teknisi Pernah Menangani</p>
-                <p class="text-xl font-bold text-slate-900 mt-0.5">{{ $teknisiPernahRepair->count() }}</p>
-                <p class="text-[11px] text-slate-400 mt-0.5">hanya info, tabel tetap per perbaikan</p>
+                <p class="text-[11px] text-slate-400 uppercase tracking-wide font-medium">Jenis Terbanyak</p>
+                <p class="text-xl font-bold text-slate-900 mt-0.5">{{ $komposisiTipe->first()['label'] ?? '-' }}</p>
+                <p class="text-[11px] text-slate-400 mt-0.5">
+                    {{ $komposisiTipe->first() ? number_format($komposisiTipe->first()['jumlah']) . ' perbaikan' : 'belum ada data' }}
+                </p>
             </div>
         </div>
     </div>

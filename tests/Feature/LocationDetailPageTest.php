@@ -186,3 +186,40 @@ test('pencarian halaman laporan menemukan kode lokasi, kode laporan, dan kode al
         ->assertSee('LOK-LEWAT-ALAT-01', false);
 });
 
+
+test('halaman detail lokasi menampilkan grafik tren dan komposisi jenis pekerjaan', function () {
+    $this->laporanLokasi->update(['jenis_pekerjaan' => 'Mekanik']);
+
+    $this->actingAs($this->admin)
+        ->get('/locations/' . $this->flSection->id)
+        ->assertStatus(200)
+        ->assertSee('Tren Perbaikan per Bulan', false)
+        ->assertSee('trenPerbaikanChart', false)
+        ->assertSee('Komposisi Jenis Perbaikan', false)
+        ->assertSee('komposisiTipeChart', false)
+        ->assertSee('Ringkasan Perbaikan', false)
+        ->assertSee('Jenis Terbanyak', false)
+        // Grafik dihitung dari seluruh laporan lokasi ini: satu berjenis Mekanik,
+        // satu belum berjenis pekerjaan.
+        ->assertViewHas('komposisiTipe', function ($komposisi) {
+            $perJenis = collect($komposisi)->keyBy('label')->map(fn ($item) => (int) $item['jumlah']);
+
+            return $perJenis->get('Mekanik') === 1 && $perJenis->get('Tanpa Jenis') === 1;
+        })
+        ->assertViewHas('trenPerbaikan', function ($tren) {
+            return $tren['total'] === 2 && count($tren['labels']) === 1;
+        });
+});
+
+test('grafik halaman lokasi induk menghitung seluruh lokasi turunannya', function () {
+    $this->laporanLokasi->update(['jenis_pekerjaan' => 'Sipil']);
+
+    $this->actingAs($this->admin)
+        ->get('/locations/' . $this->flArea->id)
+        ->assertStatus(200)
+        ->assertSee('komposisiTipeChart', false)
+        ->assertViewHas('komposisiTipe', fn ($komposisi) => collect($komposisi)
+            ->contains(fn ($item) => $item['label'] === 'Sipil' && (int) $item['jumlah'] === 1))
+        ->assertViewHas('ringkasanTren', fn ($ringkasan) => $ringkasan['total'] === 2);
+});
+

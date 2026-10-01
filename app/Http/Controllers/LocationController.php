@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesReportAnalytics;
 use App\Http\Controllers\Concerns\ResolvesReportFilters;
 use App\Models\Asset;
 use App\Models\FunctionalLocation;
@@ -27,6 +28,7 @@ use Illuminate\View\View;
 class LocationController extends Controller
 {
     use ResolvesReportFilters;
+    use ResolvesReportAnalytics;
 
     /**
      * Tampilkan detail satu lokasi: ringkasan, daftar alat, dan daftar laporan.
@@ -109,6 +111,16 @@ class LocationController extends Controller
         // halaman Laporan" supaya halaman laporan tidak terbatas tanggal hari ini.
         $tanggalAwal = (clone $queryLaporan)->min('report_date');
 
+        // ---- Grafik analitik lokasi (tren per bulan + komposisi jenis pekerjaan) ----
+        // Dihitung dari SELURUH riwayat lokasi ini beserta turunannya, bukan dari
+        // filter tanggal/teknisi yang sedang aktif pada tabel di bawah.
+        $trenPerbaikan = $this->susunTrenPerbaikan(clone $queryLaporan);
+        $komposisiTipe = $this->susunKomposisiJenis(clone $queryLaporan);
+        $ringkasanTren = $this->susunRingkasanTren(
+            (clone $queryLaporan)->get(['id', 'report_date']),
+            $this->susunStatsPerBulan(clone $queryLaporan)
+        );
+
         // Data popup kolaborator: untuk tiap baris laporan, daftar laporan milik
         // kolaboratornya (dibuka lewat tombol "N KOLABORATOR" di kolom Teknisi).
         $kolaboratorPerLaporan = $laporan->getCollection()
@@ -133,6 +145,9 @@ class LocationController extends Controller
             'laporanPerHari' => $laporanPerHari,
             'statistik'      => $statistik,
             'asalLaporan'    => $asalLaporan,
+            'trenPerbaikan'  => $trenPerbaikan,
+            'komposisiTipe'  => $komposisiTipe,
+            'ringkasanTren'  => $ringkasanTren,
             'teknisiOpsi'    => $teknisiOpsi,
             'filterAktif'    => [
                 'tanggal'      => $tanggal,
