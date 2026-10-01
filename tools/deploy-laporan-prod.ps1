@@ -394,13 +394,20 @@ if ($berkasKotor.Count -eq 0) {
 Write-Host ''
 
 # ==== 5. Konfirmasi manusia ====
+# Perhatian: Read-Host mengembalikan $null kalau masukan berakhir (mis. stdin
+# diarahkan dari NUL), dan '$null -notmatch ...' mengembalikan $null sehingga
+# cabang pembatalan TIDAK jalan (pembatalan gagal = deploy tetap lanjut).
+# Karena itu jawaban dinormalkan dulu dan diuji eksplisit terhadap 'y'/'ya'.
 if ($TanpaKonfirmasi) {
     Tulis 'Konfirmasi dilewati (opsi -TanpaKonfirmasi).'
 } else {
-    $jawab = Read-Host '[deploy] Lanjutkan deploy ke PROD? tulis y untuk lanjut'
+    $jawab   = Read-Host '[deploy] Lanjutkan deploy ke PROD? tulis y untuk lanjut'
+    $jawaban = ''
 
-    if ($jawab -notmatch '^(y|ya)$') {
-        Tulis 'Dibatalkan oleh pengguna. PROD tidak diubah.'
+    if ($null -ne $jawab) { $jawaban = ([string]$jawab).Trim().ToLower() }
+
+    if ($jawaban -ne 'y' -and $jawaban -ne 'ya') {
+        Tulis ('Dibatalkan oleh pengguna, jawaban harus y atau ya. PROD tidak diubah.')
         return
     }
 }

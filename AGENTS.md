@@ -1032,6 +1032,54 @@ Batasan penting lingkungan ini:
     parse (selesai instan tanpa teks) versus skrip yang menunggu masukan
     manusia (mis. `Read-Host` pada `pasang-token-tunnel-prod.ps1`) — yang
     terakhir memang akan tampak menggantung dan TIDAK bisa diuji otomatis.**
+31. **Empat jebakan PowerShell saat satu skrip memanggil skrip lain (ketahuan
+    01/10/2026 waktu membuat `tools\deploy-laporan-prod.ps1`).** Semuanya
+    menghasilkan gejala menyesatkan dan SUDAH dibuktikan dengan uji terisolasi,
+    bukan dugaan:
+    (a) **`,` berikatan lebih kuat daripada `+` di dalam array literal.**
+    `@('--host=' + $x, '--port=' + $y)` menghasilkan SATU elemen berbunyi
+    `--host=... --port=...`, sehingga `mysqldump` menerima satu argumen panjang
+    dan menolak dengan `Usage: mysqldump [OPTIONS] database [tables]` — backup
+    gagal tanpa sebab yang jelas. Kurung TIAP elemen:
+    `@(('--host=' + $x), ('--port=' + $y))`.
+    (b) **`Start-Process -Wait` menunggu SELURUH pohon proses.** Dipakai untuk
+    memanggil `jaga-service-prod.ps1` (yang memang menyalakan service berjalan
+    terus) → skrip deploy menggantung tanpa akhir walau semua service sudah
+    jalan. Pakai `$proses.WaitForExit()` yang menunggu proses anak saja.
+    (c) **`Start-Process -NoNewWindow -PassThru` mengembalikan `ExitCode`
+    KOSONG di komputer ini** (Start-Process tidak memegang handle proses),
+    sehingga `$kode -ne 0` selalu dianggap gagal — pesannya
+    `DEPLOY GAGAL (exit code )` padahal deploy sukses. Jalur yang terbukti
+    benar: .NET `System.Diagnostics.Process` + `ProcessStartInfo` dengan
+    `UseShellExecute = $false` (uji terisolasi: `Start-Process` = kosong,
+    .NET = 3).
+    (d) **Operator regex dengan `$null` di kiri mengembalikan `$null`, BUKAN
+    `$True`/`$False`.** Blok konfirmasi sempat memakai
+    `if ($jawab -notmatch '^(y|ya)$')`; ketika `Read-Host` menerima akhir
+    masukan (stdin diarahkan dari NUL) jawabannya `$null`, `$null -notmatch ...`
+    mengembalikan `$null`, dan `if ($null)` dianggap SALAH sehingga pembatalan
+    TIDAK jalan — pintasan Desktop justru lanjut deploy tanpa konfirmasi
+    (terbukti saat mengujinya dengan `< NUL`). Perbaikan: normalkan dulu
+    (`$jawaban = ''`, diisi hanya bila `$null -ne $jawab`) lalu uji eksplisit
+    `$jawaban -ne 'y' -and $jawaban -ne 'ya'`. Catatan: operator perbandingan
+    biasa berperilaku sebaliknya — `$null -ne 0` bernilai `$True`, itulah sebab
+    exit code kosong sempat dilaporkan "DEPLOY GAGAL".
+    Ditambah satu jebakan lama yang tetap berlaku: **keluaran skrip anak TIDAK
+    boleh dipipe** (`& powershell.exe ... | ...`) karena proses service yang
+    dinyalakan skrip anak ikut mewarisi handle pipe sehingga perintah
+    menggantung selamanya; lewat .NET Process tanpa redirect, keluaran anak
+    mewarisi konsol induk (terlihat langsung) dan exit code tetap terbaca.
+    **Pelajaran: setiap skrip yang memanggil skrip lain WAJIB (1) mengurung
+    ekspresi `+` di dalam array literal, (2) tidak memakai `Start-Process -Wait`
+    untuk skrip yang menyalakan service, (3) mengambil exit code lewat .NET
+    Process, (4) tidak memipe keluaran skrip anak, dan (5) membandingkan nilai
+    yang bisa kosong secara eksplisit (jangan mengandalkan operator regex
+    terhadap `$null`). Uji dengan menjalankan
+    alurnya sungguhan lalu membaca berkas keluaran — `ParseFile` yang bersih
+    (sintaks OK) TIDAK menjamin skrip jalan.**
+
+
+
 
 
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
