@@ -138,6 +138,12 @@ test('berbagai format durasi header dibaca dengan benar', function () {
 // ============================================================
 
 test('penghitung harian direset otomatis saat hari berganti', function () {
+    // Jam dipatok ke pertengahan bulan supaya "kemarin" pasti masih berada di
+    // bulan yang sama. Tanpa ini, test gagal setiap tanggal 1 karena kemarin
+    // sudah masuk bulan sebelumnya sehingga penghitung bulanan ikut direset
+    // (perilaku aplikasi memang benar, ekspektasi test-nya yang tidak stabil).
+    $this->travelTo(now()->startOfMonth()->addDays(14));
+
     $this->provider->update([
         'tokens_used_today' => 114096,
         'tokens_used_month' => 282264,
