@@ -114,20 +114,18 @@ function Panggil([string]$Perintah, [string[]]$Argumen, [string]$Di = '') {
     Return  : exit code proses anak.
 #>
 function SkripTerpisah([string]$Skrip, [string[]]$Argumen) {
+    # Proses anak dijalankan lewat Start-Process -NoNewWindow: keluarannya
+    # langsung ke layar (mewarisi handle konsol), BUKAN lewat pipeline
+    # PowerShell. Dua alasan:
+    #   (1) kalau keluarannya mengalir ke keluaran fungsi, pemanggil menerima
+    #       array berisi teks anak + exit code sehingga "kode -ne 0" salah
+    #       menuduh deploy gagal;
+    #   (2) kalau dipipe, proses service yang dinyalakan skrip anak
+    #       (serve/queue/poll) mewarisi handle pipe sehingga perintah
+    #       menggantung tanpa akhir padahal skripnya sudah selesai.
     $perintah = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Skrip) + $Argumen
-    $lama = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-
-    try {
-        # Keluaran proses anak WAJIB dilewatkan ke Write-Host: kalau dibiarkan
-        # mengalir ke keluaran fungsi, pemanggil yang menampung hasil
-        # ($kode = SkripTerpisah ...) akan menerima array berisi teks anak +
-        # exit code, sehingga perbandingan "kode -ne 0" salah menuduh gagal.
-        & powershell.exe @perintah | ForEach-Object { Write-Host $_ }
-        return $LASTEXITCODE
-    } finally {
-        $ErrorActionPreference = $lama
-    }
+    $proses = Start-Process -FilePath 'powershell.exe' -ArgumentList $perintah -NoNewWindow -Wait -PassThru
+    return $proses.ExitCode
 }
 
 <#
