@@ -16,6 +16,23 @@ class ReportController extends Controller
 {
     use ReportLocationTrait;
 
+    /**
+     * Halaman daftar laporan.
+     *
+     * Aturan hitungan angka ringkasan (kartu jenis pekerjaan, kartu status,
+     * dan kartu "Total Pekerjaan"):
+     *   - Satu laporan = satu baris tampilan. Salinan kolaborasi
+     *     (collaborator_of) dan salinan multi alat (multi_of) TIDAK dihitung.
+     *   - Kartu jenis pekerjaan & kartu status memakai seluruh filter yang
+     *     sedang aktif KECUALI filter yang dipegang kartu itu sendiri
+     *     (jenis_pekerjaan / status), supaya angkanya tidak berubah menjadi
+     *     nol saat kartu itu sendiri dipakai sebagai filter.
+     *   - "Total Pekerjaan" memakai angka paginator, jadi DIJAMIN sama dengan
+     *     jumlah baris tabel yang tampil pada filter yang sedang aktif.
+     *
+     * @param  Request  $request
+     * @return \Illuminate\View\View
+     */
     public function index(Request $request)
     {
         $tampilan     = $request->get('tampilan') === 'shift' ? 'shift' : 'reguler';
@@ -25,14 +42,19 @@ class ReportController extends Controller
 
         $query = $this->buildReportQuery($request, $tampilan, $grubAktif, $tanggalAktif);
 
-        // Ringkasan jenis pekerjaan dihitung dari query yang sama (sebelum paginasi)
-        $totalLaporan   = (clone $query)->count();
-        $countEI        = (clone $query)->where('jenis_pekerjaan', 'EI')->count();
-        $countMekanik   = (clone $query)->where('jenis_pekerjaan', 'Mekanik')->count();
-        $countCmPm      = (clone $query)->where('jenis_pekerjaan', 'CM/PM')->count();
-        $countFabrikasi = (clone $query)->where('jenis_pekerjaan', 'Fabrikasi')->count();
-        $countSipil     = (clone $query)->where('jenis_pekerjaan', 'Sipil')->count();
-        $countProject   = (clone $query)->where('jenis_pekerjaan', 'Project')->count();
+        // Ringkasan jenis pekerjaan & status: query yang sama tanpa filter
+        // jenis_pekerjaan/status (sebelum paginasi).
+        $queryRingkasan = $this->buildReportQuery($request, $tampilan, $grubAktif, $tanggalAktif, false);
+
+        $countEI        = (clone $queryRingkasan)->where('jenis_pekerjaan', 'EI')->count();
+        $countMekanik   = (clone $queryRingkasan)->where('jenis_pekerjaan', 'Mekanik')->count();
+        $countCmPm      = (clone $queryRingkasan)->where('jenis_pekerjaan', 'CM/PM')->count();
+        $countFabrikasi = (clone $queryRingkasan)->where('jenis_pekerjaan', 'Fabrikasi')->count();
+        $countSipil     = (clone $queryRingkasan)->where('jenis_pekerjaan', 'Sipil')->count();
+        $countIT        = (clone $queryRingkasan)->where('jenis_pekerjaan', 'IT')->count();
+        $countProject   = (clone $queryRingkasan)->where('jenis_pekerjaan', 'Project')->count();
+        $countContinue  = (clone $queryRingkasan)->where('status', 'continue')->count();
+        $countDone      = (clone $queryRingkasan)->where('status', 'completed')->count();
 
         $reports = $query
             ->with(['technician', 'area', 'asset', 'functionalLocation', 'linkedFinding', 'multiItems', 'collaboratorReports.technician'])
@@ -44,6 +66,11 @@ class ReportController extends Controller
             ->paginate(25)
             ->withQueryString();
 
+        // Kartu "Total Pekerjaan" memakai angka paginator supaya DIJAMIN sama
+        // dengan jumlah baris tabel ("Menampilkan 1-25 dari N pekerjaan") pada
+        // filter yang sedang aktif.
+        $totalLaporan = $reports->total();
+
         // Append jumlah foto dokumentasi & hygiene ke setiap laporan di
         // halaman ini (bukan kolom DB — dihitung dari array JSON).
         $reports->getCollection()->transform(function (Report $report) {
@@ -53,7 +80,7 @@ class ReportController extends Controller
             return $report;
         });
 
-        $tanggalSekitar = $this->tanggalSekitar($tampilan, $grubAktif, $tanggalAktif);
+        $tanggalSekitar = $this->tanggalSekitar($request, $tampilan, $grubAktif, $tanggalAktif);
 
         $areas       = Area::orderBy('code')->get();
         $technicians = Technician::orderBy('name')->get(['id', 'name', 'nik']);
@@ -64,50 +91,37 @@ class ReportController extends Controller
         return view('reports.index', compact(
             'reports', 'areas', 'technicians', 'grubOptions',
             'totalLaporan', 'countEI', 'countMekanik', 'countCmPm', 'countFabrikasi', 'countSipil',
-            'countProject',
+            'countIT', 'countProject', 'countContinue', 'countDone',
             'tampilan', 'grubAktif', 'tanggalAktif', 'pakaiRentang', 'tanggalSekitar'
         ));
     }
 
     /**
-     * Susun query laporan sesuai filter halaman laporan.
+     * Query dasar laporan: aturan konsolidasi + filter tampilan/grup + filter
+     * lanjutan, TANPA filter tanggal (filter tanggal ditambahkan oleh
+     * buildReportQuery()).
      *
      * Aturan yang dipakai:
      *   - Laporan kolaborasi tampil sebagai SATU baris: hanya laporan induk
      *     (collaborator_of NULL) yang diambil; daftar kolaborator dibaca dari
-     *     relasi collaboratorReports.
+     *     relasi collaboratorReports. Salinan multi alat (multi_of) juga bukan
+     *     baris tersendiri.
      *   - Tampilan "reguler" memuat laporan teknisi non-shift: grup 'reguler'
      *     dan 'reguler_staff' (termasuk teknisi yang grupnya belum diisi);
      *     tampilan "shift" memuat laporan teknisi grub (A/B/C/D) saja dan bisa
      *     dipersempit ke satu grub.
-     *     teknisi yang grupnya belum diisi), tampilan "shift" memuat laporan
-     *     teknisi grub (A/B/C/D) dan bisa dipersempit ke satu grub.
-     *   - Tanggal: satu hari (default hari ini), atau rentang bila date_from /
-     *     date_to diisi.
      *
-     * @param  Request         $request
-     * @param  string          $tampilan     'reguler' atau 'shift'
-     * @param  string|null     $grubAktif    Kunci grub terpilih (khusus shift)
-     * @param  \Carbon\Carbon  $tanggalAktif
+     * @param  Request      $request
+     * @param  string       $tampilan             'reguler' atau 'shift'
+     * @param  string|null  $grubAktif            Kunci grub terpilih (khusus shift)
+     * @param  bool         $sertakanJenisStatus  Ikutkan filter jenis_pekerjaan & status
      * @return \Illuminate\Database\Eloquent\Builder<Report>
      */
-    private function buildReportQuery(Request $request, string $tampilan, ?string $grubAktif, $tanggalAktif)
+    private function buildBaseQuery(Request $request, string $tampilan, ?string $grubAktif, bool $sertakanJenisStatus = true)
     {
         $query = Report::query()->whereNull('collaborator_of')->whereNull('multi_of');
 
         $this->applyGroupFilter($query, $tampilan, $grubAktif);
-
-        if ($request->filled('date_from')) {
-            $query->whereDate('report_date', '>=', $request->date_from);
-        }
-
-        if ($request->filled('date_to')) {
-            $query->whereDate('report_date', '<=', $request->date_to);
-        }
-
-        if (! $request->filled('date_from') && ! $request->filled('date_to')) {
-            $query->whereDate('report_date', $tanggalAktif->toDateString());
-        }
 
         if ($request->filled('report_type')) {
             $query->where('report_type', $request->report_type);
@@ -152,13 +166,44 @@ class ReportController extends Controller
             $query->where('report_code', 'like', '%' . $request->report_code . '%');
         }
 
-        if ($request->filled('jenis_pekerjaan')) {
+        if ($sertakanJenisStatus && $request->filled('jenis_pekerjaan')) {
             $query->where('jenis_pekerjaan', $request->jenis_pekerjaan);
         }
 
         // Filter status pekerjaan (mis. 'continue' = pekerjaan belum selesai).
-        if ($request->filled('status')) {
+        if ($sertakanJenisStatus && $request->filled('status')) {
             $query->where('status', $request->status);
+        }
+
+        return $query;
+    }
+
+    /**
+     * Susun query laporan yang tampil pada tabel halaman laporan: query dasar
+     * (buildBaseQuery) ditambah filter tanggal — satu hari (default hari ini),
+     * atau rentang bila date_from / date_to diisi.
+     *
+     * @param  Request         $request
+     * @param  string          $tampilan             'reguler' atau 'shift'
+     * @param  string|null     $grubAktif            Kunci grub terpilih (khusus shift)
+     * @param  \Carbon\Carbon  $tanggalAktif         Tanggal aktif (dipakai bila tanpa rentang)
+     * @param  bool            $sertakanJenisStatus  Ikutkan filter jenis_pekerjaan & status
+     * @return \Illuminate\Database\Eloquent\Builder<Report>
+     */
+    private function buildReportQuery(Request $request, string $tampilan, ?string $grubAktif, $tanggalAktif, bool $sertakanJenisStatus = true)
+    {
+        $query = $this->buildBaseQuery($request, $tampilan, $grubAktif, $sertakanJenisStatus);
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('report_date', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('report_date', '<=', $request->date_to);
+        }
+
+        if (! $request->filled('date_from') && ! $request->filled('date_to')) {
+            $query->whereDate('report_date', $tanggalAktif->toDateString());
         }
 
         return $query;
@@ -238,15 +283,19 @@ class ReportController extends Controller
      * Cari tanggal laporan terdekat sebelum/sesudah tanggal aktif, plus daftar
      * tanggal terakhir yang punya laporan (untuk tombol lompat cepat).
      *
+     * Hitungan per tanggal memakai definisi yang SAMA dengan tabel: satu
+     * laporan = satu baris (salinan kolaborasi & salinan multi alat tidak
+     * dihitung) dan mengikuti seluruh filter yang sedang aktif kecuali tanggal.
+     *
+     * @param  Request         $request
      * @param  string          $tampilan
      * @param  string|null     $grubAktif
      * @param  \Carbon\Carbon  $tanggalAktif
      * @return array{sebelumnya: string|null, berikutnya: string|null, daftar: \Illuminate\Support\Collection}
      */
-    private function tanggalSekitar(string $tampilan, ?string $grubAktif, $tanggalAktif): array
+    private function tanggalSekitar(Request $request, string $tampilan, ?string $grubAktif, $tanggalAktif): array
     {
-        $dasar = Report::query()->whereNull('collaborator_of');
-        $this->applyGroupFilter($dasar, $tampilan, $grubAktif);
+        $dasar = $this->buildBaseQuery($request, $tampilan, $grubAktif);
 
         $sebelumnya = (clone $dasar)
             ->whereDate('report_date', '<', $tanggalAktif->toDateString())

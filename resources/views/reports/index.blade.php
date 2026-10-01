@@ -38,7 +38,8 @@
         . ', ' . $tanggalAktif->format('d') . ' ' . $bulanId[(int) $tanggalAktif->format('n')]
         . ' ' . $tanggalAktif->format('Y');
 
-    // Parameter dasar untuk semua tautan (mempertahankan filter lain).
+    // Parameter dasar untuk semua tautan tanggal/tampilan. Tanggal & tampilan
+    // diatur ulang oleh tautannya sendiri, jadi dikeluarkan dari daftar dasar.
     $dasarTautan = request()->except(['page', 'tanggal', 'tampilan', 'grub', 'date_from', 'date_to']);
 
     $tautanTanggal = function (?string $tanggal) use ($dasarTautan, $tampilan, $grubAktif) {
@@ -54,6 +55,32 @@
             'tampilan' => $mode,
             'grub'     => $grub,
         ]), fn ($nilai) => $nilai !== null && $nilai !== ''));
+    };
+
+    // Tautan filter cepat (kartu jenis pekerjaan & kartu status): SELURUH filter
+    // yang sedang aktif dipertahankan, hanya kunci yang diberikan yang ditimpa.
+    // Nilai null/'' membuang kunci itu (filter dimatikan).
+    $tautanFilter = function (array $ganti) {
+        $parameter = array_filter(
+            array_merge(request()->query(), $ganti),
+            fn ($nilai) => $nilai !== null && $nilai !== ''
+        );
+        unset($parameter['page']);
+
+        return route('reports.index', $parameter);
+    };
+
+    // Klik ulang kartu yang sedang aktif = filter dimatikan (kembali ke semua).
+    $tautanJenis = function (string $jenis) use ($tautanFilter) {
+        return $tautanFilter([
+            'jenis_pekerjaan' => request('jenis_pekerjaan') === $jenis ? null : $jenis,
+        ]);
+    };
+
+    $tautanStatus = function (string $status) use ($tautanFilter) {
+        return $tautanFilter([
+            'status' => request('status') === $status ? null : $status,
+        ]);
     };
 
     $jenisColors = [
@@ -74,56 +101,95 @@
         'zpm5' => 'ZPM 5', 'zpm7' => 'ZPM 7', 'zpm8' => 'ZPM 8',
     ];
 
+    // Kartu ringkasan per jenis pekerjaan (bisa diklik = filter cepat).
+    // Angkanya dihitung server dengan seluruh filter yang aktif kecuali filter
+    // jenis_pekerjaan itu sendiri, supaya angka kartu lain tidak jadi nol saat
+    // salah satu kartu dipakai sebagai filter.
+    $kartuJenis = [
+        ['jenis' => 'EI',        'nilai' => $countEI,        'teks' => 'text-cyan-600',    'border' => 'border-cyan-200'],
+        ['jenis' => 'Mekanik',   'nilai' => $countMekanik,   'teks' => 'text-slate-700',   'border' => 'border-slate-200'],
+        ['jenis' => 'CM/PM',     'nilai' => $countCmPm,      'teks' => 'text-emerald-600', 'border' => 'border-emerald-200'],
+        ['jenis' => 'Fabrikasi', 'nilai' => $countFabrikasi, 'teks' => 'text-violet-600',  'border' => 'border-violet-200'],
+        ['jenis' => 'Sipil',     'nilai' => $countSipil,     'teks' => 'text-orange-600',  'border' => 'border-orange-200'],
+        ['jenis' => 'IT',        'nilai' => $countIT,        'teks' => 'text-indigo-600',  'border' => 'border-indigo-200'],
+        ['jenis' => 'Project',   'nilai' => $countProject,   'teks' => 'text-rose-600',    'border' => 'border-rose-200'],
+    ];
+
+    $jenisAktif  = (string) request('jenis_pekerjaan', '');
+    $statusAktif = (string) request('status', '');
+
+    // Filter lanjutan dianggap aktif bila ada filter di dalam panelnya. Jenis
+    // pekerjaan & status tidak dihitung karena sudah dipegang kartu ringkasan.
     $adaFilterLanjutan = collect([
         request('search'), request('report_code'), request('asset_code'),
         request('area_id'), request('technician_id'), request('report_type'),
-        request('jenis_pekerjaan'), request('work_classification'),
+        request('work_classification'),
     ])->filter()->isNotEmpty();
 @endphp
 
 {{-- ============================================================
-     Panel utama: pilih tampilan (Reguler / Shift) + tanggal kerja
+     Panel utama: pilih tampilan (Reguler / Shift), status, dan tanggal kerja
 ============================================================ --}}
 <div class="bg-white rounded-xl border border-slate-200 mb-5">
     <div class="p-5 space-y-4">
 
-        {{-- Tab tampilan + pemilih grub --}}
+        {{-- Tab tampilan, pemilih grub, dan kartu status (Continue / Done) --}}
         <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden">
-                <a href="{{ $tautanTampilan('reguler') }}"
-                   class="px-4 py-2 text-sm font-medium transition-colors {{ $tampilan === 'reguler' ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50' }}">
-                    Reguler
-                </a>
-                <a href="{{ $tautanTampilan('shift', $tampilan === 'shift' ? $grubAktif : null) }}"
-                   class="px-4 py-2 text-sm font-medium border-l border-slate-200 transition-colors {{ $tampilan === 'shift' ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50' }}">
-                    Shift
-                </a>
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden">
+                    <a href="{{ $tautanTampilan('reguler') }}"
+                       class="px-4 py-2 text-sm font-medium transition-colors {{ $tampilan === 'reguler' ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50' }}">
+                        Reguler
+                    </a>
+                    <a href="{{ $tautanTampilan('shift', $tampilan === 'shift' ? $grubAktif : null) }}"
+                       class="px-4 py-2 text-sm font-medium border-l border-slate-200 transition-colors {{ $tampilan === 'shift' ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50' }}">
+                        Shift
+                    </a>
+                </div>
+
+                @if($tampilan === 'shift')
+                    <form method="GET" action="{{ route('reports.index') }}" class="flex items-center gap-2">
+                        @foreach($dasarTautan as $nama => $nilai)
+                            @if(is_scalar($nilai))
+                                <input type="hidden" name="{{ $nama }}" value="{{ $nilai }}">
+                            @endif
+                        @endforeach
+                        <input type="hidden" name="tampilan" value="shift">
+                        <input type="hidden" name="tanggal" value="{{ $tanggalAktifStr }}">
+
+                        <label for="pilih-grub" class="text-xs text-slate-500">Grub</label>
+                        <select name="grub" id="pilih-grub"
+                                class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                            <option value="">Semua Grub</option>
+                            @foreach($grubOptions as $kunci => $label)
+                                <option value="{{ $kunci }}" {{ $grubAktif === $kunci ? 'selected' : '' }}>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        <button type="submit"
+                                class="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
+                            Tampilkan
+                        </button>
+                    </form>
+                @endif
             </div>
 
-            @if($tampilan === 'shift')
-                <form method="GET" action="{{ route('reports.index') }}" class="flex items-center gap-2">
-                    @foreach($dasarTautan as $nama => $nilai)
-                        @if(is_scalar($nilai))
-                            <input type="hidden" name="{{ $nama }}" value="{{ $nilai }}">
-                        @endif
-                    @endforeach
-                    <input type="hidden" name="tampilan" value="shift">
-                    <input type="hidden" name="tanggal" value="{{ $tanggalAktifStr }}">
-
-                    <label for="pilih-grub" class="text-xs text-slate-500">Grub</label>
-                    <select name="grub" id="pilih-grub"
-                            class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                        <option value="">Semua Grub</option>
-                        @foreach($grubOptions as $kunci => $label)
-                            <option value="{{ $kunci }}" {{ $grubAktif === $kunci ? 'selected' : '' }}>{{ $label }}</option>
-                        @endforeach
-                    </select>
-                    <button type="submit"
-                            class="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
-                        Tampilkan
-                    </button>
-                </form>
-            @endif
+            {{-- Kartu status pekerjaan: klik = filter cepat, klik ulang = semua status --}}
+            <div class="flex items-center gap-2">
+                <a href="{{ $tautanStatus('continue') }}"
+                   title="Tampilkan pekerjaan yang belum selesai"
+                   class="flex items-baseline gap-2 px-3.5 py-2 rounded-lg border-2 transition-colors
+                          {{ $statusAktif === 'continue' ? 'border-amber-400 bg-amber-50' : 'border-amber-200 bg-white hover:bg-amber-50' }}">
+                    <span class="text-lg font-bold text-amber-600" data-kartu="status-continue">{{ number_format($countContinue) }}</span>
+                    <span class="text-xs font-medium text-slate-600">Continue</span>
+                </a>
+                <a href="{{ $tautanStatus('completed') }}"
+                   title="Tampilkan pekerjaan yang sudah selesai"
+                   class="flex items-baseline gap-2 px-3.5 py-2 rounded-lg border-2 transition-colors
+                          {{ $statusAktif === 'completed' ? 'border-teal-500 bg-teal-50' : 'border-teal-200 bg-white hover:bg-teal-50' }}">
+                    <span class="text-lg font-bold text-teal-600" data-kartu="status-completed">{{ number_format($countDone) }}</span>
+                    <span class="text-xs font-medium text-slate-600">Done</span>
+                </a>
+            </div>
         </div>
 
         {{-- Navigasi tanggal: hari sebelumnya / hari berikutnya --}}
@@ -196,12 +262,16 @@
             @endif
         </div>
 
-        {{-- Tanggal-tanggal terakhir yang punya laporan --}}
+        {{-- Tanggal-tanggal terakhir yang punya laporan. Angka di dalam tanda
+             kurung memakai definisi yang sama dengan tabel: satu laporan = satu
+             baris (salinan kolaborasi & multi alat tidak dihitung). --}}
         @if($tanggalSekitar['daftar']->isNotEmpty())
             <div class="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100">
                 <span class="text-xs text-slate-400">Tanggal terakhir:</span>
                 @foreach($tanggalSekitar['daftar'] as $barisTanggal)
                     <a href="{{ $tautanTanggal($barisTanggal['tanggal']) }}"
+                       data-chip-tanggal="{{ $barisTanggal['tanggal'] }}"
+                       data-chip-jumlah="{{ $barisTanggal['jumlah'] }}"
                        class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors
                               {{ $barisTanggal['tanggal'] === $tanggalAktifStr
                                     ? 'bg-teal-600 border-teal-600 text-white'
@@ -218,38 +288,161 @@
     </div>
 </div>
 
-{{-- ── Kolom ringkasan jenis pekerjaan ─────────────────────── --}}
-<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mb-4">
-    <div class="bg-white rounded-xl border border-cyan-200 px-4 py-3">
-        <p class="text-xl font-bold text-cyan-600">{{ number_format($countEI) }}</p>
-        <p class="text-xs text-slate-500 mt-0.5">EI</p>
-    </div>
-    <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
-        <p class="text-xl font-bold text-slate-700">{{ number_format($countMekanik) }}</p>
-        <p class="text-xs text-slate-500 mt-0.5">Mekanik</p>
-    </div>
-    <div class="bg-white rounded-xl border border-emerald-200 px-4 py-3">
-        <p class="text-xl font-bold text-emerald-600">{{ number_format($countCmPm) }}</p>
-        <p class="text-xs text-slate-500 mt-0.5">CM/PM</p>
-    </div>
-    <div class="bg-white rounded-xl border border-violet-200 px-4 py-3">
-        <p class="text-xl font-bold text-violet-600">{{ number_format($countFabrikasi) }}</p>
-        <p class="text-xs text-slate-500 mt-0.5">Fabrikasi</p>
-    </div>
-    <div class="bg-white rounded-xl border border-orange-200 px-4 py-3">
-        <p class="text-xl font-bold text-orange-600">{{ number_format($countSipil) }}</p>
-        <p class="text-xs text-slate-500 mt-0.5">Sipil</p>
-    </div>
-    <div class="bg-white rounded-xl border border-rose-200 px-4 py-3">
-        <p class="text-xl font-bold text-rose-600">{{ number_format($countProject) }}</p>
-        <p class="text-xs text-slate-500 mt-0.5">Project</p>
-    </div>
-    <div class="bg-white rounded-xl border border-teal-200 px-4 py-3">
-        <p class="text-xl font-bold text-teal-600">{{ number_format($totalLaporan) }}</p>
+{{-- ── Kolom ringkasan jenis pekerjaan (klik = filter cepat) ─────────── --}}
+<div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-4">
+    @foreach($kartuJenis as $kartu)
+        <a href="{{ $tautanJenis($kartu['jenis']) }}"
+           title="{{ $jenisAktif === $kartu['jenis'] ? 'Tampilkan semua jenis pekerjaan' : 'Tampilkan laporan ' . $kartu['jenis'] . ' saja' }}"
+           class="bg-white rounded-xl border-2 px-4 py-3 transition-colors
+                  {{ $jenisAktif === $kartu['jenis']
+                        ? 'border-teal-400 ring-2 ring-teal-200 bg-teal-50'
+                        : $kartu['border'] . ' hover:border-teal-300' }}">
+            <p class="text-xl font-bold {{ $kartu['teks'] }}" data-kartu="jenis-{{ $kartu['jenis'] }}">{{ number_format($kartu['nilai']) }}</p>
+            <p class="text-xs text-slate-500 mt-0.5">{{ $kartu['jenis'] }}</p>
+        </a>
+    @endforeach
+    <div class="bg-white rounded-xl border-2 border-teal-200 px-4 py-3">
+        <p class="text-xl font-bold text-teal-600" data-kartu="total">{{ number_format($totalLaporan) }}</p>
         <p class="text-xs text-slate-500 mt-0.5">Total Pekerjaan</p>
     </div>
 </div>
 
+{{-- ============================================================
+     Filter lanjutan (opsional) — diletakkan tepat sebelum tabel
+============================================================ --}}
+<details class="mb-4 bg-white rounded-xl border border-slate-200" {{ $adaFilterLanjutan ? 'open' : '' }}>
+    <summary class="px-5 py-4 cursor-pointer text-sm font-medium text-slate-700 flex items-center gap-2">
+        <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/>
+        </svg>
+        Filter Lanjutan
+        @if($adaFilterLanjutan)
+            <span class="px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-600 text-white leading-none">aktif</span>
+        @endif
+    </summary>
+
+    <form method="GET" action="{{ route('reports.index') }}" class="px-5 pb-5 space-y-4 border-t border-slate-100 pt-5">
+        <input type="hidden" name="tampilan" value="{{ $tampilan }}">
+        @if($grubAktif)
+            <input type="hidden" name="grub" value="{{ $grubAktif }}">
+        @endif
+        {{-- Tanggal aktif dipertahankan supaya menerapkan filter tidak melompat
+             kembali ke hari ini (rentang tanggal tetap menang bila diisi). --}}
+        <input type="hidden" name="tanggal" value="{{ $tanggalAktifStr }}">
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Pekerjaan / Lokasi / Alat</label>
+                <input type="text" name="search" value="{{ request('search') }}" placeholder="Cari pekerjaan, kode lokasi, atau alat..."
+                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Kode Laporan</label>
+                <input type="text" name="report_code" value="{{ request('report_code') }}" placeholder="Cari kode laporan..."
+                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Kode Alat</label>
+                <input type="text" name="asset_code" value="{{ request('asset_code') }}" placeholder="Cari kode alat..."
+                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Tanggal Dari</label>
+                <input type="date" name="date_from" value="{{ request('date_from') }}"
+                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Tanggal Sampai</label>
+                <input type="date" name="date_to" value="{{ request('date_to') }}"
+                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Area</label>
+                <select name="area_id"
+                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="">Semua Area</option>
+                    @foreach($areas as $area)
+                        <option value="{{ $area->id }}" {{ (string) request('area_id') === (string) $area->id ? 'selected' : '' }}>
+                            {{ $area->code }} - {{ $area->name }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Teknisi</label>
+                <select name="technician_id"
+                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="">Semua Teknisi</option>
+                    @foreach($technicians as $technician)
+                        <option value="{{ $technician->id }}" {{ (string) request('technician_id') === (string) $technician->id ? 'selected' : '' }}>
+                            {{ $technician->name }}{{ $technician->nik ? ' (' . $technician->nik . ')' : '' }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Jenis Pekerjaan</label>
+                <select name="jenis_pekerjaan"
+                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="">Semua Jenis</option>
+                    @foreach(['EI', 'Mekanik', 'CM/PM', 'Fabrikasi', 'Sipil', 'IT', 'Project'] as $jenisOpsi)
+                        <option value="{{ $jenisOpsi }}" {{ request('jenis_pekerjaan') === $jenisOpsi ? 'selected' : '' }}>{{ $jenisOpsi }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Klasifikasi (Wizard)</label>
+                <select name="work_classification"
+                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="">Semua Klasifikasi</option>
+                    <option value="zpm1" {{ request('work_classification') === 'zpm1' ? 'selected' : '' }}>ZPM 1 - Corrective</option>
+                    <option value="zpm3" {{ request('work_classification') === 'zpm3' ? 'selected' : '' }}>ZPM 3 - Preventive</option>
+                    <option value="zpm6" {{ request('work_classification') === 'zpm6' ? 'selected' : '' }}>ZPM 6 - Planned</option>
+                    <option value="zpm5" {{ request('work_classification') === 'zpm5' ? 'selected' : '' }}>ZPM 5 - Fabrikasi</option>
+                    <option value="zpm7" {{ request('work_classification') === 'zpm7' ? 'selected' : '' }}>ZPM 7 - Sipil</option>
+                    <option value="zpm8" {{ request('work_classification') === 'zpm8' ? 'selected' : '' }}>ZPM 8 - Project</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Tipe Laporan</label>
+                <select name="report_type"
+                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="">Semua Tipe</option>
+                    <option value="equipment_repair" {{ request('report_type') === 'equipment_repair' ? 'selected' : '' }}>Perbaikan Equipment</option>
+                    <option value="area_work" {{ request('report_type') === 'area_work' ? 'selected' : '' }}>Pekerjaan Area</option>
+                    <option value="general" {{ request('report_type') === 'general' ? 'selected' : '' }}>Umum</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Status Pekerjaan</label>
+                <select name="status"
+                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="">Semua Status</option>
+                    <option value="continue" {{ request('status') === 'continue' ? 'selected' : '' }}>Continue (belum selesai)</option>
+                    <option value="completed" {{ request('status') === 'completed' ? 'selected' : '' }}>Done (selesai)</option>
+                    <option value="needs_review" {{ request('status') === 'needs_review' ? 'selected' : '' }}>Perlu Diperiksa</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+            <button type="submit"
+                    class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
+                Terapkan Filter
+            </button>
+            <a href="{{ route('reports.index', ['tampilan' => $tampilan, 'tanggal' => $tanggalAktifStr]) }}"
+               class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                Reset Filter
+            </a>
+        </div>
+    </form>
+</details>
 
 {{-- ============================================================
      Tabel fokus pekerjaan: pekerjaan di depan, teknisi di sampingnya
@@ -441,6 +634,7 @@
                             </td>
                         @endif
                     </tr>
+
                 @empty
                     <tr>
                         <td colspan="{{ $pakaiRentang ? 6 : 5 }}" class="px-5 py-16 text-center">
@@ -496,141 +690,6 @@
         </div>
     @endif
 </div>
-
-{{-- ============================================================
-     Filter lanjutan (opsional) — mempertahankan tampilan & tanggal
-============================================================ --}}
-<details class="mt-5 bg-white rounded-xl border border-slate-200" {{ $adaFilterLanjutan ? 'open' : '' }}>
-    <summary class="px-5 py-4 cursor-pointer text-sm font-medium text-slate-700 flex items-center gap-2">
-        <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/>
-        </svg>
-        Filter Lanjutan
-        @if($adaFilterLanjutan)
-            <span class="px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-600 text-white leading-none">aktif</span>
-        @endif
-    </summary>
-
-    <form method="GET" action="{{ route('reports.index') }}" class="px-5 pb-5 space-y-4 border-t border-slate-100 pt-5">
-        <input type="hidden" name="tampilan" value="{{ $tampilan }}">
-        @if($grubAktif)
-            <input type="hidden" name="grub" value="{{ $grubAktif }}">
-        @endif
-
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Pekerjaan / Lokasi / Alat</label>
-                <input type="text" name="search" value="{{ request('search') }}" placeholder="Cari pekerjaan, kode lokasi, atau alat..."
-                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
-            </div>
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Kode Laporan</label>
-                <input type="text" name="report_code" value="{{ request('report_code') }}" placeholder="Cari kode laporan..."
-                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
-            </div>
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Kode Alat</label>
-                <input type="text" name="asset_code" value="{{ request('asset_code') }}" placeholder="Cari kode alat..."
-                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
-            </div>
-        </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Tanggal Dari</label>
-                <input type="date" name="date_from" value="{{ request('date_from') }}"
-                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
-            </div>
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Tanggal Sampai</label>
-                <input type="date" name="date_to" value="{{ request('date_to') }}"
-                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
-            </div>
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Area</label>
-                <select name="area_id"
-                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">Semua Area</option>
-                    @foreach($areas as $area)
-                        <option value="{{ $area->id }}" {{ (string) request('area_id') === (string) $area->id ? 'selected' : '' }}>
-                            {{ $area->code }} - {{ $area->name }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Teknisi</label>
-                <select name="technician_id"
-                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">Semua Teknisi</option>
-                    @foreach($technicians as $technician)
-                        <option value="{{ $technician->id }}" {{ (string) request('technician_id') === (string) $technician->id ? 'selected' : '' }}>
-                            {{ $technician->name }}{{ $technician->nik ? ' (' . $technician->nik . ')' : '' }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-        </div>
-
-
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Jenis Pekerjaan</label>
-                <select name="jenis_pekerjaan"
-                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">Semua Jenis</option>
-                    @foreach(['EI', 'Mekanik', 'CM/PM', 'Fabrikasi', 'Sipil', 'IT', 'Project'] as $jenisOpsi)
-                        <option value="{{ $jenisOpsi }}" {{ request('jenis_pekerjaan') === $jenisOpsi ? 'selected' : '' }}>{{ $jenisOpsi }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Klasifikasi (Wizard)</label>
-                <select name="work_classification"
-                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">Semua Klasifikasi</option>
-                    <option value="zpm1" {{ request('work_classification') === 'zpm1' ? 'selected' : '' }}>ZPM 1 - Corrective</option>
-                    <option value="zpm3" {{ request('work_classification') === 'zpm3' ? 'selected' : '' }}>ZPM 3 - Preventive</option>
-                    <option value="zpm6" {{ request('work_classification') === 'zpm6' ? 'selected' : '' }}>ZPM 6 - Planned</option>
-                    <option value="zpm5" {{ request('work_classification') === 'zpm5' ? 'selected' : '' }}>ZPM 5 - Fabrikasi</option>
-                    <option value="zpm7" {{ request('work_classification') === 'zpm7' ? 'selected' : '' }}>ZPM 7 - Sipil</option>
-                    <option value="zpm8" {{ request('work_classification') === 'zpm8' ? 'selected' : '' }}>ZPM 8 - Project</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Tipe Laporan</label>
-                <select name="report_type"
-                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">Semua Tipe</option>
-                    <option value="equipment_repair" {{ request('report_type') === 'equipment_repair' ? 'selected' : '' }}>Perbaikan Equipment</option>
-                    <option value="area_work" {{ request('report_type') === 'area_work' ? 'selected' : '' }}>Pekerjaan Area</option>
-                    <option value="general" {{ request('report_type') === 'general' ? 'selected' : '' }}>Umum</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Status Pekerjaan</label>
-                <select name="status"
-                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">Semua Status</option>
-                    <option value="continue" {{ request('status') === 'continue' ? 'selected' : '' }}>Continue (belum selesai)</option>
-                    <option value="completed" {{ request('status') === 'completed' ? 'selected' : '' }}>Done (selesai)</option>
-                    <option value="needs_review" {{ request('status') === 'needs_review' ? 'selected' : '' }}>Perlu Diperiksa</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-            <button type="submit"
-                    class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
-                Terapkan Filter
-            </button>
-            <a href="{{ route('reports.index', ['tampilan' => $tampilan, 'tanggal' => $tanggalAktifStr]) }}"
-               class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
-                Reset Filter
-            </a>
-        </div>
-    </form>
-</details>
 
 {{-- Modal daftar alat/lokasi kolaborasi (dipakai tombol "Lihat" pada kolom Lokasi / Alat) --}}
 @push('modals')
@@ -749,4 +808,3 @@
 @endpush
 
 @endsection
-
