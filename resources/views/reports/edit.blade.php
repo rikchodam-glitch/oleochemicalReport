@@ -125,6 +125,8 @@
                     @enderror
                 </div>
 
+                @include('reports.partials._temuan', ['nilai' => old('finding', $report->finding)])
+
                 {{-- ── Field Jenis Pekerjaan ── --}}
                 <div class="border-t border-slate-100 pt-4">
                     <h3 class="text-sm font-medium text-slate-900 mb-3">Jenis Pekerjaan</h3>

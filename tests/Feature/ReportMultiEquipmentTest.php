@@ -113,7 +113,8 @@ test('mengetik kode alat tambahan menambahkannya ke daftar pekerjaan', function 
     expect($state['multi_items'])->toHaveCount(1)
         ->and($state['multi_items'][0]['asset_id'])->toBe($this->asetTambahan->id)
         ->and($state['multi_items'][0]['label'])->toBe('MUL-M-02')
-        ->and($respons['message'])->toContain('Ditambahkan (1)')
+        ->and($respons['message'])->toContain('Equipment Tambahan :')
+        ->and($respons['message'])->toContain('1. MUL-M-02 — Motor Multi Kedua')
         // Pilihan yang dilihat teknisi: Tidak / Pilih Hirarki (plus bisa mengetik).
         ->and(json_encode($respons['keyboard']))->toContain('wizard:confirm:multi_done')
         ->and(json_encode($respons['keyboard']))->toContain('multi_hirarki')
@@ -166,6 +167,7 @@ test('menyimpan laporan membuat baris salinan per alat dengan dokumentasi sama',
     // Konfirmasi jam kerja, lalu jalani sisa langkah sampai ringkasan konfirmasi.
     $wizard->handleCallback($this->chatId, 'wizard:confirm:duration_ok');
     $wizard->handleCallback($this->chatId, 'wizard:confirm:rootcause_ok');
+    $wizard->handleCallback($this->chatId, 'wizard:confirm:finding_skip');
     $wizard->handleCallback($this->chatId, 'wizard:confirm:photo_doc_skip');
     $wizard->handleCallback($this->chatId, 'wizard:confirm:photo_hygiene_skip');
     $ringkasan = $wizard->handleCallback($this->chatId, 'wizard:confirm:collab_skip');
@@ -382,8 +384,8 @@ test('menambah alat dari hirarki tidak menutup hirarki dan menampilkan daftar it
         ->and($papan)->toContain('multi_hirarki_hapus')
         ->and($papan)->toContain('multi_hirarki_selesai')
         ->and($hasil['message'])->toContain('Ditambahkan dari hirarki')
-        ->and($hasil['message'])->toContain('Sudah ditambahkan (1)')
-        ->and($hasil['message'])->toContain('MUL-M-02');
+        ->and($hasil['message'])->toContain('Equipment Tambahan :')
+        ->and($hasil['message'])->toContain('1. MUL-M-02 — Motor Multi Kedua');
 
     $wizard->destroyWizard($this->chatId);
 });
@@ -410,7 +412,8 @@ test('alat kedua dan seterusnya tidak perlu menelusuri ulang dari PT', function 
 
     expect($state['funcloc_picker_active'] ?? false)->toBeTrue()
         ->and($state['funcloc_path'])->not->toBeEmpty()
-        ->and($layar['message'])->toContain('Sudah ditambahkan (1)')
+        ->and($layar['message'])->toContain('Equipment Tambahan :')
+        ->and($layar['message'])->toContain('1. MUL-M-02 — Motor Multi Kedua')
         ->and(json_encode($layar['keyboard']))->toContain('funcloc_asset_pick:' . $this->asetTambahan->id);
 
     $wizard->destroyWizard($this->chatId);
@@ -520,7 +523,7 @@ test('lokasi yang sudah ada tidak ditambahkan dua kali dan diberi tahu apa adany
     expect($state['multi_items'])->toHaveCount(1)
         ->and($pertama['message'])->toContain('Ditambahkan dari hirarki')
         ->and($kedua['message'])->toContain('Sudah ada di daftar')
-        ->and($kedua['message'])->toContain('Sudah ditambahkan (1)');
+        ->and($kedua['message'])->toContain('Equipment Tambahan :');
 
     $wizard->destroyWizard($this->chatId);
 });

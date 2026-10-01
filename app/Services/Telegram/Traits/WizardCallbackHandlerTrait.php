@@ -684,6 +684,7 @@ trait WizardCallbackHandlerTrait
         $state['is_area_work']    = true;
         $state['equipment_id']    = null;
         $state['equipment_ident'] = null;
+        $state['equipment_desc']  = null;
         $this->saveState($chatId, $state);
 
         return $this->advanceToMultiEquipment($chatId, $state);
@@ -691,8 +692,9 @@ trait WizardCallbackHandlerTrait
 
     /**
      * Navigasi antar step melalui callback konfirmasi wizard:confirm:<action>.
-     * Menangani transisi dari Step 4 (durasi), Step 5 (root cause),
-     * Step 6-7 (foto), Step 8a (kolaborator), hingga Step 8 (simpan/batalkan).
+     * Menangani transisi dari Step 4 (durasi), Step 5 (root cause, bisa
+     * dilewati), Step 5b (temuan, bisa dilewati), Step 6-7 (foto), Step 8a
+     * (kolaborator), hingga Step 8 (simpan/batalkan).
      *
      * @param  string $chatId       Chat ID Telegram
      * @param  string $callbackData Data callback wizard:confirm:<action>
@@ -725,12 +727,20 @@ trait WizardCallbackHandlerTrait
                     'keyboard' => $this->navigationButtons($state),
                 ];
 
-            // Step 5 — root cause OK (dari deteksi AI)
+            // Step 5 — root cause OK (dari deteksi AI): maju ke step temuan.
             case 'rootcause_ok':
                 $state          = $this->pushStepHistory($state, self::STEP_ROOT_CAUSE);
-                $state['step']  = self::STEP_PHOTO_DOCUMENTATION;
+                $state['step']  = self::STEP_FINDING;
                 $this->saveState($chatId, $state);
-                return $this->buildPhotoDocumentationPrompt($state);
+                return $this->buildFindingPrompt($state);
+
+            // Step 5 — root cause dilewati: root cause dikosongkan, maju ke temuan.
+            case 'rootcause_skip':
+                return $this->lewatiRootCause($chatId, $state);
+
+            // Step 5b — temuan dilewati: lanjut ke foto dokumentasi.
+            case 'finding_skip':
+                return $this->lewatiTemuan($chatId, $state);
 
             // Step 5 — root cause diubah (tetap di Step 5, tidak push history)
             case 'rootcause_change':
@@ -1395,6 +1405,7 @@ trait WizardCallbackHandlerTrait
         if ($isAreaWork) {
             $state['equipment_id']    = null;
             $state['equipment_ident'] = null;
+            $state['equipment_desc']  = null;
             $state['is_area_work']    = true;
             $state['area_id']         = $msgData['selected_area_id'] ?? null;
 
@@ -1409,6 +1420,7 @@ trait WizardCallbackHandlerTrait
             }
             $state['equipment_id']      = $asset->id;
             $state['equipment_ident']   = $asset->tech_ident_no;
+            $state['equipment_desc']    = $asset->description;
             $state['equipment_funcloc'] = $asset->functional_loc;
             if ($asset->area_id) {
                 $state['area_id']   = $asset->area_id;
@@ -1834,6 +1846,9 @@ trait WizardCallbackHandlerTrait
 
             case self::STEP_ROOT_CAUSE:
                 return $this->buildRootCausePrompt($state);
+
+            case self::STEP_FINDING:
+                return $this->buildFindingPrompt($state);
 
             case self::STEP_PHOTO_DOCUMENTATION:
                 return $this->buildPhotoDocumentationPrompt($state);

@@ -234,20 +234,8 @@ trait WizardFuncLocPickerTrait
      */
     protected function ringkasanItemMulti(array $state): string
     {
-        $daftar = $state['multi_items'] ?? [];
-
-        if ($daftar === []) {
-            return "\n\n_Belum ada alat/lokasi tambahan. Tekan Selesai Menambah bila tidak ada._";
-        }
-
-        $teks = "\n\n*Sudah ditambahkan (" . count($daftar) . "):*";
-
-        foreach ($daftar as $index => $item) {
-            $teks .= "\n" . ($index + 1) . '. ' . ($item['label'] ?? '-')
-                . (!empty($item['sub']) ? ' — ' . $item['sub'] : '');
-        }
-
-        return $teks . "\n\nTekan _Selesai Menambah_ bila sudah, atau lanjut pilih alat/lokasi lain (boleh juga ketik kodenya).";
+        return "\n\n" . $this->daftarEquipmentState($state)
+            . "\n\nTekan _Selesai Menambah_ bila sudah, atau lanjut pilih alat/lokasi lain (boleh juga ketik kodenya).";
     }
 
     /**
@@ -1013,10 +1001,9 @@ trait WizardFuncLocPickerTrait
 
         $keyboard = array_map(
             fn (array $calon) => [
-                'text'          => mb_substr(
-                    (string) ($calon['tech_ident_no'] ?? '-') . ' — ' . (string) ($calon['description'] ?? ''),
-                    0,
-                    64
+                'text'          => $this->tombolAlatLabel(
+                    (string) ($calon['tech_ident_no'] ?? '-'),
+                    (string) ($calon['description'] ?? '')
                 ),
                 'callback_data' => 'funcloc_asset_pick:' . (int) ($calon['id'] ?? 0),
             ],
@@ -1245,6 +1232,7 @@ trait WizardFuncLocPickerTrait
         $state['is_area_work']    = true;
         $state['equipment_id']    = null;
         $state['equipment_ident'] = null;
+        $state['equipment_desc']  = null;
 
         Log::info("WizardFuncLocPicker: FuncLoc dikunci untuk chat {$chatId}", [
             'funcloc_id'   => $node->id,
@@ -1537,15 +1525,11 @@ trait WizardFuncLocPickerTrait
     {
         $keyboard = [];
         foreach ($assets as $asset) {
-            $label = $asset->tech_ident_no;
-            if ($asset->description) {
-                $label .= ' — ' . $asset->description;
-            }
-            if (strlen($label) > 64) {
-                $label = substr($label, 0, 61) . '...';
-            }
             $keyboard[] = [
-                'text'          => $label,
+                'text'          => $this->tombolAlatLabel(
+                    (string) ($asset->tech_ident_no ?? ''),
+                    (string) ($asset->description ?? '')
+                ),
                 'callback_data' => "funcloc_asset_pick:{$asset->id}",
             ];
         }

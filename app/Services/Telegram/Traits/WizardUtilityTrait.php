@@ -455,6 +455,129 @@ trait WizardUtilityTrait
         return $label;
     }
 
+    /**
+     * Deskripsi alat utama laporan.
+     *
+     * Diambil dari state (diisi saat alat dikunci: lockEquipmentAndAdvance,
+     * finalizeClarificationSelection, startWizardForAsset) dengan jaring
+     * pengaman dari database agar jalur lama yang belum mengisi
+     * state['equipment_desc'] tetap menampilkan deskripsi.
+     *
+     * @param  array  $state State wizard
+     * @return string Deskripsi alat, atau string kosong bila tidak ada
+     */
+    protected function equipmentDesc(array $state): string
+    {
+        $desc = trim((string) ($state['equipment_desc'] ?? ''));
+
+        if ($desc !== '') {
+            return $desc;
+        }
+
+        if (!empty($state['equipment_id'])) {
+            return trim((string) (Asset::find($state['equipment_id'])?->description ?? ''));
+        }
+
+        return '';
+    }
+
+    /**
+     * Label alat/lokasi UTAMA untuk daftar ringkas pekerjaan.
+     * Format yang dipakai: "KODE — Deskripsi" (kode Functional Location tidak
+     * disertakan supaya deskripsi tidak terpotong).
+     *
+     * @param  array  $state State wizard
+     * @return string Label alat utama, atau label area bila pekerjaan area
+     */
+    protected function labelEquipmentUtama(array $state): string
+    {
+        if (!empty($state['is_area_work'])) {
+            $kode = trim((string) ($state['funcloc_code'] ?? ''));
+            $nama = trim((string) ($state['funcloc_name'] ?? ''));
+
+            if ($kode === '') {
+                return 'Pekerjaan Area (' . ($state['area_code'] ?? 'Area') . ')';
+            }
+
+            return 'Pekerjaan Area: ' . $kode . ($nama !== '' ? ' — ' . $nama : '');
+        }
+
+        $ident = trim((string) ($state['equipment_ident'] ?? '')) ?: 'Equipment';
+        $desc  = $this->equipmentDesc($state);
+
+        return $desc !== '' ? $ident . ' — ' . $desc : $ident;
+    }
+
+    /**
+     * Label satu item alat/lokasi tambahan (label + keterangan).
+     *
+     * @param  array  $item Entri item (label, sub)
+     * @return string Label item, mis. "MUL-M-02 — Motor Multi Kedua"
+     */
+    protected function labelItemMulti(array $item): string
+    {
+        $label = trim((string) ($item['label'] ?? '')) ?: '-';
+        $sub   = trim((string) ($item['sub'] ?? ''));
+
+        return $sub !== '' ? $label . ' — ' . $sub : $label;
+    }
+
+    /**
+     * Daftar alat/lokasi pekerjaan dalam satu blok teks:
+     *   Equipment :
+     *   (kode alat + deskripsi)
+     *
+     *   Equipment Tambahan :
+     *   1. ...
+     *   2. ...
+     *
+     * Dipakai prompt Step 8b dan setiap layar hirarki mode multi supaya teknisi
+     * selalu melihat alat utama beserta seluruh tambahannya di satu tempat.
+     *
+     * @param  array  $state State wizard
+     * @return string Blok daftar alat/lokasi (teks Markdown Telegram)
+     */
+    protected function daftarEquipmentState(array $state): string
+    {
+        $daftar = $state['multi_items'] ?? [];
+        $teks   = "*Equipment :*\n" . $this->labelEquipmentUtama($state) . "\n\n*Equipment Tambahan :*";
+
+        if ($daftar === []) {
+            return $teks . "\n_Belum ada alat/lokasi tambahan._";
+        }
+
+        foreach ($daftar as $index => $item) {
+            $teks .= "\n" . ($index + 1) . '. ' . $this->labelItemMulti($item);
+        }
+
+        return $teks;
+    }
+
+    /**
+     * Label tombol daftar alat: kode alat + deskripsi, dipotong 64 karakter
+     * (batas aman panjang teks tombol inline Telegram).
+     *
+     * @param  string  $kode      Tech Ident No / Equipment No alat
+     * @param  string  $deskripsi Deskripsi alat (opsional)
+     * @param  string  $awalan    Awalan label, mis. "1. " untuk daftar bernomor
+     * @return string Label tombol siap pakai
+     */
+    protected function tombolAlatLabel(string $kode, string $deskripsi = '', string $awalan = ''): string
+    {
+        $label = trim($awalan . $kode);
+        $desc  = trim($deskripsi);
+
+        if ($desc !== '') {
+            $label .= ($label !== '' ? ' — ' : '') . $desc;
+        }
+
+        if (mb_strlen($label) > 64) {
+            $label = mb_substr($label, 0, 61) . '...';
+        }
+
+        return $label;
+    }
+
     // =========================================================
     // LABEL KLASIFIKASI PEKERJAAN
     // =========================================================
@@ -594,6 +717,7 @@ trait WizardUtilityTrait
             'equipment_id'                => null,
             'equipment_ident'             => null,
             'equipment_funcloc'           => null,
+            'equipment_desc'              => null,
             'is_area_work'                => false,
             'area_id'                     => null,
             'area_code'                   => null,
@@ -602,6 +726,7 @@ trait WizardUtilityTrait
             'using_clarification_service' => false,
             'work_duration_minutes'       => null,
             'root_cause'                  => null,
+            'finding'                     => null,
             'report_date'                 => null,
             'report_date_status'          => null,
             'initial_photo_file_id'       => null,

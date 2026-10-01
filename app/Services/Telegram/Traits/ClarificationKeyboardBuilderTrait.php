@@ -371,22 +371,12 @@ trait ClarificationKeyboardBuilderTrait
 
         $keyboard = [];
         foreach ($assets->take(self::MAX_KEYBOARD_OPTIONS) as $a) {
-            $ti   = $a->tech_ident_no ?? '';
-            $fl   = $a->functional_loc ?? '';
-            $desc = $a->description ?? '';
-
-            $label = $ti;
-            if ($fl) {
-                $label .= " | {$fl}";
-            }
-            if ($desc) {
-                $label .= " — {$desc}";
-            }
-            if (strlen($label) > 64) {
-                $label = substr($label, 0, 61) . '...';
-            }
+            // Label HANYA kode alat + deskripsi: kode Functional Location tidak
+            // ikut ditampilkan karena batas 64 karakter tombol Telegram membuat
+            // deskripsi alat terpotong (dan lokasi sudah jelas dari hierarki
+            // yang baru saja ditelusuri teknisi).
             $keyboard[] = [
-                'text'          => $label,
+                'text'          => $this->labelTombolAlat((string) ($a->tech_ident_no ?? ''), (string) ($a->description ?? '')),
                 'callback_data' => "equipment:select:{$a->id}",
             ];
         }
@@ -412,6 +402,34 @@ trait ClarificationKeyboardBuilderTrait
     // =========================================================
     // HELPER QUERY & NAVIGASI
     // =========================================================
+
+    /**
+     * Label tombol daftar alat pada hierarki klarifikasi: kode alat + deskripsi,
+     * dipotong 64 karakter (batas aman teks tombol inline Telegram).
+     *
+     * Sengaja dipisah di trait ini (bukan memakai helper wizard) karena trait
+     * ini dipakai ClarificationService, sedangkan helper label wizard ada di
+     * WizardUtilityTrait milik ReportWizardService.
+     *
+     * @param  string  $kode      Tech Ident No alat
+     * @param  string  $deskripsi Deskripsi alat (opsional)
+     * @return string Label tombol siap pakai
+     */
+    private function labelTombolAlat(string $kode, string $deskripsi = ''): string
+    {
+        $label = trim($kode);
+        $desc  = trim($deskripsi);
+
+        if ($desc !== '') {
+            $label .= ($label !== '' ? ' — ' : '') . $desc;
+        }
+
+        if (mb_strlen($label) > 64) {
+            $label = mb_substr($label, 0, 61) . '...';
+        }
+
+        return $label;
+    }
 
     /**
      * Ambil kandidat asset untuk area/sub area tertentu.

@@ -7,7 +7,6 @@ use App\Models\FunctionalLocation;
 use App\Models\Technician;
 use App\Services\CollaborationService;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 /**
  * WizardStepHandlerTrait
@@ -17,8 +16,10 @@ use Illuminate\Support\Str;
  *   - buildWorkDurationPrompt()     : Bangun prompt Step 4 (input durasi)
  *   - handleDurationInput()         : Proses teks durasi yang diketik teknisi
  *   - advanceToWorkDuration()       : Transisi ke Step 4 dari step sebelumnya
- *   - buildRootCausePrompt()        : Bangun prompt Step 5 (input root cause)
+ *   - buildRootCausePrompt()        : Bangun prompt Step 5 (input root cause, bisa dilewati)
  *   - handleRootCauseInput()        : Proses teks root cause dari teknisi
+ *   - buildFindingPrompt()          : Bangun prompt Step 5b (input temuan, opsional)
+ *   - handleFindingInput()          : Proses teks temuan dari teknisi
  *   - buildPhotoDocumentationPrompt(): Bangun prompt Step 6 (foto dokumentasi)
  *   - buildPhotoHygienePrompt()     : Bangun prompt Step 7 (foto hygiene clearance)
  *   - handlePhotoCommand()          : Proses perintah teks di step foto
@@ -318,6 +319,7 @@ trait WizardStepHandlerTrait
                     [
                         ['text' => 'Gunakan ini', 'callback_data' => 'wizard:confirm:rootcause_ok'],
                         ['text' => 'Ubah',        'callback_data' => 'wizard:confirm:rootcause_change'],
+                        ['text' => 'Lewati Root Cause', 'callback_data' => 'wizard:confirm:rootcause_skip'],
                     ],
                     $this->navigationButtons($state)
                 ),
@@ -328,8 +330,14 @@ trait WizardStepHandlerTrait
             'message'  => "*Step 5/8* — Root Cause\n\n" .
                 "Equipment: *{$equipmentLabel}*\n" .
                 "Durasi: *{$duration}*\n\n" .
-                "Ketik *root cause* (penyebab kerusakan/pekerjaan):",
-            'keyboard' => $this->navigationButtons($state),
+                "Ketik *root cause* (penyebab kerusakan/pekerjaan), atau tekan " .
+                "*Lewati Root Cause* bila tidak diketahui:",
+            'keyboard' => array_merge(
+                [
+                    ['text' => 'Lewati Root Cause', 'callback_data' => 'wizard:confirm:rootcause_skip'],
+                ],
+                $this->navigationButtons($state)
+            ),
         ];
     }
 
@@ -345,20 +353,144 @@ trait WizardStepHandlerTrait
     {
         $trimmed = trim($text);
 
+        if ($this->teksMenandakanLewati($trimmed)) {
+            return $this->lewatiRootCause($chatId, $state);
+        }
+
         if (mb_strlen($trimmed) < self::ROOT_CAUSE_MIN_LENGTH) {
             return [
                 'message'  => "Root cause terlalu pendek (minimal " . self::ROOT_CAUSE_MIN_LENGTH . " karakter).\n" .
-                    "Deskripsikan penyebab kerusakan/pekerjaan:",
-                'keyboard' => $this->navigationButtons($state),
+                    "Deskripsikan penyebab kerusakan/pekerjaan, atau tekan *Lewati Root Cause*:",
+                'keyboard' => array_merge(
+                    [
+                        ['text' => 'Lewati Root Cause', 'callback_data' => 'wizard:confirm:rootcause_skip'],
+                    ],
+                    $this->navigationButtons($state)
+                ),
             ];
         }
 
         $state                = $this->pushStepHistory($state, self::STEP_ROOT_CAUSE);
         $state['root_cause']  = $trimmed;
-        $state['step']        = self::STEP_PHOTO_DOCUMENTATION;
+        $state['step']        = self::STEP_FINDING;
+        $this->saveState($chatId, $state);
+
+        return $this->buildFindingPrompt($state);
+    }
+
+    /**
+     * Lewati pengisian root cause (tombol "Lewati Root Cause" atau teks yang
+     * menandakan lewati), lalu lanjut ke step temuan.
+     *
+     * @param  string $chatId Chat ID Telegram
+     * @param  array  $state  State wizard saat ini
+     * @return array  Respons prompt temuan
+     */
+    protected function lewatiRootCause(string $chatId, array $state): array
+    {
+        $state                = $this->pushStepHistory($state, self::STEP_ROOT_CAUSE);
+        $state['root_cause']  = null;
+        $state['step']        = self::STEP_FINDING;
+        $this->saveState($chatId, $state);
+
+        return $this->buildFindingPrompt($state);
+    }
+
+    // =========================================================
+    // STEP 5b — TEMUAN (FINDING, OPSIONAL)
+    // =========================================================
+
+    /**
+     * Bangun pesan prompt temuan (Step 5b) — opsional, boleh dilewati.
+     *
+     * @param  array $state State wizard
+     * @return array Respons dengan tombol "Lewati Temuan" + navigasi
+     */
+    protected function buildFindingPrompt(array $state): array
+    {
+        return [
+            'message'  => "*Step 5b/8* — Temuan (Opsional)\n\n" .
+                "Ketik *temuan* yang terlihat di lapangan (kondisi alat, kebocoran, " .
+                "kelainan bunyi/getaran, dsb).\n\n" .
+                "Tekan *Lewati Temuan* bila tidak ada temuan yang perlu dicatat:",
+            'keyboard' => array_merge(
+                [
+                    ['text' => 'Lewati Temuan', 'callback_data' => 'wizard:confirm:finding_skip'],
+                ],
+                $this->navigationButtons($state)
+            ),
+        ];
+    }
+
+    /**
+     * Proses teks temuan yang diketik teknisi di Step 5b.
+     * Field ini OPSIONAL: teks kosong atau kata "skip"/"lewati"/"-" dianggap
+     * sama dengan menekan tombol "Lewati Temuan".
+     *
+     * @param  string $chatId Chat ID Telegram
+     * @param  string $text   Input teks dari teknisi
+     * @param  array  $state  State wizard saat ini
+     * @return array  Respons prompt foto dokumentasi
+     */
+    protected function handleFindingInput(string $chatId, string $text, array $state): array
+    {
+        $trimmed = trim($text);
+
+        if ($this->teksMenandakanLewati($trimmed)) {
+            return $this->lewatiTemuan($chatId, $state);
+        }
+
+        if (mb_strlen($trimmed) < self::FINDING_MIN_LENGTH) {
+            return [
+                'message'  => "Temuan terlalu pendek (minimal " . self::FINDING_MIN_LENGTH . " karakter).\n" .
+                    "Tuliskan temuan yang terlihat, atau tekan *Lewati Temuan*:",
+                'keyboard' => array_merge(
+                    [
+                        ['text' => 'Lewati Temuan', 'callback_data' => 'wizard:confirm:finding_skip'],
+                    ],
+                    $this->navigationButtons($state)
+                ),
+            ];
+        }
+
+        $state               = $this->pushStepHistory($state, self::STEP_FINDING);
+        $state['finding']    = $trimmed;
+        $state['step']       = self::STEP_PHOTO_DOCUMENTATION;
         $this->saveState($chatId, $state);
 
         return $this->buildPhotoDocumentationPrompt($state);
+    }
+
+    /**
+     * Lewati pengisian temuan (tombol "Lewati Temuan"), lanjut ke foto dokumentasi.
+     *
+     * @param  string $chatId Chat ID Telegram
+     * @param  array  $state  State wizard saat ini
+     * @return array  Respons prompt foto dokumentasi
+     */
+    protected function lewatiTemuan(string $chatId, array $state): array
+    {
+        $state            = $this->pushStepHistory($state, self::STEP_FINDING);
+        $state['finding'] = null;
+        $state['step']    = self::STEP_PHOTO_DOCUMENTATION;
+        $this->saveState($chatId, $state);
+
+        return $this->buildPhotoDocumentationPrompt($state);
+    }
+
+    /**
+     * Apakah teks yang diketik teknisi berarti "lewati" (kolom opsional).
+     *
+     * @param  string $teks Teks yang sudah di-trim
+     * @return bool
+     */
+    protected function teksMenandakanLewati(string $teks): bool
+    {
+        if ($teks === '' || $teks === '-') {
+            return true;
+        }
+
+        return in_array(mb_strtolower($teks), ['skip', 'lewati', 'tidak ada', 'tidak'], true);
     }
 
     // =========================================================
@@ -1033,20 +1165,7 @@ trait WizardStepHandlerTrait
         }
 
         $msg = $catatan . "*Alat/Lokasi Tambahan*\n\n";
-
-        if ($daftar === []) {
-            $msg .= "Alat/lokasi utama laporan ini: *" . $this->equipmentLabel($state) . "*\n\n";
-        } else {
-            $msg .= "Alat/lokasi utama: *" . $this->equipmentLabel($state) . "*\n";
-            $msg .= "Ditambahkan (" . count($daftar) . "):\n";
-
-            foreach ($daftar as $index => $item) {
-                $msg .= ($index + 1) . '. ' . ($item['label'] ?? '-')
-                    . (!empty($item['sub']) ? ' — ' . $item['sub'] : '') . "\n";
-            }
-
-            $msg .= "\n";
-        }
+        $msg .= $this->daftarEquipmentState($state) . "\n\n";
 
         $msg .= "Apakah pekerjaan ini juga menyentuh alat/lokasi LAIN?\n\n"
             . "• Ketik kodenya (Tech Ident No / Equipment No / kode lokasi), beberapa kode boleh dipisah koma.\n"
@@ -1281,8 +1400,11 @@ trait WizardStepHandlerTrait
 
         foreach ($kandidat as $index => $calon) {
             $keyboard[] = [
-                'text'          => ($index + 1) . '. ' . ($calon['tech_ident_no'] ?? '-')
-                    . ' — ' . Str::limit((string) ($calon['description'] ?? ''), 28),
+                'text'          => $this->tombolAlatLabel(
+                    (string) ($calon['tech_ident_no'] ?? ''),
+                    (string) ($calon['description'] ?? ''),
+                    ($index + 1) . '. '
+                ),
                 'callback_data' => 'multi_pick:' . $index,
             ];
         }

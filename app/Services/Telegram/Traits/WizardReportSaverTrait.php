@@ -57,6 +57,7 @@ trait WizardReportSaverTrait
         $equipmentLabel = $this->equipmentLabel($state);
         $duration       = $this->formatDuration($state['work_duration_minutes'] ?? 0);
         $rootCause      = $state['root_cause'] ?? '-';
+        $finding        = $state['finding'] ?? '-';
         $photoDocCount  = count($state['photo_documentation'] ?? []);
         $photoHygCount  = count($state['photo_hygiene_clearance'] ?? []);
         $collabNiks     = $state['collaborator_niks'] ?? [];
@@ -84,6 +85,7 @@ trait WizardReportSaverTrait
 
         $msg .= "*Durasi*    : {$duration}\n";
         $msg .= "*Root Cause*: {$rootCause}\n";
+        $msg .= "*Temuan*    : {$finding}\n";
         $msg .= "*Foto Dok*  : {$photoDocCount} foto\n";
         $msg .= "*Foto HC*   : {$photoHygCount} foto\n";
 
@@ -301,7 +303,8 @@ trait WizardReportSaverTrait
                 'work_duration_minutes'   => $state['work_duration_minutes'] ?? null,
                 'start_time'              => $state['start_time'] ?? null,
                 'end_time'                => $state['end_time'] ?? null,
-                'root_cause'              => $state['root_cause'],
+                'root_cause'              => $state['root_cause'] ?? null,
+                'finding'                 => $state['finding'] ?? null,
                 'photo_documentation'     => $photoDocumentation,
                 'photo_hygiene_clearance' => $photoHygieneClearance,
                 // Status akhir dipilih teknisi di Step 8: 'completed' (Done) atau
@@ -407,6 +410,7 @@ trait WizardReportSaverTrait
             $duration       = $this->formatDuration($state['work_duration_minutes'] ?? 0);
             $formattedDate  = $this->formatIndonesianDate($reportDate);
             $rootCauseShort = Str::limit($state['root_cause'] ?? '-', 80);
+            $findingShort   = Str::limit($state['finding'] ?? '-', 80);
             $submittedAt    = $report->submitted_at?->format('d/m/Y H:i') ?? now()->format('d/m/Y H:i');
             $photoDocCount  = count($photoDocumentation);
             $photoHygCount  = count($photoHygieneClearance);
@@ -444,6 +448,7 @@ trait WizardReportSaverTrait
             $successMsg .= "Foto Dok     : {$photoDocCount} foto\n";
             $successMsg .= "Foto HC      : {$photoHygCount} foto\n";
             $successMsg .= "Root Cause   : {$rootCauseShort}\n";
+            $successMsg .= "Temuan       : {$findingShort}\n";
             $successMsg .= "Waktu Submit : {$submittedAt}\n";
 
             // Informasi kolaborator dengan nama jika ada

@@ -179,7 +179,8 @@ Step 1: Terima laporan awal   → TechIdentSearch 3-pass
 Step 2: Klarifikasi equipment → keyboard kandidat / tulis ulang
 Step 3: Akselerasi FuncLoc   → ClarificationService & FuncLocParser
 Step 4: Waktu pengerjaan     → parse durasi (menit) atau tanya manual
-Step 5: Root cause           → input teks bebas, min 3 karakter
+Step 5: Root cause           → teks bebas (opsional, tombol "Lewati Root Cause")
+Step 5b: Temuan (finding)    → teks bebas (opsional, tombol "Lewati Temuan")
 Step 6: Foto dokumentasi     → multi-foto opsional (PhotoStorageService)
 Step 7: Foto hygiene clearance → multi-foto opsional (PhotoStorageService)
 Step 8: Konfirmasi & Simpan  → ringkasan, simpan ke DB jika OK
@@ -210,7 +211,10 @@ punya Tech Ident No sehingga tombolnya tidak bisa diberi kode).
 
 **Penelusuran hirarki untuk ALAT/LOKASI TAMBAHAN (Step 8b, mode picker `multi`)** — direvisi 01/10/2026:
 hirarki TIDAK lagi ditutup setiap kali satu alat ditambahkan. Setiap layar hirarki kini memuat daftar
-alat/lokasi yang sudah ditambahkan (`*Sudah ditambahkan (n):*`), tombol `Hapus Terakhir (n)`
+alat/lokasi yang sudah ditambahkan lewat satu blok baku — `*Equipment :*` (alat utama, format
+`KODE — Deskripsi`) lalu `*Equipment Tambahan :*` bernomor `1. KODE — Deskripsi`
+(`WizardUtilityTrait::daftarEquipmentState()`, dipakai juga oleh prompt Step 8b) — ditambah tombol
+`Hapus Terakhir (n)`
 (`multi_hirarki_hapus`), dan tombol `Selesai Menambah (n)` (`multi_hirarki_selesai`) — jadi teknisi
 memilih sendiri kapan penelusuran berhenti. Kode alat yang **diketik** selagi hirarki terbuka langsung
 ditambahkan (`WizardFuncLocPickerTrait::cobaTambahDariKetik()` memakai `resolveMultiItem()`), kode yang
@@ -219,6 +223,19 @@ ambigu ditawarkan sebagai tombol, dan kata kunci yang tidak cocok apa pun menyed
 diingat di state `multi_layar` (`node` / `assets` / `assets_type`), dan penyelesaian otomatis node tanpa
 anak dimatikan saat penggambaran ulang (`buildFuncLocScreen(..., $selesaikanOtomatis: false)`) supaya
 item tidak ditambahkan berulang. Uji: `tests/Feature/ReportMultiEquipmentTest.php`.
+
+**Label tombol daftar alat = kode alat + deskripsi saja** (revisi 01/10/2026): kode Functional Location
+dihapus dari label tombol daftar alat (`WizardUtilityTrait::tombolAlatLabel()`, dipotong 64 karakter)
+karena batas 64 karakter tombol Telegram membuat deskripsi alat terpotong — pada data DEV 1.185 dari
+4.252 label terpotong saat kode lokasi ikut disertakan, sedangkan tanpa kode lokasi hanya 39. Berlaku di
+`ReportWizardService::buildCandidateKeyboard()`, `WizardFuncLocPickerTrait::buildAssetListKeyboard()` /
+`cobaTambahDariKetik()`, dan `ClarificationKeyboardBuilderTrait::buildEquipmentSelection()`
+(duplikat kecil `labelTombolAlat()` karena dipakai ClarificationService).
+
+**Temuan (finding) sebagai step tersendiri** (baru 01/10/2026): setelah root cause, wizard menanyakan
+temuan di Step 5b. Root cause dan temuan sama-sama OPSIONAL (tombol `Lewati Root Cause` /
+`Lewati Temuan`), disimpan di kolom `reports.finding` dan ikut tersalin ke baris salinan multi alat.
+Uji: `tests/Feature/ReportFindingStepTest.php`.
 
 **Pintasan laporan area saat equipment tidak pasti** (revisi): kalau pencarian equipment tidak
 auto-accept (confidence < 90%) dan teks laporan **menyebut Sub Area / Area / Departemen / nama lokasi

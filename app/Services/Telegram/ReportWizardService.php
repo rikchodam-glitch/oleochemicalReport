@@ -131,6 +131,7 @@ class ReportWizardService
     const STEP_EQUIPMENT_CLARIFY   = 'equipment_clarify';
     const STEP_WORK_DURATION       = 'work_duration';
     const STEP_ROOT_CAUSE          = 'root_cause';
+    const STEP_FINDING             = 'finding';
     const STEP_PHOTO_DOCUMENTATION = 'photo_documentation';
     const STEP_PHOTO_HYGIENE       = 'photo_hygiene';
     const STEP_COLLABORATOR        = 'collaborator';
@@ -143,6 +144,9 @@ class ReportWizardService
 
     /** Batas minimum karakter untuk field root_cause. */
     const ROOT_CAUSE_MIN_LENGTH = 3;
+
+    /** Batas minimum karakter untuk field finding (temuan). */
+    const FINDING_MIN_LENGTH = 3;
 
     /** Confidence minimum AI untuk dianggap sebagai kandidat valid. */
     const AI_CONFIDENCE_MIN = 60;
@@ -258,6 +262,7 @@ class ReportWizardService
         $state['equipment_id']     = $asset->id;
         $state['equipment_ident']  = $asset->tech_ident_no;
         $state['equipment_funcloc'] = $asset->functional_loc;
+        $state['equipment_desc']    = $asset->description;
         $state['started_from_info'] = true;
 
         if ($asset->area_id) {
@@ -382,6 +387,7 @@ class ReportWizardService
         if ($asal->asset !== null) {
             $state['equipment_id']      = $asal->asset->id;
             $state['equipment_ident']   = $asal->asset->tech_ident_no;
+            $state['equipment_desc']    = $asal->asset->description;
             $state['equipment_funcloc'] = $asal->asset->functional_loc;
         }
 
@@ -432,6 +438,9 @@ class ReportWizardService
 
             case self::STEP_ROOT_CAUSE:
                 return $this->handleRootCauseInput($chatId, $text, $state);
+
+            case self::STEP_FINDING:
+                return $this->handleFindingInput($chatId, $text, $state);
 
             case self::STEP_PHOTO_DOCUMENTATION:
                 return $this->handlePhotoCommand($chatId, $text, $state, 'documentation');
@@ -1061,9 +1070,12 @@ class ReportWizardService
      * area yang terdeteksi/diketahui) sebelum dipotong ke 4 kandidat
      * teratas di sana. array_slice() di bawah ini hanya menjaga agar
      * tidak menampilkan lebih dari 4 tombol, urutannya tetap dipertahankan.
-     * Label tombol selalu menyertakan functional_loc ($fl) agar teknisi
-     * bisa membedakan kandidat yang mirip tapi beda lokasi (mis. BD01 vs
-     * BD02) dan mengoreksi manual bila deteksi lokasi ternyata masih ambigu.
+     * Label tombol HANYA memuat kode alat + deskripsi. Kode Functional Location
+     * sengaja TIDAK ikut dimasukkan: batas 64 karakter tombol Telegram membuat
+     * deskripsi alat terpotong (pada data produksi DEV, 1.185 dari 4.252 label
+     * terpotong saat kode lokasi ikut disertakan, sedangkan tanpa kode lokasi
+     * hanya 39) sehingga teknisi lebih terbantu membaca deskripsi utuh.
+     * Lokasi tetap terlihat pada pesan konfirmasi sebelum tombol ini.
      *
      * @param  array $candidates Daftar kandidat dari TechIdentSearch
      * @param  array $results    Hasil lengkap TechIdentSearch (termasuk confidence)
@@ -1074,20 +1086,11 @@ class ReportWizardService
     {
         $keyboard = [];
         foreach (array_slice($candidates, 0, 4) as $candidate) {
-            $ti   = $candidate['tech_ident_no'] ?? '';
-            $fl   = $candidate['functional_loc'] ?? '';
-            $desc = $candidate['description'] ?? '';
+            $label = $this->tombolAlatLabel(
+                (string) ($candidate['tech_ident_no'] ?? ''),
+                (string) ($candidate['description'] ?? '')
+            );
 
-            $label = $ti;
-            if ($fl) {
-                $label .= " | {$fl}";
-            }
-            if ($desc) {
-                $label .= " — {$desc}";
-            }
-            if (strlen($label) > 64) {
-                $label = substr($label, 0, 61) . '...';
-            }
             $keyboard[] = [
                 'text'          => $label,
                 'callback_data' => 'equipment_candidate:' . $candidate['id'],
@@ -1402,6 +1405,7 @@ class ReportWizardService
     {
         $state['equipment_id']      = $asset->id;
         $state['equipment_ident']   = $asset->tech_ident_no;
+        $state['equipment_desc']    = $asset->description;
         $state['equipment_funcloc'] = $asset->functional_loc;
 
         // Lengkapi funcloc_id & area_id dari aset (area juga diturunkan dari kode

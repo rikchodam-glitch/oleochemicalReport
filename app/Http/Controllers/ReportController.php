@@ -349,6 +349,8 @@ class ReportController extends Controller
             'work_description'        => 'required|string',
             'work_duration_minutes'   => 'required|integer|min:0',
             'root_cause'              => 'nullable|string',
+            // Temuan (finding) — dicatat teknisi setelah root cause, opsional.
+            'finding'                 => 'nullable|string',
             'area_id'                 => 'nullable|exists:areas,id',
             'funcloc_id'              => 'nullable|exists:functional_locations,id',
             'asset_id'                => 'nullable|exists:assets,id',
@@ -453,6 +455,8 @@ class ReportController extends Controller
             'work_description'       => 'required|string',
             'work_duration_minutes'  => 'required|integer|min:0',
             'root_cause'              => 'nullable|string',
+            // Temuan (finding) — dicatat teknisi setelah root cause, opsional.
+            'finding'                 => 'nullable|string',
             'report_date'             => 'required|date',
             'area_id'                 => 'nullable|exists:areas,id',
             'funcloc_id'              => 'nullable|exists:functional_locations,id',

@@ -395,6 +395,8 @@
             </div>
         </div>
 
+        @include('reports.partials._temuan-kartu', ['report' => $report])
+
         {{-- ── Detail CM / Pekerjaan ──────────────────────── --}}
         @if($report->jenis_pekerjaan || $report->tanggal_kejadian || $report->linkedFinding || $report->equipment_tag)
             <div class="bg-white rounded-xl border border-slate-200 p-6">

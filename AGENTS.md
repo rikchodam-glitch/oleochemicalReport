@@ -509,6 +509,47 @@ Batasan penting lingkungan ini:
      Teknisi; Manajemen User memakai ikon kunci, Hak Akses memakai ikon
      perisai.
 
+14. **Step Temuan (finding) + format daftar alat (diputuskan 01/10/2026,
+   sudah ada kodenya — jangan diubah tanpa instruksi user):**
+   - Wizard Telegram punya step BARU **Step 5b (temuan)** setelah root cause:
+     `ReportWizardService::STEP_FINDING` + `buildFindingPrompt()`,
+     `handleFindingInput()`, `lewatiTemuan()` di `WizardStepHandlerTrait`.
+     Root cause DAN temuan sama-sama **opsional**: tombol `Lewati Root Cause`
+     (`wizard:confirm:rootcause_skip`) dan `Lewati Temuan`
+     (`wizard:confirm:finding_skip`); teks `-`, `skip`, `lewati`, `tidak`,
+     `tidak ada` juga diperlakukan sebagai lewati
+     (`teksMenandakanLewati()`). `rootcause_ok` (root cause hasil deteksi AI)
+     sekarang menuju STEP_FINDING, BUKAN langsung foto dokumentasi.
+   - Temuan disimpan di kolom BARU **`reports.finding`** (text nullable;
+     migration `2026_10_01_000001_add_finding_to_reports_table.php`) dan ikut
+     tersalin ke baris salinan multi alat karena dikirim lewat `$dataLaporan`
+     di `WizardReportSaverTrait::saveReport()`. `root_cause` di titik itu
+     memakai `?? null` supaya laporan tanpa root cause tetap bisa disimpan.
+   - Form web laporan memakai partial agar blade besar tidak perlu ditulis
+     ulang: `resources/views/reports/partials/_temuan.blade.php` (create/edit)
+     dan `_temuan-kartu.blade.php` (detail laporan), masing-masing dipanggil
+     SATU baris dari `create.blade.php`, `edit.blade.php`, `show.blade.php`.
+   - Daftar alat pada prompt Step 8b dan di SEMUA layar hirarki mode multi
+     memakai satu helper: `WizardUtilityTrait::daftarEquipmentState()` →
+     blok `*Equipment :*` (alat utama: `KODE — Deskripsi`) lalu
+     `*Equipment Tambahan :*` bernomor `1. KODE — Deskripsi`. State
+     `equipment_desc` diisi saat alat dikunci (`lockEquipmentAndAdvance()`,
+     `finalizeClarificationSelection()`, `startWizardForAsset()`) dengan
+     fallback `Asset::find()` di `equipmentDesc()`.
+   - **Label tombol daftar alat = kode alat + deskripsi SAJA**
+     (`WizardUtilityTrait::tombolAlatLabel()`, dipotong 64 karakter). Kode
+     Functional Location SENGAJA tidak disertakan: pada data DEV 1.185 dari
+     4.252 label terpotong karena batas 64 karakter tombol Telegram (tanpa
+     kode lokasi hanya 39) sehingga deskripsi alat terpotong. Jangan
+     menambahkan `functional_loc` kembali ke label tombol alat, dan jangan
+     menyalin logika label ini — `ClarificationKeyboardBuilderTrait` punya
+     duplikat kecil (`labelTombolAlat()`) karena dipakai ClarificationService,
+     bukan ReportWizardService.
+   - Uji: `tests/Feature/ReportFindingStepTest.php` (14 test). Uji mutasi sudah
+     dijalankan: menetralkan (a) penyimpanan temuan, (b) urutan blok daftar
+     alat, (c) penghapusan kode funcloc pada label kandidat membuat 3 test
+     GAGAL.
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file
