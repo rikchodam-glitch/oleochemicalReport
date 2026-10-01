@@ -15,10 +15,11 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   ke sana. Remote `origin` di DEV = GitHub (cadangan, sering tertinggal).
 - Vhost produksi: `C:\laragon\etc\apache2\sites-enabled\oleo-prod.conf`
   (DocumentRoot ke copy PROD, `ServerName oleo-prod.lvh.me` + `ServerAlias localhost`).
-- Alur perubahan yang WAJIB diikuti: edit & uji di DEV -> commit di DEV ->
-  `git push hub main` -> jalankan `tools\deploy-prod.ps1` (pull di PROD +
-  dependensi + migrasi + cache + restart service). JANGAN mengedit atau
-  menjalankan migrasi manual di PROD.
+- Alur perubahan yang WAJIB diikuti: edit & uji di DEV -> **commit di DEV
+  SEGERA setelah uji lulus** (lihat "ALUR KERJA SETIAP SESI BARU" poin 7,
+  jangan menumpuk perubahan tanpa commit) -> `git push hub main` -> jalankan
+  `tools\deploy-prod.ps1` (pull di PROD + dependensi + migrasi + cache +
+  restart service). JANGAN mengedit atau menjalankan migrasi manual di PROD.
 - **Deploy satu klik (sejak 01/10/2026, keputusan user):** pintasan Desktop
   `Deploy-Laporan.bat` dan `Backup-Database-Laporan.bat` hanya MEMANGGIL
   `PROD\tools\deploy-laporan-prod.ps1` supaya tidak ada dua versi logika.
@@ -29,7 +30,9 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   terbaru disimpan, catatan di `C:\laragon\backup-oleochemical\backup-db.log`;
   **backup gagal = deploy dibatalkan** (jangan pernah melewati ini saat ada
   perubahan database) -> (2) `git push hub main` dari DEV TANPA membuat commit
-  baru, jadi berkas DEV yang belum di-commit tidak ikut terkirim -> (3)
+  baru, jadi berkas DEV yang belum di-commit tidak ikut terkirim — karena itu
+  WAJIB commit dulu di DEV (aturan poin 7), kalau tidak yang terpasang ke PROD
+  hanya commit terakhir yang ADA di repo hub -> (3)
   ringkasan: commit PROD sekarang, commit yang ADA di repo hub, migrasi
   tertunda (`php artisan migrate:status --pending`), dan berkas DEV yang belum
   di-commit -> (4) konfirmasi manusia -> (5) `tools\deploy-prod.ps1 -LewatiDev
@@ -1144,12 +1147,34 @@ dibiarkan apa adanya, sengaja, karena itu nama perusahaan bukan nama aplikasi.
    output test, angka yang bisa diverifikasi), bukan asumsi. Kalau tidak
    bisa verifikasi sendiri (misal tidak bisa login/akses browser), katakan
    itu secara eksplisit, jangan simpulkan "seharusnya sudah benar".
-7. Commit progress ke git setelah satu fitur/perbaikan terverifikasi jalan
-   dan STABIL, SEBELUM mulai perubahan berikutnya yang tidak terkait.
-   Jangan menumpuk banyak perubahan berbeda tanpa commit di antaranya —
-   kalau nanti terjadi corrupt dan perlu `git checkout`, kerugian yang
-   hilang hanya sebatas perubahan sejak commit terakhir, bukan seluruh
-   sesi kerja.
+7. **COMMIT SEGERA SETELAH UJI LULUS — wajib, bukan pilihan.** Begitu satu
+   perubahan dinyatakan lulus uji (test otomatis hijau, atau uji langsung yang
+   hasilnya bisa ditunjukkan), perubahan itu WAJIB langsung di-commit saat itu
+   juga. JANGAN menunggu akhir sesi, JANGAN menunda sampai "nanti setelah
+   fitur lain selesai", dan JANGAN menggabungkan beberapa perubahan berbeda
+   dalam satu commit. Aturannya:
+   a. Satu perubahan/perbaikan = satu commit, pesan Bahasa Indonesia yang
+      menyebut apa yang berubah dan kenapa.
+   b. Hanya berkas yang terkait perubahan itu yang di-`git add` (tulis
+      path-nya satu per satu). JANGAN `git add -A` / `git add .` — berkas
+      yang sudah kotor dari sesi lain (mis. `app/Jobs/ProcessCmFindingsImport.php`,
+      `.env.example`, `.gitignore`, `tmp-cek-aset.php`) tidak boleh ikut
+      ter-commit.
+   c. Setelah commit, langsung `git push hub main`. Pekerjaan dianggap
+      "selesai" hanya setelah hash commit-nya dilaporkan ke user.
+   d. Yang BELUM lulus uji JANGAN di-commit (jangan pernah commit kode setengah
+      jalan/rusak). Kalau memang harus menyimpan pekerjaan darurat, buat
+      commit terpisah berawalan `WIP:` dan sebutkan di laporan bahwa commit itu
+      belum lulus uji.
+   e. Deploy ke PROD TETAP manual lewat pintasan `Deploy-Laporan.bat`
+      (dijalankan manusia, ada konfirmasi `y`) — commit/push TIDAK mengubah
+      PROD sedikit pun. Setelah push, bandingkan commit PROD
+      (`git -C 'C:\laragon\www\oleochemicalReport-prod' log --oneline -1`)
+      dengan commit hub (`git rev-parse hub/main`) untuk tahu PROD masih
+      tertinggal atau tidak, lalu laporkan.
+   f. Alasan aturan ini: kalau nanti file corrupt dan perlu `git checkout`,
+      kerugian yang hilang hanya sebatas perubahan sejak commit terakhir,
+      bukan seluruh sesi kerja.
 
 ## ATURAN WAJIB: VERIFIKASI DULU, BARU KODING
 
