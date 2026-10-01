@@ -228,3 +228,51 @@ test('panel filter lanjutan berada tepat sebelum tabel dan mempertahankan tangga
     expect($cocok[0] ?? '')->toContain('name="tanggal"');
 });
 
+test('tabel memuat kolom Status dengan lencana Done dan Continue', function () {
+    // Dua laporan pada tanggal yang sama dengan status berbeda.
+    laporanRingkasanUji($this->teknisiReguler->id, $this->tanggal, [
+        'report_code'      => 'UJI-STS-CONT',
+        'work_description' => 'Pekerjaan berstatus continue uji',
+        'jenis_pekerjaan'  => 'CM',
+        'status'           => 'continue',
+    ]);
+
+    laporanRingkasanUji($this->teknisiReguler->id, $this->tanggal, [
+        'report_code'      => 'UJI-STS-DONE',
+        'work_description' => 'Pekerjaan berstatus selesai uji',
+        'jenis_pekerjaan'  => 'CM',
+        'status'           => 'completed',
+    ]);
+
+    $html = $this->actingAs($this->admin)
+        ->get('/reports?tanggal=' . $this->tanggal)
+        ->assertStatus(200)
+        // Judul kolom Status ada di thead (label filter bernama "Status Pekerjaan").
+        ->assertSee('>Status<', false)
+        // Lencana status per baris memakai penanda data-status (hanya ada di kolom ini).
+        ->assertSee('data-status="continue"', false)
+        ->assertSee('data-status="completed"', false)
+        ->getContent();
+
+    // Lencana menampilkan kata Done / Continue, bukan nilai mentah kolom.
+    expect(preg_match('/data-status="completed"[^>]*>\s*Done\s*<\/a>/', $html))->toBe(1)
+        ->and(preg_match('/data-status="continue"[^>]*>\s*Continue\s*<\/a>/', $html))->toBe(1)
+        // Dua laporan = tepat dua lencana status pada tabel.
+        ->and(substr_count($html, 'data-status='))->toBe(2);
+
+    // Kolom Status berada di antara kolom Jenis dan Lokasi / Alat.
+    $posisiJenis  = strpos($html, '>Jenis<');
+    $posisiStatus = strpos($html, '>Status<');
+    $posisiLokasi = strpos($html, '>Lokasi / Alat<');
+
+    expect($posisiJenis)->not->toBeFalse()
+        ->and($posisiStatus)->not->toBeFalse()
+        ->and($posisiLokasi)->not->toBeFalse()
+        ->and($posisiJenis)->toBeLessThan($posisiStatus)
+        ->and($posisiStatus)->toBeLessThan($posisiLokasi);
+
+    // Lencana memakai tautan filter status yang sama dengan kartu ringkasan.
+    expect($html)->toContain('status=continue')->toContain('status=completed');
+});
+
+

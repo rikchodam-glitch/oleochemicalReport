@@ -455,6 +455,7 @@
                     <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Pekerjaan</th>
                     <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Teknisi</th>
                     <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Jenis</th>
+                    <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Status</th>
                     <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Lokasi / Alat</th>
                     <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Waktu & Foto</th>
                     @if($pakaiRentang)
@@ -503,11 +504,6 @@
                             </p>
                             <p class="text-xs text-slate-400 mt-1">
                                 {{ $report->report_code ?? '-' }}
-                                @if($report->status === 'continue')
-                                    <span class="inline-flex ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
-                                        CONTINUE
-                                    </span>
-                                @endif
                                 @if($report->continued_from_id)
                                     <span class="inline-flex ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-100">
                                         LANJUTAN
@@ -555,6 +551,29 @@
                                 <p class="text-xs text-slate-400 mt-1">
                                     {{ $zpmLabels[$report->work_classification] ?? $report->work_classification }}
                                 </p>
+                            @endif
+                        </td>
+
+                        {{-- Status pekerjaan: Done (selesai) / Continue (belum selesai) /
+                             Perlu Diperiksa. Badge diklik untuk memfilter tabel ke status itu. --}}
+                        <td class="px-4 py-3.5 align-top text-center whitespace-nowrap">
+                            @php
+                                $statusLencana = [
+                                    'completed'    => ['teks' => 'Done',            'kelas' => 'bg-teal-50 text-teal-700 border-teal-100'],
+                                    'continue'     => ['teks' => 'Continue',        'kelas' => 'bg-amber-100 text-amber-700 border-amber-200'],
+                                    'needs_review' => ['teks' => 'Perlu Diperiksa', 'kelas' => 'bg-rose-100 text-rose-700 border-rose-200'],
+                                ][$report->status] ?? null;
+                            @endphp
+                            @if($statusLencana)
+                                <a href="{{ $tautanStatus($report->status) }}"
+                                   onclick="event.stopPropagation()"
+                                   data-status="{{ $report->status }}"
+                                   title="Lihat semua laporan berstatus {{ $statusLencana['teks'] }}"
+                                   class="inline-flex px-2 py-0.5 rounded-md text-xs font-medium border {{ $statusLencana['kelas'] }}">
+                                    {{ $statusLencana['teks'] }}
+                                </a>
+                            @else
+                                <span class="text-xs text-slate-300">-</span>
                             @endif
                         </td>
 
@@ -637,7 +656,7 @@
 
                 @empty
                     <tr>
-                        <td colspan="{{ $pakaiRentang ? 6 : 5 }}" class="px-5 py-16 text-center">
+                        <td colspan="{{ $pakaiRentang ? 7 : 6 }}" class="px-5 py-16 text-center">
                             <div class="flex flex-col items-center gap-3">
                                 <svg class="w-12 h-12 text-slate-200" fill="none" viewBox="0 0 48 48">
                                     <rect x="8" y="6" width="32" height="36" rx="4" fill="currentColor" opacity=".4"/>
