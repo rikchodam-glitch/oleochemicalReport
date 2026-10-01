@@ -1005,6 +1005,11 @@ Batasan penting lingkungan ini:
     yang berada di blok `if`/`for`, pakai `goto`/label; (2) cara tercepat
     mendiagnosis `.bat` yang menutup seketika adalah menjalankannya dengan
     stdin NUL dan keluaran dialihkan ke berkas lalu baca berkas itu — JANGAN
+    lewat pipe; (3) bedakan dua kasus yang gejalanya mirip: batch yang gagal
+    parse (selesai instan tanpa teks) versus skrip yang menunggu masukan
+    manusia (mis. `Read-Host` pada `pasang-token-tunnel-prod.ps1`) — yang
+    terakhir memang akan tampak menggantung dan TIDAK bisa diuji otomatis.**
+
 30. **Token tunnel hasil tempel di jendela hitam bisa TERPOTONG, dan gejalanya
     menyesatkan.** Pada 30/09/2026 pengguna menjalankan pintasan
     `Pasang-Token-Tunnel.bat`; skrip menolak dengan pesan
@@ -1030,11 +1035,6 @@ Batasan penting lingkungan ini:
     pada `Read-Host` tidak bisa diuji otomatis (butuh manusia) dan sudah
     terbukti pernah menghasilkan isian tidak utuh.**
 
-
-    lewat pipe; (3) bedakan dua kasus yang gejalanya mirip: batch yang gagal
-    parse (selesai instan tanpa teks) versus skrip yang menunggu masukan
-    manusia (mis. `Read-Host` pada `pasang-token-tunnel-prod.ps1`) — yang
-    terakhir memang akan tampak menggantung dan TIDAK bisa diuji otomatis.**
 31. **Empat jebakan PowerShell saat satu skrip memanggil skrip lain (ketahuan
     01/10/2026 waktu membuat `tools\deploy-laporan-prod.ps1`).** Semuanya
     menghasilkan gejala menyesatkan dan SUDAH dibuktikan dengan uji terisolasi,
@@ -1113,6 +1113,43 @@ Batasan penting lingkungan ini:
     jalan saat diklik manusia (bandingkan insiden #27).**
 
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
+
+33. **Alat lain di LOKASI YANG SAMA dibuang diam-diam saat menambah alat kolaborasi (Step 8b), dan
+    hirarki hilang setiap kali satu alat ditambahkan (01/10/2026).** Keluhan pengguna: "kolaborasi
+    alat/area kadang tidak bisa, dan memilih alat harus menelusuri hirarki ulang sehingga lama".
+    Setelah diuji dengan data asli DEV (4.252 alat, 130 node FuncLoc) memakai skrip sementara yang
+    memanggil `ReportWizardService` langsung (tanpa kirim pesan Telegram), ditemukan EMPAT sebab:
+    (a) **`tambahMultiItem()` membandingkan `funcloc_id` item dengan `state['funcloc_id']`.** Karena
+    `lockEquipmentAndAdvance()` -> `LocationResolver::lengkapiDariAset()` MENGISI `state['funcloc_id']`
+    dengan lokasi alat utama, maka setiap alat LAIN di lokasi yang sama (kasus paling umum: dua pompa
+    pada satu section) dianggap "sama dengan alat utama" dan dibuang tanpa pesan. Sebelumnya pesannya
+    tetap mengucapkan "Ditambahkan dari hirarki" sehingga teknisi yakin berhasil. Perbaikan:
+    `multiItemSamaUtama()` membandingkan lewat `asset_id` saja untuk item ber-alat, dan lewat
+    `funcloc_id` hanya untuk item lokasi (tanpa `asset_id`).
+    (b) **`selesaikanPickerMulti()` selalu menutup hirarki** (membuang `funcloc_picker_mode` +
+    `funcloc_path`), jadi menambah N alat = menelusuri PT -> Departemen -> Area -> Section N kali.
+    Perbaikan: picker dibiarkan aktif dan layar digambar ulang (`renderLayarMulti()`), layar yang harus
+    digambar diingat di state `multi_layar`, plus tombol `Selesai Menambah (n)` dan `Hapus Terakhir (n)`
+    di setiap layar hirarki; daftar item ditampilkan di bawah pesan tiap layar.
+    (c) **Mengetik kode ALAT selagi hirarki aktif selalu gagal**: seluruh teks dirutekan ke
+    `handleFuncLocTextSearch()` yang hanya mencari `FunctionalLocation`, dan jawabannya hanya
+    menyisakan tombol "Batalkan Laporan" (tombol hirarki sudah terhapus dari chat) sehingga teknisi
+    nyangkut. Perbaikan: `cobaTambahDariKetik()` menambahkan kode alat langsung (atau menawarkan
+    kandidat), dan layar "tidak ditemukan" menyediakan tombol `Kembali ke Layar Pilih`
+    (`funcloc_kembali`).
+    (d) Node tanpa anak & tanpa alat yang layarnya DIGAMBAR ULANG bisa menambah item berulang tanpa
+    perintah teknisi; penyelesaian otomatis kini dimatikan saat penggambaran ulang
+    (`buildFuncLocScreen(..., $selesaikanOtomatis: false)`).
+    Label layar akar mode multi juga tidak lagi menulis "*Step 2*" (menyesatkan di Step 8b).
+    Uji: 17 test di `tests/Feature/ReportMultiEquipmentTest.php` (termasuk uji mutasi: menetralkan
+    perbaikan membuat 2-6 test GAGAL), dan seluruh suite 265 test hijau.
+    **Pelajaran: (1) nilai fallback/penanda yang dipakai untuk membandingkan identitas WAJIB dibedakan
+    per JENIS item (alat vs lokasi) — membandingkan kolom lokasi untuk item alat membuat seluruh alat
+    satu lokasi dianggap duplikat, dan kegagalan itu SENYAP karena pesan sukses tetap muncul; (2) fitur
+    yang "kadang tidak bisa" wajib diuji dengan DATA ASLI, karena data uji yang mengosongkan kolom
+    (di sini `funcloc_id` pada fixture lama) menyembunyikan bug selama berbulan-bulan; (3) jangan pernah
+    menutup/menghapus layar pilihan sebelum pengguna memutuskan selesai — bila layar lama terhapus dari
+    chat dan tidak ada tombol kembali, satu-satunya jalan keluar adalah membatalkan laporan.**
 
 ## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN
 

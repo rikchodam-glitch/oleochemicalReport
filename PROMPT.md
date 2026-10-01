@@ -208,6 +208,18 @@ FuncLoc berubah bersamaan.
 type tersembunyi (di data nyata: 2.643 dari 4.247 alat terlihat, sekarang 4.243 — sisa 4 alat belum
 punya Tech Ident No sehingga tombolnya tidak bisa diberi kode).
 
+**Penelusuran hirarki untuk ALAT/LOKASI TAMBAHAN (Step 8b, mode picker `multi`)** — direvisi 01/10/2026:
+hirarki TIDAK lagi ditutup setiap kali satu alat ditambahkan. Setiap layar hirarki kini memuat daftar
+alat/lokasi yang sudah ditambahkan (`*Sudah ditambahkan (n):*`), tombol `Hapus Terakhir (n)`
+(`multi_hirarki_hapus`), dan tombol `Selesai Menambah (n)` (`multi_hirarki_selesai`) — jadi teknisi
+memilih sendiri kapan penelusuran berhenti. Kode alat yang **diketik** selagi hirarki terbuka langsung
+ditambahkan (`WizardFuncLocPickerTrait::cobaTambahDariKetik()` memakai `resolveMultiItem()`), kode yang
+ambigu ditawarkan sebagai tombol, dan kata kunci yang tidak cocok apa pun menyediakan tombol
+`Kembali ke Layar Pilih` (`funcloc_kembali`) supaya tidak nyangkut. Layar yang harus digambar ulang
+diingat di state `multi_layar` (`node` / `assets` / `assets_type`), dan penyelesaian otomatis node tanpa
+anak dimatikan saat penggambaran ulang (`buildFuncLocScreen(..., $selesaikanOtomatis: false)`) supaya
+item tidak ditambahkan berulang. Uji: `tests/Feature/ReportMultiEquipmentTest.php`.
+
 **Pintasan laporan area saat equipment tidak pasti** (revisi): kalau pencarian equipment tidak
 auto-accept (confidence < 90%) dan teks laporan **menyebut Sub Area / Area / Departemen / nama lokasi
 secara eksplisit** (kode atau nama, termasuk penulisan `BD 2` untuk kode `BD02`), wizard menambahkan

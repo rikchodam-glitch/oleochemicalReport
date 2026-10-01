@@ -1212,23 +1212,60 @@ trait WizardStepHandlerTrait
     {
         $state['multi_items'] = $state['multi_items'] ?? [];
 
-        $samaDenganUtama = (!empty($item['asset_id']) && (int) $item['asset_id'] === (int) ($state['equipment_id'] ?? 0))
-            || (!empty($item['funcloc_id']) && (int) $item['funcloc_id'] === (int) ($state['funcloc_id'] ?? 0));
-
-        if ($samaDenganUtama) {
+        if ($this->multiItemSamaUtama($state, $item) || $this->multiItemSudahAda($state, $item)) {
             return $state;
-        }
-
-        foreach ($state['multi_items'] as $ada) {
-            if ((int) ($ada['asset_id'] ?? 0) === (int) ($item['asset_id'] ?? 0)
-                && (int) ($ada['funcloc_id'] ?? 0) === (int) ($item['funcloc_id'] ?? 0)) {
-                return $state;
-            }
         }
 
         $state['multi_items'][] = $item;
 
         return $state;
+    }
+
+    /**
+     * Apakah item alat/lokasi sama dengan alat/lokasi UTAMA laporan.
+     *
+     * Dipakai bersama oleh tambahMultiItem() dan oleh pemanggil yang perlu
+     * memberi tahu teknisi dengan benar (mis. picker hirarki mode multi)
+     * bahwa item diabaikan, bukan ditambahkan. Sebelum dipisah seperti ini,
+     * pesan "Ditambahkan" bisa muncul padahal itemnya tidak masuk daftar.
+     *
+     * @param  array  $state  State wizard
+     * @param  array  $item   Entri item (asset_id/funcloc_id/label/sub)
+     * @return bool
+     */
+    protected function multiItemSamaUtama(array $state, array $item): bool
+    {
+        // Alat dibandingkan dengan ALAT utama lewat asset_id saja. Membandingkan
+        // funcloc_id untuk item ber-asset_id pernah membuat SEMUA alat lain di
+        // lokasi yang sama (sangat umum: dua pompa pada satu section) dibuang
+        // diam-diam, karena lockEquipmentAndAdvance() mengisi state['funcloc_id']
+        // dengan lokasi alat utama.
+        if (!empty($item['asset_id'])) {
+            return (int) $item['asset_id'] === (int) ($state['equipment_id'] ?? 0);
+        }
+
+        // Item tanpa alat (lokasi hasil tombol Konfirmasi) dibandingkan dengan
+        // lokasi utama laporan.
+        return !empty($item['funcloc_id']) && (int) $item['funcloc_id'] === (int) ($state['funcloc_id'] ?? 0);
+    }
+
+    /**
+     * Apakah item alat/lokasi sudah pernah masuk daftar item tambahan.
+     *
+     * @param  array  $state  State wizard
+     * @param  array  $item   Entri item (asset_id/funcloc_id/label/sub)
+     * @return bool
+     */
+    protected function multiItemSudahAda(array $state, array $item): bool
+    {
+        foreach ($state['multi_items'] ?? [] as $ada) {
+            if ((int) ($ada['asset_id'] ?? 0) === (int) ($item['asset_id'] ?? 0)
+                && (int) ($ada['funcloc_id'] ?? 0) === (int) ($item['funcloc_id'] ?? 0)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

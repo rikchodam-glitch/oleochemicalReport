@@ -195,6 +195,22 @@ trait WizardCallbackHandlerTrait
             return $this->startFuncLocPicker($chatId, $state, 'multi');
         }
 
+        // Kendali penelusuran hirarki mode multi: tombol "Selesai Menambah"
+        // (tutup penelusuran tanpa membuang item), "Hapus Terakhir" (buang item
+        // terakhir tanpa keluar dari layar), dan "Kembali ke Layar Pilih"
+        // (dipakai layar hasil pencarian yang tidak menemukan lokasi).
+        if ($callbackData === 'multi_hirarki_selesai') {
+            return $this->selesaikanHirarkiMulti($chatId, $state);
+        }
+
+        if ($callbackData === 'multi_hirarki_hapus') {
+            return $this->hapusItemMultiTerakhir($chatId, $state);
+        }
+
+        if ($callbackData === 'funcloc_kembali') {
+            return $this->kembaliKeLayarHirarki($chatId, $state);
+        }
+
         if ($callbackData === 'multi_batal') {
             unset($state['multi_kandidat']);
             $this->saveState($chatId, $state);

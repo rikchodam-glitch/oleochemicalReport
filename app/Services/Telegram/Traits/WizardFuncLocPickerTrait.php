@@ -203,6 +203,53 @@ trait WizardFuncLocPickerTrait
     /** Callback data tombol pintasan laporan area: wizard_loc:{level}:{id}. */
     protected const CALLBACK_LOCATION_SHORTCUT = 'wizard_loc:';
 
+    /** Callback tombol "Selesai Menambah": menutup penelusuran hirarki mode multi. */
+    protected const CALLBACK_MULTI_SELESAI = 'multi_hirarki_selesai';
+
+    /** Callback tombol "Hapus Terakhir": buang item tambahan terakhir dari layar hirarki. */
+    protected const CALLBACK_MULTI_HAPUS = 'multi_hirarki_hapus';
+
+    /** Callback tombol kembali ke layar hirarki dari layar hasil pencarian. */
+    protected const CALLBACK_FUNCLOC_KEMBALI = 'funcloc_kembali';
+
+    /**
+     * Apakah picker hirarki sedang dipakai untuk menambah alat/lokasi tambahan
+     * pada pekerjaan yang sudah terkunci (mode 'multi').
+     *
+     * @param  array  $state  State wizard saat ini
+     * @return bool
+     */
+    protected function isModeMulti(array $state): bool
+    {
+        return ($state['funcloc_picker_mode'] ?? '') === 'multi';
+    }
+
+    /**
+     * Ringkasan daftar alat/lokasi tambahan untuk ditempel di bawah pesan
+     * setiap layar hirarki mode multi, supaya teknisi selalu melihat apa yang
+     * sudah dipilih tanpa harus keluar dari penelusuran hierarki.
+     *
+     * @param  array  $state  State wizard saat ini
+     * @return string  Teks ringkasan (diawali dua baris baru)
+     */
+    protected function ringkasanItemMulti(array $state): string
+    {
+        $daftar = $state['multi_items'] ?? [];
+
+        if ($daftar === []) {
+            return "\n\n_Belum ada alat/lokasi tambahan. Tekan Selesai Menambah bila tidak ada._";
+        }
+
+        $teks = "\n\n*Sudah ditambahkan (" . count($daftar) . "):*";
+
+        foreach ($daftar as $index => $item) {
+            $teks .= "\n" . ($index + 1) . '. ' . ($item['label'] ?? '-')
+                . (!empty($item['sub']) ? ' — ' . $item['sub'] : '');
+        }
+
+        return $teks . "\n\nTekan _Selesai Menambah_ bila sudah, atau lanjut pilih alat/lokasi lain (boleh juga ketik kodenya).";
+    }
+
     /**
      * Deteksi lokasi (Sub Area / Area / Departemen) yang disebut EKSPLISIT di
      * teks laporan teknisi.
@@ -455,6 +502,7 @@ trait WizardFuncLocPickerTrait
         $state['funcloc_picker_active'] = true;
         $state['funcloc_picker_mode']   = $mode;
         $state['funcloc_path']          = [];
+        unset($state['multi_layar']);
         $this->saveState($chatId, $state);
 
         return $this->buildFuncLocScreen($chatId, FunctionalLocation::LEVEL_SITE, null, $state);
@@ -494,6 +542,17 @@ trait WizardFuncLocPickerTrait
             return $this->errorResponse('Ketik nama atau kode lokasi yang ingin dicari.');
         }
 
+        // Mode multi: kode ALAT yang diketik langsung ditambahkan supaya teknisi
+        // yang hanya hafal kode alat tidak perlu tahu kode lokasinya. Kode yang
+        // cocok ke beberapa alat ditawarkan sebagai tombol pilihan.
+        if ($this->isModeMulti($state)) {
+            $langsung = $this->cobaTambahDariKetik($chatId, $term, $state);
+
+            if ($langsung !== null) {
+                return $langsung;
+            }
+        }
+
         // Dibatasi 8 hasil (lebih kecil dari batas 20 di endpoint web) agar
         // keyboard inline Telegram tetap muat tanpa perlu di-scroll panjang
         // di layar HP.
@@ -504,11 +563,27 @@ trait WizardFuncLocPickerTrait
             ->get(['id', 'code', 'name', 'level']);
 
         if ($nodes->isEmpty()) {
+            $keyboard = [];
+
+            // Teknisi tidak boleh ditinggal tanpa jalan kembali ke hierarki:
+            // layar sebelumnya sudah terhapus dari chat, jadi tombol "Kembali"
+            // WAJIB disediakan selain tombol batal (mode multi).
+            if ($this->isModeMulti($state)) {
+                $keyboard[] = [
+                    'text'          => 'Kembali ke Layar Pilih',
+                    'callback_data' => self::CALLBACK_FUNCLOC_KEMBALI,
+                ];
+            }
+
+            $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'];
+
+            $petunjuk = $this->isModeMulti($state)
+                ? 'Coba kata kunci lain, atau kembali ke layar pilihan sebelumnya.'
+                : 'Coba kata kunci lain, atau lanjutkan lewat tombol yang sudah tampil sebelumnya.';
+
             return [
-                'message'  => "Lokasi \"{$term}\" tidak ditemukan.\n\nCoba kata kunci lain, atau lanjutkan lewat tombol yang sudah tampil sebelumnya.",
-                'keyboard' => [
-                    ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'],
-                ],
+                'message'  => "Lokasi \"{$term}\" tidak ditemukan.\n\n{$petunjuk}",
+                'keyboard' => $keyboard,
             ];
         }
 
@@ -519,10 +594,10 @@ trait WizardFuncLocPickerTrait
 
         $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'];
 
-        return [
+        return $this->tambahKendaliMulti([
             'message'  => "Hasil pencarian \"{$term}\":\n\nPilih lokasi yang sesuai, atau ketik kata kunci lain untuk mencari ulang.",
             'keyboard' => $keyboard,
-        ];
+        ], $state);
     }
 
     /**
@@ -652,6 +727,141 @@ trait WizardFuncLocPickerTrait
     }
 
     /**
+     * Tambahkan daftar item + tombol kendali mode multi ke satu layar hirarki.
+     *
+     * Dipakai di SEMUA layar picker saat mode 'multi' aktif supaya teknisi:
+     * (a) selalu melihat alat/lokasi yang sudah ditambahkan,
+     * (b) bisa menghapus item terakhir tanpa keluar dari penelusuran,
+     * (c) bisa menutup penelusuran lewat tombol "Selesai Menambah".
+     * Layar yang sudah punya tombol kendali (dipanggil dua kali) tidak diubah,
+     * sehingga daftar item tidak pernah dobel.
+     *
+     * @param  array  $layar  Layar picker (message + keyboard)
+     * @param  array  $state  State wizard saat ini
+     * @return array  Layar dengan daftar item dan tombol kendali
+     */
+    protected function tambahKendaliMulti(array $layar, array $state): array
+    {
+        if (!$this->isModeMulti($state)) {
+            return $layar;
+        }
+
+        $keyboard = $layar['keyboard'] ?? [];
+
+        foreach ($keyboard as $baris) {
+            if ((string) ($baris['callback_data'] ?? '') === self::CALLBACK_MULTI_SELESAI) {
+                return $layar;
+            }
+        }
+
+        $daftar = $state['multi_items'] ?? [];
+
+        $tombol = [];
+
+        if ($daftar !== []) {
+            $tombol[] = [
+                'text'          => 'Hapus Terakhir (' . count($daftar) . ')',
+                'callback_data' => self::CALLBACK_MULTI_HAPUS,
+            ];
+        }
+
+        $tombol[] = [
+            'text'          => 'Selesai Menambah (' . count($daftar) . ')',
+            'callback_data' => self::CALLBACK_MULTI_SELESAI,
+        ];
+
+        // Sisipkan sebelum baris tombol navigasi (wizard:*) supaya mudah dijangkau.
+        $posisiNav = null;
+
+        foreach ($keyboard as $indeks => $baris) {
+            if (str_starts_with((string) ($baris['callback_data'] ?? ''), 'wizard:')) {
+                $posisiNav = $indeks;
+                break;
+            }
+        }
+
+        $keyboard = $posisiNav === null
+            ? array_merge($keyboard, $tombol)
+            : array_merge(array_slice($keyboard, 0, $posisiNav), $tombol, array_slice($keyboard, $posisiNav));
+
+        $layar['keyboard'] = $keyboard;
+        $layar['message']  = ($layar['message'] ?? '') . $this->ringkasanItemMulti($state);
+
+        return $layar;
+    }
+
+    /**
+     * Bangun ulang layar hirarki yang sedang dibuka setelah item ditambahkan
+     * atau dihapus, lengkap dengan daftar item dan tombol kendali.
+     *
+     * @param  string  $chatId   Chat ID Telegram
+     * @param  array   $state    State wizard saat ini
+     * @param  string  $catatan  Kalimat pembuka (mis. "Ditambahkan dari hirarki: X")
+     * @return array   Layar hirarki terbaru
+     */
+    protected function renderLayarMulti(string $chatId, array $state, string $catatan = ''): array
+    {
+        $layar = $this->bangunLayarMulti($chatId, $state);
+
+        if ($catatan !== '') {
+            $layar['message'] = $catatan . "\n\n" . ($layar['message'] ?? '');
+        }
+
+        return $this->tambahKendaliMulti($layar, $state);
+    }
+
+    /**
+     * Layar dasar yang harus ditampilkan ulang: daftar alat pada lokasi yang
+     * barusan dibuka (bila teknisi sedang memilih alat dari daftar itu), atau
+     * layar node yang sedang ditelusuri.
+     *
+     * @param  string  $chatId  Chat ID Telegram
+     * @param  array   $state   State wizard saat ini
+     * @return array   Layar dasar
+     */
+    protected function bangunLayarMulti(string $chatId, array $state): array
+    {
+        $tersimpan = $state['multi_layar'] ?? [];
+        $jenis     = $tersimpan['jenis'] ?? 'node';
+
+        if ($jenis === 'assets' && !empty($tersimpan['node_id'])) {
+            return $this->handleFuncLocAssets($chatId, 'funcloc_assets:' . (int) $tersimpan['node_id'], $state);
+        }
+
+        if ($jenis === 'assets_type' && !empty($tersimpan['node_id']) && !empty($tersimpan['type'])) {
+            return $this->handleFuncLocAssetsType(
+                $chatId,
+                'funcloc_assets_type:' . (int) $tersimpan['node_id'] . ':' . $tersimpan['type'],
+                $state
+            );
+        }
+
+        return $this->layarNodeSaatIni($chatId, $state);
+    }
+
+    /**
+     * Layar node yang sedang dibuka (satu level di bawah node terakhir
+     * funcloc_path). Penyelesaian otomatis dimatikan supaya node tanpa anak
+     * dan tanpa alat TIDAK ditambahkan berulang kali saat layar dibangun ulang.
+     *
+     * @param  string  $chatId  Chat ID Telegram
+     * @param  array   $state   State wizard saat ini
+     * @return array   Layar node yang sedang dibuka
+     */
+    protected function layarNodeSaatIni(string $chatId, array $state): array
+    {
+        $path = $state['funcloc_path'] ?? [];
+
+        if ($path === []) {
+            return $this->buildFuncLocScreen($chatId, FunctionalLocation::LEVEL_SITE, null, $state);
+        }
+
+        $parentEntry = end($path);
+
+        return $this->buildFuncLocScreen($chatId, (int) $parentEntry['level'] + 1, $parentEntry, $state, false);
+    }
+
+    /**
      * Selesaikan picker hirarki dalam mode 'multi': tambahkan alat/lokasi terpilih
      * sebagai item pekerjaan, lalu kembalikan prompt alat/lokasi tambahan.
      *
@@ -662,20 +872,163 @@ trait WizardFuncLocPickerTrait
      */
     protected function selesaikanPickerMulti(string $chatId, array $item, array $state): array
     {
+        $label          = $item['label'] ?? '-';
+        $samaUtama      = $this->multiItemSamaUtama($state, $item);
+        $sudahAda       = $this->multiItemSudahAda($state, $item) || $samaUtama;
+        $masihDiHirarki = $this->isModeMulti($state) && !empty($state['funcloc_picker_active']);
+
+        $state = $this->tambahMultiItem($state, $item);
+
+        // Mode multi: picker DIBIARKAN aktif dan layar hirarki digambar ulang
+        // beserta daftar item, sehingga teknisi bisa langsung menambah
+        // alat/lokasi lain tanpa menelusuri ulang PT -> Departemen -> Area ->
+        // Section, lalu menutupnya lewat tombol "Selesai Menambah".
+        if ($masihDiHirarki) {
+            $this->saveState($chatId, $state);
+
+            if ($samaUtama) {
+                $catatan = 'Alat/lokasi ini sudah menjadi acuan utama laporan: ' . $label
+                    . ' (tidak perlu ditambahkan).';
+            } elseif ($sudahAda) {
+                $catatan = 'Sudah ada di daftar (tidak ditambahkan lagi): ' . $label;
+            } else {
+                $catatan = 'Ditambahkan dari hirarki: ' . $label
+                    . ' (total ' . count($state['multi_items'] ?? []) . ')';
+            }
+
+            return $this->renderLayarMulti($chatId, $state, $catatan);
+        }
+
         unset(
             $state['funcloc_picker_active'],
             $state['funcloc_picker_mode'],
             $state['funcloc_path'],
+            $state['multi_layar'],
             $state['multi_kandidat']
         );
-
-        $state = $this->tambahMultiItem($state, $item);
         $this->saveState($chatId, $state);
 
         $respons = $this->buildMultiEquipmentPrompt($state);
-        $respons['message'] = 'Ditambahkan dari hirarki: ' . ($item['label'] ?? '-') . "\n\n" . $respons['message'];
+        $respons['message'] = 'Ditambahkan dari hirarki: ' . $label . "\n\n" . $respons['message'];
 
         return $respons;
+    }
+
+    /**
+     * Tutup penelusuran hirarki mode multi tanpa mengubah daftar item, lalu
+     * kembalikan prompt alat/lokasi tambahan (Step 8b). Dipakai tombol
+     * "Selesai Menambah" supaya teknisi bisa memilih kapan penelusuran berhenti
+     * (tidak dipaksa keluar setiap kali satu alat ditambahkan).
+     *
+     * @param  string  $chatId  Chat ID Telegram
+     * @param  array   $state   State wizard saat ini
+     * @return array   Respons prompt alat/lokasi tambahan
+     */
+    protected function selesaikanHirarkiMulti(string $chatId, array $state): array
+    {
+        unset(
+            $state['funcloc_picker_active'],
+            $state['funcloc_picker_mode'],
+            $state['funcloc_path'],
+            $state['multi_layar'],
+            $state['multi_kandidat']
+        );
+        $this->saveState($chatId, $state);
+
+        $respons = $this->buildMultiEquipmentPrompt($state);
+        $respons['message'] = "Selesai menambah alat/lokasi.\n\n" . $respons['message'];
+
+        return $respons;
+    }
+
+    /**
+     * Hapus item alat/lokasi tambahan TERAKHIR dari layar hirarki, lalu gambar
+     * ulang layar yang sedang dibuka supaya teknisi tidak perlu keluar dulu.
+     *
+     * @param  string  $chatId  Chat ID Telegram
+     * @param  array   $state   State wizard saat ini
+     * @return array   Layar hirarki terbaru, atau pesan galat bila daftar kosong
+     */
+    protected function hapusItemMultiTerakhir(string $chatId, array $state): array
+    {
+        $daftar = $state['multi_items'] ?? [];
+
+        if ($daftar === []) {
+            return $this->errorResponse('Belum ada alat/lokasi tambahan yang bisa dihapus.');
+        }
+
+        $item = array_pop($daftar);
+        $state['multi_items'] = array_values($daftar);
+        $this->saveState($chatId, $state);
+
+        return $this->renderLayarMulti($chatId, $state, 'Dihapus: ' . ($item['label'] ?? '-'));
+    }
+
+    /**
+     * Kembali ke layar hirarki terakhir. Dipakai tombol "Kembali" pada layar
+     * hasil pencarian supaya teknisi tidak kehilangan tombol hierarki saat
+     * kata kunci yang diketik tidak cocok dengan lokasi mana pun.
+     *
+     * @param  string  $chatId  Chat ID Telegram
+     * @param  array   $state   State wizard saat ini
+     * @return array   Layar hirarki terbaru, atau pesan galat bila picker tidak aktif
+     */
+    protected function kembaliKeLayarHirarki(string $chatId, array $state): array
+    {
+        if (!$this->isModeMulti($state) || empty($state['funcloc_picker_active'])) {
+            return $this->errorResponse(
+                'Layar hirarki sudah tidak aktif. Tekan Pilih Hirarki untuk memulai penelusuran lagi.'
+            );
+        }
+
+        return $this->renderLayarMulti($chatId, $state);
+    }
+
+    /**
+     * Coba perlakukan teks yang diketik teknisi di dalam hirarki mode multi
+     * sebagai kode ALAT tambahan, supaya teknisi yang hanya hafal kode alat
+     * (tanpa kode lokasi) tetap bisa menambah tanpa keluar dari hierarki.
+     *
+     * Kode alat persis langsung ditambahkan; kode yang cocok ke beberapa alat
+     * ditawarkan sebagai tombol; teks yang bukan milik alat mana pun
+     * mengembalikan null agar lanjut dicari sebagai kode/nama lokasi.
+     *
+     * @param  string  $chatId  Chat ID Telegram
+     * @param  string  $term    Teks yang diketik teknisi
+     * @param  array   $state   State wizard saat ini
+     * @return array|null  Respons bila teks dikenali sebagai alat, null bila bukan
+     */
+    protected function cobaTambahDariKetik(string $chatId, string $term, array $state): ?array
+    {
+        $hasil  = $this->resolveMultiItem($term, $state);
+        $status = $hasil['status'] ?? 'tidak_ada';
+
+        if ($status === 'ok' && !empty($hasil['item']['asset_id'])) {
+            return $this->selesaikanPickerMulti($chatId, $hasil['item'], $state);
+        }
+
+        if ($status !== 'kandidat') {
+            return null;
+        }
+
+        $keyboard = array_map(
+            fn (array $calon) => [
+                'text'          => mb_substr(
+                    (string) ($calon['tech_ident_no'] ?? '-') . ' — ' . (string) ($calon['description'] ?? ''),
+                    0,
+                    64
+                ),
+                'callback_data' => 'funcloc_asset_pick:' . (int) ($calon['id'] ?? 0),
+            ],
+            $hasil['kandidat'] ?? []
+        );
+
+        $keyboard[] = ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'];
+
+        return $this->tambahKendaliMulti([
+            'message'  => "Kode *{$term}* cocok dengan beberapa alat. Pilih alat yang dimaksud:",
+            'keyboard' => $keyboard,
+        ], $state);
     }
 
     /**
@@ -728,11 +1081,24 @@ trait WizardFuncLocPickerTrait
      * @param  array      $state      State wizard saat ini
      * @return array      Respons dengan message dan keyboard
      */
-    protected function buildFuncLocScreen(string $chatId, int $level, ?array $parentEntry, array $state): array
-    {
+    protected function buildFuncLocScreen(
+        string $chatId,
+        int $level,
+        ?array $parentEntry,
+        array $state,
+        bool $selesaikanOtomatis = true
+    ): array {
         $parentId = $parentEntry['id'] ?? null;
         $mode     = $state['funcloc_picker_mode'] ?? 'area';
         $options  = $this->buildFuncLocLevelKeyboard($level, $parentId);
+
+        // Mode multi: catat bahwa layar yang sedang dibuka adalah layar node,
+        // supaya setelah satu alat/lokasi ditambahkan layar ini bisa digambar
+        // ulang apa adanya (hierarki tidak hilang, tidak perlu mulai dari PT).
+        if ($mode === 'multi') {
+            $state['multi_layar'] = ['jenis' => 'node'];
+            $this->saveState($chatId, $state);
+        }
 
         // Daftar equipment di bawah node yang sedang dilihat dipakai oleh mode
         // 'equipment' DAN mode 'multi' (menambah alat/lokasi pada pekerjaan),
@@ -754,6 +1120,25 @@ trait WizardFuncLocPickerTrait
                         'funcloc_id' => $node->id,
                         'mode'       => $mode,
                     ]);
+
+                    // Saat layar dibangun ULANG (setelah item ditambah/dihapus),
+                    // penyelesaian otomatis dimatikan: node tanpa anak dan tanpa
+                    // alat cukup ditampilkan sebagai layar akhir supaya tidak
+                    // ditambahkan berulang kali tanpa perintah teknisi.
+                    if ($mode === 'multi' && !$selesaikanOtomatis) {
+                        $labelNode = $this->funcLocLevelLabel((int) $node->level);
+
+                        return $this->tambahKendaliMulti([
+                            'message'  => "*{$labelNode}:* {$node->code} — {$node->name}\n\n"
+                                . "Lokasi ini tidak punya anak maupun alat terdaftar.\n"
+                                . "Tekan Naik Satu Level untuk memilih lokasi lain, atau "
+                                . "Selesai Menambah bila tambahan sudah cukup.",
+                            'keyboard' => [
+                                ['text' => 'Naik Satu Level', 'callback_data' => 'funcloc_back'],
+                                ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'],
+                            ],
+                        ], $state);
+                    }
 
                     // Mode multi: node ini DITAMBAHKAN sebagai alat/lokasi pekerjaan
                     // (bukan dikunci sebagai lokasi utama laporan).
@@ -819,13 +1204,18 @@ trait WizardFuncLocPickerTrait
             }
         } else {
             $rootLabel = $this->funcLocLevelLabel($level);
-            $message   = "*Step 2* — Pilih {$rootLabel}\n\nPilih {$rootLabel} tempat pekerjaan dilakukan:";
+
+            $message = $mode === 'multi'
+                ? "*Tambah alat/lokasi* — Pilih {$rootLabel}\n\n"
+                    . "Pilih {$rootLabel} tempat alat/lokasi berada, ketik kodenya, "
+                    . "atau tekan Selesai Menambah bila tambahan sudah cukup:"
+                : "*Step 2* — Pilih {$rootLabel}\n\nPilih {$rootLabel} tempat pekerjaan dilakukan:";
         }
 
-        return [
+        return $this->tambahKendaliMulti([
             'message'  => $message,
             'keyboard' => $keyboard,
-        ];
+        ], $state);
     }
 
     /**
@@ -986,21 +1376,29 @@ trait WizardFuncLocPickerTrait
 
         $assets = $this->assetsUnderNode($funclocId, $this->isItPool($state));
 
+        // Mode multi: ingat bahwa layar yang sedang dibuka adalah daftar alat
+        // lokasi ini, supaya setelah satu alat ditambahkan layar daftar ini
+        // bisa dibuka lagi tanpa menelusuri hierarki dari PT.
+        if ($this->isModeMulti($state)) {
+            $state['multi_layar'] = ['jenis' => 'assets', 'node_id' => $funclocId];
+            $this->saveState($chatId, $state);
+        }
+
         if ($assets->isEmpty()) {
-            return [
+            return $this->tambahKendaliMulti([
                 'message'  => "Tidak ada equipment terdaftar di {$node->code} — {$node->name}.",
                 'keyboard' => [
                     ['text' => 'Naik Satu Level', 'callback_data' => 'funcloc_back'],
                     ['text' => 'Batalkan Laporan', 'callback_data' => 'wizard:cancel_wizard'],
                 ],
-            ];
+            ], $state);
         }
 
         if ($assets->count() > self::EQUIPMENT_GROUP_THRESHOLD) {
-            return $this->buildAssetTypeKeyboard($node, $assets, $state);
+            return $this->tambahKendaliMulti($this->buildAssetTypeKeyboard($node, $assets, $state), $state);
         }
 
-        return $this->buildAssetListKeyboard($node, $assets, null, $state);
+        return $this->tambahKendaliMulti($this->buildAssetListKeyboard($node, $assets, null, $state), $state);
     }
 
     /**
@@ -1035,7 +1433,14 @@ trait WizardFuncLocPickerTrait
             return $this->errorResponse('Tidak ada equipment dengan tipe tersebut di lokasi ini.');
         }
 
-        return $this->buildAssetListKeyboard($node, $assets, $type, $state);
+        // Mode multi: ingat filter tipe yang sedang dibuka supaya layar ini bisa
+        // dibuka lagi setelah satu alat dari tipe tersebut ditambahkan.
+        if ($this->isModeMulti($state)) {
+            $state['multi_layar'] = ['jenis' => 'assets_type', 'node_id' => $funclocId, 'type' => $type];
+            $this->saveState($chatId, $state);
+        }
+
+        return $this->tambahKendaliMulti($this->buildAssetListKeyboard($node, $assets, $type, $state), $state);
     }
 
     /**
