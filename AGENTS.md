@@ -1085,6 +1085,33 @@ Batasan penting lingkungan ini:
 
 
 
+32. **Build aset gagal dengan `'"node"' is not recognized` walau npm berjalan,
+    karena folder node Laragon tidak ada di PATH mesin/User (01/10/2026).**
+    Saat `Deploy-Laporan.bat` diklik dari pintasan Desktop, langkah
+    `npm run build` di PROD gagal sehingga seluruh deploy dilaporkan
+    SELESAI DENGAN GALAT, padahal commit, migrasi, `config:cache`, dan
+    `view:cache` sudah berhasil. Penyebab: `tools\deploy-prod.ps1` memanggil
+    npm lewat **path absolut** (`C:\laragon\bin\nodejs\node-v22\npm.cmd`)
+    sehingga npm sendiri jalan, tetapi shim `node_modules\.bin\vite.cmd`
+    memanggil `node` **dari PATH**. Folder `C:\laragon\bin\nodejs\node-v22`
+    ternyata TIDAK ada di PATH mesin maupun User (diperiksa langsung dari
+    registry) — hanya disuntik per sesi oleh Laragon/VS Code, sehingga
+    terminal agent bisa memanggil `node` sedangkan cmd yang diklik dari
+    Desktop tidak. Perbaikan: `$NodeDir` disisipkan sendiri ke `$env:Path`
+    (proses saja, dikembalikan di `finally`) sebelum `npm run build`,
+    `node.exe` + `npm.cmd` ikut divalidasi di awal skrip, dan keberadaan
+    `node_modules\.bin\vite.cmd` di PROD diperiksa lebih dulu.
+    **Pelajaran: (1) memanggil npm dengan path absolut TIDAK cukup — shim di
+    `node_modules\.bin` selalu mencari `node` di PATH, jadi folder node WAJIB
+    disisipkan dulu sebelum build; (2) "deploy gagal" di baris terakhir belum
+    tentu berarti aplikasi rusak: periksa LANGKAH mana yang gagal dan apakah
+    langkah itu memang diperlukan — di sini seluruh kelas Tailwind yang dipakai
+    partial baru terbukti sudah ada di `public\build\assets\app-*.css` PROD
+    (198 kelas diperiksa satu per satu), jadi tampilan tidak terpengaruh;
+    (3) PATH sesi agent/IDE bisa berbeda dari PATH yang dilihat pintasan
+    Desktop, jadi "perintah jalan di terminal saya" BUKAN bukti skrip akan
+    jalan saat diklik manusia (bandingkan insiden #27).**
+
 <!-- Tambahkan insiden baru di bawah ini, nomor urut lanjut -->
 
 ## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN

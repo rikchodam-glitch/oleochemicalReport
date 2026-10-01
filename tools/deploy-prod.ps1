@@ -27,7 +27,14 @@ $DevPath      = 'C:\laragon\www\oleochemicalReport'
 $ProdPath     = 'C:\laragon\www\oleochemicalReport-prod'
 $PhpExe       = 'C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe'
 $ComposerPhar = 'C:\laragon\bin\composer\composer.phar'
-$NpmCmd       = 'C:\laragon\bin\nodejs\node-v22\npm.cmd'
+
+# Folder node Laragon. WAJIB disisipkan sendiri ke $env:Path sebelum build:
+# shim node_modules\.bin\vite.cmd memanggil "node" dari PATH (bukan path
+# absolut), sedangkan folder ini tidak ada di PATH mesin/User (Laragon hanya
+# menyuntiknya per sesi). Lihat AGENTS.md insiden #32.
+$NodeDir      = 'C:\laragon\bin\nodejs\node-v22'
+$NodeExe      = Join-Path $NodeDir 'node.exe'
+$NpmCmd       = Join-Path $NodeDir 'npm.cmd'
 $HubRemote    = 'hub'
 $Branch       = 'main'
 
@@ -79,7 +86,7 @@ function ProsesService {
 }
 
 # ==== 1. Validasi path ====
-foreach ($path in @($DevPath, $ProdPath, $PhpExe, $ComposerPhar)) {
+foreach ($path in @($DevPath, $ProdPath, $PhpExe, $ComposerPhar, $NodeExe, $NpmCmd)) {
     if (-not (Test-Path $path)) {
         throw ("Path tidak ditemukan: " + $path)
     }
@@ -158,11 +165,23 @@ try {
     if ($BangunAset) {
         Tulis 'menyalin node_modules dari DEV lalu build aset...'
         robocopy (Join-Path $DevPath 'node_modules') (Join-Path $ProdPath 'node_modules') /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+
+        $viteProd = Join-Path $ProdPath 'node_modules\.bin\vite.cmd'
+        if (-not (Test-Path $viteProd)) {
+            throw 'node_modules PROD tidak berisi vite (salinan dari DEV gagal?).'
+        }
+
+        # Shim vite.cmd memanggil "node" dari PATH sehingga build gagal dengan
+        # pesan '"node" is not recognized' walau npm berjalan (insiden #32).
+        $pathLama = $env:Path
+        $env:Path = $NodeDir + ';' + $pathLama
         Push-Location $ProdPath
         try {
+            Tulis ('node versi: ' + (& $NodeExe --version))
             & $NpmCmd run build
         } finally {
             Pop-Location
+            $env:Path = $pathLama
         }
         if ($LASTEXITCODE -ne 0) { throw 'Build aset (npm run build) gagal.' }
     }
