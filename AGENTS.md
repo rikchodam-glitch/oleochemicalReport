@@ -19,6 +19,35 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   `git push hub main` -> jalankan `tools\deploy-prod.ps1` (pull di PROD +
   dependensi + migrasi + cache + restart service). JANGAN mengedit atau
   menjalankan migrasi manual di PROD.
+- **Deploy satu klik (sejak 01/10/2026, keputusan user):** pintasan Desktop
+  `Deploy-Laporan.bat` dan `Backup-Database-Laporan.bat` hanya MEMANGGIL
+  `PROD\tools\deploy-laporan-prod.ps1` supaya tidak ada dua versi logika.
+  Dijalankan MANUSIA (skripnya minta konfirmasi `y` sebelum mengubah PROD).
+  Urutan kerja skrip itu: (1) backup database PROD lebih dulu dengan
+  `mysqldump` (biner `C:\laragon\bin\mysql\mysql-8.4.3-winx64\bin\mysqldump.exe`)
+  ke `C:\laragon\backup-oleochemical\db\oleochemical-<stamp>.sql`, 10 berkas
+  terbaru disimpan, catatan di `C:\laragon\backup-oleochemical\backup-db.log`;
+  **backup gagal = deploy dibatalkan** (jangan pernah melewati ini saat ada
+  perubahan database) -> (2) `git push hub main` dari DEV TANPA membuat commit
+  baru, jadi berkas DEV yang belum di-commit tidak ikut terkirim -> (3)
+  ringkasan: commit PROD sekarang, commit yang ADA di repo hub, migrasi
+  tertunda (`php artisan migrate:status --pending`), dan berkas DEV yang belum
+  di-commit -> (4) konfirmasi manusia -> (5) `tools\deploy-prod.ps1 -LewatiDev
+  -LewatiComposer -LewatiService -BangunAset` (pull, `migrate --force`,
+  `config:cache` + `view:cache`, build aset) -> (6) `artisan up` sebagai jaring
+  pengaman -> (7) restart SEMUA service lewat
+  `tools\hentikan-service-prod.ps1 -BiarkanJadwal` lalu
+  `tools\jaga-service-prod.ps1` (queue:work, schedule:work, telegram:poll,
+  `serve` port 8000, tunnel Cloudflare) -> (8) status akhir
+  `tools\cek-status-prod.ps1`. Opsi: `-HanyaBackup`, `-LewatiBackup`,
+  `-LewatiBangunAset`, `-LewatiService`, `-TanpaKonfirmasi` (pengujian
+  otomatis saja) dan `-SimpanBackup <n>`. Memulihkan database dari backup:
+  hentikan service dulu (`stop-report.bat`), jalankan
+  `mysql -u root oleochemical < <berkas>.sql`, lalu `start-report.bat`.
+  Skrip itu memanggil skrip lain lewat PROSES TERPISAH (`powershell.exe -File`)
+  supaya masalah stderr git pada `deploy-prod.ps1` (lihat catatan di bawah)
+  tidak menular.
+
 - Service latar (`queue:work`, `schedule:work`, `telegram:poll`) dan web
   `artisan serve` port 8000 HANYA jalan di PROD; dua poller Telegram sekaligus =
   bot mati total (HTTP 409, insiden #21). Di DEV tidak perlu service apa pun —
