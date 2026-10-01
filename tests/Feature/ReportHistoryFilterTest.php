@@ -139,26 +139,26 @@ test('daftar laporan halaman lokasi dikelompokkan per hari', function () {
         ->assertSee(labelHariUji($this->hariIni), false)
         ->assertSee(labelHariUji($this->hariKemarin), false)
         ->assertSee('Fokus hari ini', false)
-        ->assertSee('FLT-AREA-A-HARI-INI', false)
-        ->assertSee('FLT-ALAT-A-HARI-INI', false)
-        ->assertSee('FLT-AREA-B-KEMARIN', false);
+        ->assertSee('Pekerjaan area oleh teknisi Alfa', false)
+        ->assertSee('Perbaikan pompa filter oleh teknisi Alfa', false)
+        ->assertSee('Pekerjaan area oleh teknisi Bravo', false);
 });
 
 test('filter teknisi pada halaman lokasi hanya menampilkan laporan teknisi itu', function () {
     $this->actingAs($this->admin)
         ->get('/locations/' . $this->flSection->id . '?teknisi=' . $this->teknisiB->id)
         ->assertStatus(200)
-        ->assertSee('FLT-AREA-B-KEMARIN', false)
-        ->assertDontSee('FLT-AREA-A-HARI-INI', false)
-        ->assertDontSee('FLT-ALAT-A-HARI-INI', false);
+        ->assertSee('Pekerjaan area oleh teknisi Bravo', false)
+        ->assertDontSee('Pekerjaan area oleh teknisi Alfa', false)
+        ->assertDontSee('Perbaikan pompa filter oleh teknisi Alfa', false);
 });
 
 test('filter tanggal pada halaman lokasi hanya menampilkan laporan hari itu', function () {
     $this->actingAs($this->admin)
         ->get('/locations/' . $this->flSection->id . '?tanggal=' . $this->hariKemarin)
         ->assertStatus(200)
-        ->assertSee('FLT-AREA-B-KEMARIN', false)
-        ->assertDontSee('FLT-AREA-A-HARI-INI', false);
+        ->assertSee('Pekerjaan area oleh teknisi Bravo', false)
+        ->assertDontSee('Pekerjaan area oleh teknisi Alfa', false);
 });
 
 test('pencarian alat menyaring daftar alat pada halaman lokasi', function () {
@@ -173,10 +173,12 @@ test('tabel perbaikan pada detail equipment berisi satu baris per perbaikan dan 
     $this->actingAs($this->admin)
         ->get('/assets/' . $this->aset->id)
         ->assertStatus(200)
-        // Satu baris = satu perbaikan: kode laporan tampil + tombol Detail ke laporan itu.
+        // Satu baris = satu perbaikan: deskripsi tampil + tombol Detail ke laporan itu.
         ->assertSee('Daftar Perbaikan', false)
-        ->assertSee('FLT-ALAT-A-HARI-INI', false)
+        ->assertSee('Perbaikan pompa filter oleh teknisi Alfa', false)
         ->assertSee(route('reports.show', $this->laporanAlat), false)
+        // Kolom Kode Laporan & Jenis sudah tidak ditampilkan lagi.
+        ->assertDontSee('Kode Laporan', false)
         // Grafik tren perbaikan ikut dirender.
         ->assertSee('Tren Perbaikan per Bulan', false)
         ->assertSee('trenPerbaikanChart', false)
@@ -188,26 +190,26 @@ test('tabel perbaikan pada detail equipment berisi satu baris per perbaikan dan 
         ->get('/assets/' . $this->aset->id . '?teknisi=' . $this->teknisiB->id)
         ->assertStatus(200)
         ->assertSee('Belum ada perbaikan untuk filter yang dipilih.', false)
-        ->assertDontSee('FLT-ALAT-A-HARI-INI', false);
+        ->assertDontSee('Perbaikan pompa filter oleh teknisi Alfa', false);
 
     // Filter teknisi A menampilkan laporannya.
     $this->actingAs($this->admin)
         ->get('/assets/' . $this->aset->id . '?teknisi=' . $this->teknisiA->id)
         ->assertStatus(200)
-        ->assertSee('FLT-ALAT-A-HARI-INI', false);
+        ->assertSee('Perbaikan pompa filter oleh teknisi Alfa', false);
 });
 
 test('pencarian tabel perbaikan detail equipment menyaring kode laporan', function () {
     $this->actingAs($this->admin)
         ->get('/assets/' . $this->aset->id . '?q=FLT-ALAT-A-HARI-INI')
         ->assertStatus(200)
-        ->assertSee('FLT-ALAT-A-HARI-INI', false);
+        ->assertSee('Perbaikan pompa filter oleh teknisi Alfa', false);
 
     $this->actingAs($this->admin)
         ->get('/assets/' . $this->aset->id . '?q=KODE-TIDAK-ADA')
         ->assertStatus(200)
         ->assertSee('Belum ada perbaikan untuk filter yang dipilih.', false)
-        ->assertDontSee('FLT-ALAT-A-HARI-INI', false);
+        ->assertDontSee('Perbaikan pompa filter oleh teknisi Alfa', false);
 });
 
 test('tabel perbaikan detail equipment dibatasi 15 baris per halaman', function () {
@@ -237,3 +239,59 @@ test('tabel perbaikan detail equipment dibatasi 15 baris per halaman', function 
     $halamanDua->assertStatus(200);
     expect(substr_count($halamanDua->getContent(), $penandaBaris))->toBe(1);
 });
+
+test('pekerjaan kolaborasi tampil satu baris dengan tombol popup laporan kolaborator', function () {
+    // Rekan kelompok membuat salinan laporan (collaborator_of) atas laporan A.
+    $kolab = Report::create([
+        'technician_id'    => $this->teknisiB->id,
+        'report_date'      => $this->hariIni,
+        'report_code'      => 'FLT-KOLAB-B',
+        'work_description' => 'Perbaikan pompa filter oleh teknisi Alfa',
+        'asset_id'         => $this->aset->id,
+        'report_type'      => 'equipment_repair',
+        'status'           => 'completed',
+        'collaborator_of'  => $this->laporanAlat->id,
+    ]);
+
+    $halaman = $this->actingAs($this->admin)
+        ->get('/assets/' . $this->aset->id . '?q=Perbaikan pompa filter oleh teknisi Alfa');
+
+    $halaman->assertStatus(200)
+        // Satu baris mewakili satu pekerjaan; kolaborator tidak jadi baris sendiri.
+        ->assertSee('1 KOLABORATOR', false)
+        // Popup membawa tombol Detail menuju laporan kolaborator itu.
+        ->assertSee('Laporan Kolaborator', false)
+        ->assertSee(route('reports.show', $kolab), false);
+
+    // Kode laporan kolaborator hanya muncul di data popup (bukan baris tersendiri).
+    expect(substr_count($halaman->getContent(), 'FLT-KOLAB-B'))->toBe(1);
+
+    // Filter teknisi kolaborator tetap menemukan pekerjaannya.
+    $this->actingAs($this->admin)
+        ->get('/assets/' . $this->aset->id . '?teknisi=' . $this->teknisiB->id)
+        ->assertStatus(200)
+        ->assertSee('Perbaikan pompa filter oleh teknisi Alfa', false);
+});
+
+test('pekerjaan kolaborasi pada halaman lokasi tampil satu baris dengan tombol popup', function () {
+    $kolab = Report::create([
+        'technician_id'    => $this->teknisiB->id,
+        'report_date'      => $this->hariIni,
+        'report_code'      => 'FLT-KOLAB-LOK-B',
+        'work_description' => 'Perbaikan pompa filter oleh teknisi Alfa',
+        'asset_id'         => $this->aset->id,
+        'report_type'      => 'equipment_repair',
+        'status'           => 'completed',
+        'collaborator_of'  => $this->laporanAlat->id,
+    ]);
+
+    $halaman = $this->actingAs($this->admin)->get('/locations/' . $this->flSection->id);
+
+    $halaman->assertStatus(200)
+        ->assertSee('1 KOLABORATOR', false)
+        ->assertSee('Laporan Kolaborator', false)
+        ->assertSee(route('reports.show', $kolab), false);
+
+    expect(substr_count($halaman->getContent(), 'FLT-KOLAB-LOK-B'))->toBe(1);
+});
+

@@ -129,7 +129,7 @@ class AssetController extends Controller
         // Seluruh laporan asset ini TANPA filter — dipakai untuk statistik kartu
         // dan grafik tren supaya angkanya tetap menyeluruh.
         $reports = $this->queryLaporanAset($asset)
-            ->with('technician')
+            ->with(['technician', 'collaboratorReports.technician'])
             ->latest('report_date')
             ->get();
 
@@ -144,17 +144,25 @@ class AssetController extends Controller
         // ini. Teknisi pengerja hanya menjadi kolom informasi, BUKAN pengelompok —
         // acuan halaman ini adalah per perbaikan, bukan per teknisi.
         $perbaikan = $this->terapkanFilterTanggal(
-            $this->queryLaporanAset($asset)->with('technician'),
+            $this->queryLaporanAset($asset)->with(['technician', 'collaboratorReports.technician']),
             $tanggal,
             $dari,
             $sampai
         )
-            ->when($teknisi !== null, fn (Builder $q) => $q->where('technician_id', $teknisi))
+            // Filter teknisi mencakup PELAKSANA maupun KOLABORATOR, karena baris
+            // yang tampil hanya laporan induk — kolaborator dicari lewat relasi.
+            ->when($teknisi !== null, fn (Builder $q) => $q->where(function (Builder $sq) use ($teknisi) {
+                $sq->where('technician_id', $teknisi)
+                    ->orWhereHas('collaboratorReports', fn (Builder $cq) => $cq->where('technician_id', $teknisi));
+            }))
             ->when($cari !== '', fn (Builder $q) => $q->where(function (Builder $sq) use ($cari) {
                 $sq->where('report_code', 'like', '%' . $cari . '%')
                     ->orWhere('work_description', 'like', '%' . $cari . '%')
                     ->orWhere('root_cause', 'like', '%' . $cari . '%')
                     ->orWhereHas('technician', fn (Builder $tq) => $tq
+                        ->where('name', 'like', '%' . $cari . '%')
+                        ->orWhere('nik', 'like', '%' . $cari . '%'))
+                    ->orWhereHas('collaboratorReports.technician', fn (Builder $cq) => $cq
                         ->where('name', 'like', '%' . $cari . '%')
                         ->orWhere('nik', 'like', '%' . $cari . '%'));
             }))
@@ -184,7 +192,14 @@ class AssetController extends Controller
 
         // Teknisi yang pernah menangani perbaikan asset ini — dipakai HANYA
         // sebagai pilihan filter tabel, bukan sebagai pengelompok data.
-        $teknisiPernahRepair = Technician::whereIn('id', $reports->pluck('technician_id')->filter()->unique()->values())
+        // Daftar teknisi untuk filter: pelaksana laporan induk MAUPUN kolaborator.
+        $idTeknisiTerlibat = $reports->pluck('technician_id')
+            ->merge($reports->flatMap(fn (Report $item) => $item->collaboratorReports->pluck('technician_id')))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $teknisiPernahRepair = Technician::whereIn('id', $idTeknisiTerlibat)
             ->orderBy('name')
             ->get();
 
@@ -221,11 +236,27 @@ class AssetController extends Controller
             'jumlah'    => $perbaikan->total(),
         ];
 
+        // Data popup kolaborator: untuk tiap baris perbaikan, daftar laporan milik
+        // kolaboratornya (dibuka lewat tombol "N KOLABORATOR" di kolom Teknisi).
+        $kolaboratorPerLaporan = $perbaikan->getCollection()
+            ->mapWithKeys(fn (Report $laporan) => [
+                $laporan->id => $laporan->collaboratorReports
+                    ->map(fn (Report $kolab) => [
+                        'nama'    => $kolab->technician?->name ?? 'Tanpa Nama',
+                        'kode'    => $kolab->report_code ?? '-',
+                        'tanggal' => $kolab->report_date?->format('d M Y') ?? '-',
+                        'url'     => route('reports.show', $kolab),
+                    ])
+                    ->values()
+                    ->all(),
+            ])
+            ->all();
+
         return view('assets.show', compact(
             'asset', 'perbaikan', 'filterPerbaikan', 'labelTipe',
             'komposisiTipe', 'trenPerbaikan', 'ringkasanTren',
             'teknisiPernahRepair', 'totalReports', 'completedReports', 'needsReviewReports',
-            'allTechnicians'
+            'allTechnicians', 'kolaboratorPerLaporan'
         ));
     }
 
@@ -240,6 +271,11 @@ class AssetController extends Controller
     private function queryLaporanAset(Asset $asset)
     {
         return Report::query()
+            // Laporan kolaborasi tampil sebagai SATU baris: salinan milik tiap
+            // kolaborator (collaborator_of terisi) disembunyikan supaya satu
+            // pekerjaan tidak muncul berulang; daftar kolaboratornya dibaca dari
+            // relasi collaboratorReports (lihat kolom Teknisi pada tabel perbaikan).
+            ->whereNull('collaborator_of')
             ->where(function ($q) use ($asset) {
                 $q->where('asset_id', $asset->id);
 

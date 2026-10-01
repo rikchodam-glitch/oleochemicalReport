@@ -59,7 +59,12 @@ class LocationController extends Controller
 
         // ---- Query yang ditampilkan (dengan filter tanggal/teknisi) ----
         $queryTampil = $this->terapkanFilterTanggal(clone $queryLaporan, $tanggal, $dari, $sampai)
-            ->when($teknisi !== null, fn (Builder $q) => $q->where('technician_id', $teknisi));
+            // Filter teknisi mencakup PELAKSANA maupun KOLABORATOR, karena baris
+            // yang tampil hanya laporan induk — kolaborator dicari lewat relasi.
+            ->when($teknisi !== null, fn (Builder $q) => $q->where(function (Builder $sq) use ($teknisi) {
+                $sq->where('technician_id', $teknisi)
+                    ->orWhereHas('collaboratorReports', fn (Builder $cq) => $cq->where('technician_id', $teknisi));
+            }));
 
         $jumlahTampil = (clone $queryTampil)->count();
 
@@ -81,8 +86,15 @@ class LocationController extends Controller
         ];
 
         // Teknisi yang benar-benar punya laporan di lokasi ini (isi dropdown filter).
+        // Teknisi yang benar-benar punya laporan di lokasi ini (isi dropdown):
+        // pelaksana laporan induk MAUPUN kolaborator.
         $teknisiOpsi = Technician::query()
-            ->whereIn('id', (clone $queryLaporan)->reorder()->select('technician_id'))
+            ->where(function (Builder $q) use ($queryLaporan) {
+                $q->whereIn('id', (clone $queryLaporan)->reorder()->select('technician_id'))
+                    ->orWhereIn('id', Report::query()
+                        ->whereIn('collaborator_of', (clone $queryLaporan)->reorder()->select('id'))
+                        ->select('technician_id'));
+            })
             ->orderBy('name')
             ->get(['id', 'name']);
 
@@ -96,6 +108,22 @@ class LocationController extends Controller
         // Rentang tanggal laporan lokasi ini, dipakai tombol "Lihat semua di
         // halaman Laporan" supaya halaman laporan tidak terbatas tanggal hari ini.
         $tanggalAwal = (clone $queryLaporan)->min('report_date');
+
+        // Data popup kolaborator: untuk tiap baris laporan, daftar laporan milik
+        // kolaboratornya (dibuka lewat tombol "N KOLABORATOR" di kolom Teknisi).
+        $kolaboratorPerLaporan = $laporan->getCollection()
+            ->mapWithKeys(fn (Report $item) => [
+                $item->id => $item->collaboratorReports
+                    ->map(fn (Report $kolab) => [
+                        'nama'    => $kolab->technician?->name ?? 'Tanpa Nama',
+                        'kode'    => $kolab->report_code ?? '-',
+                        'tanggal' => $kolab->report_date?->format('d M Y') ?? '-',
+                        'url'     => route('reports.show', $kolab),
+                    ])
+                    ->values()
+                    ->all(),
+            ])
+            ->all();
 
         return view('locations.show', [
             'location'       => $location,
@@ -115,6 +143,7 @@ class LocationController extends Controller
                 'jumlah_tampil' => $jumlahTampil,
             ],
             'tautanTanggal'  => $this->tautanTanggal($request, $location, $tanggal),
+            'kolaboratorPerLaporan' => $kolaboratorPerLaporan,
             'rentangLaporan' => [
                 'dari'   => $tanggalAwal ? Carbon::parse($tanggalAwal)->toDateString() : null,
                 'sampai' => now()->toDateString(),
@@ -160,7 +189,11 @@ class LocationController extends Controller
     protected function queryLaporanLokasi(Collection $idLokasi, Builder $queryAset): Builder
     {
         return Report::query()
-            ->with(['technician', 'asset', 'functionalLocation', 'linkedFinding'])
+            ->with(['technician', 'asset', 'functionalLocation', 'linkedFinding', 'collaboratorReports.technician'])
+            // Laporan kolaborasi tampil sebagai SATU baris: salinan milik tiap
+            // kolaborator disembunyikan, daftar kolaboratornya dibaca dari relasi
+            // collaboratorReports (lihat kolom Teknisi pada daftar laporan).
+            ->whereNull('collaborator_of')
             ->where(function (Builder $q) use ($idLokasi, $queryAset) {
                 $q->whereIn('funcloc_id', $idLokasi)
                     ->orWhereIn('asset_id', (clone $queryAset)->select('id'));

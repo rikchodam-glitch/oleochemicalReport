@@ -294,20 +294,15 @@
                             <tr class="hover:bg-slate-50 transition-colors cursor-pointer"
                                 onclick="window.location='{{ route('reports.show', $report) }}'">
                                 <td class="px-5 py-3.5 align-top whitespace-nowrap">
-                                    <p class="text-xs text-slate-600 font-mono">{{ $report->report_code ?? '-' }}</p>
+                                    <p class="text-xs text-slate-600">{{ $report->report_date?->format('d M Y') ?? '-' }}</p>
                                     @if($report->start_time)
                                         <p class="text-xs text-slate-400 mt-0.5">{{ $report->start_time }}</p>
                                     @endif
                                 </td>
                                 <td class="px-4 py-3.5 align-top">
                                     <p class="text-slate-800 leading-snug whitespace-normal break-words">
-                                        {{ \Illuminate\Support\Str::limit($report->work_description, 120) ?: '(tanpa deskripsi pekerjaan)' }}
+                                        {{ $report->work_description ?: '(tanpa deskripsi pekerjaan)' }}
                                     </p>
-                                    @if($report->jenis_pekerjaan)
-                                        <span class="inline-flex mt-1 px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                                            {{ $report->jenis_pekerjaan }}
-                                        </span>
-                                    @endif
                                 </td>
                                 <td class="px-4 py-3.5 align-top whitespace-nowrap">
                                     @if($report->asset)
@@ -324,6 +319,17 @@
                                 </td>
                                 <td class="px-4 py-3.5 align-top whitespace-nowrap">
                                     <p class="text-xs text-slate-700">{{ $report->technician?->name ?? '-' }}</p>
+                                    @if($report->collaboratorReports->isNotEmpty())
+                                        <button type="button"
+                                                onclick="tampilkanKolaborator({{ $report->id }})"
+                                                title="Klik untuk melihat laporan para kolaborator"
+                                                class="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-100 hover:bg-teal-100 transition-colors">
+                                            {{ $report->collaboratorReports->count() }} KOLABORATOR
+                                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </button>
+                                    @endif
                                 </td>
                                 <td class="px-4 py-3.5 align-top whitespace-nowrap">
                                     <span class="inline-flex px-2 py-0.5 rounded-md text-xs font-medium border {{ $status[1] }}">
@@ -420,5 +426,109 @@
             </div>
         @endif
     </div>
+
+{{-- Modal daftar laporan kolaborator (dibuka tombol "N KOLABORATOR" di kolom Teknisi) --}}
+@push('modals')
+    <div id="modal-kolaborator" class="hidden fixed inset-0 z-50 items-center justify-center bg-slate-900/50 p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
+            <div class="flex items-start justify-between gap-4 px-5 py-3.5 border-b border-slate-100">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-800">Laporan Kolaborator</h3>
+                    <p id="modal-kolaborator-sub" class="text-xs text-slate-400 mt-0.5"></p>
+                </div>
+                <button type="button" onclick="tutupKolaborator()" title="Tutup"
+                        class="text-slate-400 hover:text-slate-600 shrink-0">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div id="modal-kolaborator-isi" class="px-5 py-4 space-y-2 overflow-y-auto"></div>
+            <div class="px-5 py-3 border-t border-slate-100 text-right">
+                <button type="button" onclick="tutupKolaborator()"
+                        class="px-4 py-1.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                    Tutup
+                </button>
+            </div>
+        </div>
+    </div>
+@endpush
+
+@push('scripts')
+    <script>
+        // Data laporan kolaborator per laporan induk, dipakai tombol "N KOLABORATOR".
+        var dataKolaborator = {!! json_encode($kolaboratorPerLaporan ?? [], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!};
+
+        /**
+         * Tampilkan popup daftar laporan kolaborator untuk satu laporan.
+         * @param {number} idLaporan ID laporan induk
+         */
+        function tampilkanKolaborator(idLaporan) {
+            var daftar = dataKolaborator[idLaporan] || [];
+            var modal = document.getElementById('modal-kolaborator');
+            var isi = document.getElementById('modal-kolaborator-isi');
+            var sub = document.getElementById('modal-kolaborator-sub');
+
+            if (!modal || !isi || !sub) {
+                return;
+            }
+
+            sub.textContent = daftar.length + ' laporan kolaborator pada pekerjaan ini';
+            isi.innerHTML = '';
+
+            daftar.forEach(function (item) {
+                var baris = document.createElement('div');
+                baris.className = 'flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-2';
+
+                var kiri = document.createElement('div');
+                kiri.className = 'min-w-0';
+
+                var nama = document.createElement('p');
+                nama.className = 'text-sm font-semibold text-slate-700 truncate';
+                nama.textContent = item.nama;
+
+                var keterangan = document.createElement('p');
+                keterangan.className = 'text-xs text-slate-400 truncate';
+                keterangan.textContent = item.kode + ' - ' + item.tanggal;
+
+                kiri.appendChild(nama);
+                kiri.appendChild(keterangan);
+
+                var tautanDetail = document.createElement('a');
+                tautanDetail.href = item.url;
+                tautanDetail.className = 'px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700 shrink-0';
+                tautanDetail.textContent = 'Detail';
+
+                baris.appendChild(kiri);
+                baris.appendChild(tautanDetail);
+                isi.appendChild(baris);
+            });
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        /**
+         * Tutup popup daftar laporan kolaborator.
+         */
+        function tutupKolaborator() {
+            var modal = document.getElementById('modal-kolaborator');
+
+            if (!modal) {
+                return;
+            }
+
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        document.addEventListener('keydown', function (peristiwa) {
+            if (peristiwa.key === 'Escape') {
+                tutupKolaborator();
+            }
+        });
+    </script>
+@endpush
+
 
 @endsection

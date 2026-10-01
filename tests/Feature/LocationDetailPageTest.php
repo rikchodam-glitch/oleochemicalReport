@@ -110,17 +110,19 @@ test('halaman detail lokasi menampilkan informasi lokasi, alat, dan laporan', fu
         ->assertSee('EQ-LOK-001', false)
         ->assertSee('Alat Terdaftar', false)
         ->assertSee('Laporan Lokasi Ini', false)
-        ->assertSee('LOK-LANGSUNG-01', false)
-        ->assertSee('LOK-LEWAT-ALAT-01', false)
-        ->assertDontSee('LOK-LUAR-01', false);
+        // Kode laporan tidak lagi ditampilkan pada daftar lokasi; acuan teksnya
+        // adalah deskripsi pekerjaannya.
+        ->assertSee('Pembersihan area section uji', false)
+        ->assertSee('Ganti seal pompa lokasi uji', false)
+        ->assertDontSee('Pekerjaan di area lain', false);
 });
 
 test('halaman lokasi induk mencakup seluruh lokasi turunannya', function () {
     $this->actingAs($this->admin)
         ->get('/locations/' . $this->flArea->id)
         ->assertStatus(200)
-        ->assertSee('LOK-LANGSUNG-01', false)
-        ->assertSee('LOK-LEWAT-ALAT-01', false)
+        ->assertSee('Pembersihan area section uji', false)
+        ->assertSee('Ganti seal pompa lokasi uji', false)
         ->assertSee('LOK-P-01', false);
 });
 
