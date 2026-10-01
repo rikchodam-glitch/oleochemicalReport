@@ -119,7 +119,11 @@ function SkripTerpisah([string]$Skrip, [string[]]$Argumen) {
     $ErrorActionPreference = 'Continue'
 
     try {
-        & powershell.exe @perintah
+        # Keluaran proses anak WAJIB dilewatkan ke Write-Host: kalau dibiarkan
+        # mengalir ke keluaran fungsi, pemanggil yang menampung hasil
+        # ($kode = SkripTerpisah ...) akan menerima array berisi teks anak +
+        # exit code, sehingga perbandingan "kode -ne 0" salah menuduh gagal.
+        & powershell.exe @perintah | ForEach-Object { Write-Host $_ }
         return $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $lama
