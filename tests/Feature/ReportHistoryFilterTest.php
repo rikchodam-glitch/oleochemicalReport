@@ -15,8 +15,11 @@ uses(RefreshDatabase::class);
 
 /**
  * Daftar laporan pada halaman detail LOKASI dan detail EQUIPMENT:
- *   - dikelompokkan per hari (ada judul hari + tombol "Fokus hari ini");
- *   - bisa difilter per teknisi, per tanggal, dan (khusus lokasi) per alat.
+ *   - halaman detail LOKASI: daftar laporan dikelompokkan per hari (ada judul
+ *     hari + tombol "Fokus hari ini"), bisa difilter per teknisi/tanggal/alat;
+ *   - halaman detail EQUIPMENT: daftar perbaikan berupa TABEL dengan SATU BARIS
+ *     PER PERBAIKAN (bukan per teknisi) + tombol Detail ke halaman laporan,
+ *     bisa difilter per tanggal/rentang, teknisi, dan pencarian.
  */
 beforeEach(function () {
     $this->seed();
@@ -166,19 +169,25 @@ test('pencarian alat menyaring daftar alat pada halaman lokasi', function () {
         ->assertDontSee('FLT-P-01', false);
 });
 
-test('riwayat perbaikan pada detail equipment dikelompokkan per hari dan bisa difilter teknisi', function () {
+test('tabel perbaikan pada detail equipment berisi satu baris per perbaikan dan tombol Detail', function () {
     $this->actingAs($this->admin)
         ->get('/assets/' . $this->aset->id)
         ->assertStatus(200)
-        ->assertSee(labelHariUji($this->hariIni), false)
-        ->assertSee('Fokus hari ini', false)
-        ->assertSee('FLT-ALAT-A-HARI-INI', false);
+        // Satu baris = satu perbaikan: kode laporan tampil + tombol Detail ke laporan itu.
+        ->assertSee('Daftar Perbaikan', false)
+        ->assertSee('FLT-ALAT-A-HARI-INI', false)
+        ->assertSee(route('reports.show', $this->laporanAlat), false)
+        // Grafik tren perbaikan ikut dirender.
+        ->assertSee('Tren Perbaikan per Bulan', false)
+        ->assertSee('trenPerbaikanChart', false)
+        // Tabel lama yang mengelompokkan per teknisi sudah tidak dipakai.
+        ->assertDontSee('Teknisi yang Pernah Memperbaiki', false);
 
     // Filter teknisi B tidak punya laporan untuk alat ini.
     $this->actingAs($this->admin)
         ->get('/assets/' . $this->aset->id . '?teknisi=' . $this->teknisiB->id)
         ->assertStatus(200)
-        ->assertSee('Belum ada riwayat perbaikan untuk filter yang dipilih.', false)
+        ->assertSee('Belum ada perbaikan untuk filter yang dipilih.', false)
         ->assertDontSee('FLT-ALAT-A-HARI-INI', false);
 
     // Filter teknisi A menampilkan laporannya.
@@ -186,4 +195,45 @@ test('riwayat perbaikan pada detail equipment dikelompokkan per hari dan bisa di
         ->get('/assets/' . $this->aset->id . '?teknisi=' . $this->teknisiA->id)
         ->assertStatus(200)
         ->assertSee('FLT-ALAT-A-HARI-INI', false);
+});
+
+test('pencarian tabel perbaikan detail equipment menyaring kode laporan', function () {
+    $this->actingAs($this->admin)
+        ->get('/assets/' . $this->aset->id . '?q=FLT-ALAT-A-HARI-INI')
+        ->assertStatus(200)
+        ->assertSee('FLT-ALAT-A-HARI-INI', false);
+
+    $this->actingAs($this->admin)
+        ->get('/assets/' . $this->aset->id . '?q=KODE-TIDAK-ADA')
+        ->assertStatus(200)
+        ->assertSee('Belum ada perbaikan untuk filter yang dipilih.', false)
+        ->assertDontSee('FLT-ALAT-A-HARI-INI', false);
+});
+
+test('tabel perbaikan detail equipment dibatasi 15 baris per halaman', function () {
+    // 15 laporan tambahan -> total 16 perbaikan untuk alat ini.
+    for ($i = 1; $i <= 15; $i++) {
+        Report::create([
+            'technician_id'    => $this->teknisiA->id,
+            'report_date'      => now()->subDays($i),
+            'report_code'      => 'FLT-PAGI-' . str_pad((string) $i, 2, '0', STR_PAD_LEFT),
+            'work_description' => 'Perbaikan uji pagination ' . $i,
+            'asset_id'         => $this->aset->id,
+            'report_type'      => 'equipment_repair',
+            'status'           => 'completed',
+        ]);
+    }
+
+    expect(Report::where('asset_id', $this->aset->id)->count())->toBe(16);
+
+    $penandaBaris = '<tr class="hover:bg-slate-50 transition-colors">';
+
+    $halamanSatu = $this->actingAs($this->admin)->get('/assets/' . $this->aset->id);
+    $halamanSatu->assertStatus(200)
+        ->assertSee('Menampilkan 16 dari 16 perbaikan', false);
+    expect(substr_count($halamanSatu->getContent(), $penandaBaris))->toBe(15);
+
+    $halamanDua = $this->actingAs($this->admin)->get('/assets/' . $this->aset->id . '?page=2');
+    $halamanDua->assertStatus(200);
+    expect(substr_count($halamanDua->getContent(), $penandaBaris))->toBe(1);
 });

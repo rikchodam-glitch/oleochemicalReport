@@ -149,8 +149,8 @@
                 <p class="text-xs text-slate-500 mt-1">Perlu Review</p>
             </div>
             <div class="bg-white rounded-xl border border-blue-200 p-5 text-center">
-                <p class="text-3xl font-bold text-blue-600">{{ $technicians->count() }}</p>
-                <p class="text-xs text-slate-500 mt-1">Teknisi Pernah Repair</p>
+                <p class="text-3xl font-bold text-blue-600">{{ $teknisiPernahRepair->count() }}</p>
+                <p class="text-xs text-slate-500 mt-1">Teknisi Pernah Menangani</p>
             </div>
             <div class="bg-white rounded-xl border border-purple-200 p-5 text-center">
                 <p class="text-3xl font-bold text-purple-600">{{ $asset->technicians->count() }}</p>
@@ -219,115 +219,11 @@
             </div>
         </div>
 
-        <!-- Grafik -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div class="bg-white rounded-xl border border-slate-200 p-6">
-                <h3 class="text-sm font-semibold text-slate-900 mb-4">Perbaikan per Tipe</h3>
-                @if($statsByType->isNotEmpty())
-                    <div class="space-y-3">
-                        @php
-                            $maxType = $statsByType->max();
-                            $colors = ['bg-blue-500', 'bg-amber-500', 'bg-green-500', 'bg-red-500', 'bg-purple-500', 'bg-teal-500'];
-                            $colorIndex = 0;
-                            $typeLabels = ['breakdown' => 'Kerusakan', 'preventive' => 'Preventif', 'corrective' => 'Korektif', 'inspection' => 'Inspeksi', 'overhaul' => 'Overhaul'];
-                        @endphp
-                        @foreach($statsByType as $type => $count)
-                            @php
-                                $pct = $maxType > 0 ? round(($count / $maxType) * 100) : 0;
-                                $color = $colors[$colorIndex % count($colors)];
-                                $colorIndex++;
-                            @endphp
-                            <div>
-                                <div class="flex items-center justify-between text-sm mb-1">
-                                    <span class="text-slate-700">{{ $typeLabels[$type] ?? $type }}</span>
-                                    <span class="font-medium text-slate-900">{{ $count }}</span>
-                                </div>
-                                <div class="w-full bg-slate-100 rounded-full h-2">
-                                    <div class="{{ $color }} h-2 rounded-full transition-all" style="width: {{ $pct }}%"></div>
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
-                @else
-                    <div class="flex items-center justify-center h-32 text-sm text-slate-400">Belum ada data perbaikan</div>
-                @endif
-            </div>
-            <div class="bg-white rounded-xl border border-slate-200 p-6">
-                <h3 class="text-sm font-semibold text-slate-900 mb-4">Riwayat Perbaikan per Bulan</h3>
-                @if($statsByMonth->isNotEmpty())
-                    @php $maxMonth = $statsByMonth->max(); @endphp
-                    <div class="flex items-end gap-2 h-40">
-                        @foreach($statsByMonth as $month => $count)
-                            @php
-                                $pct = $maxMonth > 0 ? ($count / $maxMonth) * 100 : 10;
-                                $monthLabel = \Carbon\Carbon::createFromFormat('Y-m', $month)->format('M');
-                            @endphp
-                            <div class="flex-1 flex flex-col items-center">
-                                <span class="text-xs font-medium text-slate-700 mb-1">{{ $count }}</span>
-                                <div class="w-full bg-blue-100 rounded-t relative" style="height: 160px;">
-                                    <div class="absolute bottom-0 left-0 right-0 bg-blue-500 rounded-t transition-all" style="height: {{ $pct }}%"></div>
-                                </div>
-                                <span class="text-[10px] text-slate-400 mt-1">{{ $monthLabel }}</span>
-                            </div>
-                        @endforeach
-                    </div>
-                @else
-                    <div class="flex items-center justify-center h-32 text-sm text-slate-400">Belum ada data perbaikan</div>
-                @endif
-            </div>
-        </div>
+        {{-- Grafik tren perbaikan: lebar penuh + komposisi jenis + ringkasan --}}
+        @include('assets.partials._show-grafik-perbaikan')
 
-        <!-- Teknisi yang pernah memperbaiki -->
-        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div class="px-6 py-4 border-b border-slate-100">
-                <h3 class="text-sm font-semibold text-slate-900">Teknisi yang Pernah Memperbaiki</h3>
-            </div>
-            @if($technicians->isNotEmpty())
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead>
-                            <tr class="bg-slate-50">
-                                <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-6 py-3">Teknisi</th>
-                                <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-6 py-3">NIK</th>
-                                <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-6 py-3">Jumlah</th>
-                                <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-6 py-3">Terakhir</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-50">
-                            @foreach($technicians as $technician)
-                                <tr class="hover:bg-slate-50 transition-colors">
-                                    <td class="px-6 py-3.5">
-                                        <div class="flex items-center gap-3">
-                                            <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">{{ substr($technician->name, 0, 1) }}</div>
-                                            <div>
-                                                <p class="text-sm font-medium text-slate-900">{{ $technician->name }}</p>
-                                                @if($technician->telegram_username)<p class="text-xs text-slate-400">@ {{ $technician->telegram_username }}</p>@endif
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-3.5 font-mono text-sm text-slate-700">{{ $technician->nik ?? '-' }}</td>
-                                    <td class="px-6 py-3.5 text-center">
-                                        <span class="inline-flex items-center justify-center w-8 h-8 bg-blue-50 text-blue-700 text-sm font-bold rounded-full">{{ $technician->repair_count }}</span>
-                                    </td>
-                                    <td class="px-6 py-3.5 text-sm text-slate-600">{{ $technician->last_repair?->format('d M Y') ?? '-' }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            @else
-                <div class="px-6 py-10 text-center text-sm text-slate-400">Belum ada teknisi yang melaporkan perbaikan untuk asset ini.</div>
-            @endif
-        </div>
-
-        @include('assets.partials._riwayat-perbaikan', [
-            'asset'          => $asset,
-            'riwayat'        => $riwayat,
-            'riwayatPerHari' => $riwayatPerHari,
-            'technicians'    => $technicians,
-            'filterRiwayat'  => $filterRiwayat,
-            'totalReports'   => $totalReports,
-        ])
+        {{-- Daftar perbaikan: satu baris = satu perbaikan (tombol Detail ke laporan) --}}
+        @include('assets.partials._show-tabel-perbaikan')
 
         <!-- Modal Assign Teknisi -->
         <div x-show="showAssignModal"
@@ -379,6 +275,7 @@
 @endsection
 
 @push('scripts')
+@include('assets.partials._show-grafik-script')
 <script>
 function assetDetail() {
     return {
