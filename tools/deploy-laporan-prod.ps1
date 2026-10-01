@@ -114,19 +114,31 @@ function Panggil([string]$Perintah, [string[]]$Argumen, [string]$Di = '') {
     Return  : exit code proses anak.
 #>
 function SkripTerpisah([string]$Skrip, [string[]]$Argumen) {
-    # Keluaran proses anak dibiarkan mengalir ke handle bawaan (konsol), BUKAN
-    # lewat pipeline PowerShell. Dua alasan:
-    #   (1) kalau keluaran anak mengalir ke keluaran fungsi, pemanggil menerima
-    #       array berisi teks anak + exit code sehingga "kode -ne 0" salah
-    #       menuduh deploy gagal;
+    # Proses anak dijalankan lewat .NET Process (bukan Start-Process) dengan
+    # UseShellExecute = $false TANPA redirect: proses anak mewarisi konsol induk
+    # sehingga keluarannya terlihat langsung dan TIDAK lewat pipeline PowerShell.
+    # Dua alasan keluaran tidak boleh lewat pipeline:
+    #   (1) kalau mengalir ke keluaran fungsi, pemanggil menerima array berisi
+    #       teks anak + exit code sehingga "kode -ne 0" salah menuduh gagal;
     #   (2) kalau dipipe, service yang dinyalakan skrip anak (serve/queue/poll)
-    #       mewarisi handle pipe sehingga perintah menggantung tanpa akhir.
-    # -Wait SENGAJA TIDAK dipakai: Start-Process -Wait menunggu seluruh pohon
-    # proses, termasuk service yang memang dirancang berjalan terus. Yang
-    # dipakai $proses.WaitForExit() yang menunggu proses anak saja.
-    $perintah = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Skrip) + $Argumen
-    $proses = Start-Process -FilePath 'powershell.exe' -ArgumentList $perintah -NoNewWindow -PassThru
+    #       ikut mewarisi handle pipe sehingga perintah menggantung tanpa akhir.
+    # Dipakai $proses.WaitForExit() (menunggu proses anak saja), BUKAN
+    # Start-Process -Wait (menunggu seluruh pohon proses termasuk service yang
+    # memang dirancang berjalan terus), dan BUKAN Start-Process -PassThru
+    # (terbukti mengembalikan ExitCode kosong di komputer ini).
+    $argumenTeks = ''
+    foreach ($a in $Argumen) { $argumenTeks += ' "' + $a + '"' }
+
+    $info = New-Object System.Diagnostics.ProcessStartInfo
+    $info.FileName        = 'powershell.exe'
+    $info.Arguments       = '-NoProfile -ExecutionPolicy Bypass -File "' + $Skrip + '"' + $argumenTeks
+    $info.UseShellExecute = $false
+
+    $proses = New-Object System.Diagnostics.Process
+    $proses.StartInfo = $info
+    $null = $proses.Start()
     $proses.WaitForExit()
+
     return $proses.ExitCode
 }
 
