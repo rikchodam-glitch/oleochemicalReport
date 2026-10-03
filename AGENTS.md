@@ -1451,3 +1451,16 @@ WAJIB ikuti pola ini untuk semua perintah `php artisan tinker --execute`:
    queued job (`php artisan queue:work`), bukan sinkron — cek dulu
    `QUEUE_CONNECTION` di `.env` sebelum menyimpulkan job "hang"/"stuck"
    (lihat Riwayat Insiden #5).
+
+6. **JANGAN lupa menghapus variabel lingkungan sesudah dipakai.** Jendela
+   PowerShell yang dipakai menjalankan perintah BERTAHAN antar panggilan,
+   sehingga `$env:DB_DATABASE='oleochemical'` (dipakai untuk mengarahkan
+   perintah ke database PROD) masih terpasang pada panggilan berikutnya.
+   Akibatnya `php artisan test` bisa gagal SELURUHNYA dengan
+   `SQLiteDatabaseDoesNotExistException: Database file at path [oleochemical]
+   does not exist` (kejadian 03/10/2026) padahal kodenya benar: `phpunit.xml`
+   menulis `<env name="DB_DATABASE" value=":memory:"/>` TANPA `force`, sehingga
+   variabel lingkungan asli MENANG atas phpunit.xml. Aturan: setiap perintah
+   yang menyetel `DB_DATABASE` WAJIB diakhiri `Remove-Item Env:DB_DATABASE`
+   pada perintah yang sama, dan periksa `$env:DB_DATABASE` lebih dulu kalau
+   suite tiba-tiba merah semua.
