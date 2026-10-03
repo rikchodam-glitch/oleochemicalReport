@@ -577,13 +577,14 @@ Batasan penting lingkungan ini:
 15. **Perbaikan deskripsi aset dari berkas "Master List" (diputuskan 03/10/2026,
    sudah ada kodenya):**
    - Perkakas: `php artisan assets:perbarui-deskripsi {berkas} {--sheet=}
-     {--pt=} {--kode-saja} {--laporan=} {--execute}` di
+     {--pt=} {--kode-saja} {--perbarui-kode-alat} {--laporan=} {--execute}` di
      `app\Console\Commands\AssetUpdateDescriptionCommand.php`. Kolom berkas
      dikenali dari BARIS JUDUL ("Kode Alat" dan "Description"), bukan dari
      urutan kolom, supaya revisi berkas berikutnya boleh menggeser posisi
      kolom. Tanpa `--execute` hanya simulasi; `--laporan=<path>` menulis CSV
      berisi SELURUH baris yang dibaca beserta statusnya (diperbarui / sama /
-     ambigu / tidak_ketemu / kode_kosong / gagal).
+     ambigu / tidak_ketemu / kode_kosong / gagal) ditambah kolom
+     `kode_alat_baru` (Kode Alat sesudah disamakan).
    - Aturan pencocokan: KODE ALAT = `assets.tech_ident_no` (huruf besar, spasi
      tepi dibuang). Bila satu Kode Alat dipakai lebih dari satu baris DI DALAM
      berkas, atau lebih dari satu aset di database, Equipment No. dipakai
@@ -593,6 +594,21 @@ Batasan penting lingkungan ini:
      Kode Alat persis yang dihitung. Pencocokan longgar lewat AKHIRAN kode alat
      DILARANG: "ESKALCY01" dan "MALCY01" sama-sama berakhiran "ALCY01" padahal
      dua mesin berbeda di lokasi yang sama.
+   - Opsi `--perbarui-kode-alat` (dibuat 03/10/2026) menyamakan kolom
+     `assets.tech_ident_no` dengan tulisan Kode Alat di berkas (database
+     "ESKALCY01" menjadi "ALCY01"). Perubahan DIBATALKAN bila kode tujuan sudah
+     dipakai aset LAIN di PT yang sama, karena `tech_ident_no` TIDAK berindeks
+     unik (`database\migrations\0001_01_01_000007_create_assets_table.php` baris
+     15) sehingga dua aset bisa berkode sama dan pencarian alat jadi ambigu.
+     Simulasi 03/10/2026 pada database PROD `oleochemical`: 27 Kode Alat akan
+     disamakan, 1 dibatalkan (aset id 3740 "ESKSC04" -> "SC04" bentrok dengan
+     aset id 3895 yang memang bernama "SC04"), 0 gagal; bukti lengkap di
+     `C:\laragon\backup-oleochemical\simulasi-kode-alat-npa.csv`. Jebakan yang
+     WAJIB diingat: `petaAset()` harus ikut membaca kolom `company_id`, kalau
+     tidak `$aset->company_id` null dan penjaga bentrok tidak pernah aktif
+     (bug ini nyata terjadi dan ketahuan dari test, bukan dari peninjauan kode).
+     Database DEV `oleochemical_dev` memuat 28 aset berawalan "ESK" yang sama
+     (id 3724-3751) sehingga penyeragaman harus dijalankan di kedua database.
    - Bukti pemakaian pertama: berkas `Master List NPA rev 2.xlsx` (287 baris)
      dipakai 03/10/2026 untuk PT NPA di database PROD `oleochemical`: 256 baris
      cocok lewat Kode Alat + 31 baris lewat Equipment No. (kode di berkas
@@ -622,8 +638,13 @@ Batasan penting lingkungan ini:
      section (BLENDING, REACTIONSYSTEM, AIRSUPPLYSYSTEM, dst.) akan
      MENGEMBALIKAN deskripsi lama — perbaiki berkas sumbernya lebih dulu bila
      import ulang akan dilakukan.
-   - Uji: `tests/Feature/AssetUpdateDescriptionCommandTest.php` (9 test; uji
-     mutasi: memaksa penulisan saat mode simulasi membuat 1 test GAGAL).
+   - Uji: `tests/Feature/AssetUpdateDescriptionCommandTest.php` (16 test; uji
+     mutasi: memaksa penulisan saat mode simulasi membuat 1 test GAGAL,
+     menetralkan penjaga bentrok membuat test "Kode Alat dibatalkan bila kode
+     itu sudah dipakai aset lain" GAGAL, dan mengabaikan opsi
+     `--perbarui-kode-alat` membuat test "tanpa opsi perbarui-kode-alat Kode
+     Alat di database tidak diubah" GAGAL). Seluruh suite 305 test hijau
+     (03/10/2026).
 
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
