@@ -34,10 +34,18 @@ use Throwable;
  * Baris Excel tanpa kolom Description atau dengan deskripsi yang sudah sama
  * tidak mengubah apa pun. Tanpa opsi --execute command hanya menyimulasikan.
  *
+ * Opsi --perbarui-kode-alat menambahkan penyeragaman Kode Alat: kolom
+ * assets.tech_ident_no disamakan dengan tulisan di berkas (mis. database
+ * "ESKALCY01" menjadi "ALCY01"). Perubahan itu DIBATALKAN untuk baris yang kode
+ * tujuannya sudah dipakai aset lain di PT yang sama, karena assets.tech_ident_no
+ * tidak berindeks unik dan dua aset berkode sama membuat pencarian alat ambigu.
+ *
  * Contoh pemakaian:
  *   php artisan assets:perbarui-deskripsi "C:\Users\sapusr\Downloads\Master List NPA rev 2.xlsx" --pt=NPA
  *   php artisan assets:perbarui-deskripsi "...xlsx" --pt=NPA --laporan=storage\app\laporan-perubahan.csv
  *   php artisan assets:perbarui-deskripsi "...xlsx" --pt=NPA --execute
+ *   php artisan assets:perbarui-deskripsi "...xlsx" --pt=NPA --perbarui-kode-alat
+ *   php artisan assets:perbarui-deskripsi "...xlsx" --pt=NPA --perbarui-kode-alat --execute
  */
 class AssetUpdateDescriptionCommand extends Command
 {
@@ -51,6 +59,7 @@ class AssetUpdateDescriptionCommand extends Command
                             {--sheet=List Equipment : Nama sheet sumber data}
                             {--pt= : Batasi ke satu PT (kode perusahaan, mis. NPA)}
                             {--kode-saja : Hanya cocokkan lewat Kode Alat persis (tanpa cadangan Equipment No.)}
+                            {--perbarui-kode-alat : Ikut samakan Kode Alat (assets.tech_ident_no) dengan berkas bila berbeda}
                             {--laporan= : Path berkas CSV daftar perubahan (opsional)}
                             {--execute : Simpan ke database (tanpa opsi ini hanya simulasi)}';
 
@@ -73,6 +82,7 @@ class AssetUpdateDescriptionCommand extends Command
         $namaSheet   = (string) $this->option('sheet');
         $kodePt      = mb_strtoupper(trim((string) $this->option('pt')));
         $kodeSaja    = (bool) $this->option('kode-saja');
+        $kodeIkut    = (bool) $this->option('perbarui-kode-alat');
         $simpan      = (bool) $this->option('execute');
         $pathLaporan = trim((string) $this->option('laporan'));
 
@@ -81,6 +91,11 @@ class AssetUpdateDescriptionCommand extends Command
             ? 'MODE SIMPAN: perubahan akan ditulis ke database.'
             : 'MODE SIMULASI: tidak ada perubahan ditulis (tambahkan --execute untuk menyimpan).');
         $this->newLine();
+
+        if ($kodeIkut) {
+            $this->line('Opsi --perbarui-kode-alat aktif: Kode Alat (tech_ident_no) di database ikut disamakan dengan berkas.');
+            $this->newLine();
+        }
 
         if (! is_file($berkas)) {
             $this->error('Berkas tidak ditemukan: ' . $berkas);
@@ -110,16 +125,23 @@ class AssetUpdateDescriptionCommand extends Command
         ));
         $this->newLine();
 
+        // Hitungan 'kode_disamakan', 'kode_bentrok', dan 'kode_gagal' TIDAK ikut
+        // penjaga keseimbangan baris: ketiganya menempel pada baris yang sudah
+        // dihitung di 'diperbarui' atau 'sama', karena satu baris berkas bisa
+        // memicu dua perubahan sekaligus (Kode Alat dan deskripsi).
         $ringkas = [
-            'dibaca'       => count($barisExcel),
-            'kode_alat'    => 0,
-            'equipment_no' => 0,
-            'diperbarui'   => 0,
-            'sama'         => 0,
-            'ambigu'       => 0,
-            'tidak_ketemu' => 0,
-            'kode_kosong'  => 0,
-            'gagal'        => 0,
+            'dibaca'         => count($barisExcel),
+            'kode_alat'      => 0,
+            'equipment_no'   => 0,
+            'diperbarui'     => 0,
+            'sama'           => 0,
+            'ambigu'         => 0,
+            'tidak_ketemu'   => 0,
+            'kode_kosong'    => 0,
+            'gagal'          => 0,
+            'kode_disamakan' => 0,
+            'kode_bentrok'   => 0,
+            'kode_gagal'     => 0,
         ];
 
         $laporan = [];  // seluruh baris yang dibaca; dasar berkas laporan
@@ -151,16 +173,31 @@ class AssetUpdateDescriptionCommand extends Command
             $aset = $hasil['aset'];
             $ringkas[$hasil['cara']]++;
 
+            // Opsi --perbarui-kode-alat dijalankan LEBIH DULU daripada deskripsi,
+            // supaya baris yang deskripsinya sudah sama tetap ikut disamakan
+            // Kode Alat-nya (kalau tidak, baris itu keluar lewat cabang "sama").
+            $kode        = $this->samakanKodeAlat($aset, (string) $baris['kode'], $kodeIkut, $simpan);
+            $kodeBaru    = $kode['status'] === 'disamakan' ? $kode['kode'] : '';
+            $catatanKode = $kode['catatan'] !== '' ? ' | ' . $kode['catatan'] : '';
+
+            if ($kode['status'] === 'disamakan') {
+                $ringkas['kode_disamakan']++;
+            } elseif ($kode['status'] === 'bentrok') {
+                $ringkas['kode_bentrok']++;
+            } elseif ($kode['status'] === 'gagal') {
+                $ringkas['kode_gagal']++;
+            }
+
             // Deskripsi yang isinya sama (beda besar-kecil huruf saja tidak
             // dianggap perubahan) tidak perlu ditulis ulang.
             if (mb_strtoupper(trim((string) $aset->description)) === mb_strtoupper(trim($baris['deskripsi']))) {
                 $ringkas['sama']++;
-                $laporan[] = $this->catatBaris('sama', $baris, $aset, 'deskripsi sudah sama');
+                $laporan[] = $this->catatBaris('sama', $baris, $aset, 'deskripsi sudah sama' . $catatanKode, $kodeBaru);
 
                 continue;
             }
 
-            $cara = $hasil['catatan'];
+            $cara = $hasil['catatan'] . $catatanKode;
 
             try {
                 if ($simpan) {
@@ -168,7 +205,7 @@ class AssetUpdateDescriptionCommand extends Command
                 }
 
                 $ringkas['diperbarui']++;
-                $laporan[] = $this->catatBaris('diperbarui', $baris, $aset, $cara);
+                $laporan[] = $this->catatBaris('diperbarui', $baris, $aset, $cara, $kodeBaru);
             } catch (Throwable $e) {
                 $ringkas['gagal']++;
                 $laporan[] = $this->catatBaris('gagal', $baris, $aset, $e->getMessage());
@@ -202,7 +239,7 @@ class AssetUpdateDescriptionCommand extends Command
             $this->newLine();
         }
 
-        $this->table(['Kategori', 'Jumlah'], [
+        $tabel = [
             ['Baris Excel dibaca', $ringkas['dibaca']],
             ['Cocok lewat Kode Alat', $ringkas['kode_alat']],
             ['Cocok lewat cadangan Equipment No.', $ringkas['equipment_no']],
@@ -212,7 +249,15 @@ class AssetUpdateDescriptionCommand extends Command
             ['Kode alat tidak ditemukan', $ringkas['tidak_ketemu']],
             ['Baris tanpa kode alat', $ringkas['kode_kosong']],
             ['Gagal disimpan', $ringkas['gagal']],
-        ]);
+        ];
+
+        if ($kodeIkut) {
+            $tabel[] = ['Kode Alat disamakan dengan berkas', $ringkas['kode_disamakan']];
+            $tabel[] = ['Kode Alat batal (sudah dipakai aset lain)', $ringkas['kode_bentrok']];
+            $tabel[] = ['Kode Alat gagal disamakan', $ringkas['kode_gagal']];
+        }
+
+        $this->table(['Kategori', 'Jumlah'], $tabel);
 
         // Penjaga keseimbangan: setiap baris yang dibaca WAJIB berakhir di salah
         // satu kategori (AGENTS.md poin 9) supaya tidak ada baris hilang diam-diam.
@@ -231,7 +276,7 @@ class AssetUpdateDescriptionCommand extends Command
             $this->simpanLaporan($pathLaporan, $laporan, $ringkas, $kodePt);
         }
 
-        if (! $simpan && $ringkas['diperbarui'] > 0) {
+        if (! $simpan && ($ringkas['diperbarui'] > 0 || $ringkas['kode_disamakan'] > 0)) {
             $this->newLine();
             $this->comment('Simulasi saja: jalankan ulang dengan --execute untuk menyimpan perubahan di atas.');
         }
@@ -369,7 +414,10 @@ class AssetUpdateDescriptionCommand extends Command
         }
 
         $peta  = ['kode' => [], 'equipment_no' => [], 'jumlah' => 0];
-        $kolom = ['id', 'equipment_no', 'tech_ident_no', 'functional_loc', 'description'];
+        // company_id ikut diambil karena dipakai penjaga bentrok Kode Alat pada
+        // opsi --perbarui-kode-alat (samakanKodeAlat) - tanpa kolom ini nilai
+        // $aset->company_id null dan penjaga itu tidak pernah aktif.
+        $kolom = ['id', 'equipment_no', 'tech_ident_no', 'functional_loc', 'description', 'company_id'];
 
         foreach ($query->get($kolom) as $aset) {
             $peta['jumlah']++;
@@ -506,9 +554,10 @@ class AssetUpdateDescriptionCommand extends Command
      * @param  array       $baris       Baris Excel yang diperiksa
      * @param  Asset|null  $aset        Aset tujuan (null bila tidak ketemu)
      * @param  string      $keterangan  Catatan tambahan
+     * @param  string      $kodeBaru    Kode Alat sesudah disamakan (kosong bila tidak berubah)
      * @return array<string, string|int|null>
      */
-    private function catatBaris(string $status, array $baris, ?Asset $aset, string $keterangan): array
+    private function catatBaris(string $status, array $baris, ?Asset $aset, string $keterangan, string $kodeBaru = ''): array
     {
         return [
             'status'         => $status,
@@ -517,11 +566,80 @@ class AssetUpdateDescriptionCommand extends Command
             'equipment_no'   => (string) ($aset?->equipment_no ?? $baris['eq_no']),
             'kode_alat'      => $baris['kode'],
             'kode_alat_db'   => (string) ($aset?->tech_ident_no ?? ''),
+            'kode_alat_baru' => $kodeBaru,
             'functional_loc' => (string) ($aset?->functional_loc ?? $baris['funcloc']),
             'deskripsi_lama' => (string) ($aset?->description ?? ''),
             'deskripsi_baru' => $baris['deskripsi'],
             'keterangan'     => $keterangan,
         ];
+    }
+
+    /**
+     * Samakan Kode Alat (assets.tech_ident_no) aset dengan tulisan di berkas
+     * Master List. Dijalankan hanya bila opsi --perbarui-kode-alat diberikan.
+     *
+     * Penjaga penting: kolom tech_ident_no TIDAK berindeks unik (lihat migration
+     * 0001_01_01_000007_create_assets_table.php), sehingga dua aset bisa berkode
+     * sama. Karena itu kode tujuan DIBATALKAN bila kode itu sudah dipakai aset
+     * lain di PT yang sama - dua aset berkode sama membuat pencarian alat
+     * ambigu (berkas nyata memang memakai "SC04" untuk dua mesin; kasus seperti
+     * itu harus diputuskan lewat Equipment No., bukan dengan menyeragamkan kode).
+     *
+     * @param  Asset   $aset        Aset tujuan yang sudah cocok dengan baris berkas
+     * @param  string  $kodeBerkas  Kode Alat sebagaimana ditulis di berkas
+     * @param  bool    $aktif       True bila opsi --perbarui-kode-alat diberikan
+     * @param  bool    $simpan      True bila perubahan boleh ditulis ke database
+     * @return array{kode: string, status: string, catatan: string}  status:
+     *   'tidak_berlaku' (opsi mati/kode sama/kode berkas kosong), 'disamakan',
+     *   'bentrok' (dibatalkan karena kode sudah dipakai aset lain), 'gagal'
+     */
+    private function samakanKodeAlat(Asset $aset, string $kodeBerkas, bool $aktif, bool $simpan): array
+    {
+        $kodeBerkas = trim($kodeBerkas);
+        $kodeLama   = trim((string) $aset->tech_ident_no);
+
+        if (! $aktif || $kodeBerkas === '' || mb_strtoupper($kodeBerkas) === mb_strtoupper($kodeLama)) {
+            return ['kode' => $kodeLama, 'status' => 'tidak_berlaku', 'catatan' => ''];
+        }
+
+        // Pembanding dibuat peka terhadap besar-kecil huruf lewat UPPER() supaya
+        // perilakunya sama di MySQL (collation ci) maupun SQLite (dipakai test).
+        $terpakaiAsetLain = Asset::query()
+            ->where('company_id', $aset->company_id)
+            ->where('id', '<>', $aset->id)
+            ->whereRaw('UPPER(tech_ident_no) = ?', [mb_strtoupper($kodeBerkas)])
+            ->exists();
+
+        if ($terpakaiAsetLain) {
+            return [
+                'kode'    => $kodeLama,
+                'status'  => 'bentrok',
+                'catatan' => 'Kode Alat "' . $kodeBerkas . '" sudah dipakai aset lain di PT yang sama, Kode Alat TIDAK diubah',
+            ];
+        }
+
+        try {
+            if ($simpan) {
+                Asset::whereKey($aset->id)->update(['tech_ident_no' => $kodeBerkas]);
+            }
+
+            return [
+                'kode'    => $kodeBerkas,
+                'status'  => 'disamakan',
+                'catatan' => 'Kode Alat disamakan: ' . ($kodeLama !== '' ? $kodeLama : '(kosong)') . ' -> ' . $kodeBerkas,
+            ];
+        } catch (Throwable $e) {
+            Log::warning('Gagal menyamakan Kode Alat aset', [
+                'asset_id' => $aset->id,
+                'pesan'    => $e->getMessage(),
+            ]);
+
+            return [
+                'kode'    => $kodeLama,
+                'status'  => 'gagal',
+                'catatan' => 'Gagal menyamakan Kode Alat: ' . $e->getMessage(),
+            ];
+        }
     }
 
     /**
@@ -599,6 +717,7 @@ class AssetUpdateDescriptionCommand extends Command
             'equipment_no',
             'kode_alat',
             'kode_alat_db',
+            'kode_alat_baru',
             'functional_location',
             'deskripsi_lama',
             'deskripsi_baru',
@@ -621,6 +740,9 @@ class AssetUpdateDescriptionCommand extends Command
             'tidak_ketemu=' . $ringkas['tidak_ketemu'],
             'kode_kosong=' . $ringkas['kode_kosong'],
             'gagal=' . $ringkas['gagal'],
+            'kode_alat_disamakan=' . $ringkas['kode_disamakan'],
+            'kode_alat_bentrok=' . $ringkas['kode_bentrok'],
+            'kode_alat_gagal=' . $ringkas['kode_gagal'],
             'pt=' . ($kodePt !== '' ? $kodePt : 'semua'),
         ]);
 

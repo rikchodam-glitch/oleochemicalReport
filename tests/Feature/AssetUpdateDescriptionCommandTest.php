@@ -301,4 +301,176 @@ test('opsi laporan menulis berkas CSV berisi baris perubahan', function () {
         ->and($isi)->toContain('BLENDING');
 });
 
+test('opsi perbarui-kode-alat menyamakan Kode Alat di database dengan berkas', function () {
+    $aset = asetUji([
+        'company_id'    => $this->npa->id,
+        'tech_ident_no' => 'ESKALCY01',
+        'equipment_no'  => '70000092',
+        'description'   => 'Centrifuge Separator',
+    ]);
+
+    $this->berkasUji[] = $berkas = tulisMasterListUji([
+        ['kode' => 'ALCY01', 'deskripsi' => 'Centrifuge Separator', 'eq_no' => '70000092'],
+    ]);
+
+    $this->artisan('assets:perbarui-deskripsi', [
+        'berkas'               => $berkas,
+        '--pt'                 => 'NPA',
+        '--perbarui-kode-alat' => true,
+        '--execute'            => true,
+    ])->assertSuccessful();
+
+    expect($aset->fresh()->tech_ident_no)->toBe('ALCY01');
+});
+
+test('tanpa opsi perbarui-kode-alat Kode Alat di database tidak diubah', function () {
+    $aset = asetUji([
+        'company_id'    => $this->npa->id,
+        'tech_ident_no' => 'ESKALCY01',
+        'equipment_no'  => '70000092',
+        'description'   => 'MILLING&PACKAGING',
+    ]);
+
+    $this->berkasUji[] = $berkas = tulisMasterListUji([
+        ['kode' => 'ALCY01', 'deskripsi' => 'Centrifuge Separator', 'eq_no' => '70000092'],
+    ]);
+
+    $this->artisan('assets:perbarui-deskripsi', [
+        'berkas'    => $berkas,
+        '--pt'      => 'NPA',
+        '--execute' => true,
+    ])->assertSuccessful();
+
+    expect($aset->fresh()->tech_ident_no)->toBe('ESKALCY01')
+        ->and($aset->fresh()->description)->toBe('Centrifuge Separator');
+});
+
+test('mode simulasi perbarui-kode-alat tidak menulis Kode Alat', function () {
+    $aset = asetUji([
+        'company_id'    => $this->npa->id,
+        'tech_ident_no' => 'ESKALCY01',
+        'equipment_no'  => '70000092',
+        'description'   => 'Centrifuge Separator',
+    ]);
+
+    $this->berkasUji[] = $berkas = tulisMasterListUji([
+        ['kode' => 'ALCY01', 'deskripsi' => 'Centrifuge Separator', 'eq_no' => '70000092'],
+    ]);
+
+    $this->artisan('assets:perbarui-deskripsi', [
+        'berkas'               => $berkas,
+        '--pt'                 => 'NPA',
+        '--perbarui-kode-alat' => true,
+    ])
+        ->expectsOutputToContain('MODE SIMULASI')
+        ->assertSuccessful();
+
+    expect($aset->fresh()->tech_ident_no)->toBe('ESKALCY01');
+});
+
+test('Kode Alat tetap disamakan walau deskripsi sudah sama', function () {
+    $aset = asetUji([
+        'company_id'    => $this->npa->id,
+        'tech_ident_no' => 'ESKHM01',
+        'equipment_no'  => '70000087',
+        'description'   => 'Hammer Mill',
+    ]);
+
+    $this->berkasUji[] = $berkas = tulisMasterListUji([
+        ['kode' => 'HM01', 'deskripsi' => 'Hammer Mill', 'eq_no' => '70000087'],
+    ]);
+
+    $this->artisan('assets:perbarui-deskripsi', [
+        'berkas'               => $berkas,
+        '--pt'                 => 'NPA',
+        '--perbarui-kode-alat' => true,
+        '--execute'            => true,
+    ])->assertSuccessful();
+
+    expect($aset->fresh()->tech_ident_no)->toBe('HM01')
+        ->and($aset->fresh()->description)->toBe('Hammer Mill');
+});
+
+test('Kode Alat di database yang masih kosong diisi dari berkas', function () {
+    $aset = asetUji([
+        'company_id'    => $this->npa->id,
+        'equipment_no'  => '70000177',
+        'description'   => 'Valve Inlet H05B',
+    ]);
+
+    $this->berkasUji[] = $berkas = tulisMasterListUji([
+        ['kode' => 'SVH05A', 'deskripsi' => 'Valve Inlet H05B', 'eq_no' => '70000177'],
+    ]);
+
+    $this->artisan('assets:perbarui-deskripsi', [
+        'berkas'               => $berkas,
+        '--pt'                 => 'NPA',
+        '--perbarui-kode-alat' => true,
+        '--execute'            => true,
+    ])->assertSuccessful();
+
+    expect($aset->fresh()->tech_ident_no)->toBe('SVH05A');
+});
+
+test('Kode Alat dibatalkan bila kode itu sudah dipakai aset lain di PT yang sama', function () {
+    $esk = asetUji([
+        'company_id'    => $this->npa->id,
+        'tech_ident_no' => 'ESKSC04',
+        'equipment_no'  => '70000101',
+        'description'   => 'Screw Conveyor 04',
+    ]);
+
+    asetUji([
+        'company_id'    => $this->npa->id,
+        'tech_ident_no' => 'SC04',
+        'equipment_no'  => '70000247',
+        'description'   => 'Screw Conveyor H06',
+    ]);
+
+    // Berkas nyata memakai "SC04" untuk dua mesin berbeda, sehingga Equipment
+    // No. yang memutuskan baris mana masuk aset mana.
+    $this->berkasUji[] = $berkas = tulisMasterListUji([
+        ['kode' => 'SC04', 'deskripsi' => 'Screw Conveyor 04', 'eq_no' => '70000101'],
+        ['kode' => 'SC04', 'deskripsi' => 'Screw Conveyor H06', 'eq_no' => '70000247'],
+    ]);
+
+    $this->artisan('assets:perbarui-deskripsi', [
+        'berkas'               => $berkas,
+        '--pt'                 => 'NPA',
+        '--perbarui-kode-alat' => true,
+        '--execute'            => true,
+    ])->assertSuccessful();
+
+    expect($esk->fresh()->tech_ident_no)->toBe('ESKSC04');
+});
+
+test('laporan CSV memuat Kode Alat sesudah disamakan', function () {
+    asetUji([
+        'company_id'    => $this->npa->id,
+        'tech_ident_no' => 'ESKFNCY01',
+        'equipment_no'  => '70000091',
+        'description'   => 'Centrifuge',
+    ]);
+
+    $this->berkasUji[] = $csv = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'uji-laporan-kode-' . uniqid() . '.csv';
+
+    $this->berkasUji[] = $berkas = tulisMasterListUji([
+        ['kode' => 'FNCY01', 'deskripsi' => 'Centrifuge', 'eq_no' => '70000091'],
+    ]);
+
+    $this->artisan('assets:perbarui-deskripsi', [
+        'berkas'               => $berkas,
+        '--pt'                 => 'NPA',
+        '--perbarui-kode-alat' => true,
+        '--execute'            => true,
+        '--laporan'            => $csv,
+    ])->assertSuccessful();
+
+    $isi = (string) file_get_contents($csv);
+
+    expect($isi)->toContain('kode_alat_baru')
+        ->and($isi)->toContain('ESKFNCY01')
+        ->and($isi)->toContain('kode_alat_disamakan=1');
+});
+
 
