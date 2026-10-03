@@ -574,6 +574,42 @@ Batasan penting lingkungan ini:
      alat, (c) penghapusan kode funcloc pada label kandidat membuat 3 test
      GAGAL.
 
+15. **Perbaikan deskripsi aset dari berkas "Master List" (diputuskan 03/10/2026,
+   sudah ada kodenya):**
+   - Perkakas: `php artisan assets:perbarui-deskripsi {berkas} {--sheet=}
+     {--pt=} {--kode-saja} {--laporan=} {--execute}` di
+     `app\Console\Commands\AssetUpdateDescriptionCommand.php`. Kolom berkas
+     dikenali dari BARIS JUDUL ("Kode Alat" dan "Description"), bukan dari
+     urutan kolom, supaya revisi berkas berikutnya boleh menggeser posisi
+     kolom. Tanpa `--execute` hanya simulasi; `--laporan=<path>` menulis CSV
+     berisi SELURUH baris yang dibaca beserta statusnya (diperbarui / sama /
+     ambigu / tidak_ketemu / kode_kosong / gagal).
+   - Aturan pencocokan: KODE ALAT = `assets.tech_ident_no` (huruf besar, spasi
+     tepi dibuang). Bila satu Kode Alat dipakai lebih dari satu baris DI DALAM
+     berkas, atau lebih dari satu aset di database, Equipment No. dipakai
+     sebagai PEMUTUS (kolom `assets.equipment_no` berindeks unik). Bila Kode
+     Alat di berkas tidak ada di database, baris dicocokkan lewat Equipment No.
+     sebagai CADANGAN; opsi `--kode-saja` mematikan cadangan itu sehingga hanya
+     Kode Alat persis yang dihitung. Pencocokan longgar lewat AKHIRAN kode alat
+     DILARANG: "ESKALCY01" dan "MALCY01" sama-sama berakhiran "ALCY01" padahal
+     dua mesin berbeda di lokasi yang sama.
+   - Bukti pemakaian pertama: berkas `Master List NPA rev 2.xlsx` (287 baris)
+     dipakai 03/10/2026 untuk PT NPA di database PROD `oleochemical`: 256 baris
+     cocok lewat Kode Alat + 31 baris lewat Equipment No. (kode di berkas
+     ditulis tanpa awalan "ESK"/"M"), 287 deskripsi diperbarui, 0 gagal.
+     Berkas itu juga memuat Kode Alat ganda: "SC04" dipakai dua mesin berbeda
+     (baris 66 = MP01-7831/70000101, baris 221 = RS01-7851/70000247) dan
+     "AGT02A"/"AGT02B" masing-masing dua baris — inilah alasan pemutus
+     Equipment No. WAJIB ada, bukan pilihan.
+   - PENGINGAT: `app\Services\ImportService.php` mencocokkan aset lewat Tech
+     Ident No dan mengambil `description` dari kolom Description berkas. Import
+     ulang berkas master SAP yang kolom Description-nya masih berisi nama plant
+     section (BLENDING, REACTIONSYSTEM, AIRSUPPLYSYSTEM, dst.) akan
+     MENGEMBALIKAN deskripsi lama — perbaiki berkas sumbernya lebih dulu bila
+     import ulang akan dilakukan.
+   - Uji: `tests/Feature/AssetUpdateDescriptionCommandTest.php` (9 test; uji
+     mutasi: memaksa penulisan saat mode simulasi membuat 1 test GAGAL).
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file
