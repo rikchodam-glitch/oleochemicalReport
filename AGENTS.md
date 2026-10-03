@@ -458,12 +458,36 @@ Batasan penting lingkungan ini:
      varchar(50) — **nilai bawaannya tetap `admin`** supaya akun lama dan
      akun buatan `UserFactory` tidak berubah perilakunya (perubahan default
      ini pernah hampir merusak seluruh pengujian).
-   - Hak akses halaman diatur per Bagian di tabel `bagian_accesses`
-     (`bagian` unik + `permissions` json); daftar modulnya di
-     `config/akses.php` (label, grup menu, pola nama route, nama route menu
-     sidebar, penanda `khusus_admin`). Akun `admin`/`supervisor` SELALU akses
-     penuh dan tidak bisa dibatasi; modul bertanda `khusus_admin` (mis.
-     Manajemen User) tidak bisa diberikan ke Bagian mana pun.
+   - Hak akses halaman diatur per Bagian **DAN per Group teknisi** di tabel
+     `bagian_accesses` (`bagian` + `grup` unik bersama, `permissions` json);
+     daftar modulnya di `config/akses.php` (label, grup menu, pola nama
+     route, nama route menu sidebar, penanda `khusus_admin`). Akun
+     `admin`/`supervisor` SELALU akses penuh dan tidak bisa dibatasi; modul
+     bertanda `khusus_admin` (mis. Manajemen User) tidak bisa diberikan ke
+     Bagian maupun Group mana pun.
+   - Group sebuah akun diambil dari data teknisi yang terhubung
+     (`users.technician_id` -> `technicians.group`), BUKAN dari kolom baru di
+     `users` (keputusan user 01/10/2026, supaya group selalu ikut data teknisi
+     dan tidak perlu dijaga manual). Urutan pencarian izin:
+     (1) baris Bagian + Group, (2) baris Bagian dengan `grup` NULL sebagai
+     pengaturan bawaan, (3) seluruh modul diizinkan. Jadi akun tanpa teknisi
+     dan Group yang belum diatur memakai bawaan Bagian, dan baris lama dari
+     migrasi `2026_09_27_000002` otomatis menjadi bawaan itu — tidak ada
+     akses pengguna yang berubah saat migrasi
+     `2026_10_01_000002_add_grup_to_bagian_accesses_table.php` dijalankan.
+   - Layar "Hak Akses Bagian" (`resources/views/akses/index.blade.php`) punya
+     DUA baris tab: tab Bagian, lalu tab Group (Bawaan Bagian + Reguler,
+     Reguler Staff, Grub A-D) lengkap dengan jumlah akun/teknisi per
+     kombinasi; Group yang belum diatur sendiri ditandai "mengikuti bawaan".
+     `BagianAccess::untukBagian()` menerima parameter grup,
+     `BagianAccess::tersimpan()` membaca baris apa adanya (untuk status
+     "belum diatur" dan pengujian), dan `User::grupBagian()` /
+     `User::labelBagian()` menampilkan label seperti "Mekanik - Reguler Staff"
+     di daftar akun serta sidebar. Hak akses per modul di-cache per instance
+     `User` (`$cacheDaftarAkses`) supaya pemeriksaan 15 modul untuk
+     menyembunyikan menu tidak menanyakan database berkali-kali. Uji:
+     `tests/Feature/AksesBagianGrupTest.php` (10 test; uji mutasi: membuat
+     `User::grupBagian()` selalu mengembalikan null membuat 4 test GAGAL).
    - Penegakan izin ada di `App\Http\Middleware\AksesMiddleware` (alias
      `akses`, dipasang bersama `admin` pada grup route di `routes/web.php`).
      Route yang tidak terpetakan ke modul mana pun dilewatkan, karena itu

@@ -39,6 +39,18 @@ class User extends Authenticatable
         'remember_token',
     ];
 
+    /**
+     * Hasil daftarAkses yang sudah dihitung untuk instance akun ini.
+     *
+     * Dipakai supaya pemeriksaan hak akses per modul (mis. saat menyembunyikan
+     * menu sidebar yang memeriksa 15 modul) tidak menanyakan database berkali-
+     * kali pada satu permintaan. Kunci disimpan beserta Bagian + Group-nya
+     * sehingga tetap benar bila role akun diubah pada instance yang sama.
+     *
+     * @var array{kunci: string, modul: array<int, string>}|null
+     */
+    private ?array $cacheDaftarAkses = null;
+
     protected function casts(): array
     {
         return [
@@ -112,6 +124,29 @@ class User extends Authenticatable
     }
 
     /**
+     * Kode Group akun ini, diambil dari data teknisi yang terhubung.
+     *
+     * Group dipakai untuk membedakan hak akses di dalam satu Bagian, mis.
+     * "mekanik reguler" bisa berbeda dari "mekanik reguler staff". Akun yang
+     * tidak terhubung teknisi (atau teknisi tanpa Group) tidak punya Group
+     * sendiri sehingga memakai pengaturan bawaan Bagian.
+     *
+     * @return string|null Kode Group (lihat Technician::GROUPS), null bila tidak ada
+     */
+    public function grupBagian(): ?string
+    {
+        if ($this->aksesPenuh()) {
+            return null;
+        }
+
+        $this->loadMissing('technician');
+
+        $grup = $this->technician?->group;
+
+        return ($grup === null || $grup === '') ? null : (string) $grup;
+    }
+
+    /**
      * Label Bagian akun ini untuk ditampilkan di layar.
      *
      * @return string
@@ -126,9 +161,11 @@ class User extends Authenticatable
             return 'Supervisor';
         }
 
-        $kode = (string) $this->kodeBagian();
+        $kode  = (string) $this->kodeBagian();
+        $label = Technician::SECTIONS[$kode] ?? ucfirst($kode);
+        $grup  = $this->grupBagian();
 
-        return Technician::SECTIONS[$kode] ?? ucfirst($kode);
+        return $grup === null ? $label : $label . ' - ' . (Technician::GROUPS[$grup] ?? ucfirst($grup));
     }
 
     /**
@@ -142,7 +179,19 @@ class User extends Authenticatable
             return array_keys(AksesModul::semua());
         }
 
-        return BagianAccess::untukBagian($this->kodeBagian())->daftarModul();
+        $bagian = $this->kodeBagian();
+        $grup   = $this->grupBagian();
+        $kunci  = ((string) $bagian) . '|' . ((string) $grup);
+
+        if ($this->cacheDaftarAkses !== null && $this->cacheDaftarAkses['kunci'] === $kunci) {
+            return $this->cacheDaftarAkses['modul'];
+        }
+
+        $modul = BagianAccess::untukBagian($bagian, $grup)->daftarModul();
+
+        $this->cacheDaftarAkses = ['kunci' => $kunci, 'modul' => $modul];
+
+        return $modul;
     }
 
     /**

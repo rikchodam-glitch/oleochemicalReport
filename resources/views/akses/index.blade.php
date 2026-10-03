@@ -10,15 +10,17 @@
 @section('content')
     <div class="bg-white rounded-xl border border-slate-200 p-4 mb-6">
         <p class="text-sm text-slate-600">
-            Halaman yang boleh dibuka diatur per Bagian. Akun dengan role
+            Halaman yang boleh dibuka diatur per Bagian, dan bisa dipersempit lagi per Group
+            (Reguler, Reguler Staff, Grub A sampai Grub D). Jadi akses Bagian Mekanik Group Reguler
+            bisa berbeda dari Mekanik Group Reguler Staff. Akun dengan role
             <span class="font-medium text-slate-800">Administrator</span> dan
             <span class="font-medium text-slate-800">Supervisor</span> selalu bisa membuka semua halaman
             ({{ number_format($jumlahAkunAksesPenuh) }} akun), jadi tidak diatur di sini.
-            Bawaannya seluruh halaman diizinkan, centang/hapus centang untuk mengubahnya.
         </p>
         <p class="text-xs text-slate-400 mt-2">
-            Akun dengan role Bagian hanya bisa membuka halaman yang dicentang. Penyembunyian menu di panel kiri
-            mengikuti centang ini juga.
+            Tab "Bawaan Bagian" berlaku untuk semua Group yang belum diatur sendiri dan untuk akun yang
+            tidak terhubung data teknisi. Bawaannya seluruh halaman diizinkan, centang/hapus centang untuk
+            mengubahnya. Penyembunyian menu di panel kiri mengikuti centang ini juga.
         </p>
     </div>
 
@@ -37,11 +39,13 @@
 
     @php
         $bagianAktif = collect($daftarBagian)->firstWhere('kode', $bagianTerbuka) ?? ($daftarBagian[0] ?? null);
+        $grupAktif   = collect($daftarGrup)->firstWhere('aktif', true) ?? ($daftarGrup[0] ?? null);
     @endphp
 
-    @if($bagianAktif !== null)
+    @if($bagianAktif !== null && $grupAktif !== null)
         <form method="POST" action="{{ route('akses.update', $bagianAktif['kode']) }}" class="space-y-4">
             @csrf
+            <input type="hidden" name="grup" value="{{ $grupAktif['kode'] ?? '' }}">
 
             <div class="bg-white rounded-xl border border-slate-200 p-5">
                 <div class="flex flex-wrap items-start justify-between gap-3">
@@ -53,7 +57,8 @@
                             {{ $bagianAktif['jumlah_akun'] }} akun terdaftar,
                             {{ $bagianAktif['jumlah_teknisi'] }} teknisi terdaftar di Bagian ini.
                             @if(! $bagianAktif['tersimpan'])
-                                Hak akses Bagian ini belum pernah diatur, untuk sementara seluruh halaman diizinkan.
+                                Hak akses bawaan Bagian ini belum pernah diatur, untuk sementara seluruh
+                                halaman diizinkan.
                             @endif
                         </p>
                     </div>
@@ -68,16 +73,43 @@
                         </button>
                     </div>
                 </div>
+
+                <div class="flex flex-wrap gap-2 mt-4">
+                    @foreach($daftarGrup as $data)
+                        <a href="{{ route('akses.index', ['bagian' => $bagianTerbuka, 'grup' => $data['kode']]) }}"
+                           class="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors
+                                  {{ $grupAktif['kode'] === $data['kode'] ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50' }}">
+                            {{ $data['label'] }}
+                            <span class="{{ $grupAktif['kode'] === $data['kode'] ? 'text-white/80' : 'text-slate-400' }}">
+                                ({{ $data['jumlah_akun'] }} akun)
+                            </span>
+                        </a>
+                    @endforeach
+                </div>
+
+                <p class="text-xs text-slate-500 mt-4">
+                    @if($grupAktif['kode'] === null)
+                        Pengaturan bawaan Bagian ini berlaku untuk semua Group yang belum diatur sendiri
+                        dan untuk akun yang tidak terhubung data teknisi.
+                    @elseif($grupAktif['mengikuti'])
+                        Group ini belum diatur sendiri, yang berlaku sekarang adalah pengaturan bawaan
+                        Bagian. Menyimpan akan membuat pengaturan khusus Group ini
+                        ({{ $grupAktif['jumlah_akun'] }} akun, {{ $grupAktif['jumlah_teknisi'] }} teknisi).
+                    @else
+                        Pengaturan khusus Group ini sudah tersimpan
+                        ({{ $grupAktif['jumlah_akun'] }} akun, {{ $grupAktif['jumlah_teknisi'] }} teknisi).
+                    @endif
+                </p>
             </div>
 
-            @foreach($modulPerGrup as $grup => $modulGrup)
+            @foreach($modulPerGrup as $namaGrupModul => $modulGrup)
                 <div class="bg-white rounded-xl border border-slate-200 p-5">
-                    <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">{{ $grup }}</h4>
+                    <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">{{ $namaGrupModul }}</h4>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                         @foreach($modulGrup as $kunci => $info)
                             @php
                                 $khususAdmin = (bool) ($info['khusus_admin'] ?? false);
-                                $dicentang   = ! $khususAdmin && in_array($kunci, $bagianAktif['permissions'], true);
+                                $dicentang   = ! $khususAdmin && in_array($kunci, $grupAktif['permissions'], true);
                             @endphp
                             <label class="flex items-center gap-2 text-sm {{ $khususAdmin ? 'text-slate-400' : 'text-slate-700' }}">
                                 <input type="checkbox" name="permissions[]" value="{{ $kunci }}"
@@ -113,8 +145,9 @@
 @push('scripts')
     <script>
         /**
-         * Centang atau kosongkan semua modul yang bisa diatur pada Bagian aktif.
-         * Modul khusus administrator (disabled) tidak ikut diubah.
+         * Centang atau kosongkan semua modul yang bisa diatur pada kombinasi Bagian
+         * dan Group yang sedang dibuka. Modul khusus administrator (disabled) tidak
+         * ikut diubah.
          *
          * @param  {boolean} nilai True untuk mencentang semua
          * @return {void}
