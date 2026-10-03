@@ -600,15 +600,21 @@ Batasan penting lingkungan ini:
      dipakai aset LAIN di PT yang sama, karena `tech_ident_no` TIDAK berindeks
      unik (`database\migrations\0001_01_01_000007_create_assets_table.php` baris
      15) sehingga dua aset bisa berkode sama dan pencarian alat jadi ambigu.
-     Simulasi 03/10/2026 pada database PROD `oleochemical`: 27 Kode Alat akan
-     disamakan, 1 dibatalkan (aset id 3740 "ESKSC04" -> "SC04" bentrok dengan
-     aset id 3895 yang memang bernama "SC04"), 0 gagal; bukti lengkap di
-     `C:\laragon\backup-oleochemical\simulasi-kode-alat-npa.csv`. Jebakan yang
-     WAJIB diingat: `petaAset()` harus ikut membaca kolom `company_id`, kalau
-     tidak `$aset->company_id` null dan penjaga bentrok tidak pernah aktif
-     (bug ini nyata terjadi dan ketahuan dari test, bukan dari peninjauan kode).
-     Database DEV `oleochemical_dev` memuat 28 aset berawalan "ESK" yang sama
-     (id 3724-3751) sehingga penyeragaman harus dijalankan di kedua database.
+     Simulasi DAN eksekusi 03/10/2026 pada database PROD `oleochemical`: 27 Kode
+     Alat disamakan (aset id 3724-3751 selain 3740; mis. "ESKALCY01" -> "ALCY01",
+     "ESKH05A" -> "SVH05A"), 1 dibatalkan (aset id 3740 "ESKSC04" tetap apa
+     adanya karena "SC04" sudah dipakai aset id 3895), 0 gagal; total aset tetap
+     4253 dan Kode Alat ganda di PT NPA tetap NIHIL. Bukti: simulasi
+     `C:\laragon\backup-oleochemical\simulasi-kode-alat-npa.csv`, hasil eksekusi
+     `C:\laragon\backup-oleochemical\hasil-samakan-kode-alat-npa.csv`, backup
+     tabel `assets` sebelum menulis
+     `C:\laragon\backup-oleochemical\assets-oleochemical-sebelum-samakan-kode-20261003-143341.sql`.
+     Jebakan yang WAJIB diingat: `petaAset()` harus ikut membaca kolom
+     `company_id`, kalau tidak `$aset->company_id` null dan penjaga bentrok
+     tidak pernah aktif (bug ini nyata terjadi dan ketahuan dari test, bukan
+     dari peninjauan kode). Database DEV `oleochemical_dev` BELUM dijalankan
+     (masih 28 aset berawalan "ESK", id 3724-3751) - penyeragaman di DEV
+     menunggu keputusan user.
    - Bukti pemakaian pertama: berkas `Master List NPA rev 2.xlsx` (287 baris)
      dipakai 03/10/2026 untuk PT NPA di database PROD `oleochemical`: 256 baris
      cocok lewat Kode Alat + 31 baris lewat Equipment No. (kode di berkas
