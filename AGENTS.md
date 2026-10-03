@@ -601,6 +601,21 @@ Batasan penting lingkungan ini:
      (baris 66 = MP01-7831/70000101, baris 221 = RS01-7851/70000247) dan
      "AGT02A"/"AGT02B" masing-masing dua baris — inilah alasan pemutus
      Equipment No. WAJIB ada, bukan pilihan.
+   - Cakupan berkas rev 2 DIPERIKSA 03/10/2026 memakai skrip sementara yang
+     membandingkan laporan CSV hasil eksekusi dengan seluruh aset
+     `assets.company_id` PT NPA (440 aset) di database PROD `oleochemical`:
+     285 aset dikenali berkas, **155 aset TIDAK ada di berkas** — 86 aset
+     pabrik/operasional (Line 2: `NPA-PROD-RS02-7852` 62, `MP02-7832` 12,
+     `CAOT-7822` 8, forklift `WH01-7052` 4; plus 1 aset tanpa Kode Alat:
+     id 4027 "Valve main line PFAD") dan 69 perangkat ICT (CCTV 35,
+     workstation `WS-NPA-*` 13, radio 7, switch 6, card/face reader 5,
+     SCADA 2, tablet 1). Artinya berkas rev 2 hanya mencakup Line 1; aset
+     Line 2 sengaja dibiarkan (deskripsi lamanya TIDAK ikut diperbarui).
+     Daftar lengkap: `C:\laragon\backup-oleochemical\daftar-aset-npa-luar-berkas-rev2-20261003.csv`
+     (semua baris berkas + statusnya juga tersimpan di
+     `daftar-selisih-npa-20261003.txt`, `daftar-kode-cocok-lewat-equipment-no-20261003.csv`,
+     dan `daftar-baris-berkas-tanpa-aset-20261003.csv` — berkas terakhir KOSONG,
+     bukti tidak ada baris berkas yang gagal ditemukan asetnya).
    - PENGINGAT: `app\Services\ImportService.php` mencocokkan aset lewat Tech
      Ident No dan mengambil `description` dari kolom Description berkas. Import
      ulang berkas master SAP yang kolom Description-nya masih berisi nama plant
