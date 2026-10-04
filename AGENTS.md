@@ -652,6 +652,47 @@ Batasan penting lingkungan ini:
      Alat di database tidak diubah" GAGAL). Seluruh suite 305 test hijau
      (03/10/2026).
 
+16. **Batas diam (idle) sesi wizard Telegram (diputuskan 04/10/2026, sudah ada
+   kodenya):**
+   - Latar: kejadian nyata 04/10/2026 — state wizard milik Vicky (chat
+     `8827242872`, teknisi id 6) MENGANGGUR di step `work_classification` sejak
+     pukul 10:01 padahal sudah hampir 2 jam, dan Dian Adi Kurniawan (chat
+     `6146322700`, teknisi id 32) mengetik deskripsi pekerjaan yang sama tiga
+     kali karena teks barunya selalu dibaca sebagai jawaban langkah LAMA. Batas
+     keras `ReportWizardService::CACHE_TTL` = 7200 detik (2 jam) tidak pernah
+     memeriksa apakah teknisi masih menjawab. (Identitas kedua teknisi
+     diverifikasi langsung di database DEV `oleochemical_dev` tabel
+     `technicians`, 04/10/2026.)
+   - Aturan yang dipilih user: sesi yang menganggur melewati
+     `config('cm.wizard.idle_timeout_menit')` (bawaan **10 menit**) dibatalkan
+     otomatis **HANYA saat pesan TEKS baru datang**. Foto dan tombol SENGAJA
+     TIDAK membatalkan apa pun supaya progres teknisi yang kembali dari
+     lapangan (mengirim foto dokumentasi/hygiene terlambat) tidak hilang;
+     keduanya tetap tunduk pada batas keras 2 jam. Isi 0 = mematikan
+     pembatalan otomatis.
+   - Wujud kode: `ReportWizardService::batasIdleMenit()`,
+     `sesiSudahBasi(array $state)` (acuan `last_activity_at`, cadangan
+     `created_at`; state tanpa kedua penanda dianggap BELUM basi demi
+     melindungi sesi yang sedang berjalan saat fitur ini dipasang), dan
+     `batalkanSesiBasi(string $chatId): bool` (menghapus state basi + mencatat
+     log `WizardService: sesi basi dibatalkan otomatis`). `saveState()` mengisi
+     `last_activity_at` pada setiap penyimpanan, dan `createInitialState()`
+     ikut mengisinya. `hasActiveWizard()` TETAP memakai `Cache::has` tanpa
+     pemeriksaan idle supaya jalur foto/tombol tidak berubah perilakunya.
+     Pemanggil: `TelegramMessageHandlerTrait::processUpdate()` (tepat sebelum
+     routing teks) yang juga mengirim pesan "Sesi laporan sebelumnya
+     dibatalkan otomatis karena tidak ada jawaban lebih dari N menit.".
+     Untuk tombol, pesan "Sesi laporan ini sudah tidak aktif..." yang sudah ada
+     di `PollTelegramUpdates::processCallbackQuery()` tetap dipakai.
+   - JANGAN memindahkan pemeriksaan idle ke `hasActiveWizard()` atau ke jalur
+     foto (`handlePhotoMessage`/`handlePhotoInput`): akibatnya foto susulan
+     memulai laporan BARU dan seluruh progres teknisi hilang — justru inilah
+     alasan aturan "teks saja" dipilih.
+   - Uji: `tests/Feature/ReportWizardIdleTimeoutTest.php` (8 test; uji mutasi:
+     menetralkan pemeriksaan `sesiSudahBasi()` di `batalkanSesiBasi()` membuat
+     3 test GAGAL). Seluruh suite 313 test hijau (04/10/2026).
+
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file
