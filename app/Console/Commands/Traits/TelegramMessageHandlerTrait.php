@@ -104,6 +104,20 @@ trait TelegramMessageHandlerTrait
             return;
         }
 
+        // Sesi wizard lama yang sudah menganggur dibatalkan lebih dulu supaya
+        // teks baru tidak dibaca sebagai jawaban langkah lama (gejala teknisi
+        // "tersangkut di sesi/tahap tertentu"). Hanya pesan TEKS yang memicu
+        // pembatalan ini; foto dan tombol tetap dilayani apa adanya supaya
+        // progres teknisi yang kembali dari lapangan tidak hilang.
+        if ($this->reportWizard->batalkanSesiBasi((string) $chatId)) {
+            $this->sendMessage(
+                $chatId,
+                "Sesi laporan sebelumnya dibatalkan otomatis karena tidak ada jawaban lebih dari "
+                . $this->reportWizard->batasIdleMenit() . " menit.\n"
+                . "Pesan Anda sekarang diproses sebagai laporan baru."
+            );
+        }
+
         // Routing teks: wizard aktif atau mulai baru
         if ($this->reportWizard->hasActiveWizard((string) $chatId)) {
             $this->handleWizardText($chatId, $text);

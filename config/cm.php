@@ -187,4 +187,30 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Wizard Laporan Telegram — Batas Diam (Idle) Sesi
+    |--------------------------------------------------------------------------
+    |
+    | Satu sesi wizard laporan Telegram menyimpan progres teknisi di cache
+    | (ReportWizardService, batas keras 2 jam). Bila teknisi menghilang di
+    | tengah alur, sesi lama itu tetap hidup sehingga teks BARU dari teknisi
+    | dibaca sebagai jawaban langkah lama — inilah gejala teknisi "tersangkut
+    | di sesi/tahap tertentu".
+    |
+    | Nilai di bawah ini menentukan berapa menit sesi boleh menganggur sebelum
+    | teks baru dianggap memulai laporan baru. Pembatalan HANYA dipicu pesan
+    | TEKS: foto yang masuk setelah batas ini tetap dimasukkan ke laporan yang
+    | sedang berjalan supaya progres teknisi yang kembali dari lapangan tidak
+    | hilang (batas kerasnya tetap CACHE_TTL 2 jam).
+    |
+    */
+    'wizard' => [
+
+        // Menit tanpa aktivitas sebelum sesi basi dibatalkan saat teks baru
+        // datang. Isi 0 untuk mematikan pembatalan otomatis.
+        'idle_timeout_menit' => 10,
+
+    ],
+
 ];

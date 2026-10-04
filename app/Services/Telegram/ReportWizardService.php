@@ -15,6 +15,7 @@ use App\Services\Telegram\Traits\WizardPhotoAddonTrait;
 use App\Services\Telegram\Traits\WizardReportSaverTrait;
 use App\Services\Telegram\Traits\WizardStepHandlerTrait;
 use App\Services\Telegram\Traits\WizardUtilityTrait;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -42,7 +43,8 @@ use Illuminate\Support\Str;
  *   - Entry point publik: startWizard, handleTextInput, handlePhotoInput, handleCallback
  *   - Step 1: processEquipmentSearch + buildCandidateKeyboard
  *   - Step 2: handleEquipmentRetype + startClarificationHierarchy + lockEquipmentAndAdvance
- *   - State management: getState, saveState, destroyWizard, hasActiveWizard
+ *   - State management: getState, saveState, destroyWizard, hasActiveWizard,
+ *     batalkanSesiBasi (pembatal sesi basi ketika teks baru datang)
  *
  * Yang BUKAN tanggung jawab class ini:
  *   - Pencarian TechIdentNo presisi (TechIdentSearchService)
@@ -1548,6 +1550,11 @@ class ReportWizardService
      */
     public function saveState(string $chatId, array $state): void
     {
+        // Penanda aktivitas terakhir dipakai batalkanSesiBasi() untuk mengenali
+        // sesi yang ditinggalkan teknisi. Setiap jawaban/tombol teknisi melewati
+        // method ini, jadi nilainya selalu mengikuti langkah terakhir.
+        $state['last_activity_at'] = now()->toIso8601String();
+
         Cache::put(self::CACHE_PREFIX . $chatId, $state, self::CACHE_TTL);
     }
 
@@ -1563,7 +1570,84 @@ class ReportWizardService
     }
 
     /**
+     * Batas diam (idle) sesi wizard dalam menit.
+     *
+     * @return int Menit batas idle; 0 berarti pembatalan otomatis dimatikan
+     */
+    public function batasIdleMenit(): int
+    {
+        return max(0, (int) config('cm.wizard.idle_timeout_menit', 10));
+    }
+
+    /**
+     * Apakah sesi wizard ini sudah menganggur melewati batas idle.
+     *
+     * Acuan waktu memakai 'last_activity_at' (diisi saveState) dan jatuh ke
+     * 'created_at' untuk state yang dibuat versi lama. State tanpa kedua
+     * penanda itu dianggap BELUM basi supaya sesi lama tidak mendadak
+     * dibatalkan tanpa dasar yang bisa dipastikan.
+     *
+     * @param  array $state State wizard yang diperiksa
+     * @return bool         True bila sesi sudah menganggur melewati batas
+     */
+    protected function sesiSudahBasi(array $state): bool
+    {
+        $batasMenit = $this->batasIdleMenit();
+
+        if ($batasMenit <= 0) {
+            return false;
+        }
+
+        $acuan = $state['last_activity_at'] ?? $state['created_at'] ?? null;
+
+        if (empty($acuan)) {
+            return false;
+        }
+
+        $umurDetik = now()->getTimestamp() - Carbon::parse($acuan)->getTimestamp();
+
+        return $umurDetik >= ($batasMenit * 60);
+    }
+
+    /**
+     * Batalkan sesi wizard yang sudah menganggur melewati batas idle.
+     *
+     * Dipanggil TelegramMessageHandlerTrait::processUpdate() saat pesan TEKS
+     * baru datang: tanpa ini teks baru teknisi dibaca sebagai jawaban langkah
+     * lama sehingga dia seolah
+     * "tersangkut" dan tidak bisa memulai laporan baru. Foto dan tombol sengaja
+     * TIDAK memanggil method ini supaya progres teknisi yang kembali dari
+     * lapangan tidak hilang; keduanya tetap tunduk pada batas keras CACHE_TTL.
+     *
+     * @param  string $chatId Chat ID Telegram
+     * @return bool           True bila ada sesi basi yang baru saja dibatalkan
+     */
+    public function batalkanSesiBasi(string $chatId): bool
+    {
+        $state = Cache::get(self::CACHE_PREFIX . $chatId);
+
+        if (!is_array($state) || !$this->sesiSudahBasi($state)) {
+            return false;
+        }
+
+        Log::info('WizardService: sesi basi dibatalkan otomatis', [
+            'chat_id'          => $chatId,
+            'step_terakhir'    => $state['step'] ?? null,
+            'last_activity_at' => $state['last_activity_at'] ?? $state['created_at'] ?? null,
+            'batas_idle_menit' => $this->batasIdleMenit(),
+        ]);
+
+        $this->destroyWizard($chatId);
+
+        return true;
+    }
+
+    /**
      * Cek apakah ada wizard aktif untuk chat_id ini.
+     *
+     * Sengaja memakai Cache::has (tanpa pemeriksaan idle) supaya foto dan
+     * tombol dari sesi yang sedang berjalan tetap dilayani; pembatalan sesi
+     * basi dilakukan batalkanSesiBasi() khusus untuk pesan teks baru.
      *
      * @param  string $chatId Chat ID Telegram
      * @return bool

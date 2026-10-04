@@ -737,6 +737,7 @@ trait WizardUtilityTrait
             'collab_hierarchy_dept_id'    => null,
             'collab_hierarchy_section'    => null,
             'created_at'                  => now()->toIso8601String(),
+            'last_activity_at'            => now()->toIso8601String(),
         ];
     }
 
