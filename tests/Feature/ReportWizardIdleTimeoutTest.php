@@ -156,3 +156,17 @@ test('createInitialState mengisi penanda aktivitas terakhir', function () {
 
     expect($umur)->toBeLessThan(5);
 });
+
+test('sesi tanpa penanda aktivitas memakai created_at sebagai cadangan', function () {
+    // Sesi yang dibuat SEBELUM fitur batas diam dipasang hanya punya created_at.
+    // Sesi seperti itu tetap wajib dikenali basi supaya sesi yang sedang
+    // menggantung di produksi ikut dibatalkan ketika teks baru datang.
+    Cache::put(ReportWizardService::CACHE_PREFIX . $this->chatId, [
+        'chat_id'    => $this->chatId,
+        'step'       => ReportWizardService::STEP_WORK_CLASSIFICATION,
+        'created_at' => now()->subMinutes(30)->toIso8601String(),
+    ], ReportWizardService::CACHE_TTL);
+
+    expect($this->layanan->batalkanSesiBasi($this->chatId))->toBeTrue()
+        ->and($this->layanan->hasActiveWizard($this->chatId))->toBeFalse();
+});
