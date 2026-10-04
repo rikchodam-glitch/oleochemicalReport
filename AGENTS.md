@@ -688,9 +688,11 @@ Batasan penting lingkungan ini:
      foto (`handlePhotoMessage`/`handlePhotoInput`): akibatnya foto susulan
      memulai laporan BARU dan seluruh progres teknisi hilang — justru inilah
      alasan aturan "teks saja" dipilih.
-   - Uji: `tests/Feature/ReportWizardIdleTimeoutTest.php` (8 test; uji mutasi:
+   - Uji: `tests/Feature/ReportWizardIdleTimeoutTest.php` (9 test; uji mutasi:
      menetralkan pemeriksaan `sesiSudahBasi()` di `batalkanSesiBasi()` membuat
-     3 test GAGAL). Seluruh suite 313 test hijau (04/10/2026).
+     3 test GAGAL, dan menghapus cadangan `created_at` membuat test "sesi tanpa
+     penanda aktivitas memakai created_at sebagai cadangan" GAGAL). Seluruh
+     suite 314 test hijau (04/10/2026).
 
 
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
