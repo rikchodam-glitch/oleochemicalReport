@@ -106,6 +106,11 @@ class ReportController extends Controller
      *     (collaborator_of NULL) yang diambil; daftar kolaborator dibaca dari
      *     relasi collaboratorReports. Salinan multi alat (multi_of) juga bukan
      *     baris tersendiri.
+     *   - PENGECUALIAN (05/10/2026): bila daftar disaring ke SATU teknisi
+     *     (technician_id), salinan kolaborasi milik teknisi itu IKUT tampil.
+     *     Baris itulah pekerjaan yang tercatat atas namanya, sehingga jumlahnya
+     *     sama dengan kolom "Pekerjaan" pada Rincian Man Hour Harian teknisi
+     *     tersebut (baris "N laporan" di sana membuka halaman ini).
      *   - Tampilan "reguler" memuat laporan teknisi non-shift: grup 'reguler'
      *     dan 'reguler_staff' (termasuk teknisi yang grupnya belum diisi);
      *     tampilan "shift" memuat laporan teknisi grub (A/B/C/D) saja dan bisa
@@ -119,7 +124,17 @@ class ReportController extends Controller
      */
     private function buildBaseQuery(Request $request, string $tampilan, ?string $grubAktif, bool $sertakanJenisStatus = true)
     {
-        $query = Report::query()->whereNull('collaborator_of')->whereNull('multi_of');
+        $query = Report::query()->whereNull('multi_of');
+
+        // Konsolidasi kolaborasi hanya berlaku pada daftar UMUM (tanpa saringan
+        // teknisi). Bila daftar disaring ke satu teknisi, salinan kolaborasi
+        // milik teknisi itu ikut tampil supaya jumlahnya sama dengan kolom
+        // "Pekerjaan" pada Rincian Man Hour Harian (baris "N laporan" di sana
+        // membuka halaman ini). Salinan multi alat (multi_of) tetap tidak
+        // tampil karena pekerjaan itu sudah terwakili laporan induknya.
+        if (!$request->filled('technician_id')) {
+            $query->whereNull('collaborator_of');
+        }
 
         $this->applyGroupFilter($query, $tampilan, $grubAktif);
 

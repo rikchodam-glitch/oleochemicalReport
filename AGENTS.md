@@ -710,6 +710,40 @@ Batasan penting lingkungan ini:
      mematikan routing `/reset` membuat keempat test GAGAL). Seluruh suite 318
      test hijau (05/10/2026).
 
+17. **Kecocokan daftar Laporan dengan Rincian Man Hour Harian (diputuskan
+   05/10/2026, sudah ada kodenya):**
+   - Keluhan asal (05/10/2026): "di bagian Rincian Man Hour Harian saat diklik
+     harinya seharusnya menampilkan laporan kolaborasi juga". Penyebabnya:
+     baris harian itu menaut ke
+     `reports.index?technician_id=..&tanggal=..`, sedangkan
+     `ReportController::buildBaseQuery()` SELALU membuang baris kolaborasi
+     (`whereNull('collaborator_of')`) padahal `ManHourService::harian()`
+     MENGHITUNG baris itu sebagai pekerjaan teknisi kolaborator — jadi kolom
+     "Pekerjaan"/"Realisasi" terisi tetapi daftar yang dibuka kosong.
+   - Aturan yang dipakai sekarang (**Opsi A, dipilih user**): salinan kolaborasi
+     (`collaborator_of` terisi) ikut tampil HANYA bila daftar disaring ke satu
+     teknisi (`technician_id` terisi). Daftar umum tetap konsolidasi (hanya
+     laporan induk + keterangan "Berkolaborasi dengan: ...") supaya satu
+     pekerjaan tidak berulang untuk tiap peserta. Salinan multi alat
+     (`multi_of`) TIDAK PERNAH tampil di daftar, sama seperti di man hour.
+     Jangan ubah definisi ini tanpa instruksi user (pelajaran insiden #8).
+   - Bukti data DEV `oleochemical_dev` (05/10/2026): 129 pasangan
+     teknisi-tanggal punya laporan kolaborasi; aturan lama cocok=0/beda=129,
+     aturan baru cocok=129/beda=0 (skrip sementara `tmp-cek-kolaborasi.php`,
+     dihapus lagi setelah dipakai, tidak masuk repo).
+   - Uji: `tests/Feature/ReportTeknisiKolaborasiTest.php` (4 test). Uji mutasi:
+     memaksa konsolidasi (selalu `whereNull('collaborator_of')`) membuat 2 test
+     GAGAL; membalik pengecualian (konsolidasi hanya saat ada filter teknisi)
+     membuat 3 test GAGAL. Test lama
+     `tests/Feature/ReportIndexViewTest.php` "laporan kolaborasi tampil satu
+     baris dengan daftar kolaborator" tetap hijau dan menjaga jalur
+     konsolidasi. Seluruh suite 322 test hijau (05/10/2026).
+   - CATATAN BELUM DIKERJAKAN (perlu keputusan user sebelum diubah): tautan
+     "N laporan" di `resources/views/technicians/show.blade.php` baris 340-342
+     TIDAK mengirim parameter `tampilan`, sehingga daftar selalu dibuka pada
+     tab Reguler. Untuk teknisi pekerja SHIFT (grub A-D) laporannya bisa tetap
+     kosong di sana karena `applyGroupFilter('reguler')` hanya memuat grup
+     non-shift.
 
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
