@@ -508,7 +508,7 @@
                                         @endif
                                         @if($report->collaborator_of)
                                             <span class="inline-flex ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                                KOLABORASI
+                                                KOLABORASI : {{ $report->nama_pembuat ?? '-' }}
                                             </span>
                                         @endif
                                     </p>

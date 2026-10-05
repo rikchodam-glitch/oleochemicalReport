@@ -744,6 +744,21 @@ Batasan penting lingkungan ini:
      tab Reguler. Untuk teknisi pekerja SHIFT (grub A-D) laporannya bisa tetap
      kosong di sana karena `applyGroupFilter('reguler')` hanya memuat grup
      non-shift.
+   - Lencana kolaborasi di halaman detail teknisi (05/10/2026): baris salinan
+     kolaborasi pada tabel "Pekerjaan Harian"
+     (`resources/views/technicians/show.blade.php`) menampilkan
+     `KOLABORASI : <nama pembuat>` lewat accessor `Report::nama_pembuat`
+     (dibaca dari `creator_id`; data lama yang `creator_id`-nya kosong
+     ditelusuri dari laporan induk -- creator, lalu teknisi pemilik induk --
+     supaya kolaborator TIDAK pernah disebut sebagai pembuat). Karena accessor
+     itu dipanggil per baris, `TechnicianController::show()` memuat relasi
+     `creator` + `parentReport.creator` + `parentReport.technician` agar tidak
+     terjadi query berulang (N+1). Bukti data DEV `oleochemical_dev`
+     (05/10/2026): 254 salinan kolaborasi, `creator_id` terisi semua (0 NULL).
+     Uji: `tests/Feature/TechnicianKolaborasiBadgeTest.php` (4 test; uji
+     mutasi: mengembalikan lencana menjadi "KOLABORASI" saja membuat 2 test
+     GAGAL, dan memakai teknisi pemilik baris salinan sebagai cadangan membuat
+     1 test GAGAL). Seluruh suite 376 test hijau (1643 assertions, 05/10/2026).
 
 18. **Halaman EDIT laporan dimaksimalkan (diputuskan 05/10/2026, sudah ada
    kodenya — jangan diubah tanpa instruksi user).** Semua perubahan ada di copy

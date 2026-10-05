@@ -247,7 +247,9 @@ class TechnicianController extends Controller
         // Pekerjaan harian teknisi untuk tabel di halaman detail: seluruh riwayat
         // terbaru (bukan hanya 20) dengan relasi lokasi/alat agar bisa diklik.
         $laporanTerbaru = $technician->reports()
-            ->with(['asset', 'functionalLocation', 'area'])
+            // Relasi pembuat ikut dimuat karena lencana "Kolaborasi : <nama
+            // pembuat>" pada baris salinan kolaborasi membacanya per baris.
+            ->with(['asset', 'functionalLocation', 'area', 'creator', 'parentReport.creator', 'parentReport.technician'])
             ->orderByDesc('report_date')
             ->orderByDesc('id')
             ->take(60)

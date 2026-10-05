@@ -323,6 +323,35 @@ class Report extends Model
     }
 
     /**
+     * Accessor: nama teknisi PEMBUAT laporan (orang yang menginput pekerjaan).
+     *
+     * Pada baris salinan kolaborasi pemilik barisnya adalah kolaborator,
+     * sehingga pembuat aslinya dibaca dari creator_id. Untuk data lama yang
+     * creator_id-nya kosong, nama diambil dari laporan induk (creator, lalu
+     * teknisi pemilik induk) supaya lencana tidak pernah salah menunjuk
+     * kolaborator sebagai pembuat.
+     *
+     * @return string|null Nama pembuat, null bila tidak bisa ditelusuri
+     */
+    public function getNamaPembuatAttribute(): ?string
+    {
+        $pembuat = $this->creator?->name;
+
+        if ($pembuat !== null) {
+            return $pembuat;
+        }
+
+        if ($this->collaborator_of !== null) {
+            $induk = $this->parentReport;
+
+            return $induk?->creator?->name ?? $induk?->technician?->name;
+        }
+
+        // Laporan biasa: pemilik laporan sekaligus pembuat pekerjaannya.
+        return $this->technician?->name;
+    }
+
+    /**
      * Hapus semua file foto dari Storage saat laporan dihapus supaya tidak
      * ada file orphan tertinggal di disk.
      */
