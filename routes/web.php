@@ -19,6 +19,7 @@ use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\CollaborationController;
 use App\Http\Controllers\ReportCollaborationController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\ReportMultiItemController;
 use App\Http\Controllers\StorageController;
 use App\Http\Controllers\ShiftScheduleController;
 use App\Http\Controllers\TechnicianController;
@@ -135,6 +136,12 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     // Setiap kolaborator menjadi baris salinan laporan sendiri (collaborator_of).
     Route::post('/reports/{report}/collaborators', [ReportCollaborationController::class, 'store'])->name('reports.collaborators.store');
     Route::delete('/reports/{report}/collaborators/{kolaborator}', [ReportCollaborationController::class, 'destroy'])->name('reports.collaborators.destroy');
+
+    // Alat/lokasi tambahan (pekerjaan multi item) dari halaman edit: setiap item
+    // menjadi baris salinan laporan sendiri (multi_of) agar riwayat alat/lokasi
+    // tetap lengkap. Baris salinan ini tidak dihitung di man hour.
+    Route::post('/reports/{report}/multi-items', [ReportMultiItemController::class, 'store'])->name('reports.multi-items.store');
+    Route::delete('/reports/{report}/multi-items/{item}', [ReportMultiItemController::class, 'destroy'])->name('reports.multi-items.destroy');
 
     // Condition Monitoring
     Route::prefix('cm')->name('cm.')->group(function () {

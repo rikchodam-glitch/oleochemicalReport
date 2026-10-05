@@ -299,6 +299,30 @@ class Report extends Model
     }
 
     /**
+     * Accessor: label alat/lokasi tambahan pekerjaan multi item, dipakai daftar
+     * item pada halaman edit/detail laporan.
+     *
+     * Contoh: "ALCY01 - Pompa transfer" untuk item berupa alat, atau
+     * "EPE-PROD-BD02-6153 - Oil Pre-treatment" untuk item berupa lokasi.
+     * Dipakai BERSAMA oleh tampilan server (blade) dan balasan JSON halaman
+     * edit supaya labelnya tidak pernah berbeda antara keduanya.
+     */
+    public function getMultiItemLabelAttribute(): string
+    {
+        if ($this->asset !== null) {
+            $kode = $this->asset->tech_ident_no ?? $this->asset->equipment_no ?? ('#' . $this->asset->id);
+
+            return trim($kode . ' - ' . ($this->asset->description ?? ''));
+        }
+
+        if ($this->functionalLocation !== null) {
+            return trim($this->functionalLocation->code . ' - ' . $this->functionalLocation->name);
+        }
+
+        return 'Item #' . $this->id;
+    }
+
+    /**
      * Hapus semua file foto dari Storage saat laporan dihapus supaya tidak
      * ada file orphan tertinggal di disk.
      */

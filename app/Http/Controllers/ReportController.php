@@ -469,9 +469,16 @@ class ReportController extends Controller
 
         $teknisiPilihan = Technician::orderBy('name')->get(['id', 'name', 'nik']);
 
+        // Alat/lokasi tambahan pekerjaan ini (baris salinan multi_of) beserta
+        // relasinya, dipakai daftar pada halaman edit.
+        $alatTambahan = $laporanInduk->multiItems()
+            ->with(['asset', 'functionalLocation'])
+            ->orderBy('id')
+            ->get();
+
         return view('reports.edit', compact(
             'report', 'areas', 'funcLocs', 'assets',
-            'laporanInduk', 'kolaborator', 'teknisiPilihan'
+            'laporanInduk', 'kolaborator', 'teknisiPilihan', 'alatTambahan'
         ));
     }
 
