@@ -26,6 +26,7 @@ use Illuminate\Support\Str;
  *   - handleWizardCallback()     : Teruskan callback ke wizard aktif
  *   - dispatchWizardResponse()   : Kirim balasan wizard ke Telegram
  *   - handleStart()              : Proses perintah /start dan pendaftaran awal
+ *   - handleResetCommand()       : Batalkan sesi wizard lewat perintah /reset
  *   - handleNikRegistration()    : Simpan NIK teknisi yang mendaftar
  *   - handleReport()             : Mulai wizard laporan baru
  */
@@ -46,8 +47,9 @@ trait TelegramMessageHandlerTrait
      *   1. /start command
      *   2. NIK registration (pola "NIK 123456")
      *   3. Validasi teknisi terdaftar & aktif
-     *   4. Foto → handlePhotoMessage
-     *   5. Teks: wizard aktif → handleWizardText, selain itu → handleReport
+     *   4. /info dan /reset command
+     *   5. Foto → handlePhotoMessage
+     *   6. Teks: wizard aktif → handleWizardText, selain itu → handleReport
      *
      * @param array $update Update mentah dari Telegram getUpdates
      * @return void
@@ -98,6 +100,16 @@ trait TelegramMessageHandlerTrait
             return;
         }
 
+        // Perintah /reset: membuang sesi wizard chat ini supaya pesan berikutnya
+        // diproses sebagai laporan BARU. Dipakai ketika tombol "Batalkan Laporan"
+        // sudah tergulung jauh di riwayat chat (atau layarnya sudah digambar
+        // ulang) sehingga teknisi tidak punya jalan keluar selain menunggu sesi
+        // basi dibatalkan otomatis oleh batas diam.
+        if (preg_match('/^\/reset(?:@\S+)?\b/i', $text)) {
+            $this->handleResetCommand($chatId);
+            return;
+        }
+
         // Routing foto
         if ($hasPhoto) {
             $this->handlePhotoMessage($chatId, $message, $technician, $caption, $message['media_group_id'] ?? null);
@@ -139,6 +151,37 @@ trait TelegramMessageHandlerTrait
         }
 
         $this->handleReport($chatId, $technician, $text);
+    }
+
+    /**
+     * Jalankan perintah /reset: buang sesi wizard chat ini.
+     *
+     * Alternatif tombol "Batalkan Laporan" bagi teknisi yang tombolnya sudah
+     * hilang dari layar (layar lama digambar ulang) atau tergulung jauh di
+     * riwayat chat. Setelah state dibuang, pesan berikutnya diproses sebagai
+     * laporan baru; tidak ada laporan setengah jalan yang ikut tersimpan karena
+     * laporan baru dibuat hanya setelah konfirmasi di Step 8.
+     *
+     * @param  int|string $chatId ID chat Telegram
+     * @return void
+     */
+    private function handleResetCommand(int|string $chatId): void
+    {
+        $adaSesi = $this->reportWizard->hasActiveWizard((string) $chatId);
+
+        $this->reportWizard->destroyWizard((string) $chatId);
+
+        if (!$adaSesi) {
+            $this->sendMessage($chatId, 'Tidak ada sesi laporan yang aktif. Kirim pesan atau foto untuk memulai laporan baru.');
+
+            return;
+        }
+
+        Log::info('TelegramMessageHandler: sesi wizard direset lewat perintah /reset', [
+            'chat_id' => (string) $chatId,
+        ]);
+
+        $this->sendMessage($chatId, 'Sesi laporan dibatalkan. Kirim pesan atau foto untuk memulai laporan baru.');
     }
 
     /**
