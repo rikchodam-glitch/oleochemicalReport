@@ -128,7 +128,9 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
         ->name('reports.photos.delete')
         ->where('index', '[0-9]+');
 
-    Route::resource('reports', ReportController::class);
+    // Halaman edit terpisah (reports.edit) sudah DIHAPUS: seluruh pengeditan
+    // laporan dilakukan dari halaman detail (mode Edit pada kartu Aksi Admin).
+    Route::resource('reports', ReportController::class)->except(['edit']);
     Route::post('/reports/{report}/update-status', [ReportController::class, 'updateStatus'])->name('reports.update-status');
     Route::post('/reports/{report}/photos', [ReportController::class, 'addPhoto'])->name('reports.add-photo');
 

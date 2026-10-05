@@ -139,24 +139,16 @@
                     </span>
                 </div>
 
-                {{-- Durasi: EDIT --}}
-                <div x-show="editMode" x-cloak class="flex items-center gap-2">
-                    <input type="number" name="work_duration_minutes" form="form-edit-laporan"
-                           min="0" placeholder="Durasi (menit)"
-                           value="{{ old('work_duration_minutes', $report->work_duration_minutes) }}"
-                           class="w-36 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <span class="text-xs text-slate-400">menit</span>
-                    @error('work_duration_minutes')
-                        <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
-                    @enderror
-                </div>
+                {{-- Jam kerja (mulai/selesai) diisi di kartu "Waktu Pengerjaan"
+                     pada kolom kiri, memakai partial _waktu-kerja. --}}
 
                 {{-- Tipe Laporan: selalu tampil, tidak diedit dari sini --}}
                 <div class="flex items-center gap-1.5">
                     <x-status-badge :status="$report->report_type" />
                 </div>
 
-                {{-- Klasifikasi Pekerjaan (ZPM): selalu tampil, tidak diedit dari sini (lihat edit.blade.php) --}}
+                {{-- Klasifikasi Pekerjaan (ZPM): selalu tampil, diubah lewat
+                     kartu "Pengaturan Laporan" pada mode edit. --}}
                 <div class="flex items-center gap-1.5">
                     @if($report->work_classification)
                         <x-status-badge :status="$report->work_classification"
@@ -315,7 +307,7 @@
                     {{-- Area --}}
                     <div>
                         <label class="block text-xs text-slate-500 mb-1">Area</label>
-                        <select name="area_id" form="form-edit-laporan"
+                        <select id="area_id" name="area_id" form="form-edit-laporan"
                                 x-model="areaId"
                                 @change="onAreaChange()"
                                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -335,7 +327,7 @@
                     {{-- Functional Location --}}
                     <div>
                         <label class="block text-xs text-slate-500 mb-1">Functional Location</label>
-                        <select name="funcloc_id" form="form-edit-laporan"
+                        <select id="funcloc_id" name="funcloc_id" form="form-edit-laporan"
                                 x-model="funcLocId"
                                 @change="onFuncLocChange()"
                                 :disabled="!areaId"
@@ -353,7 +345,7 @@
                     {{-- Asset --}}
                     <div>
                         <label class="block text-xs text-slate-500 mb-1">Kode Alat</label>
-                        <select name="asset_id" form="form-edit-laporan"
+                        <select id="asset_id" name="asset_id" form="form-edit-laporan"
                                 x-model="assetId"
                                 :disabled="!areaId"
                                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400">
@@ -372,6 +364,8 @@
                 <p class="text-xs text-slate-400">
                     Pilih Area terlebih dahulu untuk memunculkan pilihan Functional Location dan Asset.
                 </p>
+
+                @include('reports.partials._cari-alat', ['report' => $report])
             </div>
         </div>
 
@@ -396,6 +390,37 @@
         </div>
 
         @include('reports.partials._temuan-kartu', ['report' => $report])
+
+        {{-- ── Pengaturan Laporan (mode edit) ──────────────── --}}
+        <div x-show="editMode" x-cloak class="bg-white rounded-xl border border-slate-200 p-6">
+            <h3 class="font-medium text-slate-900 mb-4">Pengaturan Laporan</h3>
+
+            @include('reports.partials._pelengkap', ['report' => $report])
+
+            {{-- Jam mulai/selesai: durasi man hour dihitung server dari rentang
+                 jam ini (lihat Report::durasiDariJam()). --}}
+            @include('reports.partials._waktu-kerja', ['report' => $report])
+        </div>
+
+        {{-- ── Kolaborasi Teknisi (mode edit) ─────────────── --}}
+        <div x-show="editMode" x-cloak class="bg-white rounded-xl border border-slate-200 p-6">
+            @include('reports.partials._kolaborasi', [
+                'report'         => $report,
+                'laporanInduk'   => $laporanInduk,
+                'kolaborator'    => $kolaborator,
+                'teknisiPilihan' => $teknisiPilihan,
+            ])
+        </div>
+
+        {{-- ── Alat / Lokasi Tambahan (mode edit) ─────────── --}}
+        <div x-show="editMode" x-cloak class="bg-white rounded-xl border border-slate-200 p-6">
+            @include('reports.partials._alat-tambahan', [
+                'report'       => $report,
+                'laporanInduk' => $laporanInduk,
+                'alatTambahan' => $alatTambahan,
+                'funcLocs'     => $funcLocs,
+            ])
+        </div>
 
         {{-- ── Detail CM / Pekerjaan ──────────────────────── --}}
         @if($report->jenis_pekerjaan || $report->tanggal_kejadian || $report->linkedFinding || $report->equipment_tag)
@@ -485,12 +510,23 @@
             </div>
         @endif
 
-        {{-- ── Foto Dokumentasi ───────────────────────────── --}}
-        <div class="bg-white rounded-xl border border-slate-200 p-6">
+        {{-- ── Foto Laporan ───────────────────────────────── --}}
+        <div class="bg-white rounded-xl border border-slate-200 p-6" id="bagian_foto">
             <div class="flex items-center justify-between mb-3">
-                <h3 class="font-medium text-slate-900">Foto Dokumentasi</h3>
+                <h3 class="font-medium text-slate-900">Foto Laporan</h3>
                 <span class="text-xs text-slate-400" x-text="photoGroups.documentation.length + ' foto'"></span>
             </div>
+
+            @if($laporanInduk->id !== $report->id)
+                <p class="text-xs text-amber-600 mb-3">
+                    Laporan ini baris salinan. Foto dikelola dari halaman detail laporan induk
+                    <a href="{{ route('reports.show', $laporanInduk) }}"
+                       class="font-medium text-blue-600 hover:underline">{{ $laporanInduk->report_code ?? ('#' . $laporanInduk->id) }}</a>
+                    karena baris salinan memakai berkas foto yang sama.
+                </p>
+            @endif
+
+            <p class="text-xs font-medium text-slate-700 mb-2">Foto Dokumentasi</p>
 
             {{-- Grid foto dengan tombol hapus (muncul di mode edit) --}}
             <template x-if="photoGroups.documentation.length > 0">
@@ -538,21 +574,31 @@
                x-cloak
                class="text-xs text-red-600 mb-3"></p>
 
-            {{-- Form tambah foto dokumentasi --}}
-            <form method="POST" action="{{ route('reports.add-photo', $report) }}" enctype="multipart/form-data"
-                  class="flex items-center gap-2">
-                @csrf
-                <input type="hidden" name="type" value="documentation">
-                <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required
-                       class="flex-1 text-xs text-slate-600 border border-slate-300 rounded-lg px-3 py-2">
-                <button type="submit"
-                        class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors whitespace-nowrap">
-                    Tambah Foto
-                </button>
-            </form>
-            @error('photo')
-                <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
-            @enderror
+            @if($laporanInduk->id === $report->id)
+                {{-- Form tambah foto dokumentasi: boleh banyak berkas sekaligus --}}
+                <form method="POST" action="{{ route('reports.add-photo', $report) }}" enctype="multipart/form-data"
+                      @submit.prevent="unggahFoto('documentation', $event)"
+                      class="flex flex-wrap items-center gap-2">
+                    @csrf
+                    <input type="hidden" name="type" value="documentation">
+                    <input type="file" id="foto_berkas" name="photos[]" multiple
+                           accept="image/jpeg,image/png,image/webp" required
+                           class="flex-1 min-w-[14rem] text-xs text-slate-600 border border-slate-300 rounded-lg px-3 py-2">
+                    <button type="submit" id="foto_unggah"
+                            :disabled="uploading.documentation"
+                            class="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors whitespace-nowrap">
+                        Tambah Foto
+                    </button>
+                </form>
+                <p x-show="uploadError.documentation" x-text="uploadError.documentation" x-cloak
+                   class="text-xs text-red-600 mt-1"></p>
+                @error('photos')
+                    <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                @enderror
+                @error('photos.*')
+                    <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                @enderror
+            @endif
         </div>
 
         {{-- ── Foto Hygiene Clearance ──────────────────────── --}}
@@ -608,18 +654,25 @@
                x-cloak
                class="text-xs text-red-600 mb-3"></p>
 
-            {{-- Form tambah foto hygiene --}}
-            <form method="POST" action="{{ route('reports.add-photo', $report) }}" enctype="multipart/form-data"
-                  class="flex items-center gap-2">
-                @csrf
-                <input type="hidden" name="type" value="hygiene">
-                <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required
-                       class="flex-1 text-xs text-slate-600 border border-slate-300 rounded-lg px-3 py-2">
-                <button type="submit"
-                        class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors whitespace-nowrap">
-                    Tambah Foto
-                </button>
-            </form>
+            @if($laporanInduk->id === $report->id)
+                {{-- Form tambah foto hygiene: boleh banyak berkas sekaligus --}}
+                <form method="POST" action="{{ route('reports.add-photo', $report) }}" enctype="multipart/form-data"
+                      @submit.prevent="unggahFoto('hygiene', $event)"
+                      class="flex flex-wrap items-center gap-2">
+                    @csrf
+                    <input type="hidden" name="type" value="hygiene">
+                    <input type="file" id="foto_berkas_hygiene" name="photos[]" multiple
+                           accept="image/jpeg,image/png,image/webp" required
+                           class="flex-1 min-w-[14rem] text-xs text-slate-600 border border-slate-300 rounded-lg px-3 py-2">
+                    <button type="submit" id="foto_unggah_hygiene"
+                            :disabled="uploading.hygiene"
+                            class="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors whitespace-nowrap">
+                        Tambah Foto
+                    </button>
+                </form>
+                <p x-show="uploadError.hygiene" x-text="uploadError.hygiene" x-cloak
+                   class="text-xs text-red-600 mt-1"></p>
+            @endif
         </div>
 
         {{-- ── Analisa AI ──────────────────────────────────── --}}
@@ -726,8 +779,6 @@
          KOLOM KANAN (sidebar aksi)
     ====================================================== --}}
     <div class="space-y-6">
-
-        @include('reports.partials._tombol-edit-lengkap', ['report' => $report])
 
         {{-- ── Form tersembunyi: target semua input edit --}}
         {{--
@@ -875,7 +926,19 @@ function reportDetail() {
             hygiene: '',
         },
 
-        // ── State dropdown lokasi (sama dengan edit.blade.php) ─
+        // State unggah foto — key per tipe: documentation | hygiene
+        uploading: {
+            documentation: false,
+            hygiene: false,
+        },
+
+        // Pesan error unggah per tipe
+        uploadError: {
+            documentation: '',
+            hygiene: '',
+        },
+
+        // ── State dropdown lokasi (dipakai kartu "Pengaturan Laporan") ─
         areaId: {{ old('area_id', $report->area_id) ?? 'null' }},
         funcLocId: {{ old('funcloc_id', $report->funcloc_id) ?? 'null' }},
         assetId: {{ old('asset_id', $report->asset_id) ?? 'null' }},
@@ -905,6 +968,8 @@ function reportDetail() {
             this.editMode = false;
             this.deleteError.documentation = '';
             this.deleteError.hygiene = '';
+            this.uploadError.documentation = '';
+            this.uploadError.hygiene = '';
         },
 
         // ── Hapus foto ────────────────────────────────────────
@@ -950,7 +1015,55 @@ function reportDetail() {
             }
         },
 
-        // ── Dropdown lokasi (port dari edit.blade.php) ────────
+        // ── Unggah foto ───────────────────────────────────────
+
+        /**
+         * Unggah foto lewat fetch supaya isian form edit yang belum disimpan
+         * tidak hilang. Server membalas daftar URL terbaru (lihat
+         * ReportController::addPhoto()), daftar di layar diperbarui dari itu.
+         *
+         * @param {string} type   'documentation' atau 'hygiene'
+         * @param {Event}  event  Kejadian submit pada form unggah
+         */
+        async unggahFoto(type, event) {
+            const form   = event.target;
+            const berkas = form.querySelector('input[type="file"]');
+
+            this.uploadError[type] = '';
+
+            if (!berkas || berkas.files.length === 0) {
+                this.uploadError[type] = 'Pilih berkas foto terlebih dahulu.';
+                return;
+            }
+
+            this.uploading[type] = true;
+
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    },
+                    body: new FormData(form),
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    this.photoGroups[type] = data.foto?.[type] ?? [];
+                    berkas.value = '';
+                } else {
+                    this.uploadError[type] = data.message ?? 'Gagal mengunggah foto. Coba lagi.';
+                }
+            } catch {
+                this.uploadError[type] = 'Terjadi kesalahan jaringan. Coba lagi.';
+            } finally {
+                this.uploading[type] = false;
+            }
+        },
+
+        // ── Dropdown lokasi halaman detail ────────────────────
 
         /**
          * Dipanggil saat Area berubah.
@@ -1001,6 +1114,66 @@ function reportDetail() {
             })
                 .then(res => res.json())
                 .then(data => { this.assets = data; });
+        },
+
+        /**
+         * Isi Area + Functional Location + Kode Alat sekaligus dari satu hasil
+         * pencarian alat lintas area (partial _cari-alat). Daftar lokasi & alat
+         * dimuat ulang untuk area alat itu supaya pilihan pada dropdown tetap
+         * konsisten dengan nilai yang dipasang.
+         *
+         * @param {object} aset Hasil pencarian: id, area_id, funcloc_id, dst.
+         */
+        async terapkanAset(aset) {
+            this.areaId = aset.area_id ?? null;
+
+            if (this.areaId) {
+                await Promise.all([
+                    fetch(`{{ route('reports.locations.funclocs') }}?area_id=${this.areaId}`, {
+                        headers: { 'Accept': 'application/json' },
+                    })
+                        .then(res => res.json())
+                        .then(data => { this.funcLocs = data; }),
+
+                    fetch(`{{ route('reports.locations.assets') }}?area_id=${this.areaId}`, {
+                        headers: { 'Accept': 'application/json' },
+                    })
+                        .then(res => res.json())
+                        .then(data => { this.assets = data; }),
+                ]);
+            } else {
+                this.funcLocs = [];
+                this.assets = [];
+            }
+
+            // Alat/lokasi terpilih wajib ada di daftar dropdown, kalau tidak
+            // pilihannya tampak kosong walau nilainya sudah tersimpan.
+            if (!this.assets.some(item => item.id === aset.id)) {
+                this.assets.unshift(aset);
+            }
+
+            if (aset.funcloc_id && !this.funcLocs.some(item => item.id === aset.funcloc_id)) {
+                this.funcLocs.unshift({
+                    id: aset.funcloc_id,
+                    code: aset.functional_loc || 'FuncLoc #' + aset.funcloc_id,
+                    name: aset.area_label || '',
+                    level: null,
+                });
+            }
+
+            this.funcLocId = aset.funcloc_id ?? null;
+            this.assetId   = aset.id;
+        },
+
+        /**
+         * Kosongkan Area, Functional Location, dan Kode Alat pada form.
+         */
+        kosongkanLokasi() {
+            this.areaId    = null;
+            this.funcLocId = null;
+            this.assetId   = null;
+            this.funcLocs  = [];
+            this.assets    = [];
         },
     };
 }

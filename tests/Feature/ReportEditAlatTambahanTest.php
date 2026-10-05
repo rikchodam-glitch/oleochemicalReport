@@ -127,9 +127,9 @@ function assetAlatTambahan(array $data): Asset
     ], $data));
 }
 
-test('halaman edit menampilkan bagian alat tambahan', function () {
+test('halaman detail menampilkan bagian alat tambahan', function () {
     $this->actingAs($this->admin)
-        ->get('/reports/' . $this->induk->id . '/edit')
+        ->get('/reports/' . $this->induk->id)
         ->assertStatus(200)
         ->assertSee('Alat / Lokasi Tambahan', false)
         ->assertSee('item_tambah_lokasi', false)

@@ -69,9 +69,9 @@ function teknisiKolaborasi(string $nama, string $nik, string $grup = 'reguler'):
     ]);
 }
 
-test('halaman edit menampilkan bagian kolaborasi', function () {
+test('halaman detail menampilkan bagian kolaborasi', function () {
     $this->actingAs($this->admin)
-        ->get('/reports/' . $this->induk->id . '/edit')
+        ->get('/reports/' . $this->induk->id)
         ->assertStatus(200)
         ->assertSee('Kolaborasi Teknisi', false)
         ->assertSee('Tambah Kolaborator', false)
@@ -235,18 +235,21 @@ test('galat validasi endpoint kolaborator dibalas JSON 422, bukan memutar halama
         ->assertJsonValidationErrors('technician_id');
 });
 
-test('halaman detail laporan menyediakan tautan ke halaman edit lengkap', function () {
-    // Daftar laporan hanya membuka halaman detail, jadi tautan pada halaman
-    // detail inilah jalan masuk ke pengelolaan kolaborator, alat/lokasi
-    // tambahan, dan foto (lihat partial _tombol-edit-lengkap).
+test('halaman detail laporan menjadi satu-satunya tempat pengelolaan laporan', function () {
+    // Halaman edit terpisah sudah dihapus, jadi pengelolaan kolaborator,
+    // alat/lokasi tambahan, dan foto berada di halaman detail (muncul pada
+    // mode edit).
     $this->actingAs($this->admin)
         ->get('/reports/' . $this->induk->id)
         ->assertStatus(200)
-        ->assertSee('Edit Lengkap', false)
-        ->assertSee('/reports/' . $this->induk->id . '/edit', false);
+        ->assertSee('Kolaborasi Teknisi', false)
+        ->assertSee('Tambah Kolaborator', false)
+        ->assertSee('Alat / Lokasi Tambahan', false)
+        ->assertSee('Foto Laporan', false)
+        ->assertDontSee('/reports/' . $this->induk->id . '/edit', false);
 });
 
-test('laporan salinan kolaborasi menautkan halaman edit INDUKNYA', function () {
+test('laporan salinan kolaborasi mengarahkan pengelolaan ke laporan INDUKNYA', function () {
     $kolaborator = teknisiKolaborasi('Rekan Salinan Uji', 'KOL010');
 
     $this->actingAs($this->admin)
@@ -258,7 +261,10 @@ test('laporan salinan kolaborasi menautkan halaman edit INDUKNYA', function () {
     $this->actingAs($this->admin)
         ->get('/reports/' . $salinan->id)
         ->assertStatus(200)
-        // Halaman edit yang ditautkan harus milik laporan INDUK, bukan salinan.
-        ->assertSee('/reports/' . $this->induk->id . '/edit', false)
+        // Pengelolaan kolaborator, alat tambahan, dan foto pada baris salinan
+        // diarahkan ke halaman detail laporan INDUK, bukan ke salinannya.
+        ->assertSee('Kolaborasi Teknisi', false)
+        ->assertSee('dikelola dari halaman detail laporan induk', false)
+        ->assertSee('/reports/' . $this->induk->id . '"', false)
         ->assertDontSee('/reports/' . $salinan->id . '/edit', false);
 });

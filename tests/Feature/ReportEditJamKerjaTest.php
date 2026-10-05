@@ -8,11 +8,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 uses(RefreshDatabase::class);
 
 /**
- * Jam kerja (jam mulai & jam selesai) pada form edit laporan.
+ * Jam kerja (jam mulai & jam selesai) pada mode edit halaman DETAIL laporan.
  *
  * Aturan yang dijaga di sini:
- *   1. Form edit menampilkan kolom jam mulai & jam selesai (kolom start_time /
- *      end_time sudah ada di database tapi sebelumnya tidak bisa diisi admin).
+ *   1. Mode edit halaman detail menampilkan kolom jam mulai & jam selesai
+ *      (kolom start_time / end_time sudah ada di database tapi sebelumnya
+ *      tidak bisa diisi admin).
  *   2. Durasi pengerjaan dihitung OTOMATIS dari rentang jam bila kolom durasi
  *      dibiarkan kosong.
  *   3. Jam selesai lebih kecil dari jam mulai = pekerjaan melewati tengah
@@ -20,9 +21,9 @@ uses(RefreshDatabase::class);
  *   4. Durasi laporan TIDAK pernah ikut hilang/tertimpa saat jam dikosongkan
  *      (angka man hour lama tetap dipertahankan).
  *   5. Format jam tidak valid ditolak validasi dan data lama tidak berubah.
- *   6. Halaman edit HANYA meminta jam mulai & jam selesai: tidak ada isian
- *      durasi manual, kotak centang hitung otomatis, maupun kolom tersembunyi
- *      durasi. Angka man hour dihitung server dari rentang jam itu.
+ *   6. Halaman detail mode edit HANYA meminta jam mulai & jam selesai: tidak
+ *      ada isian durasi manual, kotak centang hitung otomatis, maupun kolom
+ *      tersembunyi durasi. Angka man hour dihitung server dari rentang jam.
  */
 
 beforeEach(function () {
@@ -50,9 +51,9 @@ beforeEach(function () {
     ]);
 });
 
-test('form edit menampilkan kolom jam mulai dan jam selesai', function () {
+test('halaman detail mode edit menampilkan kolom jam mulai dan jam selesai', function () {
     $this->actingAs($this->admin)
-        ->get('/reports/' . $this->laporan->id . '/edit')
+        ->get('/reports/' . $this->laporan->id)
         ->assertStatus(200)
         ->assertSee('name="start_time"', false)
         ->assertSee('name="end_time"', false)
@@ -141,7 +142,7 @@ test('durasi 0 dihormati sebagai nol, bukan dianggap kosong', function () {
 
 test('format jam tidak valid ditolak validasi dan data lama tidak berubah', function () {
     $this->actingAs($this->admin)
-        ->from('/reports/' . $this->laporan->id . '/edit')
+        ->from('/reports/' . $this->laporan->id)
         ->put('/reports/' . $this->laporan->id, [
             'work_description'      => 'Pemeriksaan pompa uji jam kerja',
             'report_date'           => now()->toDateString(),
@@ -172,9 +173,9 @@ test('pembantu durasiDariJam dan lintasTengahMalam mengikuti aturan yang sama', 
         ->and(Report::lintasTengahMalam(null, '09:00'))->toBeFalse();
 });
 
-test('form edit hanya meminta jam mulai dan jam selesai, tanpa isian durasi', function () {
+test('halaman detail mode edit hanya meminta jam mulai dan jam selesai, tanpa isian durasi', function () {
     $this->actingAs($this->admin)
-        ->get('/reports/' . $this->laporan->id . '/edit')
+        ->get('/reports/' . $this->laporan->id)
         ->assertStatus(200)
         // Jam kerja tetap diminta.
         ->assertSee('name="start_time"', false)

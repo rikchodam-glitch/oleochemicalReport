@@ -13,11 +13,11 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 uses(RefreshDatabase::class);
 
 /**
- * Pencarian lokasi/alat pada form edit laporan.
+ * Pencarian lokasi/alat pada mode edit halaman DETAIL laporan.
  *
  * Aturan yang dijaga di sini:
- *   1. Kotak "Cari Alat (semua area)" ada di halaman edit dan memakai rute
- *      reports.locations.cari-alat.
+ *   1. Kotak "Cari Alat (semua area)" ada di halaman detail laporan (mode
+ *      edit) dan memakai rute reports.locations.cari-alat.
  *   2. Pencarian lintas area hanya mengeluarkan hasil bila kata kunci minimal
  *      2 huruf, dan hasilnya dibatasi 50 baris.
  *   3. Hasil pencarian membawa area & funcloc alat supaya Area, Functional
@@ -91,9 +91,9 @@ beforeEach(function () {
     ]);
 });
 
-test('halaman edit laporan memuat kotak pencarian alat lintas area', function () {
+test('halaman detail memuat kotak pencarian alat lintas area', function () {
     $this->actingAs($this->admin)
-        ->get('/reports/' . $this->laporan->id . '/edit')
+        ->get('/reports/' . $this->laporan->id)
         ->assertStatus(200)
         ->assertSee('Cari Alat (semua area)', false)
         ->assertSee('cari_alat_lintas_area', false)

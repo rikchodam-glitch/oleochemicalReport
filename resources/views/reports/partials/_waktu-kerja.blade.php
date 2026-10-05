@@ -17,7 +17,7 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
             <label for="start_time" class="block text-sm font-medium text-slate-700 mb-1">Jam Mulai</label>
-            <input type="time" id="start_time" name="start_time" step="60"
+            <input type="time" id="start_time" name="start_time" form="form-edit-laporan" step="60"
                    value="{{ old('start_time', $report->start_time) }}"
                    class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
             @error('start_time')
@@ -27,7 +27,7 @@
 
         <div>
             <label for="end_time" class="block text-sm font-medium text-slate-700 mb-1">Jam Selesai</label>
-            <input type="time" id="end_time" name="end_time" step="60"
+            <input type="time" id="end_time" name="end_time" form="form-edit-laporan" step="60"
                    value="{{ old('end_time', $report->end_time) }}"
                    class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
             @error('end_time')

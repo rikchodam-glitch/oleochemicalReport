@@ -9,8 +9,8 @@ use App\Services\ReportCopyService;
 use Illuminate\Http\Request;
 
 /**
- * Alat/lokasi tambahan pada sebuah laporan (pekerjaan multi item) dari halaman
- * edit web.
+ * Alat/lokasi tambahan pada sebuah laporan (pekerjaan multi item) dari mode
+ * edit halaman DETAIL laporan.
  *
  * Sama seperti jalur wizard Telegram: laporan INDUK menyimpan detail pekerjaan
  * dan foto, sedangkan setiap alat/lokasi tambahan mendapat baris salinan sendiri
@@ -182,8 +182,12 @@ class ReportMultiItemController extends Controller
      * daftar tanpa reload. Label memakai accessor Report::multi_item_label
      * supaya sama dengan yang dirender server.
      *
+     * Tautan tiap baris menunjuk detail ALAT/LOKASI (bukan halaman baris
+     * salinannya) supaya satu pekerjaan bersama tetap tampil sebagai satu
+     * laporan; kode baris salinannya dikirim terpisah sebagai keterangan.
+     *
      * @param  Report  $report  Laporan induk
-     * @return array<int, array{id: int, label: string, code: string, url: string}>
+     * @return array<int, array{id: int, label: string, code: string, kode_alat: string, url: string}>
      */
     private function daftarItem(Report $report): array
     {
@@ -192,10 +196,17 @@ class ReportMultiItemController extends Controller
             ->orderBy('id')
             ->get()
             ->map(fn (Report $item) => [
-                'id'    => $item->id,
-                'label' => $item->multi_item_label,
-                'code'  => $item->report_code ?? ('#' . $item->id),
-                'url'   => route('reports.show', $item),
+                'id'        => $item->id,
+                'label'     => $item->multi_item_label,
+                'code'      => $item->report_code ?? ('#' . $item->id),
+                'kode_alat' => $item->asset?->tech_ident_no
+                    ?? $item->functionalLocation?->code
+                    ?? $item->multi_item_label,
+                'url'       => $item->asset
+                    ? route('assets.show', $item->asset)
+                    : ($item->functionalLocation
+                        ? route('locations.show', $item->functionalLocation)
+                        : route('reports.show', $report)),
             ])
             ->values()
             ->all();

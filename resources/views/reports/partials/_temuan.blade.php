@@ -1,6 +1,9 @@
-{{-- Field Temuan (finding) — dipakai halaman Tambah & Edit laporan.
+{{-- Field Temuan (finding) pada halaman Tambah laporan.
      Dipisah jadi partial supaya halaman blade yang besar tidak perlu ditulis
      ulang (lihat aturan edit blade di AGENTS.md).
+     Halaman DETAIL laporan memakai partial lain, `_temuan-kartu` (kartu
+     tersendiri: tampilan + mode edit), jadi isian di sini TIDAK dipakai
+     di sana.
      Parameter: $nilai = isi awal textarea. --}}
 <div>
     <label for="finding" class="block text-sm font-medium text-slate-700 mb-1">Temuan (Opsional)</label>

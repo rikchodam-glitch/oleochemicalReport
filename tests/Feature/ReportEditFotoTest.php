@@ -10,12 +10,12 @@ use Illuminate\Support\Facades\Storage;
 uses(RefreshDatabase::class);
 
 /**
- * Unggah & hapus foto pada halaman edit laporan.
+ * Unggah & hapus foto pada mode edit halaman DETAIL laporan.
  *
  * Aturan yang dijaga di sini:
- *   1. Halaman edit memuat bagian Foto Laporan (grid + kotak unggah).
+ *   1. Halaman detail memuat bagian Foto Laporan (grid + kotak unggah).
  *   2. Unggah mendukung BANYAK berkas sekaligus (`photos[]`) dan tetap
- *      mendukung bentuk lama satu berkas (`photo`) yang dipakai halaman detail.
+ *      mendukung bentuk lama satu berkas (`photo`).
  *   3. Jenis foto menentukan kolom yang diisi (dokumentasi / hygiene).
  *   4. Unggah tanpa berkas dan berkas bukan gambar ditolak.
  *   5. Baris salinan (kolaborasi/multi alat) TIDAK boleh mengubah foto karena
@@ -48,9 +48,9 @@ beforeEach(function () {
     ]);
 });
 
-test('halaman edit menampilkan bagian foto dan kotak unggah', function () {
+test('halaman detail menampilkan bagian foto dan kotak unggah', function () {
     $this->actingAs($this->admin)
-        ->get('/reports/' . $this->laporan->id . '/edit')
+        ->get('/reports/' . $this->laporan->id)
         ->assertStatus(200)
         ->assertSee('Foto Laporan', false)
         ->assertSee('foto_berkas', false)

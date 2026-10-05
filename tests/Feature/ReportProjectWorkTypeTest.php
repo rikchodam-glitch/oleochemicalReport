@@ -110,9 +110,9 @@ test('halaman laporan menampilkan badge, kartu, dan filter jenis Project', funct
         ->assertDontSee('PRJ-LAPORAN-02', false);
 });
 
-test('form edit laporan menawarkan ZPM 8 dan jenis Project lalu menyimpannya', function () {
+test('halaman detail mode edit menawarkan ZPM 8 dan jenis Project lalu menyimpannya', function () {
     $this->actingAs($this->admin)
-        ->get('/reports/' . $this->laporanSipil->id . '/edit')
+        ->get('/reports/' . $this->laporanSipil->id)
         ->assertStatus(200)
         ->assertSee('ZPM 8 - Project', false)
         ->assertSee('value="Project"', false);
@@ -134,7 +134,7 @@ test('form edit laporan menawarkan ZPM 8 dan jenis Project lalu menyimpannya', f
 
 test('jenis pekerjaan di luar daftar tetap ditolak validasi', function () {
     $this->actingAs($this->admin)
-        ->from('/reports/' . $this->laporanSipil->id . '/edit')
+        ->from('/reports/' . $this->laporanSipil->id)
         ->put('/reports/' . $this->laporanSipil->id, [
             'work_description'      => 'Pekerjaan dengan jenis tidak dikenal',
             'work_duration_minutes' => 60,

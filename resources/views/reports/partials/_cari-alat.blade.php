@@ -60,7 +60,7 @@
                 return null;
             }
 
-            var host = document.querySelector('[x-data="reportLocationManager()"]');
+            var host = document.querySelector('[x-data="reportLocationManager()"], [x-data="reportDetail()"]');
 
             return host ? window.Alpine.$data(host) : null;
         }

@@ -91,5 +91,5 @@ test('admin can access report edit with ZPM classification dropdown', function (
         'status'               => 'needs_review',
     ]);
 
-    $this->actingAs($user)->get(route('reports.edit', $report))->assertStatus(200)->assertSee('ZPM 7 - Sipil');
+    $this->actingAs($user)->get(route('reports.show', $report))->assertStatus(200)->assertSee('ZPM 7 - Sipil');
 });

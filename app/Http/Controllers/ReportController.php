@@ -427,34 +427,35 @@ class ReportController extends Controller
         ? Asset::where('area_id', $report->area_id)->orderBy('tech_ident_no')->get(['id', 'equipment_no', 'tech_ident_no', 'description'])
         : collect();
 
-    return view('reports.show', compact('report', 'areas', 'funcLocs', 'assets'));
+    // Data pengelolaan (laporan induk, kolaborator, teknisi, alat tambahan)
+    // dipakai kartu Kolaborasi Teknisi & Alat/Lokasi Tambahan pada halaman
+    // detail, karena halaman edit terpisah sudah tidak ada lagi.
+    $pengelolaan = $this->dataPengelolaanLaporan($report);
+
+    return view('reports.show', array_merge(
+        compact('report', 'areas', 'funcLocs', 'assets'),
+        $pengelolaan
+    ));
 }
 
     /**
-     * Tampilkan form edit laporan untuk admin.
-     * Functional Location dan Asset di-prefetch berdasarkan area_id laporan
-     * saat ini (jika ada) agar dropdown sudah terisi tanpa perlu AJAX awal,
-     * mengikuti pola yang sama dengan AssetController@edit.
+     * Siapkan data pengelolaan laporan untuk halaman DETAIL laporan.
      *
-     * @param  Report  $report  Laporan yang akan diedit.
-     * @return \Illuminate\View\View
+     * Halaman detail adalah SATU-SATUNYA tempat mengubah laporan sekarang
+     * (rute reports.edit sudah dihapus), jadi kartu Kolaborasi Teknisi dan
+     * Alat/Lokasi Tambahan membutuhkan data yang dulu disiapkan halaman edit.
+     * Kolaborator dan alat tambahan SELALU dikelola dari laporan INDUK supaya
+     * satu pekerjaan tidak bercabang menjadi banyak daftar.
+     *
+     * @param  Report  $report  Laporan yang sedang dibuka.
+     * @return array<string, mixed>  Kunci: laporanInduk, kolaborator,
+     *                               teknisiPilihan, alatTambahan.
      */
-    public function edit(Report $report)
+    private function dataPengelolaanLaporan(Report $report): array
     {
-        $areas = Area::orderBy('code')->get(['id', 'code', 'name']);
-
-        $funcLocs = $report->area_id
-            ? FunctionalLocation::where('area_id', $report->area_id)->orderBy('code')->get(['id', 'code', 'name', 'level'])
-            : collect();
-
-        $assets = $report->area_id
-            ? Asset::where('area_id', $report->area_id)->orderBy('tech_ident_no')->get(['id', 'equipment_no', 'tech_ident_no', 'description'])
-            : collect();
-
-        // Laporan INDUK dari keluarga laporan ini: laporan salinan kolaborasi
+        // Laporan INDUK dari keluarga laporan ini: salinan kolaborasi
         // (collaborator_of) maupun salinan alat tambahan (multi_of) selalu
-        // dikelola dari laporan induknya, supaya satu pekerjaan tidak
-        // bercabang menjadi banyak daftar kolaborator/alat tambahan.
+        // dikelola dari laporan induknya.
         $laporanInduk = $report->multi_of !== null
             ? $report->multiOf
             : ($report->collaborator_of !== null ? $report->parentReport : $report);
@@ -462,24 +463,18 @@ class ReportController extends Controller
         // Null-safe bila kolom penautnya menunjuk laporan yang sudah terhapus.
         $laporanInduk ??= $report;
 
-        $kolaborator = $laporanInduk->collaboratorReports()
-            ->with('technician:id,name')
-            ->orderBy('id')
-            ->get();
-
-        $teknisiPilihan = Technician::orderBy('name')->get(['id', 'name', 'nik']);
-
-        // Alat/lokasi tambahan pekerjaan ini (baris salinan multi_of) beserta
-        // relasinya, dipakai daftar pada halaman edit.
-        $alatTambahan = $laporanInduk->multiItems()
-            ->with(['asset', 'functionalLocation'])
-            ->orderBy('id')
-            ->get();
-
-        return view('reports.edit', compact(
-            'report', 'areas', 'funcLocs', 'assets',
-            'laporanInduk', 'kolaborator', 'teknisiPilihan', 'alatTambahan'
-        ));
+        return [
+            'laporanInduk'   => $laporanInduk,
+            'kolaborator'    => $laporanInduk->collaboratorReports()
+                ->with('technician:id,name')
+                ->orderBy('id')
+                ->get(),
+            'teknisiPilihan' => Technician::orderBy('name')->get(['id', 'name', 'nik']),
+            'alatTambahan'   => $laporanInduk->multiItems()
+                ->with(['asset', 'functionalLocation'])
+                ->orderBy('id')
+                ->get(),
+        ];
     }
 
     /**

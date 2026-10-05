@@ -8,10 +8,11 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 uses(RefreshDatabase::class);
 
 /**
- * Field pelengkap pada form edit laporan: Tipe Laporan dan Status Pekerjaan.
+ * Field pelengkap pada mode edit halaman DETAIL laporan: Tipe Laporan dan
+ * Status Pekerjaan.
  *
  * Aturan yang dijaga di sini:
- *   1. Halaman edit memuat pilihan tipe laporan & status.
+ *   1. Halaman detail mode edit memuat pilihan tipe laporan & status.
  *   2. Menyimpan status 'continue' mengosongkan completed_at, sedangkan
  *      'completed' mengisi completed_at (nilai lama dipertahankan bila sudah ada).
  *   3. Status yang tidak dikirim form TIDAK mengubah status lama (pemanggil lama
@@ -43,9 +44,9 @@ beforeEach(function () {
     ]);
 });
 
-test('halaman edit menampilkan pilihan tipe laporan dan status', function () {
+test('halaman detail mode edit menampilkan pilihan tipe laporan dan status', function () {
     $this->actingAs($this->admin)
-        ->get('/reports/' . $this->laporan->id . '/edit')
+        ->get('/reports/' . $this->laporan->id)
         ->assertStatus(200)
         ->assertSee('Tipe & Status Laporan', false)
         ->assertSee('name="report_type"', false)
@@ -111,7 +112,7 @@ test('status lama tidak berubah bila form tidak mengirim status', function () {
 
 test('nilai tipe laporan dan status di luar daftar ditolak validasi', function () {
     $this->actingAs($this->admin)
-        ->from('/reports/' . $this->laporan->id . '/edit')
+        ->from('/reports/' . $this->laporan->id)
         ->put('/reports/' . $this->laporan->id, [
             'work_description'      => 'Pekerjaan uji field pelengkap',
             'work_duration_minutes' => 60,

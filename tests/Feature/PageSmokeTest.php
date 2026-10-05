@@ -290,8 +290,8 @@ test('GET /reports/{report} -> 200', function () {
     $this->actingAs($this->admin)->get("/reports/{$this->report->id}")->assertStatus(200);
 });
 
-test('GET /reports/{report}/edit -> 200', function () {
-    $this->actingAs($this->admin)->get("/reports/{$this->report->id}/edit")->assertStatus(200);
+test('GET /reports/{report}/edit -> 404 karena halaman edit sudah dihapus', function () {
+    $this->actingAs($this->admin)->get("/reports/{$this->report->id}/edit")->assertStatus(404);
 });
 
 // ============================================================

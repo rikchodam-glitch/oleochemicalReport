@@ -13,8 +13,8 @@
 
     @if($laporanInduk->id !== $report->id)
         <p class="text-xs text-amber-600 mb-2">
-            Laporan ini baris salinan. Daftar alat tambahan dikelola dari laporan induk
-            <a href="{{ route('reports.edit', $laporanInduk) }}"
+            Laporan ini baris salinan. Daftar alat tambahan dikelola dari halaman detail laporan induk
+            <a href="{{ route('reports.show', $laporanInduk) }}"
                class="font-medium text-blue-600 hover:underline">{{ $laporanInduk->report_code ?? ('#' . $laporanInduk->id) }}</a>.
         </p>
     @endif
@@ -24,8 +24,23 @@
             <div class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-slate-200">
                 <div class="min-w-0">
                     <p class="text-sm font-medium text-slate-700 truncate">{{ $item->multi_item_label }}</p>
-                    <a href="{{ route('reports.show', $item) }}"
-                       class="text-xs text-blue-600 hover:text-blue-700 font-mono">{{ $item->report_code ?? ('#' . $item->id) }}</a>
+                    {{-- Tautan menuju detail ALAT/LOKASI (sama seperti bagian
+                         "Mencakup N alat/lokasi lain"), BUKAN ke halaman baris
+                         salinannya: satu pekerjaan bersama tetap tampil sebagai
+                         satu laporan. Kode baris salinannya ditampilkan sebagai
+                         keterangan di bawah tautan. --}}
+                    <a href="{{ $item->asset
+                            ? route('assets.show', $item->asset)
+                            : ($item->functionalLocation
+                                ? route('locations.show', $item->functionalLocation)
+                                : route('reports.show', $laporanInduk)) }}"
+                       title="{{ $item->asset ? 'Detail equipment' : 'Detail lokasi' }}"
+                       class="text-xs font-medium font-mono text-teal-700 hover:underline">
+                        {{ $item->asset?->tech_ident_no ?? $item->functionalLocation?->code ?? 'Detail lokasi' }}
+                    </a>
+                    <span class="block text-xs text-slate-400 font-mono">
+                        {{ $item->report_code ?? ('#' . $item->id) }}
+                    </span>
                 </div>
 
                 @if($laporanInduk->id === $report->id)
@@ -174,12 +189,17 @@
                 nama.textContent = item.label;
 
                 var kode = document.createElement('a');
-                kode.className = 'text-xs text-blue-600 hover:text-blue-700 font-mono';
+                kode.className = 'text-xs font-medium font-mono text-teal-700 hover:underline';
                 kode.href = item.url;
-                kode.textContent = item.code;
+                kode.textContent = item.kode_alat || item.code;
+
+                var kodeLaporan = document.createElement('span');
+                kodeLaporan.className = 'block text-xs text-slate-400 font-mono';
+                kodeLaporan.textContent = item.code;
 
                 info.appendChild(nama);
                 info.appendChild(kode);
+                info.appendChild(kodeLaporan);
 
                 var tombol = document.createElement('button');
                 tombol.type = 'button';

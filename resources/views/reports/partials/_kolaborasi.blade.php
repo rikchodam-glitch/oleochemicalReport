@@ -15,8 +15,8 @@
 
     @if($laporanInduk->id !== $report->id)
         <p class="text-xs text-amber-600 mb-2">
-            Laporan ini baris salinan. Kolaborator dikelola dari laporan induk
-            <a href="{{ route('reports.edit', $laporanInduk) }}"
+            Laporan ini baris salinan. Kolaborator dikelola dari halaman detail laporan induk
+            <a href="{{ route('reports.show', $laporanInduk) }}"
                class="font-medium text-blue-600 hover:underline">{{ $laporanInduk->report_code ?? ('#' . $laporanInduk->id) }}</a>.
         </p>
     @endif

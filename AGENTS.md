@@ -759,14 +759,16 @@ Batasan penting lingkungan ini:
      diketik manual TIDAK ditimpa; durasi kosong + jam kosong = nilai lama
      DIPERTAHANKAN (kolom dikeluarkan dari data update) supaya angka man hour
      tidak hilang karena kolom terlewat; isi 0 bila memang ingin dinolkan.
-     **Halaman edit TIDAK punya isian durasi (diputuskan 05/10/2026): form
-     hanya meminta Jam Mulai & Jam Selesai**, jadi form tidak mengirim kolom
+     **Form edit TIDAK punya isian durasi (diputuskan 05/10/2026): hanya
+     meminta Jam Mulai & Jam Selesai**, jadi form tidak mengirim kolom
      durasi sama sekali dan angkanya selalu dihitung ulang server dari rentang
      jam; durasi tersimpan hanya dipertahankan bila kedua jam dikosongkan.
      Partial `resources/views/reports/partials/_waktu-kerja.blade.php` berisi
      dua kolom jam + tombol "Kosongkan Jam" + peringatan lintas tengah malam
-     (tanpa kotak durasi apa pun). Halaman `create.blade.php` dan
-     `show.blade.php` masih memakai isian durasi manual dan belum diseragamkan.
+     (tanpa kotak durasi apa pun); KEDUA inputnya memakai atribut
+     `form="form-edit-laporan"` karena dipasang di luar elemen `<form>` pada
+     halaman detail (lihat poin 19). Halaman `create.blade.php` masih memakai
+     isian durasi manual dan belum diseragamkan.
    - **Pencarian lokasi/alat:** `App\Http\Controllers\Traits\ReportLocationTrait`
      menerima parameter `q` pada `getFuncLocsByArea()`/`getAssetsByArea()`
      (hasil dibatasi `BATAS_CARI_LOKASI` = 50 baris saat `q` diisi) dan method
@@ -774,8 +776,9 @@ Batasan penting lingkungan ini:
      ALAT LINTAS AREA (minimal 2 huruf; kode alat/nomor equipment/deskripsi/
      kode lokasi; membawa `area_id` + `funcloc_id` + `area_label`). Kotak
      pencarian memilih hasil lewat method Alpine baru
-     `terapkanAset()`/`kosongkanLokasi()` pada `reportLocationManager()`
-     (partial `partials/_cari-alat.blade.php`).
+     `terapkanAset()`/`kosongkanLokasi()` pada komponen `reportDetail()` halaman
+     detail (partial `partials/_cari-alat.blade.php`; skripnya mencari komponen
+     lewat `[x-data="reportLocationManager()"], [x-data="reportDetail()"]`).
    - **Kolaborasi:** `App\Http\Controllers\ReportCollaborationController` +
      rute `reports.collaborators.store|destroy`; baris salinan dibuat oleh
      `App\Services\ReportCopyService::buatSalinanKolaborasi()` (detail pekerjaan
@@ -783,16 +786,11 @@ Batasan penting lingkungan ini:
      induk). Hanya laporan INDUK yang boleh diubah
      (`collaborator_of`/`multi_of` harus NULL), pelaksana sendiri & teknisi
      kembar ditolak, batas `CollaborationService::MAX_KOLABORATOR` (5).
-   - **Jalan masuk halaman edit (ditambahkan 05/10/2026):** daftar laporan
-     (`reports/index.blade.php`, baris tabel memanggil `reports.show`) dan
-     halaman detail TIDAK menautkan halaman edit lengkap, sehingga sebelumnya
-     pengelolaan kolaborator/alat tambahan/foto tidak bisa dibuka dari UI.
-     Partial `resources/views/reports/partials/_tombol-edit-lengkap.blade.php`
-     (di-include SATU baris pada kolom kanan `reports/show.blade.php`) kini
-     menjadi tombol "Edit Lengkap (Kolaborasi, Alat, Foto)"; untuk laporan
-     SALINAN yang ditautkan adalah halaman edit INDUKNYA
-     (`$report->collaborator_of ?? $report->multi_of ?? $report`). Tombol ini
-     hilang otomatis pada akun hanya baca karena URL-nya memuat "/edit".
+   - **Jalan masuk pengelolaan (diperbarui 05/10/2026):** tombol "Edit Laporan"
+     pada kartu Aksi Admin `reports/show.blade.php` mengaktifkan mode edit, dan
+     kartu Kolaborasi Teknisi + Alat/Lokasi Tambahan hanya tampak pada mode itu.
+     Partial `_tombol-edit-lengkap.blade.php` dan halaman edit terpisah SUDAH
+     DIHAPUS (lihat poin 19).
    - **Alat/lokasi tambahan (multi item):**
      `App\Http\Controllers\ReportMultiItemController` + rute
      `reports.multi-items.store|destroy`, memakai
@@ -801,14 +799,14 @@ Batasan penting lingkungan ini:
      `multi_of` = induk). Alat induk / item kembar ditolak; baris salinan multi
      TIDAK dihitung di man hour. Label item memakai accessor
      `Report::multi_item_label` supaya tampilan server & balasan JSON sama.
-   - **Foto:** `ReportController::addPhoto()` kini menerima BANYAK berkas
-     (`photos[]`, selain bentuk lama `photo` tunggal yang tetap dipakai halaman
-     detail) dan membalas JSON berisi daftar URL terbaru; `deletePhoto()` tetap
-     seperti semula. Partial `partials/_foto.blade.php` (grid + tombol hapus +
-     unggah lewat fetch). **Unggah/hapus foto HANYA boleh dari laporan INDUK**
-     (`penjagaFotoInduk()` di `ReportController`) karena baris salinan memakai
-     PATH FOTO YANG SAMA — menghapus dari salinan akan ikut menghapus berkas
-     milik induk.
+   - **Foto:** `ReportController::addPhoto()` menerima BANYAK berkas
+     (`photos[]`, selain bentuk lama `photo` tunggal yang tetap didukung) dan
+     membalas JSON berisi daftar URL terbaru; `deletePhoto()` tetap seperti
+     semula. UI foto ada di `reports/show.blade.php` (grid Alpine
+     `photoGroups` + `unggahFoto()`/`deletePhoto()`, lihat poin 19).
+     **Unggah/hapus foto HANYA boleh dari laporan INDUK** (`penjagaFotoInduk()`
+     di `ReportController`) karena baris salinan memakai PATH FOTO YANG SAMA —
+     menghapus dari salinan akan ikut menghapus berkas milik induk.
    - **Tipe & status:** form edit menambah `report_type` & `status`
      (`partials/_pelengkap.blade.php`). Keduanya nullable supaya pemanggil lama
      tetap kompatibel; `status` diisi -> `completed_at` ikut disetel (completed =
@@ -818,17 +816,76 @@ Batasan penting lingkungan ini:
      `api/*`, sehingga galat VALIDASI pada endpoint fetch halaman laporan
      berbalas 302 + HTML (JavaScript-nya bingung). Kini diperluas menjadi
      `api/*` ATAU (`expectsJson()` DAN `reports/*`).
-   - Uji: `ReportEditJamKerjaTest` (8), `ReportEditCariAlatTest` (8),
-     `ReportEditKolaborasiTest` (9), `ReportEditAlatTambahanTest` (8),
-     `ReportEditFotoTest` (7), `ReportEditFieldPelengkapTest` (5). Uji mutasi
-     dijalankan per tahap: mematikan `durasiDariJam()` -> 3 test GAGAL;
-     mematikan penjaga 2 huruf + batas 50 -> 2 test GAGAL; `collaborator_of`
-     diisi NULL -> 5 test GAGAL; mematikan `sudahAda()` + `areaUntukItem()` ->
-     3 test GAGAL; mematikan dukungan `photos[]` -> 3 test GAGAL; mematikan
-     penyelarasan `completed_at` -> 2 test GAGAL. Seluruh suite **367 test
-     hijau** (1608 assertions) dan `php artisan view:cache` sukses.
+   - Uji: `ReportEditJamKerjaTest` (11), `ReportEditCariAlatTest` (8),
+     `ReportEditKolaborasiTest` (11), `ReportEditAlatTambahanTest` (8),
+     `ReportEditFotoTest` (7), `ReportEditFieldPelengkapTest` (5) — semuanya
+     diuji lewat `GET /reports/{id}` (mode edit halaman detail), bukan lagi
+     halaman edit. Uji mutasi dijalankan per tahap: mematikan
+     `durasiDariJam()` -> 3 test GAGAL; mematikan penjaga 2 huruf + batas 50 ->
+     2 test GAGAL; `collaborator_of` diisi NULL -> 5 test GAGAL; mematikan
+     `sudahAda()` + `areaUntukItem()` -> 3 test GAGAL; mematikan dukungan
+     `photos[]` -> 3 test GAGAL; mematikan penyelarasan `completed_at` -> 2
+     test GAGAL. Seluruh suite **372 test hijau** (1631 assertions) dan
+     `php artisan view:cache` sukses (05/10/2026).
    - Semua AJAX memakai `fetch` + `X-CSRF-TOKEN` supaya isian form yang belum
      disimpan tidak hilang saat kolaborator/item/foto ditambah atau dihapus.
+
+19. **Halaman DETAIL laporan menjadi SATU-SATUNYA tempat mengedit laporan
+    (diputuskan 05/10/2026, sudah ada kodenya — jangan diubah tanpa instruksi
+    user).** Halaman terpisah `reports.edit` SUDAH DIHAPUS supaya pengeditan
+    tidak tersebar di dua tempat: semua perubahan laporan dikerjakan di
+    `resources/views/reports/show.blade.php` pada mode edit (Alpine
+    `reportDetail()`, tombol "Edit Laporan" pada kartu Aksi Admin). Semua
+    berkas yang disebut di bawah ini ada di copy DEV
+    `C:\laragon\www\oleochemicalReport`.
+    - **Rute & controller:** `routes/web.php` memakai
+      `Route::resource('reports', ...)->except(['edit'])`, jadi
+      `GET /reports/{id}/edit` berbalas 404. `ReportController::edit()` diganti
+      method privat `dataPengelolaanLaporan(Report): array` (kunci:
+      `laporanInduk`, `kolaborator`, `teknisiPilihan`, `alatTambahan`) yang
+      datanya digabungkan ke `view('reports.show', ...)` oleh `show()`.
+    - **Berkas yang DIHAPUS:** `resources/views/reports/edit.blade.php`,
+      `resources/views/reports/partials/_tombol-edit-lengkap.blade.php`, dan
+      `resources/views/reports/partials/_foto.blade.php` (UI foto khusus
+      halaman edit; fungsinya pindah ke halaman detail, jangan dihidupkan
+      kembali).
+    - **Partial yang dipakai halaman detail:** `_pelengkap` (ZPM, jenis
+      pekerjaan, `sesuai_rencana`, `tanggal_kejadian`, `equipment_tag`, tipe
+      laporan, status), `_waktu-kerja` (jam mulai/selesai), `_cari-alat`,
+      `_kolaborasi`, `_alat-tambahan` — semuanya di-include dari
+      `show.blade.php`. Karena inputnya berada DI LUAR elemen `<form>`, semua
+      isian wajib memakai atribut `form="form-edit-laporan"` (form tersembunyi
+      `PUT` ke `reports.update` di kolom kanan halaman). Kolom `finding`
+      (temuan) pada halaman detail TETAP memakai partial `_temuan-kartu` yang
+      sudah ada (kartu tersendiri: tampilan + mode edit); partial `_temuan`
+      hanya dipakai halaman `create.blade.php`.
+    - **Foto:** kotak unggah halaman detail mengirim BANYAK berkas
+      (`photos[]`; id `foto_berkas`/`foto_unggah`, hygiene
+      `foto_berkas_hygiene`/`foto_unggah_hygiene`) lewat `fetch` (method Alpine
+      `unggahFoto()`), lalu daftar foto diperbarui dari balasan JSON
+      `ReportController::addPhoto()` tanpa reload; hapus foto tetap
+      `deletePhoto()`. Kotak unggah DAN tombol hapus hanya dirender untuk
+      laporan INDUK (`$laporanInduk->id === $report->id`, lihat
+      `dataPengelolaanLaporan()`) karena baris salinan memakai berkas foto yang
+      sama; pengaman sisi server tetap `penjagaFotoInduk()`.
+    - **Tautan baris alat tambahan TIDAK menuju halaman baris salinan:**
+      `partials/_alat-tambahan.blade.php` dan
+      `ReportMultiItemController::daftarItem()` menautkan ke
+      `assets.show`/`locations.show` (kode baris salinan tetap ditampilkan
+      sebagai keterangan). Ini menjaga aturan lama di
+      `tests/Feature/ReportMultiEquipmentTest.php` ("halaman detail laporan
+      induk tidak menautkan baris salinan", satu pekerjaan bersama tetap satu
+      laporan) — jangan dikembalikan ke `reports.show` tanpa mengubah aturan
+      itu lebih dulu.
+    - **Uji:** semua test `tests/Feature/ReportEdit*Test.php`,
+      `ReportProjectWorkTypeTest`, `ExampleTest`, dan `PageSmokeTest` dialihkan
+      ke `GET /reports/{id}` (test `GET /reports/{id}/edit` di PageSmokeTest
+      kini mengharapkan 404). Dua test "Edit Lengkap" pada
+      `ReportEditKolaborasiTest` diganti menjadi "halaman detail laporan
+      menjadi satu-satunya tempat pengelolaan laporan" dan "laporan salinan
+      kolaborasi mengarahkan pengelolaan ke laporan INDUKNYA". Seluruh suite
+      **372 test hijau (1631 assertions)** dan `php artisan view:cache` sukses
+      (05/10/2026).
 
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
