@@ -116,6 +116,8 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     // agar tidak ditimpa oleh wildcard {report} milik resource.
     Route::get('/reports/locations/funclocs', [ReportController::class, 'getFuncLocsByArea'])->name('reports.locations.funclocs');
     Route::get('/reports/locations/assets', [ReportController::class, 'getAssetsByArea'])->name('reports.locations.assets');
+    // Pencarian alat lintas area untuk kotak "Cari Alat" pada form edit laporan.
+    Route::get('/reports/locations/cari-alat', [ReportController::class, 'cariAsset'])->name('reports.locations.cari-alat');
     Route::get('/reports/export/csv', [ReportController::class, 'exportCsv'])->name('reports.export-csv');
 
     // Hapus satu foto dari laporan — index adalah posisi dalam array JSON (0-based).

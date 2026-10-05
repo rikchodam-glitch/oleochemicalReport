@@ -95,6 +95,8 @@
                     <p class="text-xs text-slate-400 mt-2">
                         Pilih Area terlebih dahulu untuk memunculkan pilihan Functional Location dan Asset.
                     </p>
+
+                    @include('reports.partials._cari-alat', ['report' => $report])
                 </div>
 
                 <div>
@@ -253,6 +255,66 @@ function reportLocationManager() {
             })
                 .then(res => res.json())
                 .then(data => { this.assets = data; });
+        },
+
+        /**
+         * Isi Area + Functional Location + Kode Alat sekaligus dari satu hasil
+         * pencarian alat lintas area (kotak "Cari Alat (semua area)").
+         * Daftar lokasi & alat dimuat ulang untuk area alat itu supaya pilihan
+         * pada dropdown tetap konsisten dengan nilai yang dipasang.
+         *
+         * @param {object} aset Hasil pencarian: id, area_id, funcloc_id, dst.
+         */
+        async terapkanAset(aset) {
+            this.areaId = aset.area_id ?? null;
+
+            if (this.areaId) {
+                await Promise.all([
+                    fetch(`{{ route('reports.locations.funclocs') }}?area_id=${this.areaId}`, {
+                        headers: { 'Accept': 'application/json' },
+                    })
+                        .then(res => res.json())
+                        .then(data => { this.funcLocs = data; }),
+
+                    fetch(`{{ route('reports.locations.assets') }}?area_id=${this.areaId}`, {
+                        headers: { 'Accept': 'application/json' },
+                    })
+                        .then(res => res.json())
+                        .then(data => { this.assets = data; }),
+                ]);
+            } else {
+                this.funcLocs = [];
+                this.assets = [];
+            }
+
+            // Alat/lokasi terpilih wajib ada di daftar dropdown, kalau tidak
+            // pilihannya tampak kosong walau nilainya sudah tersimpan.
+            if (!this.assets.some(item => item.id === aset.id)) {
+                this.assets.unshift(aset);
+            }
+
+            if (aset.funcloc_id && !this.funcLocs.some(item => item.id === aset.funcloc_id)) {
+                this.funcLocs.unshift({
+                    id: aset.funcloc_id,
+                    code: aset.functional_loc || 'FuncLoc #' + aset.funcloc_id,
+                    name: aset.area_label || '',
+                    level: null,
+                });
+            }
+
+            this.funcLocId = aset.funcloc_id ?? null;
+            this.assetId   = aset.id;
+        },
+
+        /**
+         * Kosongkan Area, Functional Location, dan Kode Alat pada form.
+         */
+        kosongkanLokasi() {
+            this.areaId    = null;
+            this.funcLocId = null;
+            this.assetId   = null;
+            this.funcLocs  = [];
+            this.assets    = [];
         },
     };
 }
