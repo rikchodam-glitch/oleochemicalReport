@@ -589,35 +589,120 @@ class ReportController extends Controller
      * Disk & folder mengikuti config('telegram.photo_disk'/'photo_folder')
      * yang sama dipakai PhotoStorageService, supaya accessor URL di Model
      * Report tetap konsisten untuk foto dari sumber manapun.
+     *
+     * Mendukung dua bentuk kiriman:
+     *   - `photo`   : satu berkas (dipakai form di halaman detail laporan).
+     *   - `photos[]`: banyak berkas sekaligus (dipakai halaman edit laporan).
+     *
+     * Balasan JSON (berisi daftar URL terbaru) bila pemanggilnya fetch, atau
+     * redirect kembali bila pemanggilnya form biasa.
+     *
+     * @param  Request  $request  Permintaan berisi berkas foto dan jenisnya
+     * @param  Report   $report   Laporan yang diberi foto
+     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
      */
     public function addPhoto(Request $request, Report $report)
     {
         $maxKb = (int) (config('telegram.photo_max_bytes', 20 * 1024 * 1024) / 1024);
 
         $request->validate([
-            'photo' => "required|image|mimes:jpg,jpeg,png,webp|max:{$maxKb}",
-            'type'  => 'required|in:documentation,hygiene',
+            'photo'    => "nullable|image|mimes:jpg,jpeg,png,webp|max:{$maxKb}",
+            'photos'   => 'nullable|array',
+            'photos.*' => "image|mimes:jpg,jpeg,png,webp|max:{$maxKb}",
+            'type'     => 'required|in:documentation,hygiene',
         ]);
+
+        $berkas = $this->kumpulkanBerkasFoto($request);
+
+        if (($galat = $this->penjagaFotoInduk($report)) !== null) {
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => $galat], 422);
+            }
+
+            return back()->with('error', $galat);
+        }
+
+        if ($berkas === []) {
+            $pesan = 'Tidak ada berkas foto yang dikirim.';
+
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => $pesan], 422);
+            }
+
+            return back()->with('error', $pesan);
+        }
 
         $disk   = config('telegram.photo_disk', 'public');
         $folder = config('telegram.photo_folder', 'reports');
+        $kolom  = $request->type === 'hygiene' ? 'photo_hygiene_clearance' : 'photo_documentation';
 
-        $path = $request->file('photo')->store(
-            "{$folder}/" . now()->format('Y/m/d') . "/{$report->id}",
-            $disk
-        );
+        $photos = $report->{$kolom} ?? [];
 
-        if ($request->type === 'hygiene') {
-            $photos   = $report->photo_hygiene_clearance ?? [];
-            $photos[] = $path;
-            $report->update(['photo_hygiene_clearance' => $photos]);
-        } else {
-            $photos   = $report->photo_documentation ?? [];
-            $photos[] = $path;
-            $report->update(['photo_documentation' => $photos]);
+        foreach ($berkas as $file) {
+            $photos[] = $file->store(
+                "{$folder}/" . now()->format('Y/m/d') . "/{$report->id}",
+                $disk
+            );
         }
 
-        return back()->with('success', 'Foto berhasil ditambahkan ke laporan.');
+        $report->update([$kolom => array_values($photos)]);
+
+        $pesan = count($berkas) . ' foto berhasil ditambahkan ke laporan.';
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => $pesan,
+                'foto'    => [
+                    'documentation' => $report->photo_documentation_urls,
+                    'hygiene'       => $report->photo_hygiene_urls,
+                ],
+            ]);
+        }
+
+        return back()->with('success', $pesan);
+    }
+
+    /**
+     * Kumpulkan berkas foto dari permintaan, baik bentuk tunggal (`photo`)
+     * maupun bentuk banyak (`photos[]`).
+     *
+     * @param  Request  $request  Permintaan
+     * @return array<int, \Illuminate\Http\UploadedFile>  Berkas foto yang dikirim
+     */
+    private function kumpulkanBerkasFoto(Request $request): array
+    {
+        $berkas = [];
+
+        if ($request->hasFile('photo')) {
+            $berkas[] = $request->file('photo');
+        }
+
+        foreach ((array) $request->file('photos', []) as $file) {
+            if ($file !== null) {
+                $berkas[] = $file;
+            }
+        }
+
+        return $berkas;
+    }
+
+    /**
+     * Foto hanya boleh diubah pada laporan INDUK. Baris salinan kolaborasi dan
+     * salinan multi alat memakai PATH FOTO YANG SAMA dengan induk, sehingga
+     * menghapus foto lewat baris salinan akan ikut menghapus berkas milik
+     * laporan induk (dan menyisakan path kosong di sana).
+     *
+     * @param  Report  $report  Laporan yang sedang diproses
+     * @return string|null      Pesan galat, null bila foto boleh diubah
+     */
+    private function penjagaFotoInduk(Report $report): ?string
+    {
+        if ($report->collaborator_of !== null || $report->multi_of !== null) {
+            return 'Foto hanya bisa diubah dari laporan induk (laporan ini baris salinan).';
+        }
+
+        return null;
     }
 
     /**
@@ -635,6 +720,12 @@ class ReportController extends Controller
         $request->validate([
             'type' => 'required|in:documentation,hygiene',
         ]);
+
+        // Baris salinan memakai path foto yang sama dengan laporan induk,
+        // jadi penghapusan foto hanya boleh dari laporan induk.
+        if (($galat = $this->penjagaFotoInduk($report)) !== null) {
+            return response()->json(['success' => false, 'message' => $galat], 422);
+        }
 
         // Tentukan kolom DB berdasarkan tipe foto
         $column = $request->type === 'hygiene'

@@ -41,6 +41,12 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*'),
+            fn (Request $request) => $request->is('api/*')
+                // Endpoint AJAX pada halaman laporan (tambah/hapus kolaborator,
+                // alat tambahan, unggah foto) dipanggil dengan fetch dan butuh
+                // balasan JSON termasuk saat VALIDASI gagal. Tanpa pengecualian
+                // ini, galat validasi memutar halaman (302 + HTML) sehingga
+                // JavaScript-nya bingung membaca jawaban server.
+                || ($request->expectsJson() && $request->is('reports/*')),
         );
     })->create();

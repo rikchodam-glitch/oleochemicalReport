@@ -220,3 +220,17 @@ test('salinan kolaborasi ikut terhitung pada man hour teknisi kolaborator', func
     expect($harian['jumlah_pekerjaan'])->toBe(1)
         ->and($harian['menit'])->toBe(120);
 });
+
+test('galat validasi endpoint kolaborator dibalas JSON 422, bukan memutar halaman', function () {
+    // Pemanggil halaman edit memakai fetch, jadi galat validasi pun harus JSON
+    // (lihat pengecualian shouldRenderJsonWhen pada bootstrap/app.php).
+    $this->actingAs($this->admin)
+        ->postJson('/reports/' . $this->induk->id . '/collaborators', [])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('technician_id');
+
+    $this->actingAs($this->admin)
+        ->postJson('/reports/' . $this->induk->id . '/collaborators', ['technician_id' => 999999])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('technician_id');
+});
