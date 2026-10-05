@@ -17,6 +17,7 @@ use App\Http\Controllers\LocationController;
 use App\Http\Controllers\PanelRuanganController;
 use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\CollaborationController;
+use App\Http\Controllers\ReportCollaborationController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\StorageController;
 use App\Http\Controllers\ShiftScheduleController;
@@ -129,6 +130,11 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     Route::resource('reports', ReportController::class);
     Route::post('/reports/{report}/update-status', [ReportController::class, 'updateStatus'])->name('reports.update-status');
     Route::post('/reports/{report}/photos', [ReportController::class, 'addPhoto'])->name('reports.add-photo');
+
+    // Kolaborasi laporan: tambah/hapus teknisi kolaborator dari halaman edit.
+    // Setiap kolaborator menjadi baris salinan laporan sendiri (collaborator_of).
+    Route::post('/reports/{report}/collaborators', [ReportCollaborationController::class, 'store'])->name('reports.collaborators.store');
+    Route::delete('/reports/{report}/collaborators/{kolaborator}', [ReportCollaborationController::class, 'destroy'])->name('reports.collaborators.destroy');
 
     // Condition Monitoring
     Route::prefix('cm')->name('cm.')->group(function () {

@@ -451,7 +451,28 @@ class ReportController extends Controller
             ? Asset::where('area_id', $report->area_id)->orderBy('tech_ident_no')->get(['id', 'equipment_no', 'tech_ident_no', 'description'])
             : collect();
 
-        return view('reports.edit', compact('report', 'areas', 'funcLocs', 'assets'));
+        // Laporan INDUK dari keluarga laporan ini: laporan salinan kolaborasi
+        // (collaborator_of) maupun salinan alat tambahan (multi_of) selalu
+        // dikelola dari laporan induknya, supaya satu pekerjaan tidak
+        // bercabang menjadi banyak daftar kolaborator/alat tambahan.
+        $laporanInduk = $report->multi_of !== null
+            ? $report->multiOf
+            : ($report->collaborator_of !== null ? $report->parentReport : $report);
+
+        // Null-safe bila kolom penautnya menunjuk laporan yang sudah terhapus.
+        $laporanInduk ??= $report;
+
+        $kolaborator = $laporanInduk->collaboratorReports()
+            ->with('technician:id,name')
+            ->orderBy('id')
+            ->get();
+
+        $teknisiPilihan = Technician::orderBy('name')->get(['id', 'name', 'nik']);
+
+        return view('reports.edit', compact(
+            'report', 'areas', 'funcLocs', 'assets',
+            'laporanInduk', 'kolaborator', 'teknisiPilihan'
+        ));
     }
 
     /**
