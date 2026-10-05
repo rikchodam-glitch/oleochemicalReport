@@ -234,3 +234,31 @@ test('galat validasi endpoint kolaborator dibalas JSON 422, bukan memutar halama
         ->assertStatus(422)
         ->assertJsonValidationErrors('technician_id');
 });
+
+test('halaman detail laporan menyediakan tautan ke halaman edit lengkap', function () {
+    // Daftar laporan hanya membuka halaman detail, jadi tautan pada halaman
+    // detail inilah jalan masuk ke pengelolaan kolaborator, alat/lokasi
+    // tambahan, dan foto (lihat partial _tombol-edit-lengkap).
+    $this->actingAs($this->admin)
+        ->get('/reports/' . $this->induk->id)
+        ->assertStatus(200)
+        ->assertSee('Edit Lengkap', false)
+        ->assertSee('/reports/' . $this->induk->id . '/edit', false);
+});
+
+test('laporan salinan kolaborasi menautkan halaman edit INDUKNYA', function () {
+    $kolaborator = teknisiKolaborasi('Rekan Salinan Uji', 'KOL010');
+
+    $this->actingAs($this->admin)
+        ->postJson('/reports/' . $this->induk->id . '/collaborators', ['technician_id' => $kolaborator->id])
+        ->assertStatus(200);
+
+    $salinan = Report::where('collaborator_of', $this->induk->id)->firstOrFail();
+
+    $this->actingAs($this->admin)
+        ->get('/reports/' . $salinan->id)
+        ->assertStatus(200)
+        // Halaman edit yang ditautkan harus milik laporan INDUK, bukan salinan.
+        ->assertSee('/reports/' . $this->induk->id . '/edit', false)
+        ->assertDontSee('/reports/' . $salinan->id . '/edit', false);
+});

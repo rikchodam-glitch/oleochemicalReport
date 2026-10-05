@@ -727,6 +727,8 @@
     ====================================================== --}}
     <div class="space-y-6">
 
+        @include('reports.partials._tombol-edit-lengkap', ['report' => $report])
+
         {{-- ── Form tersembunyi: target semua input edit --}}
         {{--
             Form ini kosong — semua input di kolom kiri menggunakan atribut
