@@ -745,6 +745,75 @@ Batasan penting lingkungan ini:
      kosong di sana karena `applyGroupFilter('reguler')` hanya memuat grup
      non-shift.
 
+18. **Halaman EDIT laporan dimaksimalkan (diputuskan 05/10/2026, sudah ada
+   kodenya — jangan diubah tanpa instruksi user).** Semua perubahan ada di copy
+   DEV `C:\laragon\www\oleochemicalReport`; 6 commit berurutan `623cf34`,
+   `bca2b66`, `65c9f55`, `dd24d9d`, `af2afe7`, `103d768` (semuanya sudah di
+   `hub/main`).
+   - **Jam kerja:** form edit kini punya kolom `start_time` & `end_time`
+     (regex `^([01]?\d|2[0-3]):[0-5]\d$`, pesan galat Bahasa Indonesia). Durasi
+     dihitung otomatis dari rentang jam bila kolom durasi dikosongkan
+     (`Report::durasiDariJam()`); **jam selesai lebih kecil dari jam mulai
+     dianggap melewati tengah malam dan ditambah 24 jam**
+     (`Report::lintasTengahMalam()`, mis. 22:00-06:00 = 480 menit). Durasi yang
+     diketik manual TIDAK ditimpa; durasi kosong + jam kosong = nilai lama
+     DIPERTAHANKAN (kolom dikeluarkan dari data update) supaya angka man hour
+     tidak hilang karena kolom terlewat; isi 0 bila memang ingin dinolkan.
+     Tampilan: partial `resources/views/reports/partials/_waktu-kerja.blade.php`
+     (kotak "Hitung durasi otomatis dari jam" + tombol "Kosongkan Jam").
+   - **Pencarian lokasi/alat:** `App\Http\Controllers\Traits\ReportLocationTrait`
+     menerima parameter `q` pada `getFuncLocsByArea()`/`getAssetsByArea()`
+     (hasil dibatasi `BATAS_CARI_LOKASI` = 50 baris saat `q` diisi) dan method
+     baru `cariAsset()` (rute `reports.locations.cari-alat`) untuk pencarian
+     ALAT LINTAS AREA (minimal 2 huruf; kode alat/nomor equipment/deskripsi/
+     kode lokasi; membawa `area_id` + `funcloc_id` + `area_label`). Kotak
+     pencarian memilih hasil lewat method Alpine baru
+     `terapkanAset()`/`kosongkanLokasi()` pada `reportLocationManager()`
+     (partial `partials/_cari-alat.blade.php`).
+   - **Kolaborasi:** `App\Http\Controllers\ReportCollaborationController` +
+     rute `reports.collaborators.store|destroy`; baris salinan dibuat oleh
+     `App\Services\ReportCopyService::buatSalinanKolaborasi()` (detail pekerjaan
+     meniru jalur wizard, kode laporan baru, `creator_id` = pembuat laporan
+     induk). Hanya laporan INDUK yang boleh diubah
+     (`collaborator_of`/`multi_of` harus NULL), pelaksana sendiri & teknisi
+     kembar ditolak, batas `CollaborationService::MAX_KOLABORATOR` (5).
+   - **Alat/lokasi tambahan (multi item):**
+     `App\Http\Controllers\ReportMultiItemController` + rute
+     `reports.multi-items.store|destroy`, memakai
+     `ReportCopyService::buatSalinanMulti()` (area dihitung dari alat/node
+     lokasi lewat `areaUntukItem()`, `report_type` equipment_repair/area_work,
+     `multi_of` = induk). Alat induk / item kembar ditolak; baris salinan multi
+     TIDAK dihitung di man hour. Label item memakai accessor
+     `Report::multi_item_label` supaya tampilan server & balasan JSON sama.
+   - **Foto:** `ReportController::addPhoto()` kini menerima BANYAK berkas
+     (`photos[]`, selain bentuk lama `photo` tunggal yang tetap dipakai halaman
+     detail) dan membalas JSON berisi daftar URL terbaru; `deletePhoto()` tetap
+     seperti semula. Partial `partials/_foto.blade.php` (grid + tombol hapus +
+     unggah lewat fetch). **Unggah/hapus foto HANYA boleh dari laporan INDUK**
+     (`penjagaFotoInduk()` di `ReportController`) karena baris salinan memakai
+     PATH FOTO YANG SAMA — menghapus dari salinan akan ikut menghapus berkas
+     milik induk.
+   - **Tipe & status:** form edit menambah `report_type` & `status`
+     (`partials/_pelengkap.blade.php`). Keduanya nullable supaya pemanggil lama
+     tetap kompatibel; `status` diisi -> `completed_at` ikut disetel (completed =
+     `completed_at ?? now()`, selain itu NULL); `status` kosong -> kolom itu
+     tidak disentuh.
+   - **PENTING (bootstrap/app.php):** `shouldRenderJsonWhen()` dulu HANYA
+     `api/*`, sehingga galat VALIDASI pada endpoint fetch halaman laporan
+     berbalas 302 + HTML (JavaScript-nya bingung). Kini diperluas menjadi
+     `api/*` ATAU (`expectsJson()` DAN `reports/*`).
+   - Uji: `ReportEditJamKerjaTest` (8), `ReportEditCariAlatTest` (8),
+     `ReportEditKolaborasiTest` (9), `ReportEditAlatTambahanTest` (8),
+     `ReportEditFotoTest` (7), `ReportEditFieldPelengkapTest` (5). Uji mutasi
+     dijalankan per tahap: mematikan `durasiDariJam()` -> 3 test GAGAL;
+     mematikan penjaga 2 huruf + batas 50 -> 2 test GAGAL; `collaborator_of`
+     diisi NULL -> 5 test GAGAL; mematikan `sudahAda()` + `areaUntukItem()` ->
+     3 test GAGAL; mematikan dukungan `photos[]` -> 3 test GAGAL; mematikan
+     penyelarasan `completed_at` -> 2 test GAGAL. Seluruh suite **367 test
+     hijau** (1608 assertions) dan `php artisan view:cache` sukses.
+   - Semua AJAX memakai `fetch` + `X-CSRF-TOKEN` supaya isian form yang belum
+     disimpan tidak hilang saat kolaborator/item/foto ditambah atau dihapus.
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file
