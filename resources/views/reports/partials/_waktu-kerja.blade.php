@@ -1,11 +1,14 @@
-{{-- Field jam kerja laporan (jam mulai & jam selesai) sekaligus TAMPILAN hasil
-     durasi pengerjaan. Dipisah jadi partial supaya halaman blade yang besar
-     tidak perlu ditulis ulang (lihat aturan edit blade di AGENTS.md).
+{{-- Field jam kerja laporan: JAM MULAI dan JAM SELESAI.
 
-     Durasi TIDAK lagi diisi manual: nilainya diturunkan dari rentang jam.
-     Kolom "work_duration_minutes" tetap ada di halaman edit sebagai input
-     tersembunyi supaya angka man hour tetap terkirim saat laporan disimpan;
-     skrip di bawah ini yang mengisinya setiap kali jam diubah.
+     Durasi pengerjaan BUKAN isian form dan tidak ditampilkan sebagai nilai
+     tersendiri di halaman edit. Angka man hour (kolom work_duration_minutes)
+     dihitung SERVER dari rentang jam ini saat laporan disimpan
+     (Report::durasiDariJam() dipakai ReportController::update()), jadi form
+     cukup meminta jamnya saja. Padanan aturan itu juga berlaku untuk laporan
+     yang masuk lewat wizard Telegram.
+
+     Dipisah jadi partial supaya blade halaman edit yang besar tidak perlu
+     ditulis ulang (lihat aturan edit blade di AGENTS.md).
 
      Parameter: $report = model Report yang sedang diedit. --}}
 <div class="border-t border-slate-100 pt-4">
@@ -38,53 +41,31 @@
                 class="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-600 text-xs font-medium rounded-lg transition-colors">
             Kosongkan Jam
         </button>
-    </div>
-
-    @php
-        // Teks durasi awal (dipakai sebelum JavaScript jalan) memakai accessor
-        // model supaya formatnya sama dengan yang dihitung JavaScript.
-        $durasiTersimpan = $report->work_duration_minutes;
-        $durasiAwalTeks  = $durasiTersimpan === null
-            ? '-'
-            : ($report->duration_label ?? '0 Menit') . ' (' . $durasiTersimpan . ' menit)';
-    @endphp
-
-    <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
-        <p class="text-sm text-slate-700">
-            Durasi laporan:
-            <span id="durasi_teks" class="font-medium text-slate-900">{{ $durasiAwalTeks }}</span>
-        </p>
-        <p id="durasi_catatan" class="text-xs text-slate-400 mt-0.5">
-            Dihitung otomatis dari jam mulai dan jam selesai, jadi tidak ada isian durasi manual.
+        <p class="text-xs text-slate-400">
+            Durasi man hour laporan dihitung otomatis dari jam mulai sampai jam selesai saat laporan disimpan.
         </p>
     </div>
 
     <p id="peringatan_lintas_malam" class="hidden text-xs text-amber-600 mt-2">
-        Jam selesai lebih kecil dari jam mulai: dihitung sebagai pekerjaan yang melewati tengah malam (ditambah 24 jam).
+        Jam selesai lebih kecil dari jam mulai: pekerjaan dihitung melewati tengah malam (ditambah 24 jam).
     </p>
 </div>
+
 @push('scripts')
 <script>
-    // Tampilan durasi pengerjaan dari rentang jam.
+    // Keterangan jam kerja pada form edit.
     //
-    // Halaman edit tidak lagi menyediakan isian durasi manual. Kolom
-    // "work_duration_minutes" tetap ada (input tersembunyi) supaya nilainya ikut
-    // terkirim saat laporan disimpan, dan skrip inilah yang mengisinya:
-    //   - Saat jam mulai/jam selesai DIUBAH admin, durasi mengikuti hitungan jam.
-    //   - Tampilan awal tidak menimpa durasi tersimpan; bila laporan belum punya
-    //     durasi sama sekali, nilai dari jam langsung dipakai.
-    //   - Jam selesai lebih kecil dari jam mulai dihitung lintas tengah malam
-    //     (ditambah 24 jam) dan memunculkan peringatan.
+    // Halaman edit TIDAK punya isian durasi lagi: durasi man hour dihitung
+    // server dari rentang jam (lihat Report::durasiDariJam()). Skrip di sini
+    // hanya membantu admin: menandai rentang yang melewati tengah malam dan
+    // mengosongkan kedua jam dengan satu tombol.
     (function () {
         var mulai      = document.getElementById('start_time');
         var selesai    = document.getElementById('end_time');
-        var durasi     = document.getElementById('work_duration_minutes');
-        var teks       = document.getElementById('durasi_teks');
-        var catatan    = document.getElementById('durasi_catatan');
         var peringatan = document.getElementById('peringatan_lintas_malam');
         var kosongkan  = document.getElementById('kosongkan_jam');
 
-        if (!mulai || !selesai || !teks) {
+        if (!mulai || !selesai || !peringatan) {
             return;
         }
 
@@ -99,116 +80,33 @@
             return (parseInt(cocok[1], 10) * 60) + parseInt(cocok[2], 10);
         }
 
-        // Durasi yang saat ini ada di kolom tersembunyi (null bila kosong).
-        function nilaiTersimpan() {
-            if (!durasi) {
-                return null;
-            }
-
-            var angka = parseInt(durasi.value, 10);
-
-            return isNaN(angka) ? null : angka;
-        }
-
-        // Format durasi mengikuti accessor Report::getDurationLabelAttribute
-        // ("2 Jam 30 Menit") ditambah jumlah menitnya.
-        function teksDurasi(menit) {
-            if (menit === null || isNaN(menit)) {
-                return '-';
-            }
-
-            var jam   = Math.floor(menit / 60);
-            var sisa  = menit % 60;
-            var label = [];
-
-            if (jam > 0) {
-                label.push(jam + ' Jam');
-            }
-
-            if (sisa > 0) {
-                label.push(sisa + ' Menit');
-            }
-
-            if (!label.length) {
-                label.push('0 Menit');
-            }
-
-            return label.join(' ') + ' (' + menit + ' menit)';
-        }
-
-        // Tulis catatan kecil di bawah nilai durasi.
-        function tulisCatatan(isi) {
-            if (catatan) {
-                catatan.textContent = isi;
-            }
-        }
-
-        // Hitung ulang tampilan durasi.
-        // terapkan true = admin baru mengubah jam, jadi kolom tersembunyi ikut diisi.
-        function segarkan(terapkan) {
+        // Peringatan hanya muncul bila jam selesai lebih kecil dari jam mulai,
+        // karena rentang seperti itu dihitung melewati tengah malam oleh server.
+        function segarkanPeringatan() {
             var menitMulai   = menitDariJam(mulai.value);
             var menitSelesai = menitDariJam(selesai.value);
 
-            if (menitMulai === null || menitSelesai === null) {
-                peringatan.classList.add('hidden');
-                teks.textContent = teksDurasi(nilaiTersimpan());
-                tulisCatatan('Isi jam mulai dan jam selesai supaya durasi dihitung otomatis.');
-
-                return;
-            }
-
-            var lintasMalam = menitSelesai < menitMulai;
-            var total       = lintasMalam ? (menitSelesai + 1440) - menitMulai : menitSelesai - menitMulai;
-            var tersimpan   = nilaiTersimpan();
-
-            if (lintasMalam) {
+            if (menitMulai !== null && menitSelesai !== null && menitSelesai < menitMulai) {
                 peringatan.classList.remove('hidden');
-            } else {
-                peringatan.classList.add('hidden');
-            }
-
-            // Nilai yang AKAN tersimpan: hasil hitungan jam bila admin baru
-            // mengubah jam atau bila laporan belum punya durasi sama sekali.
-            var pakaiHitungan = terapkan || tersimpan === null;
-
-            if (pakaiHitungan && durasi) {
-                durasi.value = total;
-            }
-
-            teks.textContent = teksDurasi(pakaiHitungan ? total : tersimpan);
-
-            if (pakaiHitungan) {
-                tulisCatatan('Dihitung dari jam ' + mulai.value + ' - ' + selesai.value
-                    + ' dan akan tersimpan saat laporan disimpan.');
 
                 return;
             }
 
-            if (tersimpan === total) {
-                tulisCatatan('Sesuai hitungan jam ' + mulai.value + ' - ' + selesai.value + ' (' + total + ' menit).');
-
-                return;
-            }
-
-            tulisCatatan('Hitungan jam ' + mulai.value + ' - ' + selesai.value + ' = ' + total
-                + ' menit; ubah salah satu jam untuk memakai hitungan itu.');
+            peringatan.classList.add('hidden');
         }
 
-        mulai.addEventListener('change', function () { segarkan(true); });
-        selesai.addEventListener('change', function () { segarkan(true); });
+        mulai.addEventListener('change', segarkanPeringatan);
+        selesai.addEventListener('change', segarkanPeringatan);
 
         if (kosongkan) {
             kosongkan.addEventListener('click', function () {
                 mulai.value   = '';
                 selesai.value = '';
-                segarkan(false);
+                segarkanPeringatan();
             });
         }
 
-        // Tampilan awal: durasi tersimpan tidak diubah, hanya dihitung ulang
-        // sebagai informasi.
-        segarkan(false);
+        segarkanPeringatan();
     })();
 </script>
 @endpush
-

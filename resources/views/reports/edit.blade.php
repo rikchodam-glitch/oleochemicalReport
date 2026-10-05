@@ -110,15 +110,10 @@
 
                 @include('reports.partials._waktu-kerja', ['report' => $report])
 
-                <div>
-                    {{-- Durasi pengerjaan tidak lagi diisi manual: nilainya diturunkan dari jam pada bagian "Waktu Pengerjaan" di atas dan dikirim lewat input tersembunyi di bawah. --}}
-                    <input type="hidden" id="work_duration_minutes" name="work_duration_minutes"
-                           value="{{ old('work_duration_minutes', $report->work_duration_minutes) }}"
-                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    @error('work_duration_minutes')
-                        <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
-                    @enderror
-                </div>
+                {{-- Durasi pengerjaan TIDAK lagi dikirim form ini: angka man hour
+                     dihitung server dari Jam Mulai & Jam Selesai pada bagian
+                     "Waktu Pengerjaan" di atas (Report::durasiDariJam() dipakai
+                     ReportController::update()). --}}
 
                 <div>
                     <label for="root_cause" class="block text-sm font-medium text-slate-700 mb-1">Root Cause</label>

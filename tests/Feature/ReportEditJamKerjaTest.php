@@ -17,13 +17,12 @@ uses(RefreshDatabase::class);
  *      dibiarkan kosong.
  *   3. Jam selesai lebih kecil dari jam mulai = pekerjaan melewati tengah
  *      malam, durasinya ditambah 24 jam (mis. 22:00 - 06:00 = 480 menit).
- *   4. Durasi yang dikirim admin TIDAK ditimpa perhitungan jam bila jam
- *      dikosongkan (angka man hour lama tetap dipertahankan).
+ *   4. Durasi laporan TIDAK pernah ikut hilang/tertimpa saat jam dikosongkan
+ *      (angka man hour lama tetap dipertahankan).
  *   5. Format jam tidak valid ditolak validasi dan data lama tidak berubah.
- *   6. Halaman edit TIDAK punya isian durasi manual lagi: kolom
- *      work_duration_minutes jadi input tersembunyi dan durasinya ditampilkan
- *      sebagai teks hasil hitungan jam (diisi JavaScript, dihitung server sebagai
- *      cadangan bila JavaScript mati).
+ *   6. Halaman edit HANYA meminta jam mulai & jam selesai: tidak ada isian
+ *      durasi manual, kotak centang hitung otomatis, maupun kolom tersembunyi
+ *      durasi. Angka man hour dihitung server dari rentang jam itu.
  */
 
 beforeEach(function () {
@@ -173,28 +172,45 @@ test('pembantu durasiDariJam dan lintasTengahMalam mengikuti aturan yang sama', 
         ->and(Report::lintasTengahMalam(null, '09:00'))->toBeFalse();
 });
 
-test('form edit tidak lagi menyediakan isian durasi manual', function () {
+test('form edit hanya meminta jam mulai dan jam selesai, tanpa isian durasi', function () {
     $this->actingAs($this->admin)
         ->get('/reports/' . $this->laporan->id . '/edit')
         ->assertStatus(200)
-        // Kolom durasi masih ada, tetapi berupa input tersembunyi supaya angka
-        // man hour tetap terkirim saat laporan disimpan.
-        ->assertSee('type="hidden" id="work_duration_minutes"', false)
-        // Kotak angka manual, label lamanya, dan kotak centang pengisian
-        // otomatis sudah tidak ada lagi di halaman.
-        ->assertDontSee('type="number" id="work_duration_minutes"', false)
+        // Jam kerja tetap diminta.
+        ->assertSee('name="start_time"', false)
+        ->assertSee('name="end_time"', false)
+        // Tidak ada lagi isian durasi manual, kotak centang hitung otomatis,
+        // maupun kolom tersembunyi durasi: form tidak mengirim kolom durasi,
+        // dan angka man hour dihitung server dari rentang jam.
+        ->assertDontSee('work_duration_minutes', false)
         ->assertDontSee('Durasi Pengerjaan (menit)', false)
         ->assertDontSee('durasi_otomatis', false)
-        // Durasi tersimpan tetap ditampilkan sebagai teks hasil.
-        ->assertSee('Durasi laporan:', false)
-        ->assertSee('2 Jam (120 menit)', false);
+        ->assertDontSee('durasi_teks', false);
 });
 
-test('teks durasi hasil menampilkan tanda hubung bila durasi laporan kosong', function () {
-    $this->laporan->update(['work_duration_minutes' => null]);
-
+test('update menghitung durasi dari jam walau form tidak mengirim kolom durasi', function () {
     $this->actingAs($this->admin)
-        ->get('/reports/' . $this->laporan->id . '/edit')
-        ->assertStatus(200)
-        ->assertSee('id="durasi_teks" class="font-medium text-slate-900">-</span>', false);
+        ->put('/reports/' . $this->laporan->id, [
+            'work_description' => 'Pekerjaan malam tanpa kolom durasi',
+            'report_date'      => now()->toDateString(),
+            'start_time'       => '22:00',
+            'end_time'         => '06:00',
+        ])
+        ->assertRedirect();
+
+    // Rentang 22:00 - 06:00 melewati tengah malam: 8 jam = 480 menit.
+    expect($this->laporan->fresh()->work_duration_minutes)->toBe(480);
+});
+
+test('jam dikosongkan tanpa kolom durasi: durasi lama dipertahankan', function () {
+    $this->actingAs($this->admin)
+        ->put('/reports/' . $this->laporan->id, [
+            'work_description' => 'Pemeriksaan pompa uji jam kerja',
+            'report_date'      => now()->toDateString(),
+            'start_time'       => null,
+            'end_time'         => null,
+        ])
+        ->assertRedirect();
+
+    expect($this->laporan->fresh()->work_duration_minutes)->toBe(120);
 });

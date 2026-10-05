@@ -759,8 +759,14 @@ Batasan penting lingkungan ini:
      diketik manual TIDAK ditimpa; durasi kosong + jam kosong = nilai lama
      DIPERTAHANKAN (kolom dikeluarkan dari data update) supaya angka man hour
      tidak hilang karena kolom terlewat; isi 0 bila memang ingin dinolkan.
-     Tampilan: partial `resources/views/reports/partials/_waktu-kerja.blade.php`
-     (kotak "Hitung durasi otomatis dari jam" + tombol "Kosongkan Jam").
+     **Halaman edit TIDAK punya isian durasi (diputuskan 05/10/2026): form
+     hanya meminta Jam Mulai & Jam Selesai**, jadi form tidak mengirim kolom
+     durasi sama sekali dan angkanya selalu dihitung ulang server dari rentang
+     jam; durasi tersimpan hanya dipertahankan bila kedua jam dikosongkan.
+     Partial `resources/views/reports/partials/_waktu-kerja.blade.php` berisi
+     dua kolom jam + tombol "Kosongkan Jam" + peringatan lintas tengah malam
+     (tanpa kotak durasi apa pun). Halaman `create.blade.php` dan
+     `show.blade.php` masih memakai isian durasi manual dan belum diseragamkan.
    - **Pencarian lokasi/alat:** `App\Http\Controllers\Traits\ReportLocationTrait`
      menerima parameter `q` pada `getFuncLocsByArea()`/`getAssetsByArea()`
      (hasil dibatasi `BATAS_CARI_LOKASI` = 50 baris saat `q` diisi) dan method
@@ -777,6 +783,16 @@ Batasan penting lingkungan ini:
      induk). Hanya laporan INDUK yang boleh diubah
      (`collaborator_of`/`multi_of` harus NULL), pelaksana sendiri & teknisi
      kembar ditolak, batas `CollaborationService::MAX_KOLABORATOR` (5).
+   - **Jalan masuk halaman edit (ditambahkan 05/10/2026):** daftar laporan
+     (`reports/index.blade.php`, baris tabel memanggil `reports.show`) dan
+     halaman detail TIDAK menautkan halaman edit lengkap, sehingga sebelumnya
+     pengelolaan kolaborator/alat tambahan/foto tidak bisa dibuka dari UI.
+     Partial `resources/views/reports/partials/_tombol-edit-lengkap.blade.php`
+     (di-include SATU baris pada kolom kanan `reports/show.blade.php`) kini
+     menjadi tombol "Edit Lengkap (Kolaborasi, Alat, Foto)"; untuk laporan
+     SALINAN yang ditautkan adalah halaman edit INDUKNYA
+     (`$report->collaborator_of ?? $report->multi_of ?? $report`). Tombol ini
+     hilang otomatis pada akun hanya baca karena URL-nya memuat "/edit".
    - **Alat/lokasi tambahan (multi item):**
      `App\Http\Controllers\ReportMultiItemController` + rute
      `reports.multi-items.store|destroy`, memakai
