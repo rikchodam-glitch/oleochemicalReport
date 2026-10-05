@@ -17,8 +17,13 @@ uses(RefreshDatabase::class);
  *      dibiarkan kosong.
  *   3. Jam selesai lebih kecil dari jam mulai = pekerjaan melewati tengah
  *      malam, durasinya ditambah 24 jam (mis. 22:00 - 06:00 = 480 menit).
- *   4. Durasi yang diketik admin secara manual TIDAK ditimpa perhitungan jam.
+ *   4. Durasi yang dikirim admin TIDAK ditimpa perhitungan jam bila jam
+ *      dikosongkan (angka man hour lama tetap dipertahankan).
  *   5. Format jam tidak valid ditolak validasi dan data lama tidak berubah.
+ *   6. Halaman edit TIDAK punya isian durasi manual lagi: kolom
+ *      work_duration_minutes jadi input tersembunyi dan durasinya ditampilkan
+ *      sebagai teks hasil hitungan jam (diisi JavaScript, dihitung server sebagai
+ *      cadangan bila JavaScript mati).
  */
 
 beforeEach(function () {
@@ -166,4 +171,30 @@ test('pembantu durasiDariJam dan lintasTengahMalam mengikuti aturan yang sama', 
     expect(Report::lintasTengahMalam('22:00', '06:00'))->toBeTrue()
         ->and(Report::lintasTengahMalam('08:00', '09:00'))->toBeFalse()
         ->and(Report::lintasTengahMalam(null, '09:00'))->toBeFalse();
+});
+
+test('form edit tidak lagi menyediakan isian durasi manual', function () {
+    $this->actingAs($this->admin)
+        ->get('/reports/' . $this->laporan->id . '/edit')
+        ->assertStatus(200)
+        // Kolom durasi masih ada, tetapi berupa input tersembunyi supaya angka
+        // man hour tetap terkirim saat laporan disimpan.
+        ->assertSee('type="hidden" id="work_duration_minutes"', false)
+        // Kotak angka manual, label lamanya, dan kotak centang pengisian
+        // otomatis sudah tidak ada lagi di halaman.
+        ->assertDontSee('type="number" id="work_duration_minutes"', false)
+        ->assertDontSee('Durasi Pengerjaan (menit)', false)
+        ->assertDontSee('durasi_otomatis', false)
+        // Durasi tersimpan tetap ditampilkan sebagai teks hasil.
+        ->assertSee('Durasi laporan:', false)
+        ->assertSee('2 Jam (120 menit)', false);
+});
+
+test('teks durasi hasil menampilkan tanda hubung bila durasi laporan kosong', function () {
+    $this->laporan->update(['work_duration_minutes' => null]);
+
+    $this->actingAs($this->admin)
+        ->get('/reports/' . $this->laporan->id . '/edit')
+        ->assertStatus(200)
+        ->assertSee('id="durasi_teks" class="font-medium text-slate-900">-</span>', false);
 });

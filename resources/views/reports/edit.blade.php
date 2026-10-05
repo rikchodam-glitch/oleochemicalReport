@@ -111,8 +111,8 @@
                 @include('reports.partials._waktu-kerja', ['report' => $report])
 
                 <div>
-                    <label for="work_duration_minutes" class="block text-sm font-medium text-slate-700 mb-1">Durasi Pengerjaan (menit)</label>
-                    <input type="number" id="work_duration_minutes" name="work_duration_minutes" min="0"
+                    {{-- Durasi pengerjaan tidak lagi diisi manual: nilainya diturunkan dari jam pada bagian "Waktu Pengerjaan" di atas dan dikirim lewat input tersembunyi di bawah. --}}
+                    <input type="hidden" id="work_duration_minutes" name="work_duration_minutes"
                            value="{{ old('work_duration_minutes', $report->work_duration_minutes) }}"
                            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                     @error('work_duration_minutes')
