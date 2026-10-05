@@ -468,7 +468,13 @@ class ReportController extends Controller
     {
         $validated = $request->validate([
             'work_description'       => 'required|string',
-            'work_duration_minutes'  => 'required|integer|min:0',
+            // Durasi boleh dikosongkan: bila jam mulai & jam selesai diisi,
+            // durasinya dihitung otomatis dari rentang jam (lihat di bawah).
+            'work_duration_minutes'  => 'nullable|integer|min:0',
+            // Jam kerja format HH:MM. Memakai regex (bukan date_format) supaya
+            // nilainya benar-benar jam 00:00-23:59 dan pesan galatnya jelas.
+            'start_time'             => ['nullable', 'regex:/^([01]?\d|2[0-3]):[0-5]\d$/'],
+            'end_time'               => ['nullable', 'regex:/^([01]?\d|2[0-3]):[0-5]\d$/'],
             'root_cause'              => 'nullable|string',
             // Temuan (finding) — dicatat teknisi setelah root cause, opsional.
             'finding'                 => 'nullable|string',
@@ -482,7 +488,28 @@ class ReportController extends Controller
             'sesuai_rencana'          => 'nullable|in:ya,tidak',
             'tanggal_kejadian'        => 'nullable|date',
             'equipment_tag'           => 'nullable|string|max:100',
+        ], [
+            'start_time.regex' => 'Jam mulai harus format HH:MM (contoh 08:00).',
+            'end_time.regex'   => 'Jam selesai harus format HH:MM (contoh 09:00).',
         ]);
+
+        // Durasi dikosongkan + jam mulai/selesai terisi -> hitung dari rentang
+        // jam. Jam selesai lebih kecil dari jam mulai diartikan pekerjaan yang
+        // melewati tengah malam (ditambah 24 jam, lihat Report::durasiDariJam()).
+        // Bila durasi kosong DAN jam juga kosong, nilai lama DIPERTAHANKAN
+        // (kolom dihapus dari data update) supaya angka man hour tidak hilang
+        // karena kolom terlewat; isi 0 bila memang ingin dinolkan.
+        $durasiDikirim = $validated['work_duration_minutes'] ?? null;
+
+        if ($durasiDikirim === null || $durasiDikirim === '') {
+            $durasi = Report::durasiDariJam($validated['start_time'] ?? null, $validated['end_time'] ?? null);
+
+            if ($durasi !== null) {
+                $validated['work_duration_minutes'] = $durasi;
+            } else {
+                unset($validated['work_duration_minutes']);
+            }
+        }
 
         // Validasi khusus dCM: sesuai_rencana wajib jika jenis diisi dCM
         if (($validated['jenis_pekerjaan'] ?? '') === 'dCM' && empty($validated['sesuai_rencana'])) {

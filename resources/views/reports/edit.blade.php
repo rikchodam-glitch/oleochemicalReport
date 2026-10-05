@@ -106,6 +106,8 @@
                     @enderror
                 </div>
 
+                @include('reports.partials._waktu-kerja', ['report' => $report])
+
                 <div>
                     <label for="work_duration_minutes" class="block text-sm font-medium text-slate-700 mb-1">Durasi Pengerjaan (menit)</label>
                     <input type="number" id="work_duration_minutes" name="work_duration_minutes" min="0"

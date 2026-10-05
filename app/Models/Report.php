@@ -320,6 +320,90 @@ class Report extends Model
     }
 
     // =========================================================
+    // WAKTU KERJA (jam mulai - jam selesai)
+    // =========================================================
+
+    /**
+     * Hitung durasi pengerjaan (menit) dari rentang jam "HH:MM".
+     *
+     * Aturan yang dipakai form edit laporan:
+     *   - Jam selesai LEBIH KECIL dari jam mulai dianggap pekerjaan yang
+     *     melewati tengah malam (mis. 22:00 - 06:00 = 8 jam = 480 menit),
+     *     sehingga perhitungannya ditambah 24 jam.
+     *   - Jam selesai SAMA dengan jam mulai dianggap 0 menit.
+     *   - Salah satu kosong atau formatnya tidak dikenali -> null, supaya
+     *     durasi yang sudah tersimpan tidak ikut terhapus.
+     *
+     * @param  string|null  $mulai    Jam mulai kerja format HH:MM
+     * @param  string|null  $selesai  Jam selesai kerja format HH:MM
+     * @return int|null               Durasi dalam menit, null bila tidak bisa dihitung
+     */
+    public static function durasiDariJam(?string $mulai, ?string $selesai): ?int
+    {
+        $menitMulai   = self::menitDariJam($mulai);
+        $menitSelesai = self::menitDariJam($selesai);
+
+        if ($menitMulai === null || $menitSelesai === null) {
+            return null;
+        }
+
+        if ($menitSelesai < $menitMulai) {
+            $menitSelesai += 24 * 60;
+        }
+
+        return $menitSelesai - $menitMulai;
+    }
+
+    /**
+     * Apakah rentang jam melewati tengah malam (jam selesai lebih kecil dari
+     * jam mulai, mis. 22:00 - 06:00). Dipakai form edit laporan untuk
+     * menampilkan peringatan agar admin sadar durasinya dihitung +24 jam.
+     *
+     * @param  string|null  $mulai    Jam mulai kerja format HH:MM
+     * @param  string|null  $selesai  Jam selesai kerja format HH:MM
+     * @return bool
+     */
+    public static function lintasTengahMalam(?string $mulai, ?string $selesai): bool
+    {
+        $menitMulai   = self::menitDariJam($mulai);
+        $menitSelesai = self::menitDariJam($selesai);
+
+        if ($menitMulai === null || $menitSelesai === null) {
+            return false;
+        }
+
+        return $menitSelesai < $menitMulai;
+    }
+
+    /**
+     * Ubah jam "HH:MM" menjadi jumlah menit sejak tengah malam.
+     *
+     * @param  string|null  $jam  Jam format HH:MM (boleh satu digit jam, mis. 8:05)
+     * @return int|null           Jumlah menit, null bila format tidak dikenali
+     */
+    private static function menitDariJam(?string $jam): ?int
+    {
+        $teks = trim((string) $jam);
+
+        if ($teks === '') {
+            return null;
+        }
+
+        if (!preg_match('/^(\d{1,2}):(\d{2})$/', $teks, $cocok)) {
+            return null;
+        }
+
+        $jamKe   = (int) $cocok[1];
+        $menitKe = (int) $cocok[2];
+
+        if ($jamKe > 23 || $menitKe > 59) {
+            return null;
+        }
+
+        return ($jamKe * 60) + $menitKe;
+    }
+
+    // =========================================================
     // SCOPES
     // =========================================================
 
