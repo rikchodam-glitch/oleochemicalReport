@@ -693,7 +693,7 @@ Batasan penting lingkungan ini:
      3 test GAGAL, dan menghapus cadangan `created_at` membuat test "sesi tanpa
      penanda aktivitas memakai created_at sebagai cadangan" GAGAL). Seluruh
      suite 314 test hijau (04/10/2026).
-   - **Perintah teks `/reset` (ditambahkan 04/10/2026).** Tombol "Batalkan
+   - **Perintah teks `/reset` (ditambahkan 05/10/2026).** Tombol "Batalkan
      Laporan" menempel pada pesan wizard, sehingga ia ikut hilang bila layar
      lama digambar ulang atau pesannya sudah tergulung jauh di riwayat chat —
      teknisi jadi tidak punya jalan keluar selain menunggu sesi basi
@@ -708,7 +708,7 @@ Batasan penting lingkungan ini:
      hanya membuang sesi wizard chat pengirim. Uji:
      `tests/Feature/TelegramResetCommandTest.php` (4 test; uji mutasi:
      mematikan routing `/reset` membuat keempat test GAGAL). Seluruh suite 318
-     test hijau (04/10/2026).
+     test hijau (05/10/2026).
 
 
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
