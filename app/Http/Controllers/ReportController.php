@@ -516,6 +516,12 @@ class ReportController extends Controller
             'sesuai_rencana'          => 'nullable|in:ya,tidak',
             'tanggal_kejadian'        => 'nullable|date',
             'equipment_tag'           => 'nullable|string|max:100',
+            // Tipe laporan & status boleh dikirim dari form edit. Dibuat
+            // nullable supaya pemanggil lama (mis. uji yang hanya mengirim
+            // sebagian data) tidak memaksa nilai baru dan status lama tidak
+            // ikut terhapus.
+            'report_type'             => 'nullable|in:equipment_repair,area_work,general',
+            'status'                  => 'nullable|in:completed,continue,needs_review',
         ], [
             'start_time.regex' => 'Jam mulai harus format HH:MM (contoh 08:00).',
             'end_time.regex'   => 'Jam selesai harus format HH:MM (contoh 09:00).',
@@ -537,6 +543,18 @@ class ReportController extends Controller
             } else {
                 unset($validated['work_duration_minutes']);
             }
+        }
+
+        // Status yang dikirim form edit ikut menyetel completed_at seperti
+        // tombol status di halaman detail: 'completed' -> waktu selesai diisi
+        // (nilai lama dipertahankan bila sudah pernah selesai), status lain
+        // (continue / needs_review) mengosongkan waktu selesai.
+        if (! empty($validated['status'])) {
+            $validated['completed_at'] = $validated['status'] === 'completed'
+                ? ($report->completed_at ?? now())
+                : null;
+        } else {
+            unset($validated['status']);
         }
 
         // Validasi khusus dCM: sesuai_rencana wajib jika jenis diisi dCM

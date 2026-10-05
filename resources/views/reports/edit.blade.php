@@ -189,6 +189,8 @@
                     </div>
                 </div>
 
+                @include('reports.partials._pelengkap', ['report' => $report])
+
                 @include('reports.partials._kolaborasi', [
                     'report'         => $report,
                     'laporanInduk'   => $laporanInduk,
