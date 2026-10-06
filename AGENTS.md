@@ -1224,6 +1224,49 @@ Batasan penting lingkungan ini:
       `perubahan=[{Tech Ident No: FBN04 -> FBN04-UJI}]`. Jumlah aset tidak berubah
       (4256) karena analisa tidak menulis apa pun.
 
+24. **Tata letak halaman DETAIL laporan disesuaikan (diputuskan 06/10/2026, sudah ada
+    kodenya).** Semua perubahan ada di copy DEV
+    `C:\laragon\www\oleochemicalReport`, berkas
+    `resources/views/reports/show.blade.php` (1.258 baris setelah perubahan).
+    - **Temuan dipindah KE ATAS Root Cause** (include
+      `reports.partials._temuan-kartu` di baris 372, di atas kartu Root Cause),
+      mengikuti urutan wizard Step 5a temuan lalu 5b root cause (lihat item 14).
+      Jangan dikembalikan ke bawah tanpa instruksi user.
+    - **Analisa AI dan Timeline TIDAK lagi tampil langsung di halaman.** Kedua kartu
+      lama (yang dulu berada di ujung kolom kiri) kini ada di dalam popup: satu kartu
+      baru "Analisa AI dan Timeline" berisi dua tombol
+      (`@click="bukaPopup('analisa')"` dan `@click="bukaPopup('timeline')"`), dan dua
+      blok `<template x-teleport="body">` memuat kartu lamanya. Popup ditutup lewat
+      tombol "Tutup", klik luar (`@click.self`), atau tombol Escape
+      (`@keydown.escape.window`); overlaynya `z-50` (sidebar layout `z-40`) sehingga
+      tidak tertutup sidebar. State Alpine `popup` (`null` | `'analisa'` |
+      `'timeline'`) beserta `bukaPopup()` dan `tutupPopup()` ada di `reportDetail()`.
+      Isi popup Analisa AI tetap memakai
+      `@if($report->is_manually_edited) ... @elseif($report->ai_analyzed)`, ditambah
+      pemberitahuan "Belum ada analisa AI untuk laporan ini." bila keduanya tidak
+      berlaku (sebelumnya bagian itu kosong).
+    - **Kartu Aksi Admin tidak lagi punya tombol pintas status**: tombol "Tandai
+      Selesai" dan "Tandai Perlu Review" DIHAPUS 06/10/2026; status laporan diubah
+      lewat pilihan "Status Pekerjaan" pada mode edit (`partials/_pelengkap`). Route
+      `reports.update-status` dan test `tests/Feature/ReportDraftRemovalTest.php`
+      tetap ada; test itu kini memastikan KEDUA label tombol TIDAK muncul lagi dan
+      `Status Pekerjaan` tetap ada sebagai penggantinya.
+    - Cara menyunting berkas 1.181 baris ini TANPA menulis ulang seluruhnya: semua
+      perubahan dikerjakan sebagai SISIPAN (`insert_line`) dari BAWAH ke ATAS (baris
+      775, lalu 733, lalu 678, terakhir 372) supaya nomor baris di atasnya tidak
+      bergeser, ditambah dua `find_and_replace` pada string unik satu/beberapa baris
+      (include `_temuan-kartu` lama, dan blok 3 baris `enableEditMode()`). Kartu lama
+      TIDAK dihapus: pembungkus popup disisipkan mengelilinginya. Sisa alami: satu
+      include diganti komentar penanda dan ada dua baris kosong ganda (tidak
+      berpengaruh ke tampilan).
+    - Uji: `tests/Feature/ReportDetailTampilanTest.php` (4 test: urutan Temuan -> Root
+      Cause lewat `assertSeeInOrder`, tombol popup + `x-show="popup === ..."` + tepat
+      2 `x-teleport="body"`, pemberitahuan "belum ada analisa AI", dan kartu Aksi
+      Admin tanpa tombol status). Uji mutasi 06/10/2026: mematikan include temuan dan
+      mengubah nama popup analisa membuat 2 test GAGAL. Seluruh suite **438 test hijau
+      (1932 assertions)**, `php artisan view:cache` sukses, dan blok `<script>` hasil
+      ekstraksi lolos `node --check`.
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file

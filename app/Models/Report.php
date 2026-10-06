@@ -22,7 +22,7 @@ class Report extends Model
         'start_time',
         'end_time',
         'root_cause',
-        // Temuan/kejadian di lapangan yang dicatat teknisi setelah root cause
+        // Temuan/kejadian di lapangan yang dicatat teknisi SEBELUM root cause
         // (opsional, bisa dilewati lewat tombol "Lewati Temuan").
         'finding',
         'photo_documentation',

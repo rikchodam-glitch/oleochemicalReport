@@ -68,10 +68,15 @@ test('menandai selesai mengisi completed_at dan halaman laporan tanpa opsi draft
         ->assertSee('Done (selesai)', false)
         ->assertSee('Continue (belum selesai)', false);
 
-    // Halaman detail tidak lagi punya tombol "Tandai Draft".
+    // Halaman detail tidak lagi punya tombol "Tandai Draft", dan tombol pintas
+    // status pada kartu Aksi Admin (Tandai Selesai / Tandai Perlu Review) sudah
+    // dihapus 06/10/2026: status laporan kini diubah lewat pilihan Status pada
+    // mode edit (isian "Status Pekerjaan").
     $this->actingAs($this->admin)
         ->get('/reports/' . $laporan->id)
         ->assertStatus(200)
         ->assertDontSee('Tandai Draft', false)
-        ->assertSee('Tandai Selesai', false);
+        ->assertDontSee('Tandai Selesai', false)
+        ->assertDontSee('Tandai Perlu Review', false)
+        ->assertSee('Status Pekerjaan', false);
 });

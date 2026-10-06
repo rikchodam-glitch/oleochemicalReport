@@ -369,6 +369,10 @@
             </div>
         </div>
 
+        {{-- Temuan lebih dulu daripada Root Cause, mengikuti urutan wizard (Step 5a lalu 5b). --}}
+        @include('reports.partials._temuan-kartu', ['report' => $report])
+
+
         {{-- ── Root Cause ─────────────────────────────────── --}}
         <div class="bg-white rounded-xl border border-slate-200 p-6">
             <h3 class="font-medium text-slate-900 mb-3">Root Cause</h3>
@@ -389,7 +393,7 @@
             </div>
         </div>
 
-        @include('reports.partials._temuan-kartu', ['report' => $report])
+        {{-- Temuan sudah ditampilkan di atas kartu Root Cause. --}}
 
         {{-- ── Pengaturan Laporan (mode edit) ──────────────── --}}
         <div x-show="editMode" x-cloak class="bg-white rounded-xl border border-slate-200 p-6">
@@ -675,6 +679,52 @@
             @endif
         </div>
 
+        {{-- Tombol popup Analisa AI & Timeline --}}
+        <div class="bg-white rounded-xl border border-slate-200 p-6">
+            <h3 class="font-medium text-slate-900 mb-1">Analisa AI dan Timeline</h3>
+            <p class="text-xs text-slate-500 mb-4">
+                Detail analisa AI dan riwayat laporan dibuka lewat tombol berikut supaya halaman tetap ringkas.
+            </p>
+            <div class="flex flex-wrap gap-3">
+                <button type="button" @click="bukaPopup('analisa')"
+                        class="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                    Analisa AI
+                </button>
+                <button type="button" @click="bukaPopup('timeline')"
+                        class="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Timeline
+                </button>
+            </div>
+        </div>
+
+        {{-- Popup Analisa AI: kartu Analisa AI lama dipindah ke body lewat x-teleport --}}
+        <template x-teleport="body">
+            <div x-show="popup === 'analisa'" x-cloak
+                 @click.self="tutupPopup()"
+                 @keydown.escape.window="tutupPopup()"
+                 class="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4">
+                <div class="mx-auto w-full max-w-2xl my-8 space-y-3">
+                    <div class="flex justify-end">
+                        <button type="button" @click="tutupPopup()"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-lg transition-colors">
+                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Tutup
+                        </button>
+                    </div>
+                    @if(!$report->ai_analyzed && !$report->is_manually_edited)
+                        <div class="bg-white rounded-xl border border-slate-200 p-6 text-sm text-slate-500">
+                            Belum ada analisa AI untuk laporan ini.
+                        </div>
+                    @endif
+
         {{-- ── Analisa AI ──────────────────────────────────── --}}
         @if($report->is_manually_edited)
             <div class="bg-white rounded-xl border border-slate-200 p-6">
@@ -730,6 +780,27 @@
             </div>
         @endif
 
+                </div>
+            </div>
+        </template>
+
+        {{-- Popup Timeline: kartu Timeline lama dipindah ke body lewat x-teleport --}}
+        <template x-teleport="body">
+            <div x-show="popup === 'timeline'" x-cloak
+                 @click.self="tutupPopup()"
+                 @keydown.escape.window="tutupPopup()"
+                 class="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4">
+                <div class="mx-auto w-full max-w-2xl my-8 space-y-3">
+                    <div class="flex justify-end">
+                        <button type="button" @click="tutupPopup()"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-lg transition-colors">
+                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Tutup
+                        </button>
+                    </div>
+
         {{-- ── Timeline ────────────────────────────────────── --}}
         <div class="bg-white rounded-xl border border-slate-200 p-6">
             <h3 class="font-medium text-slate-900 mb-4">Timeline</h3>
@@ -772,6 +843,10 @@
                 @endif
             </div>
         </div>
+                </div>
+            </div>
+        </template>
+
 
     </div>{{-- /lg:col-span-2 --}}
 
@@ -809,26 +884,8 @@
                     Edit Laporan
                 </button>
 
-                <form method="POST" action="{{ route('reports.update-status', $report) }}">
-                    @csrf
-                    <input type="hidden" name="status" value="completed">
-                    <button type="submit"
-                            {{ $report->status === 'completed' ? 'disabled' : '' }}
-                            class="w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors">
-                        Tandai Selesai
-                    </button>
-                </form>
-
-                @if($report->status !== 'needs_review')
-                    <form method="POST" action="{{ route('reports.update-status', $report) }}">
-                        @csrf
-                        <input type="hidden" name="status" value="needs_review">
-                        <button type="submit"
-                                class="w-full px-4 py-2 border border-amber-300 hover:bg-amber-50 text-amber-700 text-sm font-medium rounded-lg transition-colors">
-                            Tandai Perlu Review
-                        </button>
-                    </form>
-                @endif
+                {{-- Tombol pintas status (Tandai Selesai / Tandai Perlu Review) dihapus 06/10/2026.
+                     Status laporan kini diubah lewat pilihan Status pada mode edit. --}}
 
                 <form method="POST" action="{{ route('reports.destroy', $report) }}"
                       onsubmit="return confirm('Hapus laporan ini? Tindakan tidak dapat dibatalkan.')">
@@ -957,6 +1014,26 @@ function reportDetail() {
         /**
          * Aktifkan mode edit.
          */
+        // Popup detail di bagian bawah halaman: Analisa AI dan Timeline.
+        // Nilai: null (tertutup) | 'analisa' | 'timeline'.
+        popup: null,
+
+        /**
+         * Buka popup detail Analisa AI atau Timeline.
+         *
+         * @param {string} nama Nama popup: 'analisa' atau 'timeline'
+         */
+        bukaPopup(nama) {
+            this.popup = nama;
+        },
+
+        /**
+         * Tutup popup yang sedang terbuka.
+         */
+        tutupPopup() {
+            this.popup = null;
+        },
+
         enableEditMode() {
             this.editMode = true;
         },
