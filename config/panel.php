@@ -33,6 +33,18 @@ return [
         'jeda_gagal_detik' => (int) env('PANEL_PULL_JEDA_GAGAL', 30),
     ],
 
+    // Perangkat sketch dashboard (bukan firmware JSON API) hanya menyajikan
+    // NILAI TERKINI, tanpa buffer dan tanpa nomor pembacaan.
+    'sketch' => [
+        // Port TCP layanan JSON pada sketch (handleTCPClients()).
+        'port_tcp' => (int) env('PANEL_SKETCH_PORT_TCP', 5000),
+
+        // Jarak minimum (detik) antar penyimpanan saat nilainya TIDAK berubah.
+        // Nilai yang berubah selalu disimpan seketika, sehingga grafik tetap
+        // mencatat setiap perubahan tanpa tabel dipenuhi angka yang sama.
+        'jeda_simpan_detik' => (int) env('PANEL_SKETCH_JEDA_SIMPAN', 60),
+    ],
+
     // Ambang batas bawaan untuk ruangan baru. Bisa diubah per ruangan.
     'ambang' => [
         'suhu_atas' => (float) env('PANEL_AMBANG_SUHU_ATAS', 30),

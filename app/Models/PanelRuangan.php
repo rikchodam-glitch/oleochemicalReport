@@ -15,6 +15,21 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  */
 class PanelRuangan extends Model
 {
+    /**
+     * Pilihan cara pembacaan perangkat sensor (kolom `protokol`).
+     *
+     * otomatis : deteksi sendiri - JSON API, lalu JSON TCP, lalu dashboard HTML
+     * api-json : firmware JSON API (HTTP perangkat, /api/status dan /api/buffer)
+     * tcp-json : sketch dashboard, JSON dari port TCP (bawaan 5000)
+     * html     : sketch dashboard, angka dibaca dari dashboard HTML port 80
+     */
+    public const PROTOKOL = [
+        'otomatis' => 'Otomatis (deteksi sendiri)',
+        'api-json' => 'JSON API firmware (HTTP /api/status)',
+        'tcp-json' => 'JSON TCP sketch dashboard (port 5000)',
+        'html'     => 'Dashboard HTML sketch (port 80)',
+    ];
+
     protected $table = 'panel_ruangan';
 
     protected $fillable = [
@@ -24,6 +39,7 @@ class PanelRuangan extends Model
         'keterangan',
         'ip_address',
         'port',
+        'protokol',
         'mac_address',
         'aktif',
         'ambang_suhu_atas',
@@ -78,6 +94,18 @@ class PanelRuangan extends Model
     public function scopeAktif(Builder $query): Builder
     {
         return $query->where('aktif', true);
+    }
+
+    /**
+     * Label protokol ruangan ini untuk ditampilkan di halaman panel.
+     *
+     * @return string
+     */
+    public function labelProtokol(): string
+    {
+        $cara = (string) ($this->protokol ?? '');
+
+        return self::PROTOKOL[$cara] ?? self::PROTOKOL['otomatis'];
     }
 
     /**

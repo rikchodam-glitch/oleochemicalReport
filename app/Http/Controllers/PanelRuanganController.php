@@ -38,6 +38,7 @@ class PanelRuanganController extends Controller
         return view('panel.index', [
             'daftarRuangan' => PanelRuangan::query()->orderBy('nama_ruangan')->get(),
             'intervalPolling' => (int) config('panel.tampilan.interval_polling_detik', 5),
+            'pilihanProtokol' => PanelRuangan::PROTOKOL,
             'titikGrafik' => (int) config('panel.tampilan.jumlah_titik_grafik', 60),
             'barisRiwayat' => (int) config('panel.tampilan.jumlah_baris_riwayat', 20),
             'ambangBawaan' => [
@@ -78,6 +79,8 @@ class PanelRuanganController extends Controller
                 'lokasi'           => $ruangan->labelLokasi(),
                 'ip_address'       => $ruangan->ip_address,
                 'port'             => $ruangan->port,
+                'protokol'         => $ruangan->protokol ?: 'otomatis',
+                'protokol_label'   => $ruangan->labelProtokol(),
                 'mac_address'      => $ruangan->mac_address,
                 'aktif'            => $ruangan->aktif,
                 'online'           => $ruangan->apakahOnline(),
@@ -111,6 +114,7 @@ class PanelRuanganController extends Controller
     {
         $data = $this->validasiRuangan($request);
         $data['aktif'] = $request->boolean('aktif');
+        $data['protokol'] = $data['protokol'] ?? 'otomatis';
 
         PanelRuangan::query()->create($data);
 
@@ -130,6 +134,7 @@ class PanelRuanganController extends Controller
     {
         $data = $this->validasiRuangan($request, $panelRuangan);
         $data['aktif'] = $request->boolean('aktif');
+        $data['protokol'] = $data['protokol'] ?? ($panelRuangan->protokol ?: 'otomatis');
 
         $panelRuangan->update($data);
 
@@ -171,6 +176,8 @@ class PanelRuanganController extends Controller
             'ping'      => $hasil['ping'],
             'perangkat' => $hasil['status'],
             'pembacaan' => $hasil['pembacaan'],
+            'sumber'    => $hasil['sumber'],
+            'protokol'  => $hasil['protokol'],
             'pesan'     => $this->pesanUjiKoneksi($hasil),
         ]);
     }
@@ -242,6 +249,7 @@ class PanelRuanganController extends Controller
             'keterangan'        => ['nullable', 'string', 'max:255'],
             'ip_address'        => ['required', 'string', 'ip'],
             'port'              => ['required', 'integer', 'min:1', 'max:65535'],
+            'protokol'          => ['nullable', 'string', Rule::in(array_keys(PanelRuangan::PROTOKOL))],
             'mac_address'       => ['nullable', 'string', 'max:17'],
             'ambang_suhu_atas'  => ['required', 'numeric', 'between:-50,150'],
             'ambang_suhu_bawah' => ['required', 'numeric', 'between:-50,150'],
@@ -254,6 +262,7 @@ class PanelRuanganController extends Controller
             'keterangan'        => 'keterangan',
             'ip_address'        => 'alamat IP perangkat',
             'port'              => 'port',
+            'protokol'          => 'protokol perangkat',
             'mac_address'       => 'alamat MAC',
             'ambang_suhu_atas'  => 'ambang suhu atas',
             'ambang_suhu_bawah' => 'ambang suhu bawah',
@@ -270,24 +279,44 @@ class PanelRuanganController extends Controller
      */
     private function pesanUjiKoneksi(array $hasil): string
     {
-        if ($hasil['status'] === null) {
+        $sumber = $hasil['sumber'] ?? null;
+        $status = $hasil['status'];
+        $pembacaan = $hasil['pembacaan'];
+
+        if ($status === null) {
+            $pesan = (string) ($hasil['pesan'] ?? 'Perangkat tidak bisa dihubungi.');
+
             return ($hasil['ping']['status'] ?? '') === 'online'
-                ? 'Perangkat menjawab ping, tetapi server HTTP di perangkat tidak merespons. Cek firmware dan wiring modul W5500.'
-                : 'Perangkat tidak bisa dihubungi. Cek kabel LAN, sumber daya POE, dan alamat IP perangkat.';
+                ? $pesan . ' Perangkat menjawab ping, jadi kemungkinan layanan yang dipilih tidak aktif di perangkat (cek protokol ruangan ini).'
+                : $pesan . ' Cek kabel LAN, sumber daya, dan alamat IP perangkat.';
         }
 
-        if (!($hasil['status']['w5500_terdeteksi'] ?? false)) {
+        // Perangkat tanpa buffer (sketch dashboard) tidak melaporkan modul
+        // W5500, firmware, maupun statistik pengiriman, jadi pesannya berbeda.
+        if ($sumber !== 'json-api') {
+            $nilai = $pembacaan === null
+                ? 'belum ada'
+                : (($pembacaan['suhu'] ?? '-') . ' C / ' . ($pembacaan['kelembapan'] ?? '-') . ' %');
+
+            if (!($status['sensor_membaca'] ?? false)) {
+                return 'Perangkat terjangkau lewat ' . $sumber . ', tetapi sensor belum mengirim pembacaan (nilai 0). Cek kabel DATA sensor dan pasang resistor pull-up 10k antara VCC dan DATA bila sensornya tipe polos 4 kaki.';
+            }
+
+            return 'Perangkat sehat lewat ' . $sumber . '. Pembacaan terakhir di perangkat: ' . $nilai . '.';
+        }
+
+        if (!($status['w5500_terdeteksi'] ?? false)) {
             return 'Perangkat terjangkau, tetapi modul W5500 tidak terdeteksi. Cek wiring SPI: SCK=18, MISO=19, MOSI=23, CS=5, VCC=3V3.';
         }
 
-        if ($hasil['pembacaan'] === null) {
+        if ($pembacaan === null) {
             return 'Perangkat terjangkau, tetapi belum ada pembacaan sensor yang valid. Cek wiring sensor DHT11 pada GPIO4.';
         }
 
         return sprintf(
             'Perangkat sehat. Pembacaan terakhir di perangkat: %s C / %s %%.',
-            $hasil['pembacaan']['suhu'] ?? '-',
-            $hasil['pembacaan']['kelembapan'] ?? '-'
+            $pembacaan['suhu'] ?? '-',
+            $pembacaan['kelembapan'] ?? '-'
         );
     }
 }

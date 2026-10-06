@@ -169,6 +169,22 @@
                                    class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
                         </div>
 
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Cara baca perangkat</label>
+                            <select name="protokol" id="isianProtokol"
+                                    class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                @foreach ($pilihanProtokol as $nilai => $label)
+                                    <option value="{{ $nilai }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            <p class="text-xs text-slate-400 mt-1">
+                                Biarkan <strong>Otomatis</strong> untuk perangkat yang sudah berjalan: server mencoba JSON API firmware,
+                                lalu JSON TCP port {{ config('panel.sketch.port_tcp') }}, lalu dashboard HTML. Pilih satu cara hanya bila
+                                perangkat memang hanya menyediakan cara itu.
+                            </p>
+                        </div>
+
+
                         <div>
                             <label class="block text-xs font-medium text-slate-500 mb-1">
                                 Ambang suhu bawah (C) <span class="text-red-500">*</span>
@@ -408,6 +424,7 @@
                 + '      <p class="font-semibold text-slate-900">' + keTeksAman(ruangan.nama_ruangan) + '</p>'
                 + '      <p class="text-xs text-slate-500 mt-0.5">' + keTeksAman(ruangan.lokasi) + '</p>'
                 + '      <p class="text-xs text-slate-400 mt-0.5">IP ' + keTeksAman(ruangan.ip_address) + ':' + keTeksAman(ruangan.port) + '</p>'
+                + '      <p class="text-xs text-slate-400 mt-0.5">Protokol: ' + keTeksAman(ruangan.protokol_label || '-') + '</p>'
                 + '    </div>'
                 + pilOnline
                 + '  </div>'
@@ -740,6 +757,7 @@
                 document.getElementById('isianIp').value = ruangan.ip_address || '';
                 document.getElementById('isianPort').value = ruangan.port || 80;
                 document.getElementById('isianMac').value = ruangan.mac_address || '';
+                document.getElementById('isianProtokol').value = ruangan.protokol || 'otomatis';
                 document.getElementById('isianAmbangBawah').value = ruangan.ambang_suhu_bawah;
                 document.getElementById('isianAmbangAtas').value = ruangan.ambang_suhu_atas;
                 document.getElementById('isianKeterangan').value = ruangan.keterangan || '';
@@ -816,7 +834,7 @@
                 : perangkat.jumlah_kirim_sukses + ' sukses / ' + perangkat.jumlah_kirim_gagal + ' gagal';
             var nilaiPembacaan = pembacaan === null
                 ? 'belum ada'
-                : pembacaan.suhu + ' C / ' + pembacaan.kelembapan + ' %';
+                : ((pembacaan.sensor_membaca === false) ? 'belum ada (sensor belum membaca)' : pembacaan.suhu + ' C / ' + pembacaan.kelembapan + ' %');
 
             return ''
                 + barisTabel('Ping jaringan', (ping.status || '-') + latensi)
@@ -826,7 +844,8 @@
                 + barisTabel('Uptime perangkat', uptime)
                 + barisTabel('Pembacaan terakhir', nilaiPembacaan)
                 + barisTabel('Statistik pengiriman', statistikKirim)
-                + barisTabel('Sesi boot', perangkat.boot || '-');
+                + barisTabel('Sesi boot', perangkat.boot || '-')
+                + barisTabel('Sumber jawaban', hasil.sumber || '-');
         }
 
         /**
