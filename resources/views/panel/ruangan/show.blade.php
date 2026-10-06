@@ -186,6 +186,10 @@
                     <dt class="text-slate-500">Nomor equipment</dt>
                     <dd class="font-medium">{{ $asetCermin?->equipment_no ?? 'belum dibuat' }}</dd>
                 </div>
+                <div class="flex justify-between gap-3">
+                    <dt class="text-slate-500">Penanggung jawab</dt>
+                    <dd class="font-medium text-right">{{ $ruangan->namaPenanggungJawab() }}</dd>
+                </div>
             </dl>
 
             @if ($asetCermin)

@@ -324,6 +324,8 @@
             </div>
         </div>
 
+        @include('panel.ruangan.partials._penanggung-jawab')
+
         <div class="flex flex-wrap justify-end gap-2">
             <a href="{{ $ruangan->exists ? route('panel.ruangan.show', $ruangan) : route('panel.index') }}"
                class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg">

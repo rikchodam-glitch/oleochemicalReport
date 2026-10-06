@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -219,5 +220,44 @@ class PanelRuangan extends Model
         }
 
         return 'normal';
+    }
+
+    /**
+     * Penanggung jawab (PIC) ruangan panel ini.
+     *
+     * Dipakai halaman pengaturan/detail ruangan dan pengiriman pengingat harian
+     * lewat Telegram. Daftar teknisi disimpan di tabel panel_penanggung_jawab
+     * (satu ruangan boleh punya beberapa penanggung jawab).
+     *
+     * @return BelongsToMany<Technician, PanelRuangan>
+     */
+    public function penanggungJawab(): BelongsToMany
+    {
+        return $this->belongsToMany(Technician::class, 'panel_penanggung_jawab')
+            ->withTimestamps();
+    }
+
+    /**
+     * Nama penanggung jawab ruangan ini dalam satu teks, mis. "Budi, Sari".
+     *
+     * Relasi dipakai apa adanya bila sudah dimuat (eager load) supaya
+     * pemanggilan berulang tidak menambah query. Ruangan tanpa penanggung
+     * jawab mengembalikan "belum ditentukan" untuk kebutuhan tampilan.
+     *
+     * @return string
+     */
+    public function namaPenanggungJawab(): string
+    {
+        $daftar = $this->relationLoaded('penanggungJawab')
+            ? $this->getRelation('penanggungJawab')
+            : $this->penanggungJawab()->orderBy('name')->get();
+
+        $nama = $daftar
+            ->map(fn (Technician $teknisi): string => (string) $teknisi->name)
+            ->filter()
+            ->values()
+            ->all();
+
+        return $nama === [] ? 'belum ditentukan' : implode(', ', $nama);
     }
 }

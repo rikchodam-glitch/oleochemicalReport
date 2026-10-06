@@ -150,6 +150,20 @@ class Technician extends Model
         return $this->hasMany(TechnicianShift::class);
     }
 
+    /**
+     * Ruang panel yang menjadi tanggung jawab teknisi ini (PIC panel).
+     *
+     * Dipakai pengiriman pengingat harian lewat Telegram: tiap penanggung
+     * jawab menerima ringkasan kondisi ruangannya pada awal jam masuk kerja.
+     *
+     * @return BelongsToMany<PanelRuangan>
+     */
+    public function panelYangDitangani(): BelongsToMany
+    {
+        return $this->belongsToMany(PanelRuangan::class, 'panel_penanggung_jawab')
+            ->withTimestamps();
+    }
+
     // =========================================================
     // SCOPES
     // =========================================================

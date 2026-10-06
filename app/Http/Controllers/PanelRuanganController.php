@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Asset;
 use App\Models\PanelRuangan;
+use App\Models\Technician;
 use App\Services\FunclocOptionService;
 use App\Services\PanelAssetSyncService;
 use App\Services\PanelSensorService;
@@ -74,7 +75,7 @@ class PanelRuanganController extends Controller
         $titik = (int) config('panel.tampilan.jumlah_titik_grafik', 60);
         $baris = (int) config('panel.tampilan.jumlah_baris_riwayat', 20);
 
-        $daftarRuangan = PanelRuangan::query()->orderBy('nama_ruangan')->get();
+        $daftarRuangan = PanelRuangan::query()->with('penanggungJawab')->orderBy('nama_ruangan')->get();
 
         $hasil = $daftarRuangan->map(function (PanelRuangan $ruangan) use ($titik, $baris): array {
             $data = $this->sensor->dataRuangan($ruangan, $titik, $baris);
@@ -105,6 +106,7 @@ class PanelRuanganController extends Controller
                 'kelembapan'       => $terakhir?->kelembapan,
                 'waktu_pembacaan'  => $terakhir?->waktu?->format('d/m/Y H:i:s'),
                 'kondisi'          => $ruangan->kondisiSuhu($terakhir?->suhu),
+                'penanggung_jawab' => $ruangan->namaPenanggungJawab(),
                 'grafik'           => $data['grafik'],
                 'riwayat'          => $data['riwayat'],
             ];
@@ -147,6 +149,7 @@ class PanelRuanganController extends Controller
         $data['protokol'] = $data['protokol'] ?? 'otomatis';
 
         $ruangan = PanelRuangan::query()->create($data);
+        $this->simpanPenanggungJawab($ruangan, $request->input('penanggung_jawab', []));
         $sinkron = $this->penyinkronAset->syncOne($ruangan);
 
         return redirect()
@@ -164,7 +167,7 @@ class PanelRuanganController extends Controller
      */
     public function show(PanelRuangan $panelRuangan): View
     {
-        $panelRuangan->load(['funcloc', 'pembacaanTerakhir']);
+        $panelRuangan->load(['funcloc', 'pembacaanTerakhir', 'penanggungJawab']);
 
         return view('panel.ruangan.show', [
             'ruangan'        => $panelRuangan,
@@ -203,6 +206,7 @@ class PanelRuanganController extends Controller
         $data['protokol'] = $data['protokol'] ?? ($panelRuangan->protokol ?: 'otomatis');
 
         $panelRuangan->update($data);
+        $this->simpanPenanggungJawab($panelRuangan, $request->input('penanggung_jawab', []));
         $sinkron = $this->penyinkronAset->syncOne($panelRuangan);
 
         return redirect()
@@ -338,7 +342,65 @@ class PanelRuanganController extends Controller
             'alasanLewat'     => $ruangan->exists
                 ? $this->penyinkronAset->alasanLewatSinkron($ruangan)
                 : null,
+            'pilihanTeknisi'  => $this->pilihanTeknisi(),
+            'penanggungJawabTerpilih' => $ruangan->exists
+                ? $ruangan->penanggungJawab()->pluck('technicians.id')->all()
+                : [],
         ];
+    }
+
+    /**
+     * Daftar teknisi yang bisa dipilih sebagai penanggung jawab ruang panel,
+     * dikelompokkan per Bagian supaya pilihan di form mudah ditelusuri.
+     *
+     * Teknisi tanpa Telegram ID tetap ditampilkan (supaya nama penanggung
+     * jawab tetap bisa dicatat) tetapi diberi tanda "tanpa Telegram" karena
+     * pengingat harian tidak bisa dikirim ke mereka.
+     *
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private function pilihanTeknisi(): array
+    {
+        $grup = [];
+
+        Technician::query()
+            ->orderBy('name')
+            ->get(['id', 'name', 'nik', 'section', 'group', 'telegram_id', 'status'])
+            ->each(function (Technician $teknisi) use (&$grup): void {
+                $bagian = Technician::SECTIONS[$teknisi->section ?? ''] ?? ($teknisi->section ?: 'Bagian lain');
+
+                $grup[$bagian][] = [
+                    'id'           => $teknisi->id,
+                    'nama'         => $teknisi->name,
+                    'nik'          => $teknisi->nik,
+                    'ada_telegram' => $teknisi->telegram_id !== null && $teknisi->telegram_id !== '',
+                ];
+            });
+
+        return $grup;
+    }
+
+    /**
+     * Simpan daftar penanggung jawab ruang panel dari isian form.
+     *
+     * Nilai kosong/duplikat disaring supaya sync tidak gagal karena kunci unik
+     * pasangan (ruangan, teknisi). Method ini juga menjadi jalan menghapus
+     * seluruh penanggung jawab (mengirim daftar kosong).
+     *
+     * @param  PanelRuangan  $ruangan  Ruangan yang sedang disimpan
+     * @param  mixed         $daftar   Isian penanggung_jawab[] dari form
+     * @return void
+     */
+    private function simpanPenanggungJawab(PanelRuangan $ruangan, mixed $daftar): void
+    {
+        $idTeknisi = collect(is_array($daftar) ? $daftar : [])
+            ->map(fn (mixed $nilai): int => (int) $nilai)
+            ->filter(fn (int $nilai): bool => $nilai > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $ruangan->penanggungJawab()->sync($idTeknisi);
     }
 
     /**
@@ -370,6 +432,8 @@ class PanelRuanganController extends Controller
             'funcloc_id'        => ['nullable', 'integer', 'exists:functional_locations,id'],
             'kode_alat'         => ['nullable', 'string', 'max:100', $this->penjagaKodeAlat($ruangan)],
             'equipment_type'    => ['nullable', 'string', 'max:100'],
+            'penanggung_jawab'   => ['nullable', 'array'],
+            'penanggung_jawab.*' => ['integer', 'exists:technicians,id'],
         ];
 
         $namaAtribut = [
@@ -387,6 +451,8 @@ class PanelRuanganController extends Controller
             'funcloc_id'        => 'lokasi (Functional Location)',
             'kode_alat'         => 'kode alat',
             'equipment_type'    => 'jenis alat',
+            'penanggung_jawab'   => 'penanggung jawab',
+            'penanggung_jawab.*' => 'penanggung jawab',
         ];
 
         return $request->validate($aturan, [], $namaAtribut);
