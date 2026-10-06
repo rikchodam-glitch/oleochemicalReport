@@ -416,7 +416,7 @@ function csvExportBaru(array $baris): string
     return (string) $isiCsv;
 }
 
-test('export tidak lagi menyertakan Equipment No dan berblok judul profesional', function () {
+test('export menyertakan Equipment No dan tetap berblok judul profesional', function () {
     $csv = $this->actingAs($this->admin)
         ->get('/assets/export/csv?company_id=' . $this->company->id)
         ->assertStatus(200)
@@ -426,8 +426,10 @@ test('export tidak lagi menyertakan Equipment No dan berblok judul profesional',
         ->and($csv)->toContain('Diekspor:')
         ->and($csv)->toContain('Filter: PT: ' . $this->company->code)
         ->and($csv)->toContain('Jumlah:')
-        // Kolom Equipment No sudah tidak ada lagi di header.
-        ->and($csv)->not->toContain('Equipment No')
+        // Kolom Equipment No kini IKUT diekspor karena dipakai sebagai kunci
+        // pencocokan utama saat file diimport kembali.
+        ->and($csv)->toContain('Equipment No')
+        ->and($csv)->toContain('90000001')
         // Kolom laporan tetap lengkap.
         ->and($csv)->toContain('Tech Ident No')
         ->and($csv)->toContain('Functional Loc');
@@ -447,7 +449,7 @@ test('export excel memakai blok judul dan header tabel di baris ketujuh', functi
 
     $headerBaris = [];
 
-    foreach (range('A', 'N') as $kolom) {
+    foreach (range('A', 'O') as $kolom) {
         $headerBaris[] = (string) $sheet->getCell($kolom . '7')->getValue();
     }
 
@@ -457,9 +459,11 @@ test('export excel memakai blok judul dan header tabel di baris ketujuh', functi
         ->and((string) $sheet->getCell('A4')->getValue())->toContain('Filter:')
         ->and((string) $sheet->getCell('A5')->getValue())->toContain('Jumlah:')
         ->and((string) $sheet->getCell('A7')->getValue())->toBe('No')
-        ->and((string) $sheet->getCell('C7')->getValue())->toBe('Tech Ident No')
-        ->and((string) $sheet->getCell('E7')->getValue())->toBe('Functional Loc')
-        ->and(implode(' | ', $headerBaris))->not->toContain('Equipment No');
+        ->and((string) $sheet->getCell('B7')->getValue())->toBe('Equipment No')
+        ->and((string) $sheet->getCell('C7')->getValue())->toBe('Description')
+        ->and((string) $sheet->getCell('D7')->getValue())->toBe('Tech Ident No')
+        ->and((string) $sheet->getCell('F7')->getValue())->toBe('Functional Loc')
+        ->and(implode(' | ', $headerBaris))->toContain('Equipment No');
 
     $spreadsheet->disconnectWorksheets();
     unlink($path);
@@ -517,9 +521,10 @@ test('export mengurutkan data menurut lokasi (PT, departemen, area, sub area, Fu
     unlink($path);
 
     // Header tabel ada di baris ke-7 (indeks 6), data mulai indeks 7.
-    // Kolom: 4 Functional Loc, 6 Department, 7 Area, 8 Sub Area.
+    // Kolom: 5 Functional Loc, 7 Department, 8 Area, 9 Sub Area
+    // (kolom B kini Equipment No, jadi seluruh indeks bergeser satu).
     $kunci = array_map(
-        static fn (array $row): array => [$row[6], $row[7], $row[8], $row[4]],
+        static fn (array $row): array => [$row[7], $row[8], $row[9], $row[5]],
         array_slice($rows, 7)
     );
 
@@ -1002,8 +1007,139 @@ test('export excel menulis nilai seperti 6153E1 sebagai teks, bukan angka', func
 
     // Data mulai baris 8 (baris 7 = header tabel). Tipe sel harus string,
     // bukan angka, supaya nilai ini tidak berubah saat diimport ulang.
-    expect((string) $sheet->getCell('C8')->getValue())->toBe('6153E1')
-        ->and($sheet->getCell('C8')->getDataType())->toBe('s');
+    expect((string) $sheet->getCell('D8')->getValue())->toBe('6153E1')
+        ->and($sheet->getCell('D8')->getDataType())->toBe('s');
+
+    $spreadsheet->disconnectWorksheets();
+    unlink($path);
+});
+
+
+// ============================================================
+// Pencocokan lewat Equipment No (kunci utama, ditambahkan 06/10/2026)
+// ============================================================
+
+test('Kode Alat yang diubah pada file hasil export dicocokkan lewat Equipment No tanpa membuat aset baru', function () {
+    $jumlahAwal = Asset::count();
+
+    // Baris hasil export: nomor equipment tetap, Kode Alat sengaja diubah.
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([
+        ($this->barisAset)([1 => 'AC Ruang Panel Uji (kode alat diubah)', 2 => 'AC-AR01-1-9']),
+    ])));
+
+    expect($analysis['clean'])->toHaveCount(0)
+        ->and($analysis['duplicate'])->toHaveCount(1)
+        ->and($analysis['duplicate'][0]['asset_id'])->toBe($this->asset->id)
+        ->and($analysis['duplicate'][0]['dicocokkan_lewat'])->toBe('equipment_no')
+        ->and(collect($analysis['duplicate'][0]['perubahan'])->firstWhere('field', 'Tech Ident No'))
+        ->toBe(['field' => 'Tech Ident No', 'lama' => 'AC-AR01-1-1', 'baru' => 'AC-AR01-1-9']);
+
+    $hasil = $this->import->executeImport($analysis, [
+        'duplicate_action' => 'replace',
+        'no_equip_action'  => 'skip',
+        'filename'         => 'assets-export-uji.csv',
+    ]);
+
+    $asset = $this->asset->fresh();
+
+    expect($hasil['updated_count'])->toBe(1)
+        ->and($hasil['inserted_count'])->toBe(0)
+        // Kode Alat benar-benar berubah dan TIDAK ada aset baru yang dibuat.
+        ->and($asset->tech_ident_no)->toBe('AC-AR01-1-9')
+        ->and($asset->equipment_no)->toBe('90000001')
+        ->and(Asset::count())->toBe($jumlahAwal)
+        ->and(Asset::where('tech_ident_no', 'AC-AR01-1-9')->count())->toBe(1);
+});
+
+test('Equipment No yang belum ada di database tetap dicocokkan lewat Kode Alat', function () {
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([
+        ($this->barisAset)([0 => '98765432', 1 => 'AC Ruang Panel Uji (nomor baru)']),
+    ])));
+
+    expect($analysis['duplicate'])->toHaveCount(1)
+        ->and($analysis['clean'])->toHaveCount(0)
+        ->and($analysis['duplicate'][0]['asset_id'])->toBe($this->asset->id)
+        ->and($analysis['duplicate'][0]['dicocokkan_lewat'])->toBe('tech_ident_no')
+        ->and($analysis['duplicate'][0]['equipment_no_lama'])->toBe('90000001');
+
+    $this->import->executeImport($analysis, [
+        'duplicate_action' => 'replace',
+        'no_equip_action'  => 'skip',
+        'filename'         => 'assets-export-uji.csv',
+    ]);
+
+    // Nomor aset lama tidak ikut berubah walau file memuat nomor lain.
+    expect($this->asset->fresh()->equipment_no)->toBe('90000001')
+        ->and($this->asset->fresh()->description)->toBe('AC Ruang Panel Uji (nomor baru)');
+});
+
+test('Kode Alat yang sudah dipakai aset lain ditandai perlu diperiksa walau Equipment No-nya cocok', function () {
+    Asset::create([
+        'equipment_no'   => '90000055',
+        'description'    => 'Motor Tetangga',
+        'tech_ident_no'  => 'AC-AR01-2-2',
+        'functional_loc' => $this->funcloc->code,
+        'funcloc_id'     => $this->funcloc->id,
+        'company_id'     => $this->company->id,
+        'department_id'  => $this->dept->id,
+        'area_id'        => $this->area->id,
+        'sub_area_id'    => $this->subArea->id,
+        'status'         => 'active',
+        'data_source'    => 'import_excel',
+    ]);
+
+    // Baris milik aset 90000001 tetapi Kode Alatnya memakai kode aset lain.
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([
+        ($this->barisAset)([2 => 'AC-AR01-2-2']),
+    ])));
+
+    expect($analysis['ambigu'])->toHaveCount(1)
+        ->and($analysis['duplicate'])->toHaveCount(0)
+        ->and($analysis['ambigu'][0]['alasan'])->toContain('sudah dipakai aset lain')
+        ->and(collect($analysis['ambigu'][0]['kandidat'])->pluck('equipment_no')->all())
+        ->toBe(['90000055']);
+
+    $hasil = $this->import->executeImport($analysis, [
+        'duplicate_action' => 'replace',
+        'no_equip_action'  => 'skip',
+        'filename'         => 'assets-export-uji.csv',
+    ]);
+
+    expect($hasil['success_count'])->toBe(0)
+        ->and($hasil['error_count'])->toBe(1)
+        // Kode Alat aset lama tidak boleh berubah jadi kode milik aset lain.
+        ->and($this->asset->fresh()->tech_ident_no)->toBe('AC-AR01-1-1');
+});
+
+test('Equipment No yang muncul dua kali di dalam satu file masuk bucket ambigu', function () {
+    $barisA = ($this->barisAset)([1 => 'Duplikat Nomor A']);
+    $barisB = ($this->barisAset)([1 => 'Duplikat Nomor B']);
+
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([$barisA, $barisB])));
+
+    expect($analysis['ambigu'])->toHaveCount(2)
+        ->and($analysis['duplicate'])->toHaveCount(0)
+        ->and($analysis['clean'])->toHaveCount(0)
+        ->and($analysis['ambigu'][0]['alasan'])->toContain('muncul lebih dari sekali di file');
+});
+
+test('export excel menulis Equipment No pada kolom B sebagai teks', function () {
+    $isi = $this->actingAs($this->admin)
+        ->get('/assets/export/excel?company_id=' . $this->company->id)
+        ->assertStatus(200)
+        ->streamedContent();
+
+    $path = tempnam(sys_get_temp_dir(), 'astexp') . '.xlsx';
+    file_put_contents($path, $isi);
+
+    $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+    $sheet       = $spreadsheet->getActiveSheet();
+
+    // Data mulai baris 8; kolom B harus memuat nomor aset sebagai teks supaya
+    // nomor berawalan nol tidak berubah bentuk saat diimport ulang.
+    expect((string) $sheet->getCell('B8')->getValue())->toBe('90000001')
+        ->and($sheet->getCell('B8')->getDataType())->toBe('s')
+        ->and((string) $sheet->getCell('C8')->getValue())->toBe('AC Ruang Panel Uji');
 
     $spreadsheet->disconnectWorksheets();
     unlink($path);

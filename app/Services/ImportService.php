@@ -47,19 +47,25 @@ class ImportService
     /**
      * Analisa file Excel dan kelompokkan tiap baris ke salah satu bucket.
      *
-     * KUNCI Pencocokan adalah Tech Ident No (identitas unik satu aset; tidak
-     * boleh ada dua aset dengan Tech Ident No sama). Kolom Equipment No TIDAK
-     * dibaca sama sekali: nomor itu adalah id yang dibuat sistem
-     * (lihat AssetNumberService), bukan data yang diinput user.
+     * KUNCI Pencocokan: Equipment No lebih dulu (nomor aset yang ikut diexport
+     * dan berindeks unik), baru Tech Ident No (Kode Alat) sebagai cadangan untuk
+     * file yang tidak memuat kolom Equipment No atau memuat nomor yang belum ada
+     * di database. Dengan urutan ini, Kode Alat pada file hasil export boleh
+     * diubah tanpa membuat aset baru.
      *
      * Bucket:
-     *   - clean       : Tech Ident No belum ada di database -> aset BARU
-     *   - duplicate   : Tech Ident No cocok tepat satu aset -> akan DIPERBARUI
-     *                   (plus daftar field yang berubah di key 'perubahan')
-     *   - no_equip    : Tech Ident No kosong -> tidak ada identitas yang bisa dicocokkan
+     *   - clean       : tidak cocok nomor maupun Kode Alat -> aset BARU (nomor
+     *                   equipment dibuat sistem lewat AssetNumberService)
+     *   - duplicate   : cocok tepat satu aset (lewat nomor atau Kode Alat) ->
+     *                   akan DIPERBARUI (plus daftar field yang berubah di key
+     *                   'perubahan' dan penanda 'dicocokkan_lewat')
+     *   - no_equip    : Kode Alat kosong -> tidak ada identitas yang bisa
+     *                   dicocokkan (tetap seperti sebelumnya, supaya nilai Kode
+     *                   Alat yang sudah ada tidak terhapus oleh sel kosong)
      *   - bad_funcloc : Functional Loc. kosong -> tidak bisa ditautkan ke FuncLoc
-     *   - ambigu      : Tech Ident No dobel di dalam file, atau dipakai lebih
-     *                   dari satu aset di database
+     *   - ambigu      : identitas dipakai lebih dari sekali (di dalam file
+     *                   maupun di database), termasuk Kode Alat baru yang sudah
+     *                   dipakai aset lain
      *
      * @param  UploadedFile  $file
      * @return array
@@ -91,17 +97,24 @@ class ImportService
         // di satu file tidak bisa dipastikan baris mana yang benar.
         $hitungTech = [];
 
+        // Sama untuk Equipment No: nomor ini hanya boleh menunjuk satu baris di
+        // dalam satu file (nomornya juga unik di database).
+        $hitungNomor = [];
+
         foreach ($semuaBaris as $baris) {
-            if ($baris['tech_ident_no'] === '') {
-                continue;
+            if ($baris['tech_ident_no'] !== '') {
+                $kunci = mb_strtoupper($baris['tech_ident_no']);
+                $hitungTech[$kunci] = ($hitungTech[$kunci] ?? 0) + 1;
             }
 
-            $kunci = mb_strtoupper($baris['tech_ident_no']);
-            $hitungTech[$kunci] = ($hitungTech[$kunci] ?? 0) + 1;
+            if (($baris['equipment_no'] ?? '') !== '') {
+                $nomor = mb_strtoupper($baris['equipment_no']);
+                $hitungNomor[$nomor] = ($hitungNomor[$nomor] ?? 0) + 1;
+            }
         }
 
         // Tahap 2: kelompokkan tiap baris ke bucket.
-        $results = $this->kelompokkanBaris($semuaBaris, $hitungTech, $results);
+        $results = $this->kelompokkanBaris($semuaBaris, $hitungTech, $hitungNomor, $results);
 
         $results['funcloc_preview'] = $this->previewFuncLocs(array_merge(
             array_column($results['clean'], 'functional_loc'),
@@ -115,11 +128,12 @@ class ImportService
      * Kumpulkan seluruh baris data dari semua sheet tanpa mencocokkan apa pun.
      *
      * Baris sisa blok judul/keterangan pada file hasil export dilewati dengan
-     * syarat Tech Ident No, Functional Loc., dan Description sama-sama kosong.
+     * syarat Equipment No, Tech Ident No, Functional Loc., dan Description
+     * sama-sama kosong.
      *
      * @param  array<int, array{name: string, rows: array}>  $sheets
      * @param  array  $results  Diisi jumlah baris yang dibaca (by reference)
-     * @return array<int, array{row: int, tech_ident_no: string, functional_loc: string, data: array}>
+     * @return array<int, array{row: int, equipment_no: string, tech_ident_no: string, functional_loc: string, data: array}>
      */
     private function kumpulkanBaris(array $sheets, array &$results): array
     {
@@ -146,22 +160,26 @@ class ImportService
             $results['total_rows'] += count($rows) - $headerIndex - 1;
 
             foreach (array_slice($rows, $headerIndex + 1) as $index => $row) {
+                $equipNo   = trim((string) $this->colVal($row, $colMap, 'equipment'));
                 $techNo    = trim((string) $this->colVal($row, $colMap, 'tech_ident_no'));
                 $funcLoc   = trim((string) $this->colVal($row, $colMap, 'functional_loc'));
                 $deskripsi = trim((string) $this->colVal($row, $colMap, 'description'));
 
-                // Baris sisa blok keterangan / baris kosong dilewati.
-                if ($techNo === '' && $funcLoc === '' && $deskripsi === '') {
+                // Baris sisa blok keterangan / baris kosong dilewati. Baris yang
+                // memuat Equipment No TIDAK dianggap kosong supaya baris yang
+                // identitasnya jelas tetap terlaporkan, bukan hilang diam-diam.
+                if ($equipNo === '' && $techNo === '' && $funcLoc === '' && $deskripsi === '') {
                     continue;
                 }
 
                 $semuaBaris[] = [
                     'row'            => $index + $headerIndex + 2,
+                    'equipment_no'   => $equipNo,
                     'tech_ident_no'  => $techNo,
                     'functional_loc' => $funcLoc,
                     'data'           => [
                         'row'            => $index + $headerIndex + 2,
-                        'equipment_no'   => '',
+                        'equipment_no'   => $equipNo,
                         'description'    => $deskripsi,
                         'tech_ident_no'  => $techNo,
                         'object_type'    => $this->colVal($row, $colMap, 'object_type'),
@@ -192,11 +210,12 @@ class ImportService
      * no_equip/bad_funcloc/ambigu.
      *
      * @param  array<int, array>  $semuaBaris
-     * @param  array<string, int>  $hitungTech  Jumlah kemunculan Tech Ident No di file
+     * @param  array<string, int>  $hitungTech   Jumlah kemunculan Tech Ident No di file
+     * @param  array<string, int>  $hitungNomor  Jumlah kemunculan Equipment No di file
      * @param  array  $results  Bucket kosong yang disiapkan analyzeFile()
      * @return array  Bucket yang sudah terisi
      */
-    private function kelompokkanBaris(array $semuaBaris, array $hitungTech, array $results): array
+    private function kelompokkanBaris(array $semuaBaris, array $hitungTech, array $hitungNomor, array $results): array
     {
         // Peta nilai angka -> aset dengan Tech Ident No bentuk <angka>E<pangkat>,
         // dipakai mendeteksi nilai yang sudah dikonversi Excel/Google Sheets
@@ -229,6 +248,76 @@ class ImportService
                 ];
 
                 continue;
+            }
+
+            // UTAMA: Equipment No. Nomor ini ikut diexport dan berindeks unik,
+            // sehingga Kode Alat (Tech Ident No) boleh diubah pada file tanpa
+            // membuat aset baru. Baris tanpa nomor (file lama, atau baris baru
+            // yang belum punya nomor) jatuh ke pencocokan Kode Alat di bawah.
+            $equipNo = trim((string) ($rowData['equipment_no'] ?? ''));
+
+            if ($equipNo !== '') {
+                if (($hitungNomor[mb_strtoupper($equipNo)] ?? 0) > 1) {
+                    $rowData['alasan']   = 'Equipment No "' . $equipNo . '" muncul lebih dari sekali di file ini.';
+                    $results['ambigu'][] = $rowData;
+
+                    continue;
+                }
+
+                $lewatNomor = Asset::whereRaw('UPPER(TRIM(equipment_no)) = ?', [mb_strtoupper($equipNo)])->first();
+
+                if ($lewatNomor !== null) {
+                    $rowData['asset_id']          = $lewatNomor->id;
+                    $rowData['equipment_no_lama'] = $lewatNomor->equipment_no;
+
+                    // Baris cermin modul lain (perangkat IT, ruang panel)
+                    // dikelola modulnya masing-masing, bukan lewat impor asset.
+                    if (in_array($lewatNomor->data_source, ['it_sync', 'panel_sync'], true)) {
+                        $results['it_sync'][] = $rowData;
+
+                        continue;
+                    }
+
+                    $rowData['dicocokkan_lewat']  = 'equipment_no';
+
+                    // Nilai Kode Alat yang sudah rusak karena konversi
+                    // spreadsheet (mis. "61530" yang aslinya "6153E1") tidak
+                    // boleh menimpa nilai asli di database.
+                    if ($this->kodeAlatTerpotong($techNo, (string) $lewatNomor->tech_ident_no)) {
+                        $rowData['tech_ident_terpotong'] = [
+                            'nilai_file'     => $techNo,
+                            'nilai_database' => $lewatNomor->tech_ident_no,
+                        ];
+                        $rowData['perubahan'] = $this->bandingkanPerubahan($lewatNomor, $rowData, true);
+
+                        $results['duplicate'][] = $rowData;
+
+                        continue;
+                    }
+
+                    // Kode Alat baru yang sudah dipakai aset LAIN membuat
+                    // pencarian alat jadi ambigu, jadi baris tidak ditulis dan
+                    // dilaporkan supaya diperiksa dulu (Riwayat Insiden #15).
+                    $kodeDipakaiLain = Asset::whereRaw('UPPER(TRIM(tech_ident_no)) = ?', [mb_strtoupper($techNo)])
+                        ->where('id', '!=', $lewatNomor->id)
+                        ->get();
+
+                    if ($kodeDipakaiLain->isNotEmpty()) {
+                        $rowData['kandidat_ids'] = $kodeDipakaiLain->pluck('id')->all();
+                        $rowData['kandidat']     = $this->ringkasKandidat($kodeDipakaiLain);
+                        $rowData['alasan']       = 'Kode Alat "' . $techNo . '" sudah dipakai aset lain (Equipment No '
+                            . implode(', ', $kodeDipakaiLain->pluck('equipment_no')->all())
+                            . '), padahal baris ini milik Equipment No ' . $equipNo . '.';
+                        $results['ambigu'][]     = $rowData;
+
+                        continue;
+                    }
+
+                    $rowData['perubahan']   = $this->bandingkanPerubahan($lewatNomor, $rowData);
+                    $results['duplicate'][] = $rowData;
+
+                    continue;
+                }
             }
 
             // Tech Ident No mustahil unik kalau muncul lebih dari sekali di file.
@@ -269,7 +358,8 @@ class ImportService
                     continue;
                 }
 
-                $rowData['perubahan'] = $this->bandingkanPerubahan($existing, $rowData);
+                $rowData['perubahan']        = $this->bandingkanPerubahan($existing, $rowData);
+                $rowData['dicocokkan_lewat'] = 'tech_ident_no';
 
                 $results['duplicate'][] = $rowData;
 
@@ -295,6 +385,7 @@ class ImportService
 
                 $rowData['asset_id']          = $existing->id;
                 $rowData['equipment_no_lama'] = $existing->equipment_no;
+                $rowData['dicocokkan_lewat']  = 'tech_ident_no';
                 $rowData['tech_ident_terpotong'] = [
                     'nilai_file'     => $techNo,
                     'nilai_database' => $existing->tech_ident_no,
@@ -344,6 +435,33 @@ class ImportService
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * Apakah nilai Kode Alat di file adalah bentuk RUSAK dari nilai yang ada di
+     * database karena konversi spreadsheet, mis. file berisi "61530" sedangkan
+     * database menyimpan "6153E1"?
+     *
+     * Dipakai agar pencocokan lewat Equipment No tidak menimpa Kode Alat yang
+     * masih benar dengan nilai yang sudah terpotong.
+     *
+     * @param  string       $nilaiFile      Nilai Kode Alat pada file
+     * @param  string|null  $nilaiDatabase  Nilai Kode Alat di database
+     * @return bool  true bila keduanya sama-sama bentuk angka yang setara
+     */
+    private function kodeAlatTerpotong(string $nilaiFile, ?string $nilaiDatabase): bool
+    {
+        $nilaiFile     = trim($nilaiFile);
+        $nilaiDatabase = trim((string) $nilaiDatabase);
+
+        if ($nilaiFile === '' || $nilaiFile === $nilaiDatabase) {
+            return false;
+        }
+
+        $digitFile     = $this->digitKanonik($nilaiFile);
+        $digitDatabase = $this->digitKanonik($nilaiDatabase);
+
+        return $digitFile !== null && $digitFile === $digitDatabase;
     }
 
     /**
@@ -529,14 +647,21 @@ class ImportService
             // Proses duplikat
             if ($duplicateAction !== 'skip') {
                 foreach ($analysis['duplicate'] as $row) {
-                    // Baris export terbaru tidak lagi memuat Equipment No, jadi
-                    // aset lama bisa juga ditunjuk lewat asset_id hasil analisa
-                    // (pencocokan Tech Ident No).
+                    // Aset lama ditunjuk lewat asset_id hasil analisa (pencocokan
+                    // Equipment No lebih dulu, baru Kode Alat); kolom Equipment
+                    // No di file dipakai sebagai cadangan untuk hasil analisa
+                    // versi lama yang belum membawa asset_id.
                     $existing = !empty($row['asset_id'])
                         ? Asset::find($row['asset_id'])
-                        : Asset::where('equipment_no', $row['equipment_no'])->first();
+                        : Asset::where('equipment_no', $row['equipment_no'] ?? null)->first();
 
-                    if (!$existing) continue;
+                    // Baris tanpa aset tujuan tidak boleh hilang diam-diam:
+                    // setiap baris harus tercatat di salah satu kategori.
+                    if (!$existing) {
+                        $errorCount++;
+
+                        continue;
+                    }
 
                     // Baris cermin modul lain (perangkat IT data_source
                     // 'it_sync', ruang panel data_source 'panel_sync') dikelola
@@ -707,7 +832,7 @@ class ImportService
             $message .= " {$terpotongCount} baris dicocokkan dari nilai Tech Ident No yang terpotong Excel/Google Sheets (nilai Tech Ident No di database dipertahankan).";
         }
         if ($errorCount > 0) {
-            $message .= " {$errorCount} baris dilewati (Functional Location kosong, tanpa Tech Ident No, atau Tech Ident No tidak unik).";
+            $message .= " {$errorCount} baris dilewati (Functional Location kosong, tanpa Kode Alat, atau identitas aset tidak unik).";
         }
         if ($itSyncSkipped > 0) {
             $message .= " {$itSyncSkipped} baris perangkat IT dilewati (data IT dikelola modul IT Assets).";

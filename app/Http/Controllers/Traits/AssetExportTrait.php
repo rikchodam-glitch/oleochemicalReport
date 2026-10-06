@@ -48,16 +48,18 @@ trait AssetExportTrait
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Assets');
 
-        // Kolom laporan (Equipment No sengaja TIDAK diekspor: nomornya dikelola
-        // sistem dan dibuat otomatis saat import baris baru).
+        // Kolom laporan. Equipment No IKUT diekspor (diletakkan di kolom B)
+        // karena nomor itu dipakai sebagai kunci pencocokan utama saat file
+        // diimport kembali: dengan begitu Kode Alat (Tech Ident No) boleh
+        // diubah tanpa membuat aset baru (lihat ImportService::analyzeFile).
         $headers = [
-            'No', 'Description', 'Tech Ident No', 'Equipment Type',
+            'No', 'Equipment No', 'Description', 'Tech Ident No', 'Equipment Type',
             'Functional Loc', 'Company', 'Department', 'Area', 'Sub Area',
             'Manufacturer', 'Model Number', 'Construct Year', 'Status',
             'Data Source',
         ];
 
-        $kolomTerakhir = chr(64 + count($headers)); // A..N
+        $kolomTerakhir = chr(64 + count($headers)); // A..O
         $barisHeader   = 7;
 
         // ---------- Blok judul & keterangan (baris 1-5) ----------
@@ -110,22 +112,24 @@ trait AssetExportTrait
             // Semua kolom data ditulis sebagai TEKS (setCellValueExplicit).
             // Alasannya: nilai seperti Tech Ident No "6153E1" dianggap angka oleh
             // Excel/PhpSpreadsheet (6153 x 10^1) sehingga akan tersimpan sebagai
-            // 61530 dan merusak data saat file diimport ulang.
+            // 61530 dan merusak data saat file diimport ulang. Equipment No juga
+            // ditulis sebagai teks supaya nomor yang berawalan nol tetap utuh.
             $nilaiKolom = [
                 'A' => $no,
-                'B' => $asset->description,
-                'C' => $asset->tech_ident_no,
-                'D' => $asset->equipment_type,
-                'E' => $asset->functional_loc,
-                'F' => $asset->company?->code ?? '',
-                'G' => $asset->department?->code ?? '',
-                'H' => $asset->area?->code ?? '',
-                'I' => $asset->subArea?->code ?? '',
-                'J' => $asset->manufacturer,
-                'K' => $asset->model_number,
-                'L' => $asset->construct_year,
-                'M' => $asset->status,
-                'N' => $asset->data_source,
+                'B' => $asset->equipment_no,
+                'C' => $asset->description,
+                'D' => $asset->tech_ident_no,
+                'E' => $asset->equipment_type,
+                'F' => $asset->functional_loc,
+                'G' => $asset->company?->code ?? '',
+                'H' => $asset->department?->code ?? '',
+                'I' => $asset->area?->code ?? '',
+                'J' => $asset->subArea?->code ?? '',
+                'K' => $asset->manufacturer,
+                'L' => $asset->model_number,
+                'M' => $asset->construct_year,
+                'N' => $asset->status,
+                'O' => $asset->data_source,
             ];
 
             foreach ($nilaiKolom as $kolom => $nilai) {
@@ -191,7 +195,7 @@ trait AssetExportTrait
         $assets   = $this->buildExportQuery($request)->get();
         $filename = 'assets-export-' . now()->format('Y-m-d-His') . '.csv';
 
-        // Keterangan header (tanpa Equipment No, sama seperti export Excel).
+        // Keterangan header (kolom sama dengan export Excel, termasuk Equipment No).
         $info = [
             'DAFTAR ASSET — ASSET MANAGEMENT',
             'Sistem Manajemen Pemeliharaan — Oleochemical Maintenance',
@@ -222,7 +226,7 @@ trait AssetExportTrait
 
             // Baris header kolom
             fputcsv($file, [
-                'No', 'Description', 'Tech Ident No', 'Equipment Type',
+                'No', 'Equipment No', 'Description', 'Tech Ident No', 'Equipment Type',
                 'Functional Loc', 'Company', 'Department', 'Area', 'Sub Area',
                 'Manufacturer', 'Model Number', 'Construct Year', 'Status',
                 'Data Source',
@@ -234,6 +238,7 @@ trait AssetExportTrait
             foreach ($assets as $asset) {
                 fputcsv($file, [
                     $no,
+                    $asset->equipment_no,
                     $asset->description,
                     $asset->tech_ident_no,
                     $asset->equipment_type,

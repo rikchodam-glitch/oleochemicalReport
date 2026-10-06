@@ -1165,6 +1165,65 @@ Batasan penting lingkungan ini:
       barisnya lewat PowerShell (`(Get-Content <berkas>)[a..b]` + nomor baris),
       HANYA untuk membaca — penulisan tetap memakai tool editor.
 
+23. **Import/Export asset berpindah kunci ke Equipment No (diputuskan 06/10/2026, sudah
+    ada kodenya).** Semua perubahan ada di copy DEV
+    `C:\laragon\www\oleochemicalReport`; PROD baru ikut setelah `Deploy-Laporan.bat`
+    dijalankan manusia (TIDAK ada migrasi baru, jadi deploy aman).
+    - Keluhan asal: admin ingin MENGUBAH Kode Alat di file hasil export, tetapi import
+      lama mencocokkan HANYA lewat Tech Ident No sehingga baris ber-kode-baru dibuat
+      sebagai aset BARU (duplikat).
+    - **Export** (`app\Http\Controllers\Traits\AssetExportTrait.php`): kolom
+      **`Equipment No` ditambahkan di kolom B** (setelah `No`) untuk xlsx DAN csv,
+      nilainya ditulis sebagai TEKS (`setCellValueExplicit`) supaya angka nol di depan
+      tidak hilang. Kolom lain bergeser satu: C Description, D Tech Ident No, E
+      Equipment Type, F Functional Loc, ... O Data Source (`$kolomTerakhir` = A..O).
+    - **Import** (`app\Services\ImportService.php`): urutan pencocokan =
+      **(1) Equipment No** (kolom unik; header `Equipment No`/`Equipment` sudah dikenali
+      `buildColMap()` sejak lama, tetapi nilainya dulu dibuang/`''` di `kumpulkanBaris()`),
+      **(2) Tech Ident No** sebagai cadangan bila nomor di file kosong atau belum ada di
+      database, **(3) aset baru** + nomor dibuat `AssetNumberService`. Urutan ini adalah
+      PILIHAN USER saat ditanya 06/10/2026 ("file lama tetap jalan tanpa perubahan").
+      Baris hasil cocok diberi penanda `dicocokkan_lewat`
+      (`equipment_no`/`tech_ident_no`).
+    - Penjaga yang WAJIB ada (jangan dilepas):
+      (a) **Kode Alat baru yang sudah dipakai aset LAIN** walau nomornya cocok -> masuk
+      bucket `ambigu` (Perlu Diperiksa) dan TIDAK ditulis, karena `tech_ident_no` tidak
+      berindeks unik (Riwayat Insiden #15);
+      (b) **Equipment No yang muncul >1 kali di file** -> `ambigu`;
+      (c) nilai Kode Alat yang sudah rusak karena konversi spreadsheet TIDAK menimpa
+      database (`kodeAlatTerpotong()`: "61530" vs "6153E1") -- sebelumnya kasus ini hanya
+      tertangani di jalur Tech Ident No, sekarang ikut di jalur Equipment No (ketahuan
+      dari test lama "Tech Ident No angka yang terpotong Excel...");
+      (d) baris **tanpa Kode Alat tetap masuk bucket `no_equip`** (tidak diproses) supaya
+      sel Kode Alat kosong tidak menghapus nilai yang sudah ada;
+      (e) nomor equipment aset lama TIDAK PERNAH diubah oleh import, dan nomor pada baris
+      BARU tetap diabaikan (dibuat sistem).
+    - **Jebakan yang sudah kena sekali:** penghitung identitas membaca
+      `$baris['equipment_no']`, padahal nilai itu ditaruh di
+      `$baris['data']['equipment_no']` oleh `kumpulkanBaris()`. Karena ada `?? ''` tidak
+      muncul error apa pun; hanya penjaga "nomor dobel di file" yang diam-diam tidak
+      pernah aktif (ketahuan dari test, BUKAN dari peninjauan kode). Karena itu kunci
+      `equipment_no` kini ditulis di LEVEL ATAS array baris (sejajar
+      `tech_ident_no`/`functional_loc`).
+    - Berkas lain yang disesuaikan: `app\Http\Controllers\ImportController.php` (template
+      Excel + lembar Petunjuk memuat kolom `Equipment No` dan urutan pencocokannya;
+      `getStyle('A1:I1')`), `resources\views\assets\import.blade.php` (teks penjelasan
+      pencocokan di halaman import), dan `PROMPT.md` bagian "Export & Import Aset".
+    - Uji: `tests\Feature\AssetImportUpdateTest.php` (32 test; 5 test baru: kode alat
+      diubah tetap dicocokkan lewat Equipment No tanpa aset baru, fallback ke Kode Alat,
+      Kode Alat milik aset lain ditandai perlu diperiksa, Equipment No dobel di file, dan
+      export menulis Equipment No sebagai teks di kolom B). Test lama yang mengunci
+      perilaku "Equipment No tidak diekspor" serta indeks kolom export (B7/C7/E7, C8,
+      indeks 4/6/7/8 pada CSV) ikut disesuaikan. Seluruh suite **433 test hijau (1909
+      assertions)** dan `php artisan view:cache` sukses (06/10/2026).
+    - Bukti uji nyata ke database DEV `oleochemical_dev` (aset id 4302, Equipment No
+      70000292, Kode Alat FBN04): file tanpa mengubah Kode Alat ->
+      `duplicate=1, clean=0, dicocokkan_lewat=equipment_no, perubahan=[]`; file dengan
+      Kode Alat diubah menjadi `FBN04-UJI` -> tetap `duplicate=1, clean=0,
+      dicocokkan_lewat=equipment_no` dengan
+      `perubahan=[{Tech Ident No: FBN04 -> FBN04-UJI}]`. Jumlah aset tidak berubah
+      (4256) karena analisa tidak menulis apa pun.
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file

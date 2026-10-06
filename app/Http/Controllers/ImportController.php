@@ -91,7 +91,8 @@ class ImportController extends Controller
         $sheet->setTitle('Asset Data');
 
         $columns = [
-            'TechIdentNo.'    => 'WAJIB. Identitas unik satu aset (tidak boleh dobel), contoh: AC-TF-1-1',
+            'Equipment No'    => 'OPSIONAL. Nomor aset 8 digit yang dipakai sebagai kunci pencocokan utama saat import. Isi apa adanya dari file hasil Export; kosongkan untuk aset baru (nomornya dibuat sistem).',
+            'TechIdentNo.'    => 'WAJIB bila kolom Equipment No kosong. Kode Alat (identitas unik satu aset), contoh: AC-TF-1-1',
             'Description'     => 'Nama/deskripsi asset, contoh: Motor Pompa Transfer',
             'Object Type'     => 'Kode tipe SAP, contoh: ZPM-MOT / ZPM-PU1',
             'Equipment Type'  => 'Tipe equipment, contoh: MOTOR / PUMP / AC',
@@ -122,7 +123,7 @@ class ImportController extends Controller
             $col++;
         }
 
-        $sheet->getStyle('A1:H1')->getAlignment()->setVertical('center');
+        $sheet->getStyle('A1:I1')->getAlignment()->setVertical('center');
         $sheet->getRowDimension(1)->setRowHeight(22);
         $sheet->freezePane('A2');
 
@@ -136,12 +137,16 @@ class ImportController extends Controller
             '',
             '1. Isi data mulai baris ke-2 pada sheet "Asset Data". JANGAN mengubah nama header di baris 1.',
             '2. Kolom WAJIB: TechIdentNo. dan Functional Loc. Baris yang salah satunya kosong TIDAK akan diimport.',
-            '3. Equipment No TIDAK perlu diisi dan tidak ada di template ini. Nomor equipment dibuat otomatis',
-            '   oleh sistem (id internal) mengikuti seri milik PT dari lokasi yang dipilih.',
-            '4. TechIdentNo. adalah identitas unik satu aset: SATU aset = SATU TechIdentNo.',
-            '   - Baris yang TechIdentNo.-nya sudah ada di database akan MEMPERBARUI aset tersebut.',
-            '   - Baris dengan TechIdentNo. baru akan DITAMBAHKAN sebagai aset baru.',
-            '   - TechIdentNo. yang sama muncul dua kali dalam satu file dilewati (ditandai perlu diperiksa).',
+            '3. Kolom Equipment No bersifat OPSIONAL: nomor itu dipakai sebagai KUNCI Pencocokan utama.',
+            '   - Diisi dan nomornya ada di database -> aset itu DIPERBARUI; Kode Alat (TechIdentNo.) boleh',
+            '     ikut diubah tanpa membuat aset baru.',
+            '   - Diisi tetapi nomornya belum ada di database -> baris dicocokkan lewat TechIdentNo.',
+            '   - Dikosongkan dan TechIdentNo.-nya belum ada -> baris dibuat sebagai aset BARU, nomornya',
+            '     dibuat sistem mengikuti seri milik PT dari lokasi yang dipilih.',
+            '4. TechIdentNo. (Kode Alat) adalah identitas cadangan: dipakai bila kolom Equipment No kosong',
+            '   atau nomornya belum ada di database.',
+            '   - TechIdentNo. baru yang sudah dipakai aset lain membuat baris ditandai "Perlu Diperiksa".',
+            '   - Equipment No atau TechIdentNo. yang muncul dua kali dalam satu file dilewati (perlu diperiksa).',
             '5. Functional Loc. memakai format COMPANY-DEPARTEMEN-AREA-SUBAREA, contoh:',
             '   - EPE-PROD-BD02-6153  (company EPE, dept PROD, area BD02, subarea 6153)',
             '   - EPE-LOGE-ST01       (3 bagian: company, dept, area - tanpa subarea)',

@@ -16,20 +16,22 @@
             <h3 class="font-medium text-slate-900 mb-4">Upload File Excel</h3>
             <p class="text-sm text-slate-500 mb-4">
                 Format .xlsx, .xls, atau .csv (maks 10MB).
-                <br>Kolom yang diproses: TechIdentNo., Description, Object Type, Equipment Type, Functional Loc.,
+                <br>Kolom yang diproses: Equipment No, TechIdentNo., Description, Object Type, Equipment Type, Functional Loc.,
                 Manufacturer, Model number, ConstructYear — <a href="{{ route('assets.import.template') }}" class="text-teal-600 hover:underline font-medium">Download Template Excel</a>
             </p>
 
             <div class="mb-4 rounded-lg border border-teal-100 bg-teal-50 p-3">
                 <p class="text-xs text-teal-800 leading-relaxed">
-                    <span class="font-semibold">Pencocokan memakai Tech Ident No.</span>
-                    Tech Ident No adalah identitas unik satu aset (satu aset = satu Tech Ident No).
-                    Baris yang Tech Ident No-nya sudah ada akan <span class="font-semibold">diperbarui</span>,
-                    yang belum ada akan <span class="font-semibold">ditambahkan sebagai data baru</span>.
+                    <span class="font-semibold">Pencocokan memakai Equipment No (cadangan: Tech Ident No).</span>
+                    Equipment No ikut diexport dan dipakai sebagai kunci pencocokan, sehingga Kode Alat
+                    (Tech Ident No) boleh diubah pada file tanpa membuat aset baru.
+                    Baris yang Equipment No-nya ada di database (atau Tech Ident No-nya sudah ada) akan
+                    <span class="font-semibold">diperbarui</span>,
+                    yang tidak ada di keduanya akan <span class="font-semibold">ditambahkan sebagai data baru</span>.
                     <br>
-                    <span class="font-semibold">Equipment No tidak perlu diisi</span> dan tidak dipakai untuk
-                    pencocokan: nomor itu id internal yang dibuat sistem mengikuti seri milik PT dari lokasi,
-                    sehingga nomor aset lama tidak pernah berubah. Kolom Description, Tech Ident No,
+                    <span class="font-semibold">Equipment No diisi sistem</span> saat aset baru dibuat; kalau nomor di file belum ada di database,
+                    baris dicocokkan lewat Tech Ident No seperti file lama. Nomor aset yang sudah ada tidak pernah berubah,
+                    dan Kode Alat yang diubah ke kode milik aset lain ditandai "Perlu Diperiksa". Kolom Description, Tech Ident No,
                     Equipment Type, Functional Loc, Company/Department/Area/Sub Area, Manufacturer, Model Number,
                     Construct Year, dan Status ikut diperbarui.
                     <br>

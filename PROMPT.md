@@ -374,10 +374,11 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
 ### Export & Import Aset (putaran lengkap: export → sesuaikan → import)
 
 - **Export**: `GET /assets/export/excel` dan `GET /assets/export/csv` (`AssetExportTrait`, filter sama dengan
-  halaman index). Kolom: **No**, Description, Tech Ident No, Equipment Type, Functional Loc,
-  Company, Department, Area, Sub Area, Manufacturer, Model Number, Construct Year, Status, Data Source.
-  **Equipment No sengaja TIDAK diekspor** (nomornya dikelola sistem), dan **baris cermin perangkat IT
-  (`data_source = 'it_sync'`) juga tidak disertakan** — total pada blok keterangan menulis
+  halaman index). Kolom: **No**, **Equipment No (kolom B)**, Description, Tech Ident No, Equipment Type,
+  Functional Loc, Company, Department, Area, Sub Area, Manufacturer, Model Number, Construct Year, Status,
+  Data Source. **Equipment No IKUT diekspor** sejak 06/10/2026 karena dipakai sebagai kunci pencocokan
+  utama saat file diimport kembali (nomornya ditulis sebagai teks supaya angka nol di depan tidak hilang);
+  **baris cermin perangkat IT (`data_source = 'it_sync'`) juga tidak disertakan** — total pada blok keterangan menulis
   "(perangkat IT / it_sync tidak disertakan)". Data perangkat IT diputar lewat
   `GET /it-assets/import` di modul IT Assets, bukan lewat export/import asset industri.
 - **Header file export profesional**: blok judul di baris 1-5 (judul "DAFTAR ASSET — ASSET MANAGEMENT",
@@ -392,12 +393,22 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
 - **Import**: `GET /assets/import` → analisa file → pilih aksi → eksekusi (`ImportService`).
   Baris header **dicari otomatis** pada 20 baris pertama, sehingga file berblok judul (hasil export)
   tetap terbaca; kolom yang dikenali mencakup nama SAP **dan** nama kolom export.
-- **KUNCI Pencocokan = Tech Ident No** (keputusan bisnis: satu aset = satu Tech Ident No, tidak boleh dobel).
-  Equipment No **tidak dibaca sama sekali** dari file: nomor adalah id internal yang dibuat sistem.
+- **KUNCI Pencocokan (diubah 06/10/2026 atas instruksi user) = Equipment No lebih dulu, baru Tech Ident No
+  (Kode Alat).** Baris yang Equipment No-nya ada di database MEMPERBARUI aset itu, termasuk bila Kode
+  Alatnya ikut diubah, sehingga putaran export -> ubah Kode Alat -> import TIDAK lagi membuat aset baru
+  (inilah keluhan yang diperbaiki). Kalau nomor di file kosong atau belum ada di database, baris
+  dicocokkan lewat Tech Ident No seperti dulu; kalau keduanya tidak ada, baris menjadi aset BARU dan
+  nomornya dibuat sistem (`AssetNumberService`). Nomor aset lama tidak pernah diubah oleh import, dan
+  nomor yang tertulis pada baris BARU tetap diabaikan (dibuat sistem).
+  Penjaga yang ikut berlaku: Kode Alat baru yang **sudah dipakai aset lain** (walau nomornya cocok)
+  ditandai perlu diperiksa, dan **Equipment No yang muncul lebih dari sekali di file** juga ditandai
+  perlu diperiksa (keduanya masuk bucket `ambigu`, tidak ditulis).
   Bucket hasil analisa: `clean` = **data baru**, `duplicate` = **akan diperbarui** (plus key `perubahan`
-  berisi daftar field yang berubah: field, lama, baru), `no_equip` = baris tanpa Tech Ident No,
-  `bad_funcloc` = tanpa Functional Loc. (funcloc_id wajib), `ambigu` = Tech Ident No dobel di file
-  atau dipakai >1 aset di database (dilewati + alasan ditampilkan), `it_sync` = baris cermin perangkat IT
+  berisi daftar field yang berubah: field, lama, baru, dan penanda `dicocokkan_lewat` bernilai
+  `equipment_no` atau `tech_ident_no`), `no_equip` = baris tanpa Tech Ident No,
+  `bad_funcloc` = tanpa Functional Loc. (funcloc_id wajib), `ambigu` = identitas ganda (Equipment No atau
+  Tech Ident No dobel di file, dipakai >1 aset di database, atau Kode Alat baru milik aset lain),
+  `it_sync` = baris cermin perangkat IT
   (**tidak diproses import asset**: barisnya dicocokkan ke aset `data_source = 'it_sync'` lalu dilaporkan
   terpisah, karena datanya dikelola di modul IT Assets lewat `GET /it-assets/import` +
   `php artisan it:sync-assets`). Total semua bucket selalu sama dengan jumlah baris yang dibaca.
@@ -414,6 +425,8 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
   (angka pertama nomor yang sudah ada; cadangan di `config('assets.equipment_no.awalan_pt')`,
   contoh nyata EPE=1, CES=6, NPA=7) dan dilanjutkan dari nomor terbesar pada seri itu (nomor yang sudah
   dipakai otomatis dilewati). Nomor aset lama **tidak pernah** diubah oleh import maupun form edit.
+  Kolom **Equipment No pada file import hanya dipakai untuk MENCOCOKKAN aset lama** (lihat butir
+  "KUNCI Pencocokan" di atas); pada baris baru nilainya diabaikan dan nomornya tetap dibuat sistem.
 - **Tambah/Edit Asset**: Equipment No hanya ditampilkan sebagai informasi (tidak ada input-nya), karena
   nomor dibuat sistem. Nilai `equipment_no` yang tetap dikirim ke request diabaikan controller.
   Pada form Tambah, begitu lokasi dipilih, nomor yang akan dipakai ditampilkan lewat
