@@ -118,6 +118,8 @@ Seluruh pengaturan ada di `config/panel.php` dan bisa ditimpa lewat `.env`:
 | `panel.tampilan.jumlah_titik_grafik` | 60 | Jumlah titik pada grafik |
 | `panel.tampilan.jumlah_baris_riwayat` | 20 | Jumlah baris tabel riwayat |
 | `panel.maks_pembacaan_per_tarik` | 400 | Batas pembacaan yang diambil per penarikan (dibuat lebih besar dari buffer perangkat) |
+| `panel.sketch.port_tcp` | 5000 | Port TCP layanan JSON pada sketsa dashboard |
+| `panel.sketch.jeda_simpan_detik` | 60 | Jarak minimum antar penyimpanan saat nilainya tidak berubah (nilai berubah selalu disimpan) |
 
 Catatan: jeda `jeda_gagal_detik` penting saat perangkat belum terpasang. Tanpa
 jeda itu, setiap polling halaman akan menunggu batas waktu HTTP (3 detik) untuk
@@ -210,3 +212,47 @@ langsung terisi data begitu perangkat ESP32 terpasang dan firmware di-upload.
   ditampilkan di kartu, tetapi belum mengirim notifikasi. Bila diperlukan,
   modul notifikasi IT yang ada (`it_notifications`) bisa dipakai sebagai contoh
   pola.
+
+## 10. Dukungan dua bentuk perangkat (ditambahkan 6 Oktober 2026)
+
+Modul ini bisa membaca dua bentuk layanan perangkat. Bentuk yang dipakai dipilih
+per ruangan lewat kolom `panel_ruangan.protokol` pada form ruangan ("Cara baca
+perangkat"):
+
+| Nilai | Perangkat | Cara membaca | Punya buffer? |
+|---|---|---|---|
+| `otomatis` (bawaan) | mana saja | coba JSON API, lalu JSON TCP, lalu dashboard HTML | ikut perangkat |
+| `api-json` | firmware resmi repo ini (versi 1.0.x) | `GET /api/status` lalu `GET /api/buffer?since=ID` di port 80 | ya (360 pembacaan) |
+| `tcp-json` | sketsa dashboard (`sensor-suhu-esp32/firmware/sketch_dashboard/`) | satu baris JSON dari port TCP 5000 (server mengirim satu byte lebih dulu) | tidak |
+| `html` | sketsa dashboard | angka `Suhu:` dan `Kelembaban:` dibaca dari dashboard HTML port 80 | tidak |
+
+Bedanya jalur tanpa buffer (`tcp-json` dan `html`): nilai hanya berlaku saat itu,
+jadi waktu pengukuran memakai jam server, nomor pembacaan naik sendiri, dan nilai
+yang tidak berubah hanya disimpan ulang setelah `panel.sketch.jeda_simpan_detik`
+(bawaan 60 detik) supaya tabel tidak penuh angka yang sama. Nilai yang berubah
+selalu langsung disimpan.
+
+Penjaga nilai nol: sketsa mengirim `0,00/0,00` selama sensor belum pernah
+berhasil membaca (variabel di sketsa diawali nol). Pasangan nol itu dianggap
+"sensor belum membaca", sehingga ruangan ditandai online + catatan wiring dan
+TIDAK ada baris pembacaan yang disimpan.
+
+### Hasil verifikasi dengan perangkat asli (6 Oktober 2026)
+
+Perangkat `192.168.41.240` menjalankan sketsa dashboard; sensor DHT belum
+terpasang sehingga nilainya masih nol.
+
+| Pemeriksaan | Hasil |
+|---|---|
+| `bacaJsonHttp('http://192.168.41.240/api/status')` | null (sketsa tidak punya JSON API) |
+| `bacaJsonTcp('192.168.41.240', 5000)` | `{"device":"ESP32_W5500",...,"temperature":0.0,"humidity":0.0,"uptime_sec":746}` |
+| `bacaDashboardHtml('192.168.41.240', 80)` | suhu 0,0 dan kelembapan 0,0 dari dashboard HTML |
+| `tarikPembacaan` ruangan **Ruang Panel EPE 1** | berhasil, `baru=0`, pesan "Perangkat terhubung, tetapi sensor belum mengirim pembacaan." |
+| Status ruangan sesudahnya | `online`, catatan berisi petunjuk wiring sensor, TIDAK ada baris palsu tersimpan |
+| Uji koneksi | ping online 3 ms, sumber `tcp-json`, `sensor_membaca=false` |
+| Uji otomatis | `tests/Feature/PanelProtokolSketchTest.php` 12 test hijau (suite 388 test) |
+
+Angka suhu akan otomatis muncul di kartu dan grafik begitu sensor DHT tersambung
+pada GPIO yang benar di sketsa (tidak ada perubahan kode yang perlu dilakukan
+lagi).
+

@@ -902,6 +902,67 @@ Batasan penting lingkungan ini:
       **372 test hijau (1631 assertions)** dan `php artisan view:cache` sukses
       (05/10/2026).
 
+20. **Ruang panel: dukung sketsa dashboard (JSON TCP + HTML), bukan hanya
+    firmware resmi (diputuskan 06/10/2026, sudah ada kodenya).** Semua perubahan
+    ada di copy DEV `C:\laragon\www\oleochemicalReport`.
+    - Latar: perangkat nyata yang dipakai user (`192.168.41.240`) menjalankan
+      **sketsa sendiri** — port 80 menyajikan dashboard HTML (`Refresh: 3`, teks
+      `Suhu: xx.xx` dan `Kelembaban: xx.xx`) dan port **TCP 5000** menyajikan
+      satu baris JSON
+      `{"device":"ESP32_W5500","ip":"...","temperature":..,"humidity":..,"uptime_sec":..}`.
+      Sketsa itu TIDAK punya `/api/status` maupun buffer, sehingga modul panel
+      lama (yang hanya membaca JSON API firmware) selalu menilai perangkat
+      offline. Diverifikasi LANGSUNG ke perangkat, bukan asumsi:
+      `GET /api/status` menjawab HTML (jadi `Http::json()` null), dan TCP 5000
+      baru membalas SETELAH klien mengirim satu byte (lihat `handleTCPClients()`
+      pada sketsa) — karena itu `PanelPerangkatReader::bacaJsonTcp()` menulis
+      `"\n"` lebih dulu.
+    - Kolom BARU `panel_ruangan.protokol` (migration
+      `2026_10_06_000001_add_protokol_to_panel_ruangan_table.php`, bawaan
+      `otomatis`): `otomatis` | `api-json` | `tcp-json` | `html`. Daftarnya di
+      `PanelRuangan::PROTOKOL`, label tampilan lewat `labelProtokol()`.
+      Urutan `otomatis` = JSON API (paling informatif) -> JSON TCP -> dashboard
+      HTML. Ruangan lama tidak perlu diubah karena bawaannya `otomatis`.
+    - Pembaca mentah dipisah ke **`App\Services\PanelPerangkatReader`**
+      (`bacaJsonHttp`, `bacaJsonTcp`, `bacaDashboardHtml`) supaya bisa diganti
+      tiruan saat pengujian — jangan mengembalikan HTTP/TCP langsung ke dalam
+      `PanelSensorService`.
+    - `PanelSensorService` bercabang pada penanda `sumber` jawaban. Jalur lama
+      (`json-api`) tetap memakai buffer + `id_perangkat` milik perangkat.
+      Perangkat tanpa buffer (`tcp-json`/`html`) memakai jalur BARU
+      `tarikDariNilaiTerkini()`: `waktu` = waktu penarikan server, `sesi_boot`
+      tetap `'sk'`, `id_perangkat` naik sendiri (`max(id_perangkat)+1`).
+      **Nilai yang tidak berubah hanya disimpan ulang setelah
+      `panel.sketch.jeda_simpan_detik` (bawaan 60 detik); nilai yang berubah
+      selalu langsung disimpan.** Port TCP diatur `panel.sketch.port_tcp`
+      (bawaan 5000).
+    - **Jebakan yang harus diingat:** penanda `sumber` WAJIB ikut disisipkan ke
+      dalam array status (`$mentah['sumber'] = 'json-api'`), bukan hanya di
+      pembungkus hasil. Versi pertama hanya menaruhnya di pembungkus sehingga
+      perangkat firmware resmi salah dianggap perangkat sketsa (tersimpan 0
+      pembacaan). Ketahuan dari test, bukan dari peninjauan kode.
+    - **Penjaga nilai nol:** sketsa mengirim `0,00/0,00` selama sensor belum
+      pernah berhasil membaca (variabelnya diawali nol, lihat `buildJSONData()`),
+      jadi pasangan suhu DAN kelembapan nol dianggap "sensor belum membaca":
+      ruangan ditandai online + `catatan` berisi petunjuk wiring, TANPA menyimpan
+      baris pembacaan supaya grafik tidak tertipu angka nol. Penentunya
+      `PanelSensorService::sensorMembaca()`.
+    - Tampilan: pilihan "Cara baca perangkat" di form ruangan, nama protokol di
+      kartu ruangan (`protokol_label` dari `/panel/data`), dan baris "Sumber
+      jawaban" pada modal Uji Koneksi. Pesan uji koneksi perangkat tanpa buffer
+      memakai cabang sendiri di `PanelRuanganController::pesanUjiKoneksi()`
+      (tidak menyebut W5500/firmware karena sketsa tidak melaporkannya).
+    - Uji: `tests/Feature/PanelProtokolSketchTest.php` (12 test, 45 assertions;
+      memakai tiruan `PanelPerangkatReader` + `ItPingService` sehingga tidak
+      membuka soket nyata). Seluruh suite **388 test hijau (1688 assertions)**
+      dan `php artisan view:cache` sukses (06/10/2026). Bukti uji nyata ke
+      perangkat user: `sumber=tcp-json`, ping `online` 3 ms, status ruangan
+      `online`, catatan "sensor belum mengirim pembacaan", TIDAK ada baris palsu
+      tersimpan, dan `bacaDashboardHtml()` membaca angka asli dari dashboard
+      port 80 perangkat.
+    - Naik ke PROD lewat `Deploy-Laporan.bat` (migrasi `protokol` ikut jalan).
+
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file

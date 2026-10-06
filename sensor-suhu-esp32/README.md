@@ -321,3 +321,37 @@ Nomor versi firmware pada Serial Monitor bisa dicocokkan dengan yang tampil di
 kotak Uji Koneksi halaman panel, sehingga diketahui pasti versi firmware yang
 sedang berjalan di perangkat.
 
+
+## 14. Sketsa dashboard (JSON TCP port 5000 + HTML) yang juga didukung
+
+Selain firmware di `firmware/ethernet_dht11/`, modul **Monitoring Ruang Panel**
+pada aplikasi Laravel juga bisa membaca **sketsa dashboard** yang lebih
+sederhana: port 80 menyajikan halaman HTML berisi `Suhu: xx.xx` dan
+`Kelembaban: xx.xx`, dan port **TCP 5000** menyajikan satu baris JSON:
+
+```json
+{"device":"ESP32_W5500","ip":"192.168.41.240","temperature":27.50,"humidity":64.00,"uptime_sec":746}
+```
+
+Salinan sketsa itu ada di `firmware/sketch_dashboard/sketch_dashboard.ino`
+sebagai acuan (pin sensor di sketsa itu GPIO27 dan tipe sensor diatur lewat
+`#define DHTTYPE`). Perbedaan yang perlu diketahui:
+
+| Hal | Firmware repo ini | Sketsa dashboard |
+|---|---|---|
+| Endpoint data | `GET /api/status` + `GET /api/buffer?since=ID` (JSON, port 80) | JSON satu baris dari port TCP 5000 |
+| Dashboard | halaman monitoring bawaan firmware | halaman HTML port 80 (`Refresh: 3`) |
+| Buffer pembacaan | ada (360 pembacaan) | tidak ada (hanya nilai terkini) |
+| Balasan TCP | - | baru membalas setelah klien mengirim satu byte |
+
+Cara memilihnya di halaman panel: kolom **Cara baca perangkat** pada form ruangan
+(`Otomatis`, `JSON API firmware`, `JSON TCP sketch dashboard`, `Dashboard HTML
+sketch`). Bawaannya `Otomatis`, sehingga perangkat yang sudah berjalan tetap
+terbaca tanpa pengaturan ulang.
+
+Catatan penting untuk sketsa dashboard: selama sensor belum berhasil membaca,
+sketsa mengirim `0,00` untuk suhu DAN kelembapan. Aplikasi menganggap pasangan
+nol itu sebagai "sensor belum membaca" — ruangan tetap ditandai online, angka nol
+tidak disimpan, dan catatan pada kartu ruangan berisi petunjuk pemeriksaan wiring
+sensor.
+
