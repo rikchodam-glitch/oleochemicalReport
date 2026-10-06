@@ -533,17 +533,26 @@ Batasan penting lingkungan ini:
      Teknisi; Manajemen User memakai ikon kunci, Hak Akses memakai ikon
      perisai.
 
-14. **Step Temuan (finding) + format daftar alat (diputuskan 01/10/2026,
-   sudah ada kodenya — jangan diubah tanpa instruksi user):**
-   - Wizard Telegram punya step BARU **Step 5b (temuan)** setelah root cause:
-     `ReportWizardService::STEP_FINDING` + `buildFindingPrompt()`,
-     `handleFindingInput()`, `lewatiTemuan()` di `WizardStepHandlerTrait`.
-     Root cause DAN temuan sama-sama **opsional**: tombol `Lewati Root Cause`
-     (`wizard:confirm:rootcause_skip`) dan `Lewati Temuan`
-     (`wizard:confirm:finding_skip`); teks `-`, `skip`, `lewati`, `tidak`,
+14. **Step Temuan (finding) + format daftar alat (diputuskan 01/10/2026;
+   URUTANNYA DIBALIK 06/10/2026 atas instruksi user — jangan diubah lagi
+   tanpa instruksi user):**
+   - Wizard Telegram sekarang menjalankan **temuan lebih dulu (Step 5a) baru
+     root cause (Step 5b)**: `ReportWizardService::STEP_FINDING` +
+     `buildFindingPrompt()`, `handleFindingInput()`, `lewatiTemuan()` di
+     `WizardStepHandlerTrait`. Alurnya: durasi (Step 4) -> TEMUAN (5a) ->
+     ROOT CAUSE (5b) -> foto dokumentasi (Step 6). Jadi `duration_ok` menuju
+     STEP_FINDING, temuan (teks atau tombol lewati) menuju STEP_ROOT_CAUSE,
+     dan root cause (teks, tombol lewati, atau `rootcause_ok` dari deteksi AI)
+     baru menuju STEP_PHOTO_DOCUMENTATION. Urutan lama (root cause lalu
+     temuan) JANGAN dihidupkan kembali tanpa instruksi user.
+     Root cause DAN temuan sama-sama **opsional**: tombol `Lewati Temuan`
+     (`wizard:confirm:finding_skip`) dan `Lewati Root Cause`
+     (`wizard:confirm:rootcause_skip`); teks `-`, `skip`, `lewati`, `tidak`,
      `tidak ada` juga diperlakukan sebagai lewati
-     (`teksMenandakanLewati()`). `rootcause_ok` (root cause hasil deteksi AI)
-     sekarang menuju STEP_FINDING, BUKAN langsung foto dokumentasi.
+     (`teksMenandakanLewati()`).
+   - Uji penjaga urutan: `tests/Feature/ReportFindingStepTest.php` (18 test).
+     Uji mutasi 06/10/2026: mengembalikan transisi durasi ke STEP_ROOT_CAUSE
+     dan transisi temuan ke STEP_PHOTO_DOCUMENTATION membuat 3 test GAGAL.
    - Temuan disimpan di kolom BARU **`reports.finding`** (text nullable;
      migration `2026_10_01_000001_add_finding_to_reports_table.php`) dan ikut
      tersalin ke baris salinan multi alat karena dikirim lewat `$dataLaporan`

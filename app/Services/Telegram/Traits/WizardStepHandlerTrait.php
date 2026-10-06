@@ -16,10 +16,10 @@ use Illuminate\Support\Facades\Log;
  *   - buildWorkDurationPrompt()     : Bangun prompt Step 4 (input durasi)
  *   - handleDurationInput()         : Proses teks durasi yang diketik teknisi
  *   - advanceToWorkDuration()       : Transisi ke Step 4 dari step sebelumnya
- *   - buildRootCausePrompt()        : Bangun prompt Step 5 (input root cause, bisa dilewati)
- *   - handleRootCauseInput()        : Proses teks root cause dari teknisi
- *   - buildFindingPrompt()          : Bangun prompt Step 5b (input temuan, opsional)
+ *   - buildFindingPrompt()          : Bangun prompt Step 5a (input temuan, opsional, bisa dilewati)
  *   - handleFindingInput()          : Proses teks temuan dari teknisi
+ *   - buildRootCausePrompt()        : Bangun prompt Step 5b (input root cause, bisa dilewati)
+ *   - handleRootCauseInput()        : Proses teks root cause dari teknisi
  *   - buildPhotoDocumentationPrompt(): Bangun prompt Step 6 (foto dokumentasi)
  *   - buildPhotoHygienePrompt()     : Bangun prompt Step 7 (foto hygiene clearance)
  *   - handlePhotoCommand()          : Proses perintah teks di step foto
@@ -38,7 +38,8 @@ use Illuminate\Support\Facades\Log;
  *   - equipmentLabel(array $state): string
  *   - saveState(string $chatId, array $state): void
  *   - destroyWizard(string $chatId): void
- *   - buildRootCausePrompt(array $state): array  -- dipakai oleh handleDurationInput
+ *   - buildFindingPrompt(array $state): array       -- dipakai oleh handleDurationInput (Step 4)
+ *   - buildRootCausePrompt(array $state): array     -- dipakai oleh handleFindingInput/lewatiTemuan
  *   - buildPhotoDocumentationPrompt(array $state): array
  *   - buildPhotoHygienePrompt(array $state): array
  *   - buildCollaboratorPrompt(array $state): array
@@ -51,10 +52,17 @@ use Illuminate\Support\Facades\Log;
  *   - $this->collaboratorSearch (App\Services\Telegram\CollaboratorSearchService)
  *     dipakai oleh handleCollaboratorInput() untuk pencarian NIK/nama kolaborator.
  *
- * CATATAN — Navigasi Kembali/Batal (Step 4, 5, 6, 7, 8a):
+ * CATATAN — URUTAN STEP 5 (diubah 06/10/2026 atas instruksi user):
+ * Step 5a = TEMUAN, Step 5b = ROOT CAUSE. Temuan ditanyakan LEBIH DULU
+ * supaya teknisi mencatat kondisi yang terlihat sebelum menyimpulkan
+ * penyebabnya. Urutan lama (root cause lalu temuan) JANGAN dihidupkan
+ * kembali tanpa instruksi user; keduanya tetap opsional dan punya tombol
+ * lewati masing-masing.
+ *
+ * CATATAN — Navigasi Kembali/Batal (Step 4, 5a, 5b, 6, 7, 8a):
  * pushStepHistory() WAJIB dipanggil dengan step YANG SEDANG DITINGGALKAN
- * sesaat sebelum $state['step'] diubah ke step berikutnya (Step 4 -> 5,
- * Step 5 -> 6, Step 6 -> 7, Step 7 -> 8a, Step 8a -> 8).
+ * sesaat sebelum $state['step'] diubah ke step berikutnya (Step 4 -> 5a,
+ * Step 5a -> 5b, Step 5b -> 6, Step 6 -> 7, Step 7 -> 8a, Step 8a -> 8).
  * Push Step 8a dilakukan di WizardCallbackHandlerTrait::handleConfirmationCallback()
  * pada case collab_skip dan collab_done — bukan di sini — karena transisi ke
  * STEP_CONFIRMATION hanya terjadi via callback, bukan via input teks.
@@ -287,18 +295,18 @@ trait WizardStepHandlerTrait
         $state['work_duration_minutes'] = $range['minutes'];
         $state['start_time']            = $range['start'];
         $state['end_time']              = $range['end'];
-        $state['step']                  = self::STEP_ROOT_CAUSE;
+        $state['step']                  = self::STEP_FINDING;
         $this->saveState($chatId, $state);
 
-        return $this->buildRootCausePrompt($state);
+        return $this->buildFindingPrompt($state);
     }
 
     // =========================================================
-    // STEP 5 — ROOT CAUSE
+    // STEP 5b — ROOT CAUSE (dijalankan SETELAH temuan / Step 5a)
     // =========================================================
 
     /**
-     * Bangun pesan prompt Step 5 (root cause).
+     * Bangun pesan prompt Step 5b (root cause).
      * Jika AI sudah mendeteksi root cause, tampilkan keyboard konfirmasi.
      *
      * @param  array $state State wizard
@@ -312,7 +320,7 @@ trait WizardStepHandlerTrait
         if (!empty($state['root_cause'])) {
             $existing = $state['root_cause'];
             return [
-                'message'  => "*Step 5/8* — Root Cause\n\n" .
+                'message'  => "*Step 5b/8* — Root Cause\n\n" .
                     "Root cause yang terdeteksi dari laporan:\n_{$existing}_\n\n" .
                     "Gunakan root cause ini atau ketik yang baru:",
                 'keyboard' => array_merge(
@@ -327,7 +335,7 @@ trait WizardStepHandlerTrait
         }
 
         return [
-            'message'  => "*Step 5/8* — Root Cause\n\n" .
+            'message'  => "*Step 5b/8* — Root Cause\n\n" .
                 "Equipment: *{$equipmentLabel}*\n" .
                 "Durasi: *{$duration}*\n\n" .
                 "Ketik *root cause* (penyebab kerusakan/pekerjaan), atau tekan " .
@@ -342,7 +350,7 @@ trait WizardStepHandlerTrait
     }
 
     /**
-     * Proses teks root cause yang diketik teknisi di Step 5.
+     * Proses teks root cause yang diketik teknisi di Step 5b.
      *
      * @param  string $chatId Chat ID Telegram
      * @param  string $text   Input teks dari teknisi
@@ -372,36 +380,38 @@ trait WizardStepHandlerTrait
 
         $state                = $this->pushStepHistory($state, self::STEP_ROOT_CAUSE);
         $state['root_cause']  = $trimmed;
-        $state['step']        = self::STEP_FINDING;
+        $state['step']        = self::STEP_PHOTO_DOCUMENTATION;
         $this->saveState($chatId, $state);
 
-        return $this->buildFindingPrompt($state);
+        return $this->buildPhotoDocumentationPrompt($state);
     }
 
     /**
      * Lewati pengisian root cause (tombol "Lewati Root Cause" atau teks yang
-     * menandakan lewati), lalu lanjut ke step temuan.
+     * menandakan lewati), lalu lanjut ke foto dokumentasi (Step 6).
      *
      * @param  string $chatId Chat ID Telegram
      * @param  array  $state  State wizard saat ini
-     * @return array  Respons prompt temuan
+     * @return array  Respons prompt foto dokumentasi
      */
     protected function lewatiRootCause(string $chatId, array $state): array
     {
         $state                = $this->pushStepHistory($state, self::STEP_ROOT_CAUSE);
         $state['root_cause']  = null;
-        $state['step']        = self::STEP_FINDING;
+        $state['step']        = self::STEP_PHOTO_DOCUMENTATION;
         $this->saveState($chatId, $state);
 
-        return $this->buildFindingPrompt($state);
+        return $this->buildPhotoDocumentationPrompt($state);
     }
 
     // =========================================================
-    // STEP 5b — TEMUAN (FINDING, OPSIONAL)
+    // STEP 5a — TEMUAN (FINDING, OPSIONAL): lebih dulu dari root cause
     // =========================================================
 
     /**
-     * Bangun pesan prompt temuan (Step 5b) — opsional, boleh dilewati.
+     * Bangun pesan prompt temuan (Step 5a) — opsional, boleh dilewati.
+     * Ditanyakan SEBELUM root cause (Step 5b): teknisi mencatat kondisi yang
+     * terlihat dulu, baru menyimpulkan penyebabnya.
      *
      * @param  array $state State wizard
      * @return array Respons dengan tombol "Lewati Temuan" + navigasi
@@ -409,7 +419,7 @@ trait WizardStepHandlerTrait
     protected function buildFindingPrompt(array $state): array
     {
         return [
-            'message'  => "*Step 5b/8* — Temuan (Opsional)\n\n" .
+            'message'  => "*Step 5a/8* — Temuan (Opsional)\n\n" .
                 "Ketik *temuan* yang terlihat di lapangan (kondisi alat, kebocoran, " .
                 "kelainan bunyi/getaran, dsb).\n\n" .
                 "Tekan *Lewati Temuan* bila tidak ada temuan yang perlu dicatat:",
@@ -423,14 +433,14 @@ trait WizardStepHandlerTrait
     }
 
     /**
-     * Proses teks temuan yang diketik teknisi di Step 5b.
+     * Proses teks temuan yang diketik teknisi di Step 5a.
      * Field ini OPSIONAL: teks kosong atau kata "skip"/"lewati"/"-" dianggap
      * sama dengan menekan tombol "Lewati Temuan".
      *
      * @param  string $chatId Chat ID Telegram
      * @param  string $text   Input teks dari teknisi
      * @param  array  $state  State wizard saat ini
-     * @return array  Respons prompt foto dokumentasi
+     * @return array  Respons prompt root cause (Step 5b)
      */
     protected function handleFindingInput(string $chatId, string $text, array $state): array
     {
@@ -453,29 +463,29 @@ trait WizardStepHandlerTrait
             ];
         }
 
-        $state               = $this->pushStepHistory($state, self::STEP_FINDING);
-        $state['finding']    = $trimmed;
-        $state['step']       = self::STEP_PHOTO_DOCUMENTATION;
+        $state            = $this->pushStepHistory($state, self::STEP_FINDING);
+        $state['finding'] = $trimmed;
+        $state['step']    = self::STEP_ROOT_CAUSE;
         $this->saveState($chatId, $state);
 
-        return $this->buildPhotoDocumentationPrompt($state);
+        return $this->buildRootCausePrompt($state);
     }
 
     /**
-     * Lewati pengisian temuan (tombol "Lewati Temuan"), lanjut ke foto dokumentasi.
+     * Lewati pengisian temuan (tombol "Lewati Temuan"), lanjut ke root cause.
      *
      * @param  string $chatId Chat ID Telegram
      * @param  array  $state  State wizard saat ini
-     * @return array  Respons prompt foto dokumentasi
+     * @return array  Respons prompt root cause (Step 5b)
      */
     protected function lewatiTemuan(string $chatId, array $state): array
     {
         $state            = $this->pushStepHistory($state, self::STEP_FINDING);
         $state['finding'] = null;
-        $state['step']    = self::STEP_PHOTO_DOCUMENTATION;
+        $state['step']    = self::STEP_ROOT_CAUSE;
         $this->saveState($chatId, $state);
 
-        return $this->buildPhotoDocumentationPrompt($state);
+        return $this->buildRootCausePrompt($state);
     }
 
     /**

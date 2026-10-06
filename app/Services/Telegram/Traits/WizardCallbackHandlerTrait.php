@@ -692,8 +692,8 @@ trait WizardCallbackHandlerTrait
 
     /**
      * Navigasi antar step melalui callback konfirmasi wizard:confirm:<action>.
-     * Menangani transisi dari Step 4 (durasi), Step 5 (root cause, bisa
-     * dilewati), Step 5b (temuan, bisa dilewati), Step 6-7 (foto), Step 8a
+     * Menangani transisi dari Step 4 (durasi), Step 5a (temuan, bisa
+     * dilewati), Step 5b (root cause, bisa dilewati), Step 6-7 (foto), Step 8a
      * (kolaborator), hingga Step 8 (simpan/batalkan).
      *
      * @param  string $chatId       Chat ID Telegram
@@ -706,12 +706,12 @@ trait WizardCallbackHandlerTrait
         $action = str_replace('wizard:confirm:', '', $callbackData);
 
         switch ($action) {
-            // Step 4 — durasi OK: maju ke Step 5
+            // Step 4 — durasi OK: maju ke Step 5a (temuan lebih dulu)
             case 'duration_ok':
                 $state          = $this->pushStepHistory($state, self::STEP_WORK_DURATION);
-                $state['step']  = self::STEP_ROOT_CAUSE;
+                $state['step']  = self::STEP_FINDING;
                 $this->saveState($chatId, $state);
-                return $this->buildRootCausePrompt($state);
+                return $this->buildFindingPrompt($state);
 
             // Step 4 — durasi diubah: minta input ulang (tetap di Step 4, tidak push history)
             // RAPIKAN SESI 6: teks contoh sebelumnya ("2 jam", "30 menit", "1:30") sudah
@@ -727,22 +727,22 @@ trait WizardCallbackHandlerTrait
                     'keyboard' => $this->navigationButtons($state),
                 ];
 
-            // Step 5 — root cause OK (dari deteksi AI): maju ke step temuan.
+            // Step 5b — root cause OK (dari deteksi AI): maju ke foto dokumentasi.
             case 'rootcause_ok':
                 $state          = $this->pushStepHistory($state, self::STEP_ROOT_CAUSE);
-                $state['step']  = self::STEP_FINDING;
+                $state['step']  = self::STEP_PHOTO_DOCUMENTATION;
                 $this->saveState($chatId, $state);
-                return $this->buildFindingPrompt($state);
+                return $this->buildPhotoDocumentationPrompt($state);
 
-            // Step 5 — root cause dilewati: root cause dikosongkan, maju ke temuan.
+            // Step 5b — root cause dilewati: root cause dikosongkan, maju ke foto dokumentasi.
             case 'rootcause_skip':
                 return $this->lewatiRootCause($chatId, $state);
 
-            // Step 5b — temuan dilewati: lanjut ke foto dokumentasi.
+            // Step 5a — temuan dilewati: lanjut ke root cause (Step 5b).
             case 'finding_skip':
                 return $this->lewatiTemuan($chatId, $state);
 
-            // Step 5 — root cause diubah (tetap di Step 5, tidak push history)
+            // Step 5b — root cause diubah (tetap di Step 5b, tidak push history)
             case 'rootcause_change':
                 $state['root_cause'] = null;
                 $this->saveState($chatId, $state);

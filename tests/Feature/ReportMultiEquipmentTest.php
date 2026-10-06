@@ -165,9 +165,10 @@ test('menyimpan laporan membuat baris salinan per alat dengan dokumentasi sama',
         ->and($wizard->getState($this->chatId)['step'])->toBe(ReportWizardService::STEP_WORK_DURATION);
 
     // Konfirmasi jam kerja, lalu jalani sisa langkah sampai ringkasan konfirmasi.
+    // Urutan langkah opsional: temuan (5a) dulu, baru root cause (5b).
     $wizard->handleCallback($this->chatId, 'wizard:confirm:duration_ok');
-    $wizard->handleCallback($this->chatId, 'wizard:confirm:rootcause_ok');
     $wizard->handleCallback($this->chatId, 'wizard:confirm:finding_skip');
+    $wizard->handleCallback($this->chatId, 'wizard:confirm:rootcause_ok');
     $wizard->handleCallback($this->chatId, 'wizard:confirm:photo_doc_skip');
     $wizard->handleCallback($this->chatId, 'wizard:confirm:photo_hygiene_skip');
     $ringkasan = $wizard->handleCallback($this->chatId, 'wizard:confirm:collab_skip');

@@ -33,7 +33,10 @@ use Illuminate\Support\Str;
  * Step 2 : Klarifikasi Equipment   -> keyboard kandidat / tulis ulang / hierarki
  * Step 3 : Akselerasi FuncLoc      -> ditangani ClarificationService & FuncLocParser
  * Step 4 : Waktu Pengerjaan        -> parse durasi atau tanya ke teknisi
- * Step 5 : Root Cause              -> input teks bebas, wajib min 3 karakter
+ * Step 5a: Temuan (opsional)       -> input teks bebas, min 3 karakter bila diisi
+ * Step 5b: Root Cause (opsional)   -> input teks bebas, min 3 karakter bila diisi
+ *                                     (temuan 5a ditanyakan SEBELUM root cause 5b
+ *                                     sejak urutan diubah 06/10/2026)
  * Step 6 : Foto Dokumentasi        -> multi-foto opsional, bisa skip
  * Step 7 : Foto Hygiene Clearance  -> multi-foto opsional, bisa skip
  * Step 8a: Kolaborator (opsional)  -> input NIK rekan kerja, bisa dilewati
@@ -53,7 +56,7 @@ use Illuminate\Support\Str;
  *   - Polling Telegram & dispatch pesan masuk (PollTelegramUpdates)
  *
  * Trait yang digunakan:
- *   - WizardStepHandlerTrait    : handler per-step (4, 5, 6, 7, 8a, konfirmasi teks)
+ *   - WizardStepHandlerTrait    : handler per-step (4, 5a, 5b, 6, 7, 8a, konfirmasi teks)
  *   - WizardCallbackHandlerTrait: handler semua callback inline keyboard
  *   - WizardReportSaverTrait    : simpan laporan ke DB, validasi foto, generate kode
  *   - WizardUtilityTrait        : format durasi/tanggal, label equipment, state awal, error response

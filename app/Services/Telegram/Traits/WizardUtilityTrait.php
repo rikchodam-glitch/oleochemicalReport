@@ -725,8 +725,9 @@ trait WizardUtilityTrait
             'retype_attempts'             => 0,
             'using_clarification_service' => false,
             'work_duration_minutes'       => null,
-            'root_cause'                  => null,
+            // Urutan kunci mengikuti alur wizard: temuan (5a) sebelum root cause (5b).
             'finding'                     => null,
+            'root_cause'                  => null,
             'report_date'                 => null,
             'report_date_status'          => null,
             'initial_photo_file_id'       => null,

@@ -17,8 +17,8 @@ uses(RefreshDatabase::class);
  * Step Temuan (finding) pada wizard laporan Telegram + format daftar alat.
  *
  * Tiga hal yang dijaga di sini:
- *   1. Temuan adalah step BARU setelah root cause dan bersifat OPSIONAL:
- *      root cause maupun temuan sama-sama punya tombol lewati.
+ *   1. Temuan (Step 5a) ditanyakan SEBELUM root cause (Step 5b) sejak urutan
+ *      diubah 06/10/2026, dan keduanya OPSIONAL (sama-sama punya tombol lewati).
  *   2. Daftar alat ditampilkan dengan alat utama lebih dulu ("Equipment :")
  *      lalu daftar bernomor "Equipment Tambahan :".
  *   3. Label tombol daftar alat HANYA kode alat + deskripsi (tanpa kode
@@ -135,34 +135,50 @@ function stateTemuan(string $chatId, string $step, int $asetUtama): array
 }
 
 // =========================================================
-// STEP ROOT CAUSE — OPSIONAL
+// URUTAN STEP: TEMUAN (5a) DULU, BARU ROOT CAUSE (5b)
 // =========================================================
 
-test('root cause bisa dilewati lewat tombol dan lanjut ke step temuan', function () {
+test('durasi selesai membuka step temuan lebih dulu, bukan root cause', function () {
     $this->layanan->saveState($this->chatId, stateTemuan(
         $this->chatId,
-        ReportWizardService::STEP_ROOT_CAUSE,
+        ReportWizardService::STEP_WORK_DURATION,
         $this->asetUtama->id
     ));
 
-    $respons = $this->layanan->handleCallback($this->chatId, 'wizard:confirm:rootcause_skip');
+    $respons = $this->layanan->handleTextInput($this->chatId, '08:00 - 09:00');
     $state   = $this->layanan->getState($this->chatId);
 
     expect($state['step'])->toBe(ReportWizardService::STEP_FINDING)
-        ->and($state['root_cause'])->toBeNull()
-        ->and($respons['message'])->toContain('Temuan')
+        ->and($respons['message'])->toContain('Step 5a/8')
+        ->and($respons['message'])->toContain('Temuan (Opsional)')
         ->and(json_encode($respons['keyboard']))->toContain('wizard:confirm:finding_skip');
 
-    // Kembali dari step temuan harus membuka root cause lagi (riwayat berisi
-    // step itu karena tombol lewati tetap mencatat riwayat).
+    // Kembali dari step temuan harus membuka durasi lagi (riwayat berisi step
+    // itu karena transisi dari durasi tetap mencatat riwayat).
     $kembali = $this->layanan->handleCallback($this->chatId, 'wizard:back');
 
-    expect($kembali['message'])->toContain('Root Cause');
+    expect($kembali['message'])->toContain('Durasi pekerjaan terdeteksi');
 
     $this->layanan->destroyWizard($this->chatId);
 });
 
-test('root cause dari deteksi AI (rootcause_ok) juga lanjut ke step temuan', function () {
+test('tombol durasi_ok juga membuka step temuan lebih dulu', function () {
+    $this->layanan->saveState($this->chatId, stateTemuan(
+        $this->chatId,
+        ReportWizardService::STEP_WORK_DURATION,
+        $this->asetUtama->id
+    ));
+
+    $respons = $this->layanan->handleCallback($this->chatId, 'wizard:confirm:duration_ok');
+    $state   = $this->layanan->getState($this->chatId);
+
+    expect($state['step'])->toBe(ReportWizardService::STEP_FINDING)
+        ->and($respons['message'])->toContain('Temuan (Opsional)');
+
+    $this->layanan->destroyWizard($this->chatId);
+});
+
+test('root cause dari deteksi AI (rootcause_ok) lanjut ke foto dokumentasi', function () {
     $this->layanan->saveState($this->chatId, stateTemuan(
         $this->chatId,
         ReportWizardService::STEP_ROOT_CAUSE,
@@ -172,12 +188,34 @@ test('root cause dari deteksi AI (rootcause_ok) juga lanjut ke step temuan', fun
     $respons = $this->layanan->handleCallback($this->chatId, 'wizard:confirm:rootcause_ok');
     $state   = $this->layanan->getState($this->chatId);
 
-    expect($state['step'])->toBe(ReportWizardService::STEP_FINDING)
-        ->and($respons['message'])->toContain('Step 5b/8');
+    expect($state['step'])->toBe(ReportWizardService::STEP_PHOTO_DOCUMENTATION)
+        ->and($respons['message'])->toContain('Foto Dokumentasi');
 
     $this->layanan->destroyWizard($this->chatId);
 });
-test('teks root cause normal mengisi state lalu maju ke temuan', function () {
+
+test('root cause bisa dilewati lewat tombol dan lanjut ke foto dokumentasi', function () {
+    $this->layanan->saveState($this->chatId, stateTemuan(
+        $this->chatId,
+        ReportWizardService::STEP_ROOT_CAUSE,
+        $this->asetUtama->id
+    ));
+
+    $respons = $this->layanan->handleCallback($this->chatId, 'wizard:confirm:rootcause_skip');
+    $state   = $this->layanan->getState($this->chatId);
+
+    // Kembali dari step foto dokumentasi harus membuka root cause lagi
+    // (riwayat berisi step itu karena tombol lewati tetap mencatat riwayat).
+    $kembali = $this->layanan->handleCallback($this->chatId, 'wizard:back');
+
+    expect($state['step'])->toBe(ReportWizardService::STEP_PHOTO_DOCUMENTATION)
+        ->and($state['root_cause'])->toBeNull()
+        ->and($respons['message'])->toContain('Foto Dokumentasi')
+        ->and($kembali['message'])->toContain('Root Cause');
+
+    $this->layanan->destroyWizard($this->chatId);
+});
+test('teks root cause normal mengisi state lalu maju ke foto dokumentasi', function () {
     $this->layanan->saveState($this->chatId, stateTemuan(
         $this->chatId,
         ReportWizardService::STEP_ROOT_CAUSE,
@@ -188,8 +226,8 @@ test('teks root cause normal mengisi state lalu maju ke temuan', function () {
     $state   = $this->layanan->getState($this->chatId);
 
     expect($state['root_cause'])->toBe('Seal mekanikal aus')
-        ->and($state['step'])->toBe(ReportWizardService::STEP_FINDING)
-        ->and($respons['message'])->toContain('Temuan (Opsional)');
+        ->and($state['step'])->toBe(ReportWizardService::STEP_PHOTO_DOCUMENTATION)
+        ->and($respons['message'])->toContain('Foto Dokumentasi');
 
     $this->layanan->destroyWizard($this->chatId);
 });
@@ -210,10 +248,10 @@ test('root cause terlalu pendek menawarkan tombol lewati', function () {
 });
 
 // =========================================================
-// STEP TEMUAN — OPSIONAL
+// STEP 5a — TEMUAN (OPSIONAL), DITANYAKAN SEBELUM ROOT CAUSE
 // =========================================================
 
-test('temuan yang diketik tersimpan di state lalu lanjut ke foto dokumentasi', function () {
+test('temuan yang diketik tersimpan di state lalu lanjut ke root cause', function () {
     $this->layanan->saveState($this->chatId, stateTemuan(
         $this->chatId,
         ReportWizardService::STEP_FINDING,
@@ -224,13 +262,29 @@ test('temuan yang diketik tersimpan di state lalu lanjut ke foto dokumentasi', f
     $state   = $this->layanan->getState($this->chatId);
 
     expect($state['finding'])->toBe('Ada kebocoran minor di seal')
-        ->and($state['step'])->toBe(ReportWizardService::STEP_PHOTO_DOCUMENTATION)
-        ->and($respons['message'])->toContain('Foto Dokumentasi');
+        ->and($state['step'])->toBe(ReportWizardService::STEP_ROOT_CAUSE)
+        ->and($respons['message'])->toContain('Root Cause');
 
     $this->layanan->destroyWizard($this->chatId);
 });
 
-test('temuan bisa dilewati lewat tombol dan laporan tetap bisa disimpan', function () {
+test('temuan terlalu pendek menawarkan tombol lewati', function () {
+    $this->layanan->saveState($this->chatId, stateTemuan(
+        $this->chatId,
+        ReportWizardService::STEP_FINDING,
+        $this->asetUtama->id
+    ));
+
+    $respons = $this->layanan->handleTextInput($this->chatId, 'ab');
+
+    expect($respons['message'])->toContain('terlalu pendek')
+        ->and(json_encode($respons['keyboard']))->toContain('wizard:confirm:finding_skip')
+        ->and($this->layanan->getState($this->chatId)['step'])->toBe(ReportWizardService::STEP_FINDING);
+
+    $this->layanan->destroyWizard($this->chatId);
+});
+
+test('temuan bisa dilewati lewat tombol dan lanjut ke root cause', function () {
     $this->layanan->saveState($this->chatId, stateTemuan(
         $this->chatId,
         ReportWizardService::STEP_FINDING,
@@ -241,8 +295,8 @@ test('temuan bisa dilewati lewat tombol dan laporan tetap bisa disimpan', functi
     $state   = $this->layanan->getState($this->chatId);
 
     expect($state['finding'])->toBeNull()
-        ->and($state['step'])->toBe(ReportWizardService::STEP_PHOTO_DOCUMENTATION)
-        ->and($respons['message'])->toContain('Foto Dokumentasi');
+        ->and($state['step'])->toBe(ReportWizardService::STEP_ROOT_CAUSE)
+        ->and($respons['message'])->toContain('Root Cause');
 
     $this->layanan->destroyWizard($this->chatId);
 });
@@ -258,22 +312,44 @@ test('kata skip pada step temuan diperlakukan sebagai lewati', function () {
     $state = $this->layanan->getState($this->chatId);
 
     expect($state['finding'])->toBeNull()
-        ->and($state['step'])->toBe(ReportWizardService::STEP_PHOTO_DOCUMENTATION);
+        ->and($state['step'])->toBe(ReportWizardService::STEP_ROOT_CAUSE);
 
     $this->layanan->destroyWizard($this->chatId);
 });
 
-test('tombol Kembali dari step temuan membuka kembali step root cause', function () {
-    $state                 = stateTemuan($this->chatId, ReportWizardService::STEP_FINDING, $this->asetUtama->id);
-    $state['step_history'] = ['work_duration', 'root_cause'];
+test('tombol Kembali dari step root cause membuka kembali step temuan', function () {
+    $state                 = stateTemuan($this->chatId, ReportWizardService::STEP_ROOT_CAUSE, $this->asetUtama->id);
+    $state['step_history'] = ['work_duration', 'finding'];
 
     $this->layanan->saveState($this->chatId, $state);
 
     $respons = $this->layanan->handleCallback($this->chatId, 'wizard:back');
     $setelah = $this->layanan->getState($this->chatId);
 
-    expect($setelah['step'])->toBe(ReportWizardService::STEP_ROOT_CAUSE)
-        ->and($respons['message'])->toContain('Root Cause');
+    expect($setelah['step'])->toBe(ReportWizardService::STEP_FINDING)
+        ->and($respons['message'])->toContain('Temuan');
+
+    $this->layanan->destroyWizard($this->chatId);
+});
+
+test('alur temuan lalu root cause berjalan berurutan dan keduanya tersimpan di state', function () {
+    $state               = stateTemuan($this->chatId, ReportWizardService::STEP_FINDING, $this->asetUtama->id);
+    $state['root_cause'] = null;
+
+    $this->layanan->saveState($this->chatId, $state);
+
+    // Step 5a — temuan dijawab lebih dulu.
+    $this->layanan->handleTextInput($this->chatId, 'Kebocoran minor pada seal pompa');
+
+    expect($this->layanan->getState($this->chatId)['step'])->toBe(ReportWizardService::STEP_ROOT_CAUSE);
+
+    // Step 5b — barulah root cause; setelah itu laporan lanjut ke foto dokumentasi.
+    $this->layanan->handleTextInput($this->chatId, 'Seal mekanikal aus karena umur pakai');
+    $akhir = $this->layanan->getState($this->chatId);
+
+    expect($akhir['finding'])->toBe('Kebocoran minor pada seal pompa')
+        ->and($akhir['root_cause'])->toBe('Seal mekanikal aus karena umur pakai')
+        ->and($akhir['step'])->toBe(ReportWizardService::STEP_PHOTO_DOCUMENTATION);
 
     $this->layanan->destroyWizard($this->chatId);
 });
