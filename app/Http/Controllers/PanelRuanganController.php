@@ -7,6 +7,7 @@ use App\Models\PanelRuangan;
 use App\Models\Technician;
 use App\Services\FunclocOptionService;
 use App\Services\PanelAssetSyncService;
+use App\Services\PanelNotifikasiService;
 use App\Services\PanelRiwayatService;
 use App\Services\PanelSensorService;
 use App\Http\Controllers\Traits\PanelExportTrait;
@@ -41,7 +42,8 @@ class PanelRuanganController extends Controller
         protected PanelSensorService $sensor,
         protected PanelAssetSyncService $penyinkronAset,
         protected FunclocOptionService $pilihanFuncloc,
-        protected PanelRiwayatService $riwayat
+        protected PanelRiwayatService $riwayat,
+        protected PanelNotifikasiService $notifikasi
     ) {
     }
 
@@ -367,6 +369,49 @@ class PanelRuanganController extends Controller
             $harian,
             $this->riwayat->ringkasan($harian)
         );
+    }
+
+    /**
+     * Kirim pengingat Telegram sekarang juga kepada penanggung jawab ruangan
+     * ini (tombol "Kirim Pengingat" pada halaman detail). Dipakai administrator
+     * untuk memastikan pengingat harian benar-benar sampai ke teknisi.
+     *
+     * @param  PanelRuangan  $panelRuangan
+     * @return JsonResponse
+     */
+    public function kirimPengingat(PanelRuangan $panelRuangan): JsonResponse
+    {
+        $idTeknisi = $panelRuangan->penanggungJawab()->pluck('technicians.id')->all();
+
+        if ($idTeknisi === []) {
+            return response()->json([
+                'status' => 'gagal',
+                'pesan'  => 'Ruangan ini belum punya penanggung jawab, jadi belum ada penerima pengingat.',
+            ]);
+        }
+
+        $ringkasan = $this->notifikasi->kirimKeTeknisi($idTeknisi);
+
+        if ($ringkasan['terkirim'] === 0) {
+            return response()->json([
+                'status' => 'gagal',
+                'pesan'  => 'Pengingat belum terkirim: ' . $ringkasan['dilewati']
+                    . ' penerima tanpa Telegram ID dan ' . $ringkasan['gagal']
+                    . ' gagal. Pastikan penanggung jawab sudah punya Telegram ID dan bot aktif.',
+            ]);
+        }
+
+        $pesan = 'Pengingat terkirim kepada ' . $ringkasan['terkirim'] . ' penanggung jawab.';
+
+        if ($ringkasan['gagal'] > 0) {
+            $pesan .= ' ' . $ringkasan['gagal'] . ' gagal terkirim.';
+        }
+
+        if ($ringkasan['dilewati'] > 0) {
+            $pesan .= ' ' . $ringkasan['dilewati'] . ' dilewati karena belum punya Telegram ID.';
+        }
+
+        return response()->json(['status' => 'ok', 'pesan' => $pesan]);
     }
 
     /**

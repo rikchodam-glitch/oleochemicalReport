@@ -281,6 +281,7 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     Route::get('/panel/ruangan/{panelRuangan}/riwayat-harian/export', [PanelRuanganController::class, 'exportHarian'])->name('panel.ruangan.export-harian');
     Route::get('/panel/ruangan/{panelRuangan}', [PanelRuanganController::class, 'show'])->name('panel.ruangan.show');
     Route::post('/panel/ruangan', [PanelRuanganController::class, 'store'])->name('panel.ruangan.store');
+    Route::post('/panel/ruangan/{panelRuangan}/kirim-pengingat', [PanelRuanganController::class, 'kirimPengingat'])->name('panel.ruangan.kirim-pengingat');
     Route::post('/panel/ruangan/{panelRuangan}/uji-koneksi', [PanelRuanganController::class, 'ujiKoneksi'])->name('panel.ruangan.uji-koneksi');
     Route::post('/panel/ruangan/{panelRuangan}/tarik', [PanelRuanganController::class, 'tarik'])->name('panel.ruangan.tarik');
     Route::put('/panel/ruangan/{panelRuangan}', [PanelRuanganController::class, 'update'])->name('panel.ruangan.update');

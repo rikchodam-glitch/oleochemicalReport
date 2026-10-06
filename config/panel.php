@@ -51,6 +51,19 @@ return [
         'suhu_bawah' => (float) env('PANEL_AMBANG_SUHU_BAWAH', 18),
     ],
 
+    // Pengingat harian kondisi ruang panel kepada penanggung jawab (PIC) lewat
+    // Telegram, dikirim pada awal jam masuk kerja masing-masing penanggung
+    // jawab oleh perintah `panel:kirim-pengingat`.
+    'notifikasi' => [
+        // Aktifkan pengiriman otomatis oleh penjadwal.
+        'enabled' => (bool) env('PANEL_NOTIFIKASI_ENABLED', true),
+
+        // Panjang jendela (menit) setelah jam masuk kerja saat pengingat masih
+        // boleh dikirim. Jendela ini membuat pengingat tetap terkirim walau
+        // penjadwal sempat mati beberapa menit pada menit yang tepat.
+        'jendela_menit' => (int) env('PANEL_NOTIFIKASI_JENDELA_MENIT', 15),
+    ],
+
     'tampilan' => [
         // Interval polling dashboard ruang panel (detik).
         'interval_polling_detik' => (int) env('PANEL_INTERVAL_POLLING', 5),

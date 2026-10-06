@@ -79,6 +79,10 @@
                     class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg">
                 Tarik Sekarang
             </button>
+            <button type="button" id="tombolPengingat"
+                    class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg">
+                Kirim Pengingat
+            </button>
             <form method="POST" action="{{ route('panel.ruangan.sinkron-aset', $ruangan) }}">
                 @csrf
                 <button type="submit"
@@ -369,6 +373,7 @@
 
     var URL_UJI    = '{{ route('panel.ruangan.uji-koneksi', $ruangan) }}';
     var URL_TARIK  = '{{ route('panel.ruangan.tarik', $ruangan) }}';
+    var URL_PENGINGAT = '{{ route('panel.ruangan.kirim-pengingat', $ruangan) }}';
     var URL_DATA   = '{{ route('panel.ruangan.data', $ruangan) }}';
     var INTERVAL_MS = {{ $intervalPolling }} * 1000;
 
@@ -662,6 +667,7 @@
 
     var tombolUji   = document.getElementById('tombolUji');
     var tombolTarik = document.getElementById('tombolTarik');
+    var tombolPengingat = document.getElementById('tombolPengingat');
 
     if (tombolUji !== null) {
         tombolUji.addEventListener('click', function () {
@@ -672,6 +678,12 @@
     if (tombolTarik !== null) {
         tombolTarik.addEventListener('click', function () {
             kirimAksi(URL_TARIK);
+        });
+    }
+
+    if (tombolPengingat !== null) {
+        tombolPengingat.addEventListener('click', function () {
+            kirimAksi(URL_PENGINGAT);
         });
     }
 

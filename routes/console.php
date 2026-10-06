@@ -62,4 +62,13 @@ if ((bool) config('panel.pull.enabled', true)) {
         ->withoutOverlapping();
 }
 
+// Pengingat harian ruang panel ke penanggung jawab (PIC) lewat Telegram. Waktu
+// kirim ditentukan di dalam perintah: hanya teknisi yang jam masuk kerjanya
+// sedang berjalan pada menit itu yang dikirimi, dan hanya sekali per hari.
+if ((bool) config('panel.notifikasi.enabled', true)) {
+    Schedule::command('panel:kirim-pengingat')
+        ->everyMinute()
+        ->withoutOverlapping();
+}
+
 
