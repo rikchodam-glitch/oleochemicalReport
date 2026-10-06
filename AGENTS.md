@@ -1061,6 +1061,101 @@ Batasan penting lingkungan ini:
       ganda (`''teks''`) atau, untuk pemeriksaan rumit, skrip sementara
       `tmp-cek-*.php` yang dijalankan langsung lalu dihapus lagi.
 
+22. **Dashboard panel diringkas, penanggung jawab panel, halaman detail
+    (grafik realtime + riwayat harian + ekspor Excel), dan pengingat Telegram
+    harian (diputuskan 06/10/2026, sudah ada kodenya).** Semua perubahan ada di
+    copy DEV `C:\laragon\www\oleochemicalReport`; 4 commit berurutan
+    **`eafd7d`** (penanggung jawab), **`c16070d`** (dashboard ringkas),
+    **`8685bef`** (detail: grafik + riwayat harian + ekspor), **`3a4c4ec`**
+    (pengingat Telegram); semuanya sudah di `hub/main`.
+    - **Dashboard `/panel` TIDAK lagi menampilkan grafik besar dan tabel
+      riwayat.** `resources/views/panel/index.blade.php` ditulis ulang: panel
+      `#panelGrafik`/`#panelRiwayat` beserta seluruh JavaScript pendukungnya
+      DIHAPUS (jangan dihidupkan lagi). Setiap kartu sekarang memuat: nilai
+      terkini, **kurva singkat** (canvas `kurva-<id>`, Chart.js tanpa
+      sumbu/label/legenda dari data `grafik` yang sudah dikirim `/panel/data`),
+      **lencana kondisi** (`TERLALU PANAS` / `TERLALU DINGIN` / `SUHU NORMAL` /
+      `BELUM ADA DATA` berdasar `PanelRuangan::kondisiSuhu()`), nama
+      **penanggung jawab**, ambang suhu, dan tombol Detail/Uji/Tarik/Edit/Hapus.
+      Kurva lama di-`destroy()` sebelum kartu digambar ulang
+      (`bersihkanKurva()`) supaya objek Chart tidak menumpuk di memori.
+    - **Penanggung jawab (PIC) panel**: tabel baru **`panel_penanggung_jawab`**
+      (pasangan unik `panel_ruangan_id` + `technician_id`, keduanya cascade)
+      lewat migration `2026_10_06_000003_tambah_penanggung_jawab_panel.php`
+      yang sekaligus membuat **`panel_notifikasi_terkirim`** (unik
+      `technician_id` + `tanggal`, kolom `jam_kerja`, `jumlah_ruangan`).
+      Relasi: `PanelRuangan::penanggungJawab()` (belongsToMany) dan
+      `Technician::panelYangDitangani()`; helper `namaPenanggungJawab()`
+      mengembalikan "belum ditentukan" bila kosong. Dipilih dari data teknisi
+      (dikelompokkan per Bagian; yang tanpa Telegram ID diberi tanda
+      "- tanpa Telegram") pada kartu baru form ruangan
+      `resources/views/panel/ruangan/partials/_penanggung-jawab.blade.php`
+      (di-include satu baris dari `form.blade.php` supaya form 340 baris tidak
+      perlu ditulis ulang). Validasi `penanggung_jawab[]` (array id teknisi
+      yang ada) + `simpanPenanggungJawab()` (sync; daftar kosong = menghapus
+      semua).
+
+    - **Halaman detail ruangan** (`resources/views/panel/ruangan/show.blade.php`,
+      ditulis ulang): kartu ringkasan (lencana kondisi ikut diperbarui
+      JavaScript), **grafik realtime** Chart.js dari endpoint BARU
+      `panel.ruangan.data` (polling tiap `panel.tampilan.interval_polling_detik`),
+      **tabel riwayat harian** per bulan (`?bulan=YYYY-MM`, bawaan bulan
+      berjalan; isian tidak sah dikembalikan ke bulan berjalan), tombol
+      **Ekspor Excel** (`panel.ruangan.export-harian`, nama berkas dari nama
+      ruangan + cap waktu), dan tombol **Kirim Pengingat**
+      (`panel.ruangan.kirim-pengingat`, uji kirim manual oleh admin).
+    - **Rekap harian**: `App\Services\PanelRiwayatService::harian()` menghitung
+      MIN/MAX/AVG suhu & kelembapan serta jumlah pembacaan di luar ambang dengan
+      agregasi SQL (`DATE(waktu)` + `CASE WHEN`), dibatasi
+      `startOfDay()`/`endOfDay()` (jangan tanggal polos — lihat insiden #23).
+      Ekspor Excel-nya di trait baru
+      `App\Http\Controllers\Traits\PanelExportTrait` (gaya sama dengan
+      `AssetExportTrait`: blok judul/keterangan, header teal, autofilter,
+      `setCellValueExplicit`).
+    - **Pengingat Telegram harian**: `App\Services\PanelNotifikasiService`
+      menentukan jam masuk kerja tiap PIC (`mulaiKerja()`): non-shift memakai
+      `JamKerjaService::hari()` (Sabtu/Minggu libur otomatis), pekerja shift
+      memakai kode pola rotasi `ShiftPatternService::kode()` (kode `x` = OFF =
+      tidak dikirimi). Pesan memuat kondisi terkini tiap ruangan yang ditangani
+      (suhu, kelembapan, lencana kondisi, online/offline, tautan detail dan
+      dashboard; teks dinamis di-escape `htmlspecialchars` karena Telegram
+      memakai parse_mode HTML). Pengiriman hanya **sekali per hari per teknisi**
+      (dijaga `panel_notifikasi_terkirim`) dan hanya di dalam **jendela 15 menit
+      setelah jam masuk kerja** (`config('panel.notifikasi.jendela_menit')`,
+      toleransi bila penjadwal sempat mati beberapa menit). Perintah
+      `php artisan panel:kirim-pengingat` dijadwalkan `everyMinute`
+      (`routes/console.php`, saklar `PANEL_NOTIFIKASI_ENABLED`), dengan opsi
+      `--uji-kirim` dan `--teknisi=` untuk pengujian/manual. **Jebakan yang
+      sudah kena sekali:** mode uji kirim TIDAK boleh menuntut jadwal kerja
+      (teknisi yang sedang OFF tetap harus bisa dikirimi saat diuji) — karena
+      itu `kirim()` punya parameter `$wajibJadwal` dan `$idTerpilih`; teknisi di
+      luar daftar terpilih TIDAK dihitung pada "dilewati" supaya pesan
+      ringkasannya tidak menyesatkan.
+    - Uji: `PanelPenanggungJawabTest` (7), `PanelDashboardRingkasTest` (2),
+      `PanelRiwayatHarianTest` (5), `PanelPengingatTelegramTest` (7). Uji mutasi
+      yang sudah dijalankan: memaksa mode uji kirim tetap menuntut jam kerja
+      membuat 1 test GAGAL, dan filter `$idTerpilih` yang ikut menghitung
+      "dilewati" membuat pesan ringkasan salah (ketahuan dari test tombol kirim).
+      Seluruh suite **424 test hijau (1860 assertions)** dan
+      `php artisan view:cache` sukses (06/10/2026).
+    - Dua berkas blade besar (`panel/index.blade.php` 1055 baris dan
+      `panel/ruangan/show.blade.php` 325 baris) ditulis ulang dengan pola: salin
+      berkas lama ke `%TEMP%`, hapus berkas aslinya, lalu tulis versi baru
+      bertahap dari baris terakhir — cara ini dipakai karena
+      `find_and_replace` pada berkas blade besar berulang kali meleset dan
+      titik sambungannya bergeser (lihat Aturan Wajib Edit File poin 6 dan
+      Riwayat Insiden #12). SETELAH menulis bertahap WAJIB memeriksa: titik
+      sambungan, jumlah `<div>`/`</div>`, `<script>`/`</script>`,
+      `@push`/`@endpush`, `@forelse`/`@endforelse`, `php artisan view:cache`,
+      lalu mengekstrak blok `<script>` dan menjalankannya lewat
+      `C:\laragon\bin\nodejs\node-v22\node.exe --check` (echo blade diganti `0`
+      lebih dulu) supaya kesalahan JavaScript ketahuan tanpa membuka browser.
+    - Catatan alat: `read_files` dengan rentang baris atas berkas yang SUDAH
+      pernah dibaca utuh bisa dijawab `[outdated - see the latest file
+      content]` tanpa isi. Jalan pintas yang dipakai saat itu: cetak rentang
+      barisnya lewat PowerShell (`(Get-Content <berkas>)[a..b]` + nomor baris),
+      HANYA untuk membaca — penulisan tetap memakai tool editor.
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file
