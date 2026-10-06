@@ -39,3 +39,21 @@ test('kartu dashboard memuat kurva singkat dan lencana indikator suhu', function
         ->assertSee('Penanggung jawab:')
         ->assertSee('dan ekspor Excel ada di halaman detail ruangan', false);
 });
+
+test('penyusun kartu suhu tidak memakai tanda plus ganda pada penggabungan teks', function () {
+    $isi = file_get_contents(resource_path('views/panel/index.blade.php'));
+
+    // Tanda plus kedua pada baris lanjutan penggabungan string
+    // ("+ \"+ '<span...> C</span>'") adalah unary plus: teks span berubah
+    // menjadi NaN sehingga kartu menampilkan "24.4NaN" dan satuan C hilang.
+    expect(preg_match('/^\s*\+\s*\+/m', $isi))->toBe(0);
+});
+
+test('kartu suhu dashboard menampilkan nilai dengan satuan C', function () {
+    $this->actingAs($this->admin)
+        ->get('/panel')
+        ->assertOk()
+        ->assertSee('formatAngka(ruangan.suhu, 1)', false)
+        ->assertSee('\'<span class="text-sm font-semibold text-slate-400"> C</span>\'', false)
+        ->assertDontSee('+          +', false);
+});

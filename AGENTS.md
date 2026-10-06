@@ -1164,6 +1164,30 @@ Batasan penting lingkungan ini:
       content]` tanpa isi. Jalan pintas yang dipakai saat itu: cetak rentang
       barisnya lewat PowerShell (`(Get-Content <berkas>)[a..b]` + nomor baris),
       HANYA untuk membaca — penulisan tetap memakai tool editor.
+    - **Perbaikan 06/10/2026: kartu suhu dashboard menampilkan `24.4NaN`, bukan
+      `24.4 C`.** Penyebabnya satu tanda plus BERLEBIH pada rangkaian
+      penggabungan teks penyusun kartu (`resources/views/panel/index.blade.php`
+      baris 453 sebelum diperbaiki berbunyi
+      `+          + '<span class="text-sm font-semibold text-slate-400"> C</span>'`):
+      tanda plus kedua adalah unary plus, sehingga JavaScript mengubah teks
+      span menjadi `NaN` dan satuan C ikut hilang. Halaman detail ruangan tidak
+      terpengaruh karena nilainya dirender server (`number_format`). Perbaikan:
+      hapus tanda plus kedua. Bukti render browser nyata (Chrome
+      `--headless=new --dump-dom` atas `http://oleochemicalReport.test/panel`):
+      sebelum = `>24.5NaN`, sesudah =
+      `24.4<span class="text-sm font-semibold text-slate-400"> C</span>` dan
+      tidak ada `NaN` (pencarian peka huruf besar-kecil). Uji penjaga: 2 test
+      baru di `tests/Feature/PanelDashboardRingkasTest.php` (uji mutasi:
+      mengembalikan tanda plus ganda membuat KEDUA test GAGAL). Lihat Riwayat
+      Insiden #34.
+    - Catatan lingkungan 06/10/2026: copy DEV `oleochemical_dev` ternyata BELUM
+      menjalankan migrasi `2026_10_06_000003_tambah_penanggung_jawab_panel`,
+      sehingga `/panel/data` di DEV berbalas HTTP 500 (relasi `penanggungJawab`
+      dibaca lebih dulu padahal tabel `panel_penanggung_jawab` belum ada) —
+      padahal `tarikBilaJedaLewat()` sudah menarik data perangkat SEBELUM galat
+      terjadi, jadi angka pembacaan tetap bertambah walau kartu halaman tampak
+      gagal. Sudah diperbaiki dengan `php artisan migrate --force` di DEV. PROD
+      sudah memiliki kedua tabel itu.
 
 23. **Import/Export asset berpindah kunci ke Equipment No (diputuskan 06/10/2026, sudah
     ada kodenya).** Semua perubahan ada di copy DEV
@@ -1908,6 +1932,34 @@ Batasan penting lingkungan ini:
     (di sini `funcloc_id` pada fixture lama) menyembunyikan bug selama berbulan-bulan; (3) jangan pernah
     menutup/menghapus layar pilihan sebelum pengguna memutuskan selesai — bila layar lama terhapus dari
     chat dan tidak ada tombol kembali, satu-satunya jalan keluar adalah membatalkan laporan.**
+
+34. **Tanda plus BERLEBIH di rangkaian penggabungan teks JavaScript menghasilkan
+    `NaN` di tampilan (06/10/2026).** Keluhan user: "pada halaman panel seharusnya
+    bukan NaN namun drajat celcius seperti pada detail". Kartu suhu dashboard
+    `/panel` mencetak `24.4NaN` (satuan " C" hilang), sedangkan halaman detail
+    ruangan mencetak `24.4 C`. Penyebab: satu baris penyusun kartu
+    (`resources/views/panel/index.blade.php` baris 453 sebelum diperbaiki) berbunyi
+    `+          + '<span class="text-sm font-semibold text-slate-400"> C</span>'` —
+    tanda plus ganda: operator gabung, lalu unary plus. Unary plus memaksa teks
+    span dikonversi ke angka menjadi `NaN`, sehingga `"24.4" + NaN` = `24.4NaN`.
+    Seluruh pemeriksaan statis GAGAL menemukannya: kolom `suhu` decimal(5,2), cast
+    `float` pada `PanelPembacaan`, payload `/panel/data` bernilai angka (dibuktikan
+    lewat `curl` + `ConvertFrom-Json` = Decimal 24.5), berkas DEV dan PROD identik,
+    dan blok `<script>` lolos `node --check`. Yang menemukan: RENDER NYATA memakai
+    Chrome headless (`chrome.exe --headless=new --dump-dom` dengan profil
+    `--user-data-dir` yang sama setelah membuka `/debug-login`) →
+    `<p class="text-3xl ...">24.5NaN      </p>` tanpa span. Sesudah perbaikan:
+    `24.4<span ...> C</span>` dan tidak ada `NaN`. **Pelajaran: (1) `NaN` pada
+    tampilan hampir selalu berasal dari operasi aritmetika atas teks (unary plus,
+    `-`, `*`, `Number()`), bukan dari data server — cari operator ganda di
+    rangkaian penggabungan string; (2) `node --check` hanya membuktikan SINTAKS,
+    bukan nilai hasil, jadi bug seperti ini lolos; (3) untuk bug tampilan yang
+    tidak bisa disimpulkan dari data, WAJIB buktikan dengan render browser nyata
+    (headless `--dump-dom`) sebelum menyatakan sebabnya; (4) pencarian `NaN` pada
+    HTML hasil dump wajib PEKA huruf besar-kecil — kata "Maintenance" memuat
+    "nan".** Uji penjaga: 2 test di `tests/Feature/PanelDashboardRingkasTest.php`
+    (menolak pola baris `^\s*\+\s*\+` dan memastikan satuan C tetap ada); uji
+    mutasi: tanda plus ganda dikembalikan → KEDUA test GAGAL.
 
 ## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN
 

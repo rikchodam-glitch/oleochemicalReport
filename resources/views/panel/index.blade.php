@@ -450,7 +450,7 @@
                 + '      <p class="text-xs text-slate-400 uppercase tracking-wide">Suhu</p>'
                 + '      <p class="text-3xl font-bold mt-1" style="color:' + warna + ';">'
                 +          formatAngka(ruangan.suhu, 1)
-                +          + '<span class="text-sm font-semibold text-slate-400"> C</span>'
+                +          '<span class="text-sm font-semibold text-slate-400"> C</span>'
                 + '      </p>'
                 + '      <p class="text-xs text-slate-400 uppercase tracking-wide mt-2">Kelembapan</p>'
                 + '      <p class="text-lg font-semibold text-slate-700">' + formatAngka(ruangan.kelembapan, 1) + ' %</p>'
