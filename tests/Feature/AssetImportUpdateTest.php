@@ -1123,6 +1123,28 @@ test('Equipment No yang muncul dua kali di dalam satu file masuk bucket ambigu',
         ->and($analysis['ambigu'][0]['alasan'])->toContain('muncul lebih dari sekali di file');
 });
 
+test('baris dengan Equipment No tetapi tanpa Kode Alat tetap tidak diproses', function () {
+    // Sel Kode Alat dikosongkan pada file hasil export. Baris ini TIDAK boleh
+    // dicocokkan lewat Equipment No, karena menulisnya berarti mengosongkan
+    // Kode Alat yang sudah ada di database.
+    $analysis = $this->import->analyzeFile(fileImportAset(csvExportAset([
+        ($this->barisAset)([2 => '']),
+    ])));
+
+    expect($analysis['no_equip'])->toHaveCount(1)
+        ->and($analysis['duplicate'])->toHaveCount(0)
+        ->and($analysis['clean'])->toHaveCount(0);
+
+    $hasil = $this->import->executeImport($analysis, [
+        'duplicate_action' => 'replace',
+        'no_equip_action'  => 'skip',
+        'filename'         => 'assets-export-uji.csv',
+    ]);
+
+    expect($hasil['success_count'])->toBe(0)
+        ->and($this->asset->fresh()->tech_ident_no)->toBe('AC-AR01-1-1');
+});
+
 test('export excel menulis Equipment No pada kolom B sebagai teks', function () {
     $isi = $this->actingAs($this->admin)
         ->get('/assets/export/excel?company_id=' . $this->company->id)

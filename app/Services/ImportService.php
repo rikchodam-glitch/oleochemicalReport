@@ -238,7 +238,9 @@ class ImportService
                 continue;
             }
 
-            // Tanpa Tech Ident No: tidak ada identitas yang bisa dicocokkan.
+            // Tanpa Kode Alat: baris TIDAK diproses walau Equipment No-nya terisi,
+            // supaya sel Kode Alat yang kosong tidak menghapus nilai yang sudah ada
+            // di database (lihat bucket no_equip pada docblock analyzeFile()).
             if ($techNo === '') {
                 $results['no_equip'][] = [
                     'row'            => $baris['row'],
