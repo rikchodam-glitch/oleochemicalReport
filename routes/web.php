@@ -274,6 +274,11 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     Route::get('/panel/ruangan/create', [PanelRuanganController::class, 'create'])->name('panel.ruangan.create');
     Route::get('/panel/ruangan/{panelRuangan}/edit', [PanelRuanganController::class, 'edit'])->name('panel.ruangan.edit');
     Route::post('/panel/ruangan/{panelRuangan}/sinkron-aset', [PanelRuanganController::class, 'sinkronAset'])->name('panel.ruangan.sinkron-aset');
+    // Data grafik realtime dan ekspor riwayat harian satu ruangan. Keduanya
+    // ditulis sebelum rute '/panel/ruangan/{id}' supaya segmen tambahan tidak
+    // pernah tertangkap rute detail.
+    Route::get('/panel/ruangan/{panelRuangan}/data', [PanelRuanganController::class, 'dataRuangan'])->name('panel.ruangan.data');
+    Route::get('/panel/ruangan/{panelRuangan}/riwayat-harian/export', [PanelRuanganController::class, 'exportHarian'])->name('panel.ruangan.export-harian');
     Route::get('/panel/ruangan/{panelRuangan}', [PanelRuanganController::class, 'show'])->name('panel.ruangan.show');
     Route::post('/panel/ruangan', [PanelRuanganController::class, 'store'])->name('panel.ruangan.store');
     Route::post('/panel/ruangan/{panelRuangan}/uji-koneksi', [PanelRuanganController::class, 'ujiKoneksi'])->name('panel.ruangan.uji-koneksi');

@@ -7,10 +7,13 @@ use App\Models\PanelRuangan;
 use App\Models\Technician;
 use App\Services\FunclocOptionService;
 use App\Services\PanelAssetSyncService;
+use App\Services\PanelRiwayatService;
 use App\Services\PanelSensorService;
+use App\Http\Controllers\Traits\PanelExportTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -32,10 +35,13 @@ use Illuminate\View\View;
  */
 class PanelRuanganController extends Controller
 {
+    use PanelExportTrait;
+
     public function __construct(
         protected PanelSensorService $sensor,
         protected PanelAssetSyncService $penyinkronAset,
-        protected FunclocOptionService $pilihanFuncloc
+        protected FunclocOptionService $pilihanFuncloc,
+        protected PanelRiwayatService $riwayat
     ) {
     }
 
@@ -160,14 +166,19 @@ class PanelRuanganController extends Controller
 
     /**
      * Tampilkan halaman detail satu ruangan panel: identitas, cara baca
-     * perangkat, lokasi + baris aset cermin, dan riwayat pembacaan terakhir.
+     * perangkat, lokasi + baris aset cermin, grafik pembacaan terakhir, dan
+     * rekap riwayat harian periode terpilih (bisa diekspor ke Excel).
      *
+     * @param  Request       $request
      * @param  PanelRuangan  $panelRuangan
      * @return View
      */
-    public function show(PanelRuangan $panelRuangan): View
+    public function show(Request $request, PanelRuangan $panelRuangan): View
     {
         $panelRuangan->load(['funcloc', 'pembacaanTerakhir', 'penanggungJawab']);
+
+        [$awal, $akhir] = $this->periodeBulan($request->query('bulan'));
+        $harian         = $this->riwayat->harian($panelRuangan, $awal, $akhir);
 
         return view('panel.ruangan.show', [
             'ruangan'        => $panelRuangan,
@@ -178,6 +189,12 @@ class PanelRuanganController extends Controller
                 ->orderByDesc('waktu')
                 ->limit((int) config('panel.tampilan.jumlah_baris_riwayat', 20))
                 ->get(),
+            'harian'          => $harian,
+            'ringkasanHarian' => $this->riwayat->ringkasan($harian),
+            'bulanTerpilih'   => $awal->format('Y-m'),
+            'labelPeriode'    => $awal->translatedFormat('d F Y') . ' s/d ' . $akhir->translatedFormat('d F Y'),
+            'intervalPolling' => (int) config('panel.tampilan.interval_polling_detik', 5),
+            'titikGrafik'     => (int) config('panel.tampilan.jumlah_titik_grafik', 60),
         ]);
     }
 
@@ -290,6 +307,122 @@ class PanelRuanganController extends Controller
             'pesan'  => $hasil['pesan'],
             'baru'   => $hasil['baru'],
         ]);
+    }
+
+    /**
+     * Data grafik realtime satu ruangan untuk halaman detail (dipanggil berkala
+     * oleh JavaScript halaman itu).
+     *
+     * Sebelum membaca database, data ruangan ini ditarik dari perangkat bila
+     * jeda cache sudah lewat, sehingga angka di layar tetap segar tanpa
+     * membebani perangkat pada setiap polling.
+     *
+     * @param  PanelRuangan  $panelRuangan
+     * @return JsonResponse
+     */
+    public function dataRuangan(PanelRuangan $panelRuangan): JsonResponse
+    {
+        $this->tarikRuanganBilaJedaLewat($panelRuangan);
+        $panelRuangan->refresh();
+
+        $titik = (int) config('panel.tampilan.jumlah_titik_grafik', 60);
+        $data  = $this->sensor->dataRuangan($panelRuangan, $titik, 1);
+        $terakhir = $data['terakhir'];
+
+        return response()->json([
+            'waktu_server' => now()->format('d/m/Y H:i:s'),
+            'ruangan'      => [
+                'id'                => $panelRuangan->id,
+                'nama_ruangan'      => $panelRuangan->nama_ruangan,
+                'lokasi'            => $panelRuangan->labelLokasi(),
+                'online'            => $panelRuangan->apakahOnline(),
+                'kondisi'           => $panelRuangan->kondisiSuhu($terakhir?->suhu),
+                'ambang_suhu_atas'  => $panelRuangan->ambang_suhu_atas,
+                'ambang_suhu_bawah' => $panelRuangan->ambang_suhu_bawah,
+                'suhu'              => $terakhir?->suhu,
+                'kelembapan'        => $terakhir?->kelembapan,
+                'waktu_pembacaan'   => $terakhir?->waktu?->format('d/m/Y H:i:s'),
+                'terakhir_ditarik'  => $panelRuangan->terakhir_ditarik?->format('d/m/Y H:i:s'),
+                'catatan'           => $panelRuangan->catatan,
+                'grafik'            => $data['grafik'],
+            ],
+        ]);
+    }
+
+    /**
+     * Unduh rekap riwayat harian satu ruangan dalam bentuk berkas Excel.
+     *
+     * @param  Request       $request
+     * @param  PanelRuangan  $panelRuangan
+     * @return \Symfony\Component\HttpFoundation\StreamedResponse
+     */
+    public function exportHarian(Request $request, PanelRuangan $panelRuangan)
+    {
+        [$awal, $akhir] = $this->periodeBulan($request->query('bulan'));
+        $harian         = $this->riwayat->harian($panelRuangan, $awal, $akhir);
+
+        return $this->exportHarianExcel(
+            $panelRuangan,
+            $awal->format('d/m/Y') . ' s/d ' . $akhir->format('d/m/Y'),
+            $harian,
+            $this->riwayat->ringkasan($harian)
+        );
+    }
+
+    /**
+     * Tentukan rentang tanggal dari pilihan bulan berformat Y-m.
+     *
+     * Isian yang tidak sah (mis. "2026-13" atau teks bebas) dikembalikan ke
+     * bulan berjalan supaya halaman detail tidak pernah gagal karena parameter
+     * alamat.
+     *
+     * @param  mixed  $bulan  Isian dari alamat (bisa null)
+     * @return array{0: Carbon, 1: Carbon} Tanggal awal dan akhir bulan
+     */
+    private function periodeBulan(mixed $bulan): array
+    {
+        $awal = null;
+
+        if (is_string($bulan) && $bulan !== '') {
+            try {
+                $awal = Carbon::createFromFormat('Y-m', $bulan)->startOfMonth();
+            } catch (\Throwable $e) {
+                $awal = null;
+            }
+        }
+
+        $awal ??= now()->startOfMonth();
+
+        return [$awal, $awal->copy()->endOfMonth()];
+    }
+
+    /**
+     * Tarik data SATU ruangan bila jeda cache sudah terlewati.
+     *
+     * Dipakai halaman detail ruangan; berbeda dengan tarikBilaJedaLewat() yang
+     * menarik seluruh ruangan karena dipakai dashboard.
+     *
+     * @param  PanelRuangan  $ruangan
+     * @return void
+     */
+    private function tarikRuanganBilaJedaLewat(PanelRuangan $ruangan): void
+    {
+        $jedaDetik = max(0, (int) config('panel.pull.cache_detik', 3));
+        $kunci = 'panel:tarik-ruangan:' . $ruangan->id;
+        $terakhir = (int) Cache::get($kunci, 0);
+
+        if ($jedaDetik > 0 && (now()->getTimestamp() - $terakhir) < $jedaDetik) {
+            return;
+        }
+
+        // Tandai lebih dulu supaya polling berikutnya tidak menumpuk.
+        Cache::put($kunci, now()->getTimestamp(), now()->addMinutes(10));
+
+        if (!(bool) config('panel.pull.enabled', true)) {
+            return;
+        }
+
+        $this->sensor->tarikPembacaan($ruangan);
     }
 
     /**
