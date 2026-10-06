@@ -11,10 +11,11 @@
     <div class="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
             <h1 class="text-xl font-semibold text-slate-900">Monitoring Ruang Panel</h1>
-            <p class="text-sm text-slate-500 mt-1">
-                Suhu dan kelembapan tiap ruangan panel, diperbarui otomatis tiap
-                {{ $intervalPolling }} detik. Data ditarik dari perangkat sensor oleh server
-                (mode tarik), jadi tidak perlu membuka port di firewall.
+            <p class="text-sm text-slate-500 mt-1 max-w-3xl">
+                Ringkasan suhu dan kelembapan tiap ruangan panel, diperbarui otomatis tiap
+                {{ $intervalPolling }} detik. Tiap kartu memuat kurva singkat
+                {{ $titikGrafik }} pembacaan terakhir sebagai gambaran cepat, sedangkan grafik
+                lengkap, riwayat harian, dan ekspor Excel ada di halaman detail ruangan.
             </p>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -62,53 +63,18 @@
         </div>
     </div>
 
-    <div id="panelGrafik" class="bg-white rounded-xl border border-slate-200 p-5 mb-6 hidden">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div>
-                <p class="text-xs text-slate-400 uppercase tracking-wide font-medium">
-                    Grafik {{ $titikGrafik }} pembacaan terakhir
-                </p>
-                <p class="text-lg font-semibold text-slate-900 mt-1" id="judulGrafik">-</p>
-            </div>
-            <select id="pilihRuanganGrafik"
-                    class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"></select>
-        </div>
-        <div style="position: relative; height: 320px;">
-            <canvas id="grafikSuhu"></canvas>
-        </div>
-    </div>
-
-    <div id="panelRiwayat" class="bg-white rounded-xl border border-slate-200 p-5 hidden">
-        <p class="text-xs text-slate-400 uppercase tracking-wide font-medium mb-3">
-            Riwayat {{ $barisRiwayat }} pembacaan terakhir
-        </p>
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="text-left text-xs text-slate-500 uppercase tracking-wide border-b border-slate-200">
-                        <th class="py-2 pr-4">Waktu pengukuran</th>
-                        <th class="py-2 pr-4">Suhu (C)</th>
-                        <th class="py-2 pr-4">Kelembapan (%)</th>
-                        <th class="py-2">Keterangan</th>
-                    </tr>
-                </thead>
-                <tbody id="tabelRiwayat">
-                    <tr><td colspan="4" class="py-3 text-slate-400">Belum ada data.</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
     <div id="kosongTotal" class="hidden bg-white rounded-xl border border-slate-200 p-8 text-center">
         <p class="text-slate-700 font-medium">Belum ada ruangan panel yang terdaftar.</p>
         <p class="text-sm text-slate-500 mt-2 max-w-2xl mx-auto">
-            Klik tombol Tambah Ruangan, isi nama ruangan dan alamat IP perangkat ESP32
-            (bawaan firmware contoh: 192.168.41.240, port 80). Setelah disimpan, data akan
-            mulai ditarik otomatis pada siklus berikutnya, atau langsung tekan Tarik Sekarang.
+            Klik tombol Tambah Ruangan untuk mencatat ruangan cepat, lalu lengkapi pengaturan
+            (lokasi, kode alat, dan penanggung jawab) dari halaman detailnya. Setelah disimpan,
+            data mulai ditarik otomatis pada siklus berikutnya, atau langsung tekan Tarik Sekarang.
         </p>
     </div>
 
-    {{-- Modal form tambah/ubah ruangan --}}
+    {{-- Modal tambah cepat ruangan panel. Pengaturan lengkap (lokasi, kode alat,
+         sumber data perangkat, penanggung jawab) dikelola di halaman tersendiri
+         supaya tidak ada dua tempat penyuntingan data yang sama. --}}
     <div id="modalRuangan" class="hidden fixed inset-0 z-50 overflow-y-auto" style="background-color: rgba(15, 23, 42, 0.5);">
         <div class="min-h-full flex items-start justify-center p-4">
             <div class="bg-white rounded-xl border border-slate-200 w-full max-w-2xl mt-10">
@@ -116,7 +82,6 @@
                     <h2 class="text-base font-semibold text-slate-900" id="judulModalRuangan">Tambah Ruangan Panel</h2>
                     <button type="button" class="text-slate-400 hover:text-slate-600" data-tutup-modal-ruangan="1">&times;</button>
                 </div>
-
                 <form method="POST" action="{{ route('panel.ruangan.store') }}" id="formRuangan">
                     @csrf
                     <input type="hidden" name="_method" value="POST" id="metodeFormRuangan">
@@ -184,7 +149,6 @@
                             </p>
                         </div>
 
-
                         <div>
                             <label class="block text-xs font-medium text-slate-500 mb-1">
                                 Ambang suhu bawah (C) <span class="text-red-500">*</span>
@@ -230,6 +194,11 @@
             </div>
         </div>
     </div>
+
+    <p class="text-xs text-slate-400 mb-6">
+        Catatan: pengaturan lengkap tiap ruangan (lokasi, kode alat, dan penanggung jawab panel)
+        dikelola lewat tombol Detail pada kartu ruangan.
+    </p>
 
     {{-- Modal konfirmasi hapus ruangan --}}
     <div id="modalHapus" class="hidden fixed inset-0 z-50 overflow-y-auto" style="background-color: rgba(15, 23, 42, 0.5);">
@@ -282,6 +251,7 @@
     </div>
 @endsection
 
+
 @push('scripts')
 <script src="{{ asset('vendor/chart.umd.min.js') }}"></script>
 <script>
@@ -295,12 +265,16 @@
         var URL_HAPUS = '{{ route('panel.ruangan.destroy', ['panelRuangan' => '__ID__']) }}';
         var URL_UJI = '{{ route('panel.ruangan.uji-koneksi', ['panelRuangan' => '__ID__']) }}';
         var URL_TARIK = '{{ route('panel.ruangan.tarik', ['panelRuangan' => '__ID__']) }}';
+        var URL_DETAIL = '{{ url('panel/ruangan') }}/';
         var TOKEN_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         var INTERVAL_MS = {{ $intervalPolling }} * 1000;
 
         var dataTerakhir = [];
-        var idTerpilih = null;
-        var grafik = null;
+
+        // Objek kurva singkat tiap kartu. Kartu digambar ulang pada setiap
+        // polling, jadi kurva lama wajib dibuang lebih dulu supaya tidak
+        // menumpuk di memori browser.
+        var kurvaKartu = {};
 
         var elDaftarKartu = document.getElementById('daftarKartu');
         var elRingkasTotal = document.getElementById('ringkasTotal');
@@ -311,11 +285,6 @@
         var elPeringatanGalat = document.getElementById('peringatanGalat');
         var elPesanSementara = document.getElementById('pesanSementara');
         var elKosongTotal = document.getElementById('kosongTotal');
-        var elPanelGrafik = document.getElementById('panelGrafik');
-        var elPanelRiwayat = document.getElementById('panelRiwayat');
-        var elJudulGrafik = document.getElementById('judulGrafik');
-        var elPilihRuangan = document.getElementById('pilihRuanganGrafik');
-        var elTabelRiwayat = document.getElementById('tabelRiwayat');
 
         /**
          * Ubah angka menjadi teks dengan jumlah desimal tertentu.
@@ -402,7 +371,54 @@
         }
 
         /**
-         * Susun HTML satu kartu ruangan panel.
+         * Warna garis kurva singkat untuk tiap kondisi suhu.
+         *
+         * @param  {string} kondisi
+         * @return {string}
+         */
+        function warnaKurva(kondisi) {
+            if (kondisi === 'tinggi') {
+                return '#dc2626';
+            }
+            if (kondisi === 'rendah') {
+                return '#d97706';
+            }
+            if (kondisi === 'normal') {
+                return '#0E9E8E';
+            }
+
+            return '#94a3b8';
+        }
+
+        /**
+         * Lencana indikator suhu: terlalu panas, terlalu dingin, normal, atau
+         * belum ada data. Ambang batasnya diatur per ruangan pada halaman
+         * pengaturan ruangan.
+         *
+         * @param  {object} ruangan
+         * @return {string}
+         */
+        function lencanaKondisi(ruangan) {
+            var gaya = 'display:inline-block;margin-top:12px;padding:4px 12px;'
+                + 'border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:.02em;';
+
+            if (ruangan.kondisi === 'tinggi') {
+                return '<span style="' + gaya + 'background-color:#fdecec;color:#b91c1c;">TERLALU PANAS</span>';
+            }
+            if (ruangan.kondisi === 'rendah') {
+                return '<span style="' + gaya + 'background-color:#fef6e7;color:#b45309;">TERLALU DINGIN</span>';
+            }
+            if (ruangan.kondisi === 'normal') {
+                return '<span style="' + gaya + 'background-color:#e6f6f3;color:#0b7f72;">SUHU NORMAL</span>';
+            }
+
+            return '<span style="' + gaya + 'background-color:#f1f5f9;color:#475569;">BELUM ADA DATA</span>';
+        }
+
+
+        /**
+         * Susun HTML satu kartu ruangan panel: nilai terkini, lencana kondisi,
+         * kurva singkat, penanggung jawab, dan tombol aksi.
          *
          * @param  {object} ruangan
          * @return {string}
@@ -416,47 +432,49 @@
             var catatan = ruangan.catatan
                 ? '<p class="text-xs mt-1" style="color:#b45309;">' + keTeksAman(ruangan.catatan) + '</p>'
                 : '';
+            var kanvasKurva = '<div style="width:132px;height:60px;"><canvas id="kurva-'
+                + ruangan.id + '"></canvas></div>';
 
             return ''
                 + '<div class="bg-white rounded-xl border border-slate-200 p-5">'
                 + '  <div class="flex items-start justify-between gap-3">'
                 + '    <div>'
-                + '      <a href="' + '{{ url('panel/ruangan') }}/' + ruangan.id + '" class="font-semibold text-slate-900 hover:underline">' + keTeksAman(ruangan.nama_ruangan) + '</a>'
+                + '      <a href="' + URL_DETAIL + ruangan.id + '" class="font-semibold text-slate-900 hover:underline">' + keTeksAman(ruangan.nama_ruangan) + '</a>'
                 + '      <p class="text-xs text-slate-500 mt-0.5">' + keTeksAman(ruangan.lokasi) + '</p>'
                 + '      <p class="text-xs text-slate-400 mt-0.5">IP ' + keTeksAman(ruangan.ip_address) + ':' + keTeksAman(ruangan.port) + '</p>'
-                + '      <p class="text-xs text-slate-400 mt-0.5">Protokol: ' + keTeksAman(ruangan.protokol_label || '-') + '</p>'
                 + '    </div>'
                 + pilOnline
                 + '  </div>'
-                + '  <div class="mt-4 flex items-end gap-5">'
+                + '  <div class="mt-4 flex items-end justify-between gap-4">'
                 + '    <div>'
                 + '      <p class="text-xs text-slate-400 uppercase tracking-wide">Suhu</p>'
                 + '      <p class="text-3xl font-bold mt-1" style="color:' + warna + ';">'
                 +          formatAngka(ruangan.suhu, 1)
                 +          + '<span class="text-sm font-semibold text-slate-400"> C</span>'
                 + '      </p>'
+                + '      <p class="text-xs text-slate-400 uppercase tracking-wide mt-2">Kelembapan</p>'
+                + '      <p class="text-lg font-semibold text-slate-700">' + formatAngka(ruangan.kelembapan, 1) + ' %</p>'
                 + '    </div>'
-                + '    <div>'
-                + '      <p class="text-xs text-slate-400 uppercase tracking-wide">Kelembapan</p>'
-                + '      <p class="text-xl font-semibold text-slate-700 mt-1">' + formatAngka(ruangan.kelembapan, 1) + ' %</p>'
-                + '    </div>'
+                + kanvasKurva
                 + '  </div>'
-                + '  <p class="text-xs mt-3" style="color:' + warna + ';">'
-                +      'Kondisi: ' + keTeksAman(ruangan.kondisi).toUpperCase()
-                +      ' (ambang ' + formatAngka(ruangan.ambang_suhu_bawah, 0) + ' s/d ' + formatAngka(ruangan.ambang_suhu_atas, 0) + ' C)'
+                + lencanaKondisi(ruangan)
+                + '  <p class="text-[11px] text-slate-400 mt-1">'
+                +      'Ambang ' + formatAngka(ruangan.ambang_suhu_bawah, 0) + ' s/d ' + formatAngka(ruangan.ambang_suhu_atas, 0) + ' C'
                 + '  </p>'
+                + '  <p class="text-xs text-slate-500 mt-2">Penanggung jawab: ' + keTeksAman(ruangan.penanggung_jawab || 'belum ditentukan') + '</p>'
                 + '  <p class="text-xs text-slate-500 mt-1">Pembacaan: ' + keTeksAman(ruangan.waktu_pembacaan || 'belum ada data') + '</p>'
                 + '  <p class="text-xs text-slate-400 mt-1">Ditarik terakhir: ' + keTeksAman(ruangan.terakhir_ditarik || '-') + '</p>'
                 + catatan
                 + '  <div class="mt-4 flex flex-wrap gap-2">'
+                + '    <a href="' + URL_DETAIL + ruangan.id + '" class="' + tombol + '">Detail</a>'
                 + '    <button type="button" data-aksi="uji" data-id="' + ruangan.id + '" class="' + tombol + '">Uji Koneksi</button>'
                 + '    <button type="button" data-aksi="tarik" data-id="' + ruangan.id + '" class="' + tombol + '">Tarik</button>'
-                + '    <button type="button" data-aksi="grafik" data-id="' + ruangan.id + '" class="' + tombol + '">Grafik</button>'
                 + '    <button type="button" data-aksi="ubah" data-id="' + ruangan.id + '" class="' + tombol + '">Edit</button>'
                 + '    <button type="button" data-aksi="hapus" data-id="' + ruangan.id + '" class="' + tombol + '" style="color:#b91c1c;">Hapus</button>'
                 + '  </div>'
                 + '</div>';
         }
+
 
         /**
          * Ambil data terbaru seluruh ruangan dari server.
@@ -474,9 +492,6 @@
                 .then(function (hasil) {
                     sembunyikanGalat();
                     dataTerakhir = hasil.ruangan || [];
-                    if (dataTerakhir.length > 0 && idTerpilih === null) {
-                        idTerpilih = dataTerakhir[0].id;
-                    }
                     renderSemua(hasil.waktu_server);
                 })
                 .catch(function (galat) {
@@ -530,13 +545,15 @@
             if (total === 0) {
                 elDaftarKartu.classList.add('hidden');
                 elKosongTotal.classList.remove('hidden');
-                elPanelGrafik.classList.add('hidden');
-                elPanelRiwayat.classList.add('hidden');
                 return;
             }
 
             elKosongTotal.classList.add('hidden');
             elDaftarKartu.classList.remove('hidden');
+
+            // Kartu digambar ulang, jadi kanvas kurva lama tidak lagi terpakai:
+            // buang objek grafiknya dulu supaya tidak menumpuk di memori.
+            bersihkanKurva();
 
             var html = '';
             for (var j = 0; j < total; j++) {
@@ -544,170 +561,95 @@
             }
             elDaftarKartu.innerHTML = html;
 
-            perbaruiPilihanRuangan();
-            renderGrafikDanRiwayat();
+            gambarKurvaSemua();
         }
 
+
         /**
-         * Perbarui daftar pilihan ruangan pada bagian grafik.
+         * Buang seluruh objek kurva singkat yang sudah ada.
          *
          * @return {void}
          */
-        function perbaruiPilihanRuangan() {
-            var opsi = '';
-            var ketemu = false;
-
-            for (var i = 0; i < dataTerakhir.length; i++) {
-                var ruangan = dataTerakhir[i];
-                var terpilih = String(ruangan.id) === String(idTerpilih);
-
-                if (terpilih) {
-                    ketemu = true;
+        function bersihkanKurva() {
+            Object.keys(kurvaKartu).forEach(function (kunci) {
+                if (kurvaKartu[kunci] && typeof kurvaKartu[kunci].destroy === 'function') {
+                    kurvaKartu[kunci].destroy();
                 }
+            });
 
-                opsi += '<option value="' + ruangan.id + '"' + (terpilih ? ' selected' : '') + '>'
-                    + keTeksAman(ruangan.nama_ruangan) + '</option>';
-            }
-
-            // Bila ruangan yang dipilih sudah tidak ada, kembali ke ruangan pertama.
-            if (!ketemu && dataTerakhir.length > 0) {
-                idTerpilih = dataTerakhir[0].id;
-                opsi = opsi.replace('value="' + idTerpilih + '"', 'value="' + idTerpilih + '" selected');
-            }
-
-            elPilihRuangan.innerHTML = opsi;
+            kurvaKartu = {};
         }
 
         /**
-         * Perbarui grafik dan tabel riwayat untuk ruangan yang sedang dipilih.
+         * Gambar kurva singkat untuk seluruh kartu yang sedang tampil.
          *
          * @return {void}
          */
-        function renderGrafikDanRiwayat() {
-            var ruangan = cariRuangan(idTerpilih);
-
-            if (ruangan === null) {
-                elPanelGrafik.classList.add('hidden');
-                elPanelRiwayat.classList.add('hidden');
+        function gambarKurvaSemua() {
+            if (typeof window.Chart !== 'function') {
                 return;
             }
 
-            elPanelGrafik.classList.remove('hidden');
-            elPanelRiwayat.classList.remove('hidden');
-            elJudulGrafik.textContent = ruangan.nama_ruangan + ' - ' + ruangan.lokasi;
-
-            if (typeof window.Chart !== 'function') {
-                elPanelGrafik.classList.add('hidden');
-            } else {
-                if (grafik === null) {
-                    siapkanGrafik();
-                }
-                perbaruiGrafik(ruangan.grafik || []);
+            for (var i = 0; i < dataTerakhir.length; i++) {
+                gambarKurvaKartu(dataTerakhir[i]);
             }
-
-            var baris = '';
-            var riwayat = ruangan.riwayat || [];
-
-            if (riwayat.length === 0) {
-                baris = '<tr><td colspan="4" class="py-3 text-slate-400">Belum ada pembacaan yang tersimpan.</td></tr>';
-            } else {
-                for (var i = 0; i < riwayat.length; i++) {
-                    baris += '<tr class="border-b border-slate-100">'
-                        + '<td class="py-2 pr-4 text-slate-700">' + keTeksAman(riwayat[i].waktu) + '</td>'
-                        + '<td class="py-2 pr-4 text-slate-700">' + formatAngka(riwayat[i].suhu, 1) + '</td>'
-                        + '<td class="py-2 pr-4 text-slate-700">' + formatAngka(riwayat[i].kelembapan, 1) + '</td>'
-                        + '<td class="py-2 text-slate-500">' + (riwayat[i].valid ? 'terbaca' : 'di luar rentang sensor') + '</td>'
-                        + '</tr>';
-                }
-            }
-
-            elTabelRiwayat.innerHTML = baris;
         }
 
         /**
-         * Siapkan objek grafik Chart.js untuk suhu dan kelembapan.
+         * Gambar kurva suhu singkat satu ruangan: tanpa sumbu, label, maupun
+         * legenda, hanya garis tren sebagai gambaran cepat.
          *
+         * @param  {object} ruangan
          * @return {void}
          */
-        function siapkanGrafik() {
-            var kanvas = document.getElementById('grafikSuhu');
+        function gambarKurvaKartu(ruangan) {
+            var kanvas = document.getElementById('kurva-' + ruangan.id);
 
-            grafik = new window.Chart(kanvas.getContext('2d'), {
+            if (kanvas === null) {
+                return;
+            }
+
+            var titik = ruangan.grafik || [];
+            var nilai = [];
+            var label = [];
+
+            for (var i = 0; i < titik.length; i++) {
+                nilai.push(titik[i].suhu);
+                label.push('');
+            }
+
+            if (nilai.length === 0) {
+                return;
+            }
+
+            kurvaKartu[ruangan.id] = new window.Chart(kanvas.getContext('2d'), {
                 type: 'line',
                 data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: 'Suhu (C)',
-                            data: [],
-                            borderColor: '#e07a5f',
-                            backgroundColor: 'rgba(224, 122, 95, 0.12)',
-                            borderWidth: 2,
-                            pointRadius: 0,
-                            tension: 0.3,
-                            fill: true,
-                            yAxisID: 'y'
-                        },
-                        {
-                            label: 'Kelembapan (%)',
-                            data: [],
-                            borderColor: '#0E9E8E',
-                            backgroundColor: 'rgba(14, 158, 142, 0.12)',
-                            borderWidth: 2,
-                            pointRadius: 0,
-                            tension: 0.3,
-                            fill: true,
-                            yAxisID: 'y1'
-                        }
-                    ]
+                    labels: label,
+                    datasets: [{
+                        data: nilai,
+                        borderColor: warnaKurva(ruangan.kondisi),
+                        backgroundColor: 'rgba(14, 158, 142, 0.10)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.35,
+                        fill: true
+                    }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: { legend: { position: 'bottom' } },
+                    animation: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: false }
+                    },
                     scales: {
-                        x: { ticks: { maxTicksLimit: 8, autoSkip: true } },
-                        y: {
-                            position: 'left',
-                            title: { display: true, text: 'Suhu (C)' },
-                            grid: { color: '#eef2f7' }
-                        },
-                        y1: {
-                            position: 'right',
-                            title: { display: true, text: 'Kelembapan (%)' },
-                            grid: { drawOnChartArea: false }
-                        }
+                        x: { display: false },
+                        y: { display: false }
                     }
                 }
             });
-        }
-
-        /**
-         * Perbarui isi grafik dengan titik data satu ruangan.
-         *
-         * @param  {Array} titik
-         * @return {void}
-         */
-        function perbaruiGrafik(titik) {
-            if (grafik === null) {
-                return;
-            }
-
-            var label = [];
-            var suhu = [];
-            var kelembapan = [];
-
-            for (var i = 0; i < titik.length; i++) {
-                label.push(titik[i].waktu);
-                suhu.push(titik[i].suhu);
-                kelembapan.push(titik[i].kelembapan);
-            }
-
-            grafik.data.labels = label;
-            grafik.data.datasets[0].data = suhu;
-            grafik.data.datasets[1].data = kelembapan;
-            grafik.update('none');
         }
 
         /**
@@ -732,8 +674,9 @@
             });
         }
 
+
         /**
-         * Buka modal form ruangan dalam mode tambah atau ubah.
+         * Buka modal tambah cepat ruangan dalam mode tambah atau ubah.
          *
          * @param  {object|null} ruangan  null berarti mode tambah.
          * @return {void}
@@ -768,7 +711,7 @@
         }
 
         /**
-         * Tutup modal form ruangan.
+         * Tutup modal tambah cepat ruangan.
          *
          * @return {void}
          */
@@ -812,6 +755,7 @@
                 + '<td class="py-1 text-slate-800">' + keTeksAman(nilai) + '</td>'
                 + '</tr>';
         }
+
 
         /**
          * Susun seluruh baris hasil uji koneksi perangkat.
@@ -939,6 +883,7 @@
             });
         }
 
+
         /**
          * Tangani klik tombol aksi di dalam kartu ruangan.
          *
@@ -971,22 +916,14 @@
 
             if (aksi === 'ubah') {
                 // Pengaturan lengkap ruangan (lokasi, kode alat, sumber data
-                // perangkat) dikelola di halaman tersendiri supaya tidak ada
-                // dua tempat penyuntingan data yang sama.
-                window.location.href = '{{ url('panel/ruangan') }}/' + ruangan.id + '/edit';
+                // perangkat, penanggung jawab) dikelola di halaman tersendiri
+                // supaya tidak ada dua tempat penyuntingan data yang sama.
+                window.location.href = URL_DETAIL + ruangan.id + '/edit';
                 return;
             }
 
             if (aksi === 'hapus') {
                 bukaModalHapus(ruangan);
-                return;
-            }
-
-            if (aksi === 'grafik') {
-                idTerpilih = ruangan.id;
-                perbaruiPilihanRuangan();
-                renderGrafikDanRiwayat();
-                elPanelGrafik.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         }
 
@@ -1003,11 +940,6 @@
             });
 
             document.getElementById('tombolTarikSemua').addEventListener('click', tarikSemua);
-
-            elPilihRuangan.addEventListener('change', function () {
-                idTerpilih = this.value;
-                renderGrafikDanRiwayat();
-            });
 
             Array.prototype.forEach.call(document.querySelectorAll('[data-tutup-modal-ruangan]'), function (tombol) {
                 tombol.addEventListener('click', tutupModalRuangan);
@@ -1053,3 +985,4 @@
     })();
 </script>
 @endpush
+
