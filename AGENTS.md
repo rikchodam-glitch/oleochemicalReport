@@ -961,6 +961,19 @@ Batasan penting lingkungan ini:
       tersimpan, dan `bacaDashboardHtml()` membaca angka asli dari dashboard
       port 80 perangkat.
     - Naik ke PROD lewat `Deploy-Laporan.bat` (migrasi `protokol` ikut jalan).
+    - **Wiring perangkat nyata (diselaraskan 06/10/2026):** blok `KONFIGURASI PIN`
+      di `sensor-suhu-esp32\firmware\ethernet_dht11\ethernet_dht11.ino` kini
+      `PIN_DHT 27` + `#define TIPE_SENSOR DHT22` + `PIN_W5500_RST 17`
+      (`PAKAI_RESET_W5500 1`) supaya cocok dengan papan yang sudah disolder user
+      dan dengan sketsa dashboard (`sketch_dashboard.ino`: DHTPIN 27, DHTTYPE
+      DHT22, W5500 CS=5/SCK=18/MISO=19/MOSI=23/RST=17). Bagian W5500 memang
+      sudah sama sejak awal; yang DULU berbeda hanya pin sensor (GPIO4) dan tipe
+      sensor (DHT11). Pin GPIO2 tetap dipakai sebagai LED status (LED bawaan
+      board). Sketsa bantu `firmware\uji_sensor_dht\uji_sensor_dht.ino` (ikut
+      di-commit) mencoba beberapa pin x DHT11/DHT22 untuk memastikan kombinasi
+      yang benar; JANGAN mengompilasi/mengunggah apa pun tanpa perintah user. Catatan:
+      salah `TIPE_SENSOR` membuat library menolak data (format/checksum berbeda)
+      sehingga pembacaan selalu gagal.
 
 
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)

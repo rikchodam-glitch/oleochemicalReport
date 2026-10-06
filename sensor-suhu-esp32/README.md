@@ -33,6 +33,10 @@ sensor-suhu-esp32/
 ├── 04_simulator.bat                   Simulator perangkat (uji tanpa perangkat keras)
 ├── firmware/ethernet_dht11/
 │   └── ethernet_dht11.ino             Firmware ESP32 lengkap
+├── firmware/sketch_dashboard/
+│   └── sketch_dashboard.ino           Salinan sketsa dashboard (HTML port 80 + JSON TCP 5000)
+├── firmware/uji_sensor_dht/
+│   └── uji_sensor_dht.ino             Sketsa bantu mencari pin dan tipe sensor DHT yang benar
 ├── server/
 │   ├── server.py                      Server Flask + penyimpanan SQLite + penarik data
 │   ├── requirements.txt               Dependensi Python (Flask)
@@ -54,7 +58,7 @@ sensor-suhu-esp32/
 |---|---|
 | Mikrokontroler | ESP32-WROOM-32 dev board (board Arduino: DOIT ESP32 DEVKIT V1) |
 | Modul Ethernet | W5500 (RJ45 + magnetics HanRun HR961160C), bus SPI |
-| Sensor | DHT11 modul 3 pin (+, out, -) |
+| Sensor | DHT11 modul 3 pin (+, out, -), atau DHT22/AM2302 (tipe diatur di firmware) |
 | Daya | POE Splitter IEEE 802.3af/at keluaran 5V DC |
 
 | Dari | Pin perangkat | Ke ESP32 |
@@ -65,9 +69,10 @@ sensor-suhu-esp32/
 | W5500 | MISO | GPIO19 |
 | W5500 | MOSI | GPIO23 |
 | W5500 | CS | GPIO5 |
-| DHT11 | VCC | 3V3 |
-| DHT11 | GND | GND |
-| DHT11 | OUT | GPIO4 |
+| W5500 | RST | GPIO17 (opsional; hanya dipakai bila kabel RST dipasang) |
+| DHT | VCC | 3V3 |
+| DHT | GND | GND |
+| DHT | OUT | GPIO27 |
 | POE Splitter | keluaran 5V+ | VIN ESP32 |
 | POE Splitter | keluaran 5V- | GND ESP32 |
 
@@ -77,8 +82,14 @@ Catatan penting:
   5V ke pin VCC W5500 bisa merusak modul.
 - Daya masuk ke board ESP32 lewat pin VIN (5V), bukan 3V3, karena regulator di
   board yang menurunkan 5V menjadi 3,3V untuk ESP32 dan modul W5500.
-- Modul W5500 pada proyek ini tidak memakai pin RST dan INT, jadi kedua pin itu
-  boleh dibiarkan tidak tersambung.
+- Modul W5500 tidak wajib memakai pin RST dan INT. Pada perangkat yang kabel RST-nya
+  sudah dipasang (mis. ke GPIO17), firmware menarik pulsa reset keras saat boot
+  karena `PAKAI_RESET_W5500` bernilai 1; nomor pinnya ada di konstanta
+  `PIN_W5500_RST`. Bila kabel RST tidak dipasang, tidak ada yang perlu diubah
+  karena pin kosong hanya menerima pulsa singkat. Pin INT memang tidak dipakai.
+- Nomor pin sensor dan tipe sensornya diatur di blok `KONFIGURASI PIN` bagian
+  atas `ethernet_dht11.ino` (`PIN_DHT`, `TIPE_SENSOR`, `PAKAI_RESET_W5500`),
+  sehingga wiring yang berbeda cukup disesuaikan di situ.
 - Pin SPI yang dipakai adalah pin bawaan VSPI pada ESP32, yaitu SCK=18,
   MISO=19, MOSI=23, CS=5. Angka ini juga tertulis di berkas firmware.
 
@@ -210,7 +221,7 @@ disetujui lewat UAC), atau minta bagian TI menambahkan aturan masuk TCP 5000.
 | Serial Monitor: "W5500 TIDAK TERDETEKSI" | Kabel SPI salah/lepas, VCC modul belum dapat 3,3V | Cek ulang SCK=18, MISO=19, MOSI=23, CS=5, VCC=3V3, GND=GND |
 | Serial Monitor: "link LAN mati" | Kabel LAN belum tersambung ke switch, atau keluaran POE belum masuk | Cek lampu link di port switch dan di modul W5500 |
 | Tidak bisa ping 192.168.41.240 | IP bentrok, beda subnet, atau perangkat belum boot | Cek Serial Monitor, pastikan IP perangkat .240 dan netmask 255.255.255.0 |
-| Serial Monitor: "Gagal baca DHT11" terus | Wiring DHT11 salah, modul rusak, atau jarak kabel terlalu panjang | Cek OUT=GPIO4, coba sensor lain, pendekkan kabel |
+| Serial Monitor: "Gagal baca DHT" terus | Wiring sensor salah, `TIPE_SENSOR` tidak sesuai modul, modul rusak, atau jarak kabel terlalu panjang | Cek `PIN_DHT` (bawaannya GPIO27), samakan `TIPE_SENSOR` dengan modulnya, atau jalankan `firmware/uji_sensor_dht` yang mencari sendiri kombinasi pin dan tipe yang berhasil |
 | Dashboard kosong padahal ESP32 hidup | Port 5000 diblokir firewall sehingga PUSH gagal, dan IP di `config.json` belum sesuai | Jalankan `tools\test_receiver.py` untuk memastikan jalur PUSH, atau andalkan PULL dengan IP yang benar |
 | Baris "PUSH" tidak muncul di log server | Sejak firmware 1.0.1 pengiriman mandiri memang dimatikan (`AKTIFKAN_PUSH 0`) | Tidak perlu tindakan. Aplikasi Laravel menarik data lewat port 80. Ubah `AKTIFKAN_PUSH` ke 1 bila ingin memakai dashboard Flask |
 | Server tidak bisa dijalankan, port terpakai | Ada proses lain di port 5000 | Cek `netstat -ano | findstr :5000`, ubah `server.port` bila perlu |
@@ -343,6 +354,16 @@ sebagai acuan (pin sensor di sketsa itu GPIO27 dan tipe sensor diatur lewat
 | Dashboard | halaman monitoring bawaan firmware | halaman HTML port 80 (`Refresh: 3`) |
 | Buffer pembacaan | ada (360 pembacaan) | tidak ada (hanya nilai terkini) |
 | Balasan TCP | - | baru membalas setelah klien mengirim satu byte |
+
+Wiring kedua bentuk firmware SAMA untuk bagian W5500 (VCC 3V3, GND, SCK 18,
+MISO 19, MOSI 23, CS 5). Yang berbeda hanya bagian sensor dan pin tambahan:
+
+| Hal | Firmware repo ini | Sketsa dashboard |
+|---|---|---|
+| Pin data sensor | `PIN_DHT` (bawaan GPIO27) | GPIO27 |
+| Tipe sensor | `TIPE_SENSOR` (bawaan DHT22) | `#define DHTTYPE` |
+| Reset W5500 | `PIN_W5500_RST` GPIO17, ditarik bila `PAKAI_RESET_W5500` = 1 | GPIO17, selalu ditarik |
+| LED status | GPIO2 (LED bawaan board) | tidak dipakai |
 
 Cara memilihnya di halaman panel: kolom **Cara baca perangkat** pada form ruangan
 (`Otomatis`, `JSON API firmware`, `JSON TCP sketch dashboard`, `Dashboard HTML

@@ -2,13 +2,13 @@
  * ethernet_dht11.ino
  *
  * Firmware monitoring suhu & kelembapan untuk ESP32-WROOM-32 + modul Ethernet
- * W5500 (SPI) + sensor DHT11. Data dikirim ke server monitoring (Flask) yang
- * berjalan di komputer dalam jaringan lokal.
+ * W5500 (SPI) + sensor DHT (DHT11 atau DHT22). Data dikirim ke server
+ * monitoring (Flask) yang berjalan di komputer dalam jaringan lokal.
  *
  * Perangkat keras:
  *   - ESP32-WROOM-32 dev board (board Arduino: DOIT ESP32 DEVKIT V1)
  *   - Modul Ethernet W5500 (RJ45 + magnetics HanRun HR961160C), bus SPI
- *   - Sensor DHT11 modul 3 pin (+, out, -)
+ *   - Sensor DHT: modul DHT11 3 pin, atau DHT22/AM2302 (tipe diatur TIPE_SENSOR)
  *   - POE Splitter 802.3af/at keluaran 5V DC sebagai sumber daya
  *
  * Wiring:
@@ -18,9 +18,10 @@
  *   W5500 MISO  -> GPIO19
  *   W5500 MOSI  -> GPIO23
  *   W5500 CS    -> GPIO5
- *   DHT11 VCC   -> 3V3 ESP32
- *   DHT11 GND   -> GND ESP32
- *   DHT11 OUT   -> GPIO4
+ *   W5500 RST   -> GPIO17 (opsional; hanya dipakai bila kabel RST dipasang)
+ *   DHT VCC     -> 3V3 ESP32
+ *   DHT GND     -> GND ESP32
+ *   DHT OUT     -> GPIO27
  *   POE 5V out+ -> VIN ESP32
  *   POE 5V out- -> GND ESP32
  *
@@ -79,8 +80,22 @@ static const uint16_t PORT_HTTP_LOKAL = 80;
 // KONFIGURASI PIN
 // ---------------------------------------------------------------------------
 static const uint8_t PIN_CS_ETHERNET = 5;
-static const uint8_t PIN_DHT = 4;
+static const uint8_t PIN_DHT = 27;
 static const uint8_t PIN_LED_STATUS = 2;
+static const uint8_t PIN_W5500_RST = 17;
+
+// 1 = kirim pulsa reset keras ke modul W5500 saat boot (dipakai bila kabel RST
+// modul memang terpasang, mis. ke GPIO17). 0 = lewati. Aman untuk kedua wiring
+// karena yang tidak memakai kabel RST hanya mendapat pulsa pada pin kosong.
+#define PAKAI_RESET_W5500 1
+
+// Tipe sensor DHT yang dipakai: DHT11 atau DHT22.
+// Salah tipe membuat library menolak data (format/checksum berbeda) sehingga
+// pembacaan selalu gagal dan halaman panel menampilkan catatan "sensor belum
+// mengirim pembacaan". Modul DHT11 biasanya berwarna biru dengan 3 pin,
+// DHT22/AM2302 berwarna putih. Bila ragu, jalankan dulu sketsa
+// firmware/uji_sensor_dht yang mencoba KEDUA tipe dan melaporkan yang berhasil.
+#define TIPE_SENSOR DHT22
 
 // ---------------------------------------------------------------------------
 // KONFIGURASI WAKTU DAN BUFFER
@@ -102,7 +117,7 @@ struct Pembacaan {
   bool terkirim;        // sudah berhasil dikirim/ditarik server
 };
 
-static DHT sensorDht(PIN_DHT, DHT11);
+static DHT sensorDht(PIN_DHT, TIPE_SENSOR);
 
 /**
  * Pembungkus EthernetServer agar bisa dipakai di core ESP32.
@@ -184,12 +199,21 @@ static void catat(const String &pesan) {
 }
 
 /**
+ * Nama tipe sensor DHT yang sedang dipakai.
+ *
+ * @return String berisi "DHT11" atau "DHT22" sesuai TIPE_SENSOR.
+ */
+static String namaTipeSensor() {
+  return (TIPE_SENSOR == DHT11) ? String(F("DHT11")) : String(F("DHT22"));
+}
+
+/**
  * Tampilkan ringkasan wiring dan konfigurasi saat perangkat baru menyala.
  */
 static void cetakHeader() {
   Serial.println();
   Serial.println(F("===================================================="));
-  Serial.println(F(" Monitoring Suhu & Kelembapan - ESP32 + W5500 + DHT11"));
+  Serial.println(F(" Monitoring Suhu & Kelembapan - ESP32 + W5500 + DHT"));
   Serial.println(F("===================================================="));
   Serial.print(F(" Firmware  : "));
   Serial.println(F(VERSI_FIRMWARE));
@@ -207,7 +231,12 @@ static void cetakHeader() {
   Serial.print(F(" Buffer    : "));
   Serial.print(UKURAN_BUFFER);
   Serial.println(F(" pembacaan terakhir disimpan di perangkat"));
-  Serial.println(F(" Wiring    : W5500 SCK=18 MISO=19 MOSI=23 CS=5 VCC=3V3, DHT11 OUT=4"));
+  Serial.print(F(" Wiring    : W5500 SCK=18 MISO=19 MOSI=23 CS=5 RST="));
+  Serial.print(PAKAI_RESET_W5500 ? PIN_W5500_RST : 0);
+  Serial.print(F(" VCC=3V3, sensor DHT "));
+  Serial.print(TIPE_SENSOR == DHT11 ? F("DHT11") : F("DHT22"));
+  Serial.print(F(" OUT="));
+  Serial.println(PIN_DHT);
   Serial.println(F("===================================================="));
 }
 
@@ -220,6 +249,17 @@ static void cetakHeader() {
  * Fungsi ini dipanggil sekali di setup().
  */
 static void inisialisasiJaringan() {
+  // Reset keras modul W5500 (hanya bila kabel RST terpasang). Perangkat yang
+  // tidak memakai kabel RST tidak terpengaruh, karena pin GPIO17 kosong hanya
+  // menerima pulsa singkat LOW lalu HIGH.
+  if (PAKAI_RESET_W5500) {
+    pinMode(PIN_W5500_RST, OUTPUT);
+    digitalWrite(PIN_W5500_RST, LOW);
+    delay(100);
+    digitalWrite(PIN_W5500_RST, HIGH);
+    delay(200);
+  }
+
   // SPI ESP32 memakai pin default VSPI: SCK=18, MISO=19, MOSI=23.
   SPI.begin();
   Ethernet.init(PIN_CS_ETHERNET);
@@ -302,7 +342,7 @@ static Pembacaan *ambilPembacaan(uint32_t id) {
 }
 
 /**
- * Baca sensor DHT11 lalu simpan hasilnya ke buffer RAM.
+ * Baca sensor DHT lalu simpan hasilnya ke buffer RAM.
  * Pembacaan yang gagal (NaN) hanya dihitung, tidak disimpan.
  */
 static void bacaSensor() {
@@ -312,7 +352,7 @@ static void bacaSensor() {
 
   if (!valid) {
     jumlahGagalBaca++;
-    catat(String(F("Gagal baca DHT11 (percobaan gagal: ")) + jumlahGagalBaca + ").");
+    catat(String(F("Gagal baca DHT (percobaan gagal: ")) + jumlahGagalBaca + ").");
     return;
   }
 
@@ -744,7 +784,12 @@ void setup() {
   inisialisasiJaringan();
 
   sensorDht.begin();
-  catat(F("Sensor DHT11 siap pada GPIO4."));
+
+  String pesanSensor = String(F("Sensor ")) + namaTipeSensor();
+  pesanSensor += String(F(" siap pada GPIO"));
+  pesanSensor += PIN_DHT;
+  pesanSensor += '.';
+  catat(pesanSensor);
 
   // Beri waktu sensor stabil setelah power-on, lalu ambil pembacaan pertama
   // supaya hasilnya langsung terlihat di Serial Monitor saat commissioning.
