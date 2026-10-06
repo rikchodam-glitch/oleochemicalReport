@@ -296,3 +296,15 @@ test('protokol yang tidak dikenal ditolak validasi', function () {
         ->toBeFalse();
 });
 
+
+test('form ruangan pada halaman panel memuat pilihan cara baca perangkat', function () {
+    $this->actingAs($this->admin)
+        ->get('/panel')
+        ->assertOk()
+        ->assertSee('Cara baca perangkat')
+        ->assertSee('name="protokol"', false)
+        ->assertSee('Otomatis (deteksi sendiri)', false)
+        ->assertSee('JSON TCP sketch dashboard (port 5000)', false)
+        ->assertSee('Dashboard HTML sketch (port 80)', false);
+});
+
