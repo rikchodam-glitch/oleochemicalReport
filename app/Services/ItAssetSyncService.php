@@ -3,8 +3,6 @@
 namespace App\Services;
 
 use App\Models\Asset;
-use App\Models\Company;
-use App\Models\Department;
 use App\Models\FunctionalLocation;
 use App\Models\ItAsset;
 use Illuminate\Support\Collection;
@@ -30,6 +28,11 @@ use Illuminate\Support\Collection;
  */
 class ItAssetSyncService
 {
+    public function __construct(
+        protected AssetLocationService $lokasi,
+    ) {
+    }
+
     /**
      * Isi kolom funcloc_id pada seluruh perangkat IT sesuai aturan config.
      *
@@ -350,27 +353,7 @@ class ItAssetSyncService
      */
     protected function resolveCompanyId(FunctionalLocation $funcloc): ?int
     {
-        $rootSegment = explode('-', $funcloc->code)[0] ?? '';
-
-        if ($rootSegment !== '') {
-            $companyId = Company::where('code', $rootSegment)->value('id');
-
-            if ($companyId !== null) {
-                return (int) $companyId;
-            }
-        }
-
-        $node = $funcloc;
-
-        while ($node !== null) {
-            if ($node->company_id !== null) {
-                return (int) $node->company_id;
-            }
-
-            $node = $node->parent;
-        }
-
-        return null;
+        return $this->lokasi->companyId($funcloc);
     }
 
     /**
@@ -383,33 +366,6 @@ class ItAssetSyncService
      */
     protected function resolveDepartmentId(FunctionalLocation $funcloc): ?int
     {
-        $node = $funcloc;
-
-        while ($node !== null) {
-            if ($node->department_id !== null) {
-                return (int) $node->department_id;
-            }
-
-            $node = $node->parent;
-        }
-
-        $segments = explode('-', $funcloc->code);
-        $code     = $segments[1] ?? '';
-
-        if ($code === '') {
-            return null;
-        }
-
-        $companyId = $this->resolveCompanyId($funcloc);
-
-        $query = Department::where('code', $code);
-
-        if ($companyId !== null) {
-            $query->where('company_id', $companyId);
-        }
-
-        $departmentId = $query->value('id');
-
-        return $departmentId !== null ? (int) $departmentId : null;
+        return $this->lokasi->departmentId($funcloc);
     }
 }

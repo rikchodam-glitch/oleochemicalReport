@@ -976,6 +976,91 @@ Batasan penting lingkungan ini:
       sehingga pembacaan selalu gagal.
 
 
+21. **Pengaturan lengkap ruang panel + ruang panel menjadi aset penuh
+    (diputuskan 06/10/2026, sudah ada kodenya).** Semua perubahan ada di copy
+    DEV `C:\laragon\www\oleochemicalReport`. Pemicunya: user melaporkan suhu
+    sudah muncul di dashboard (dibuktikan langsung di database DEV
+    `oleochemical_dev`: 110 baris `panel_pembacaan` untuk ruangan id 3 "Ruang
+    Panel EPE 1", suhu 24,90-25,00 C, `sesi_boot='sk'`, `sumber='pull'`).
+    - **Halaman baru**: `resources/views/panel/ruangan/form.blade.php` (tambah +
+      ubah, satu berkas) dan `resources/views/panel/ruangan/show.blade.php`
+      (detail + tombol aksi). Rute baru di `routes/web.php`:
+      `panel.ruangan.create`, `panel.ruangan.edit`, `panel.ruangan.show`,
+      `panel.ruangan.sinkron-aset`. Route `create` WAJIB didaftarkan SEBELUM
+      `/panel/ruangan/{panelRuangan}` supaya kata "create" tidak terbaca
+      sebagai id.
+    - **Form memisahkan dua jenis sumber data secara eksplisit**: kartu
+      "Dashboard Arduino (sketsa sendiri)" (`tcp-json` dengan port TCP per
+      ruangan, `html`) dan kartu "Firmware proyek (JSON API)" (`api-json`),
+      semuanya radio `name="protokol"`. Label `PanelRuangan::PROTOKOL` TIDAK
+      diubah karena test lama memeriksanya di halaman `/panel`.
+    - **Kolom baru** (migration
+      `2026_10_06_000002_sambungkan_panel_ruangan_ke_assets.php`):
+      `panel_ruangan.funcloc_id` (FK nullOnDelete), `kode_alat`,
+      `equipment_type`, `port_tcp`; `assets.panel_ruangan_id` (FK cascade);
+      ENUM `assets.data_source` ditambah `panel_sync` (perubahan ENUM dijaga
+      `if (DB::getDriverName() === 'mysql')` seperti migration IT).
+    - **Kode alat manual + nomor equipment otomatis** (KEPUTUSAN USER
+      06/10/2026): `assets.tech_ident_no` = `panel_ruangan.kode_alat` (diketik
+      manual pada form), sedangkan `assets.equipment_no` dibuat 8 digit lewat
+      `AssetNumberService::generateForFuncLoc()` mengikuti seri nomor PT lokasi
+      itu. Ruangan tanpa lokasi ATAU tanpa kode alat TIDAK dipaksa masuk: baris
+      cerminnya dibuang dan alasan dilewatkannya ditampilkan di halaman
+      form/detail.
+    - **`App\Services\PanelAssetSyncService`** (pola sama dengan
+      `ItAssetSyncService`): `syncOne`, `syncAll`, `hapusCermin`,
+      `removeStaleMirrors`, `buildMirrorPayload`, `alasanLewatSinkron`,
+      `asetCermin`. Dipanggil otomatis pada `store`/`update`, tombol
+      "Sinkronkan Aset", saat `destroy`, dan perintah
+      `php artisan panel:sync-assets [--dry-run]`
+      (`app\Console\Commands\PanelSyncAssetsCommand.php`). Baris aset lama
+      bertipe impor/manual dengan kode alat sama DIADOPSI (nomor equipment
+      lamanya dipertahankan); baris cermin modul IT (`it_sync`) TIDAK boleh
+      diadopsi.
+    - **Satu sumber aturan lokasi**: `App\Services\AssetLocationService`
+      (company_id/department_id/area_id/sub_area_id + `kolomLokasi()`);
+      `ItAssetSyncService` kini mendelegasikan `resolveCompanyId()` dan
+      `resolveDepartmentId()` ke service itu (import `Company`/`Department` di
+      sana dihapus). Daftar Functional Location untuk form dipusatkan di
+      `App\Services\FunclocOptionService::grupPerPt()` dan
+      `ItAssetController::funclocOptionsGroups()` memakai service yang sama.
+    - **Port TCP per ruangan**: `PanelSensorService` memakai
+      `PanelRuangan::portTcpEfektif()` (kolom `port_tcp`, cadangan
+      `config('panel.sketch.port_tcp')`), tidak lagi satu nilai global.
+    - **Penjaga `kode_alat`**: menolak kode yang sudah dipakai baris cermin
+      modul lain atau ruangan panel lain, TETAPI baris cermin milik ruangan itu
+      sendiri dikecualikan. Jebakan yang sudah kena sekali: penyaring
+      pengecualian WAJIB memakai `whereNull('panel_ruangan_id') orWhere(...)`,
+      karena `where('panel_ruangan_id', '!=', $id)` membuang baris NULL di SQL
+      sehingga cermin milik perangkat IT lolos. Bug pertama malah menolak
+      menyimpan perubahan pada kode alat yang sama; ketahuan dari test, bukan
+      dari peninjauan kode.
+    - **Import/export aset**: `data_source` `panel_sync` diperlakukan sama
+      seperti `it_sync` (dilewati `ImportService` pada tiga titik pemeriksaan,
+      tidak ikut diexport di `AssetExportTrait`), dan label data_source di
+      `resources/views/assets/show.blade.php` ditambah "Sinkron Ruang Panel".
+    - **Dashboard `/panel` TIDAK ditulis ulang** (1.052 baris): modal lama tetap
+      dipakai sebagai "tambah cepat" (setelah simpan, pengguna diarahkan ke
+      halaman detail ruangan untuk melengkapi lokasi/kode alat), nama ruangan
+      pada kartu menaut ke halaman detail, dan tombol Edit mengarah ke halaman
+      pengaturan lewat `window.location.href`. **Modal lama BELUM dihapus**;
+      kalau nanti ingin dihapus, lakukan overwrite penuh berkas itu sekali
+      jalan, jangan tambal sebagian.
+    - Uji: `tests/Feature/PanelPengaturanRuanganTest.php` (14 test, 73 assertions;
+      mencakup port TCP per ruangan, adopsi baris lama, penolakan kode bentrok
+      ruangan lain/perangkat IT, hapus ruangan menghapus cermin, dan perintah
+      `panel:sync-assets --dry-run`). Test lama
+      `PanelProtokolSketchTest` "ruangan panel dapat disimpan dengan protokol
+      tcp-json" disesuaikan: pengalihan setelah simpan kini ke halaman detail
+      ruangan, bukan `/panel`. Seluruh suite **403 test hijau (1767 assertions)**
+      dan `php artisan view:cache` sukses (06/10/2026).
+    - Catatan lingkungan: `php` TIDAK ada di PATH sesi terminal agent; pakai
+      `C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe`. Saat memanggil
+      `php artisan tinker --execute` dari PowerShell, tanda kutip GANDA di dalam
+      argumen terpotong (muncul "Undefined constant") — pakai kutip tunggal
+      ganda (`''teks''`) atau, untuk pemeriksaan rumit, skrip sementara
+      `tmp-cek-*.php` yang dijalankan langsung lalu dihapus lagi.
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file

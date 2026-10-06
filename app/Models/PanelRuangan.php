@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -36,9 +37,13 @@ class PanelRuangan extends Model
         'nama_ruangan',
         'pt_location',
         'plant',
+        'funcloc_id',
+        'kode_alat',
+        'equipment_type',
         'keterangan',
         'ip_address',
         'port',
+        'port_tcp',
         'protokol',
         'mac_address',
         'aktif',
@@ -57,6 +62,8 @@ class PanelRuangan extends Model
         return [
             'aktif' => 'boolean',
             'port' => 'integer',
+            'port_tcp' => 'integer',
+            'funcloc_id' => 'integer',
             'ambang_suhu_atas' => 'float',
             'ambang_suhu_bawah' => 'float',
             'id_pembacaan_terakhir' => 'integer',
@@ -83,6 +90,29 @@ class PanelRuangan extends Model
     public function pembacaanTerakhir(): HasOne
     {
         return $this->hasOne(PanelPembacaan::class, 'panel_ruangan_id')->latestOfMany('waktu');
+    }
+
+    /**
+     * Node Functional Location ruangan ini (hierarki PT -> Departemen -> Area
+     * -> Section). Dipakai untuk membentuk baris aset cermin supaya ruang panel
+     * bisa dipilih sebagai equipment pada laporan.
+     *
+     * @return BelongsTo<FunctionalLocation, PanelRuangan>
+     */
+    public function funcloc(): BelongsTo
+    {
+        return $this->belongsTo(FunctionalLocation::class, 'funcloc_id');
+    }
+
+    /**
+     * Baris aset cermin ruangan ini di tabel assets, dikelola otomatis oleh
+     * PanelAssetSyncService. Null bila ruangan belum punya lokasi/kode alat.
+     *
+     * @return HasOne<Asset, PanelRuangan>
+     */
+    public function asetCermin(): HasOne
+    {
+        return $this->hasOne(Asset::class, 'panel_ruangan_id');
     }
 
     /**
@@ -118,6 +148,20 @@ class PanelRuangan extends Model
         $port = $this->port ?: 80;
 
         return 'http://' . ($this->ip_address ?? '') . ':' . $port;
+    }
+
+    /**
+     * Port layanan JSON TCP sketsa dashboard yang dipakai ruangan ini: nilai
+     * per ruangan bila diisi, kalau tidak kembali ke pengaturan global
+     * config('panel.sketch.port_tcp').
+     *
+     * @return int
+     */
+    public function portTcpEfektif(): int
+    {
+        $port = (int) ($this->port_tcp ?? 0);
+
+        return $port > 0 ? $port : (int) config('panel.sketch.port_tcp', 5000);
     }
 
     /**

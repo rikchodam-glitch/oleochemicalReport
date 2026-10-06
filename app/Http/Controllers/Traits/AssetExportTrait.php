@@ -73,7 +73,7 @@ trait AssetExportTrait
             3 => 'Diekspor: ' . now()->format('d/m/Y H:i') . ' WIB'
                 . (auth()->check() ? ' oleh ' . auth()->user()->name : ''),
             4 => 'Filter: ' . $this->ringkasanFilterExport($request),
-            5 => 'Jumlah: ' . number_format($assets->count()) . ' asset (perangkat IT / it_sync tidak disertakan)',
+            5 => 'Jumlah: ' . number_format($assets->count()) . ' asset (perangkat IT & ruang panel / it_sync & panel_sync tidak disertakan)',
         ];
 
         foreach ($barisInfo as $nomor => $teks) {
@@ -198,7 +198,7 @@ trait AssetExportTrait
             'Diekspor: ' . now()->format('d/m/Y H:i') . ' WIB'
                 . (auth()->check() ? ' oleh ' . auth()->user()->name : ''),
             'Filter: ' . $this->ringkasanFilterExport($request),
-            'Jumlah: ' . number_format($assets->count()) . ' asset (perangkat IT / it_sync tidak disertakan)',
+            'Jumlah: ' . number_format($assets->count()) . ' asset (perangkat IT & ruang panel / it_sync & panel_sync tidak disertakan)',
         ];
 
         $headers = [

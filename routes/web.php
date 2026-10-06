@@ -266,6 +266,15 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     // memerlukan aturan port masuk di firewall komputer ini).
     Route::get('/panel', [PanelRuanganController::class, 'index'])->name('panel.index');
     Route::get('/panel/data', [PanelRuanganController::class, 'data'])->name('panel.data');
+
+    // Pengaturan lengkap tiap ruangan (form tambah/ubah dan halaman detail)
+    // dipisah dari dashboard supaya halaman monitoring tetap ringan. Route
+    // '/panel/ruangan/create' WAJIB ditulis sebelum '/panel/ruangan/{id}'
+    // agar kata "create" tidak terbaca sebagai id ruangan.
+    Route::get('/panel/ruangan/create', [PanelRuanganController::class, 'create'])->name('panel.ruangan.create');
+    Route::get('/panel/ruangan/{panelRuangan}/edit', [PanelRuanganController::class, 'edit'])->name('panel.ruangan.edit');
+    Route::post('/panel/ruangan/{panelRuangan}/sinkron-aset', [PanelRuanganController::class, 'sinkronAset'])->name('panel.ruangan.sinkron-aset');
+    Route::get('/panel/ruangan/{panelRuangan}', [PanelRuanganController::class, 'show'])->name('panel.ruangan.show');
     Route::post('/panel/ruangan', [PanelRuanganController::class, 'store'])->name('panel.ruangan.store');
     Route::post('/panel/ruangan/{panelRuangan}/uji-koneksi', [PanelRuanganController::class, 'ujiKoneksi'])->name('panel.ruangan.uji-koneksi');
     Route::post('/panel/ruangan/{panelRuangan}/tarik', [PanelRuanganController::class, 'tarik'])->name('panel.ruangan.tarik');

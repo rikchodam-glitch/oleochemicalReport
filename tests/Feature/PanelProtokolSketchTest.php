@@ -263,7 +263,7 @@ test('halaman panel menyajikan protokol tiap ruangan untuk polling', function ()
 });
 
 test('ruangan panel dapat disimpan dengan protokol tcp-json', function () {
-    $this->actingAs($this->admin)
+    $balasan = $this->actingAs($this->admin)
         ->post('/panel/ruangan', [
             'nama_ruangan'      => 'Ruang Panel Server',
             'ip_address'        => '192.168.41.240',
@@ -272,10 +272,13 @@ test('ruangan panel dapat disimpan dengan protokol tcp-json', function () {
             'ambang_suhu_atas'  => 32,
             'ambang_suhu_bawah' => 18,
             'aktif'             => 1,
-        ])
-        ->assertRedirect(route('panel.index'));
+        ]);
 
     $ruangan = PanelRuangan::query()->where('nama_ruangan', 'Ruang Panel Server')->firstOrFail();
+
+    // Setelah disimpan, pengguna diarahkan ke halaman detail ruangan supaya
+    // lokasi dan kode alatnya bisa langsung dilengkapi.
+    $balasan->assertRedirect(route('panel.ruangan.show', $ruangan));
 
     expect($ruangan->protokol)->toBe('tcp-json');
 });

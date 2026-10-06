@@ -9,6 +9,7 @@ use App\Models\ItAsset;
 use App\Models\ItNotification;
 use App\Models\ItPingLog;
 use App\Services\CctvSnapshotService;
+use App\Services\FunclocOptionService;
 use App\Services\ItAssetImportService;
 use App\Services\ItAssetSyncService;
 use App\Services\ItPingService;
@@ -539,27 +540,7 @@ class ItAssetController extends Controller
      */
     private function funclocOptionsGroups(): array
     {
-        $groups = [];
-
-        foreach (FunctionalLocation::orderBy('code')->get() as $funcloc) {
-            if ((int) $funcloc->level === FunctionalLocation::LEVEL_SITE) {
-                continue;
-            }
-
-            $pt       = explode('-', $funcloc->code)[0] ?? 'LAINNYA';
-            $segmen   = explode('-', $funcloc->code);
-
-            $groups[$pt][] = [
-                'id'         => (int) $funcloc->id,
-                'label'      => $funcloc->code . ' - ' . $funcloc->name,
-                'plant'      => $pt,
-                'department' => $segmen[1] ?? '',
-                'code'       => $funcloc->code,
-                'name'       => (string) $funcloc->name,
-            ];
-        }
-
-        return $groups;
+        return app(FunclocOptionService::class)->grupPerPt();
     }
 
     /**

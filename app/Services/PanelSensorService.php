@@ -106,7 +106,7 @@ class PanelSensorService
             $gagal[] = 'JSON API tidak menjawab';
         }
 
-        $portTcp = (int) config('panel.sketch.port_tcp', 5000);
+        $portTcp = $ruangan->portTcpEfektif();
 
         if ($cara === 'tcp-json' || $cara === 'otomatis') {
             $mentah = $this->reader->bacaJsonTcp((string) $ruangan->ip_address, $portTcp);

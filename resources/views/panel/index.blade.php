@@ -421,7 +421,7 @@
                 + '<div class="bg-white rounded-xl border border-slate-200 p-5">'
                 + '  <div class="flex items-start justify-between gap-3">'
                 + '    <div>'
-                + '      <p class="font-semibold text-slate-900">' + keTeksAman(ruangan.nama_ruangan) + '</p>'
+                + '      <a href="' + '{{ url('panel/ruangan') }}/' + ruangan.id + '" class="font-semibold text-slate-900 hover:underline">' + keTeksAman(ruangan.nama_ruangan) + '</a>'
                 + '      <p class="text-xs text-slate-500 mt-0.5">' + keTeksAman(ruangan.lokasi) + '</p>'
                 + '      <p class="text-xs text-slate-400 mt-0.5">IP ' + keTeksAman(ruangan.ip_address) + ':' + keTeksAman(ruangan.port) + '</p>'
                 + '      <p class="text-xs text-slate-400 mt-0.5">Protokol: ' + keTeksAman(ruangan.protokol_label || '-') + '</p>'
@@ -970,7 +970,10 @@
             }
 
             if (aksi === 'ubah') {
-                bukaModalRuangan(ruangan);
+                // Pengaturan lengkap ruangan (lokasi, kode alat, sumber data
+                // perangkat) dikelola di halaman tersendiri supaya tidak ada
+                // dua tempat penyuntingan data yang sama.
+                window.location.href = '{{ url('panel/ruangan') }}/' + ruangan.id + '/edit';
                 return;
             }
 

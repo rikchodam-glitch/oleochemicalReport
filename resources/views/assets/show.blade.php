@@ -65,7 +65,7 @@
                         </div>
                         <div>
                             <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Data Source</dt>
-                            <dd class="mt-1 text-sm text-slate-900">{{ ['import_excel' => 'Import Excel', 'manual' => 'Manual', 'it_sync' => 'Sinkron IT Assets'][$asset->data_source] ?? $asset->data_source }}</dd>
+                            <dd class="mt-1 text-sm text-slate-900">{{ ['import_excel' => 'Import Excel', 'manual' => 'Manual', 'it_sync' => 'Sinkron IT Assets', 'panel_sync' => 'Sinkron Ruang Panel'][$asset->data_source] ?? $asset->data_source }}</dd>
                         </div>
                         <div>
                             <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Manufacturer</dt>

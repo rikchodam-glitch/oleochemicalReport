@@ -258,10 +258,12 @@ class ImportService
 
                 // Baris cermin perangkat IT (data_source 'it_sync') TIDAK
                 // diproses import asset: datanya dikelola di halaman IT Assets
-                // lewat import perangkat IT. Baris seperti ini dikumpulkan di
-                // bucket sendiri supaya tidak dilaporkan sebagai "akan
-                // diperbarui" padahal isinya tidak berubah.
-                if ($existing->data_source === 'it_sync') {
+                // lewat import perangkat IT, sedangkan baris cermin ruang panel
+                // (data_source 'panel_sync') dikelola di halaman Monitoring
+                // Ruang Panel. Baris seperti ini dikumpulkan di bucket sendiri
+                // supaya tidak dilaporkan sebagai "akan diperbarui" padahal
+                // isinya tidak berubah.
+                if (in_array($existing->data_source, ['it_sync', 'panel_sync'], true)) {
                     $results['it_sync'][] = $rowData;
 
                     continue;
@@ -285,7 +287,7 @@ class ImportService
             if (count($kandidat) === 1) {
                 $existing = $kandidat[0];
 
-                if ($existing->data_source === 'it_sync') {
+                if (in_array($existing->data_source, ['it_sync', 'panel_sync'], true)) {
                     $results['it_sync'][] = $rowData;
 
                     continue;
@@ -536,10 +538,11 @@ class ImportService
 
                     if (!$existing) continue;
 
-                    // Baris cermin perangkat IT dikelola modul IT Assets
-                    // (lewat `php artisan it:sync-assets`), jadi tidak diubah
-                    // dari impor Excel aset supaya data IT tidak menyimpang.
-                    if ($existing->data_source === 'it_sync') {
+                    // Baris cermin modul lain (perangkat IT data_source
+                    // 'it_sync', ruang panel data_source 'panel_sync') dikelola
+                    // modulnya masing-masing, jadi tidak diubah dari impor
+                    // Excel aset supaya datanya tidak menyimpang.
+                    if (in_array($existing->data_source, ['it_sync', 'panel_sync'], true)) {
                         $itSyncSkipped++;
                         continue;
                     }

@@ -18,6 +18,7 @@ class Asset extends Model
         'functional_loc',
         'funcloc_id',
         'it_asset_id',
+        'panel_ruangan_id',
         'company_id',
         'department_id',
         'area_id',
@@ -78,6 +79,18 @@ class Asset extends Model
     public function itAsset(): BelongsTo
     {
         return $this->belongsTo(ItAsset::class, 'it_asset_id');
+    }
+
+    /**
+     * Ruang panel sumber baris ini (diisi hanya bila baris berasal dari modul
+     * Monitoring Ruang Panel, ditandai data_source = 'panel_sync'). Halaman
+     * ruang panel adalah tempat pengelolaan ruangan tersebut.
+     *
+     * @return BelongsTo<PanelRuangan, Asset>
+     */
+    public function panelRuangan(): BelongsTo
+    {
+        return $this->belongsTo(PanelRuangan::class, 'panel_ruangan_id');
     }
 
     public function technicians(): BelongsToMany

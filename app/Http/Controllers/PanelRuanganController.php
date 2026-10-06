@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Asset;
 use App\Models\PanelRuangan;
+use App\Services\FunclocOptionService;
+use App\Services\PanelAssetSyncService;
 use App\Services\PanelSensorService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -15,16 +18,23 @@ use Illuminate\View\View;
  * Halaman Monitoring Ruang Panel.
  *
  * Menampilkan suhu dan kelembapan tiap ruangan panel secara berkala serta
- * menyediakan pendataan ruangan (tambah, ubah, hapus) dan tombol uji koneksi
- * ke perangkat sensor.
+ * menyediakan pendataan ruangan: form tambah/ubah lengkap (lokasi, kode alat,
+ * dan cara baca perangkat) dan halaman detail dengan tombol uji koneksi,
+ * tarik data, serta sinkronisasi baris aset.
  *
  * Data diambil dengan cara server menarik sendiri (pull) dari perangkat
  * ESP32, sehingga tidak memerlukan aturan port masuk di firewall.
+ *
+ * Setiap kali ruangan disimpan, PanelAssetSyncService membuat/memperbarui satu
+ * baris cermin di tabel assets (data_source 'panel_sync') supaya ruang panel
+ * bisa dipilih sebagai equipment pada laporan.
  */
 class PanelRuanganController extends Controller
 {
     public function __construct(
-        protected PanelSensorService $sensor
+        protected PanelSensorService $sensor,
+        protected PanelAssetSyncService $penyinkronAset,
+        protected FunclocOptionService $pilihanFuncloc
     ) {
     }
 
@@ -79,6 +89,8 @@ class PanelRuanganController extends Controller
                 'lokasi'           => $ruangan->labelLokasi(),
                 'ip_address'       => $ruangan->ip_address,
                 'port'             => $ruangan->port,
+                'port_tcp'         => $ruangan->portTcpEfektif(),
+                'kode_alat'        => $ruangan->kode_alat,
                 'protokol'         => $ruangan->protokol ?: 'otomatis',
                 'protokol_label'   => $ruangan->labelProtokol(),
                 'mac_address'      => $ruangan->mac_address,
@@ -105,7 +117,25 @@ class PanelRuanganController extends Controller
     }
 
     /**
-     * Simpan ruangan panel baru.
+     * Tampilkan form tambah ruangan panel (pengaturan lengkap).
+     *
+     * @return View
+     */
+    public function create(): View
+    {
+        $ruangan = new PanelRuangan([
+            'protokol'          => 'otomatis',
+            'port'              => 80,
+            'aktif'             => true,
+            'ambang_suhu_atas'  => (float) config('panel.ambang.suhu_atas', 30),
+            'ambang_suhu_bawah' => (float) config('panel.ambang.suhu_bawah', 18),
+        ]);
+
+        return view('panel.ruangan.form', $this->dataForm($ruangan));
+    }
+
+    /**
+     * Simpan ruangan panel baru lalu sinkronkan baris aset cerminnya.
      *
      * @param  Request  $request
      * @return RedirectResponse
@@ -113,38 +143,79 @@ class PanelRuanganController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validasiRuangan($request);
-        $data['aktif'] = $request->boolean('aktif');
+        $data['aktif']    = $request->boolean('aktif');
         $data['protokol'] = $data['protokol'] ?? 'otomatis';
 
-        PanelRuangan::query()->create($data);
+        $ruangan = PanelRuangan::query()->create($data);
+        $sinkron = $this->penyinkronAset->syncOne($ruangan);
 
         return redirect()
-            ->route('panel.index')
-            ->with('success', 'Ruangan panel "' . $data['nama_ruangan'] . '" berhasil ditambahkan. Data akan mulai ditarik pada siklus berikutnya.');
+            ->route('panel.ruangan.show', $ruangan)
+            ->with('success', 'Ruangan panel "' . $ruangan->nama_ruangan . '" berhasil ditambahkan.')
+            ->with('hasil_sinkron', $this->pesanSinkron($sinkron, $ruangan));
     }
 
     /**
-     * Perbarui data satu ruangan panel.
+     * Tampilkan halaman detail satu ruangan panel: identitas, cara baca
+     * perangkat, lokasi + baris aset cermin, dan riwayat pembacaan terakhir.
      *
-     * @param  Request  $request
+     * @param  PanelRuangan  $panelRuangan
+     * @return View
+     */
+    public function show(PanelRuangan $panelRuangan): View
+    {
+        $panelRuangan->load(['funcloc', 'pembacaanTerakhir']);
+
+        return view('panel.ruangan.show', [
+            'ruangan'        => $panelRuangan,
+            'asetCermin'     => $this->penyinkronAset->asetCermin($panelRuangan),
+            'alasanLewat'    => $this->penyinkronAset->alasanLewatSinkron($panelRuangan),
+            'portTcpEfektif' => $panelRuangan->portTcpEfektif(),
+            'riwayat'        => $panelRuangan->pembacaan()
+                ->orderByDesc('waktu')
+                ->limit((int) config('panel.tampilan.jumlah_baris_riwayat', 20))
+                ->get(),
+        ]);
+    }
+
+    /**
+     * Tampilkan form ubah ruangan panel.
+     *
+     * @param  PanelRuangan  $panelRuangan
+     * @return View
+     */
+    public function edit(PanelRuangan $panelRuangan): View
+    {
+        return view('panel.ruangan.form', $this->dataForm($panelRuangan));
+    }
+
+    /**
+     * Perbarui data satu ruangan panel lalu sinkronkan baris aset cerminnya.
+     *
+     * @param  Request       $request
      * @param  PanelRuangan  $panelRuangan
      * @return RedirectResponse
      */
     public function update(Request $request, PanelRuangan $panelRuangan): RedirectResponse
     {
         $data = $this->validasiRuangan($request, $panelRuangan);
-        $data['aktif'] = $request->boolean('aktif');
+        $data['aktif']    = $request->boolean('aktif');
         $data['protokol'] = $data['protokol'] ?? ($panelRuangan->protokol ?: 'otomatis');
 
         $panelRuangan->update($data);
+        $sinkron = $this->penyinkronAset->syncOne($panelRuangan);
 
         return redirect()
-            ->route('panel.index')
-            ->with('success', 'Data ruangan panel "' . $data['nama_ruangan'] . '" berhasil diperbarui.');
+            ->route('panel.ruangan.show', $panelRuangan)
+            ->with('success', 'Data ruangan panel "' . $panelRuangan->nama_ruangan . '" berhasil diperbarui.')
+            ->with('hasil_sinkron', $this->pesanSinkron($sinkron, $panelRuangan));
     }
 
     /**
      * Hapus ruangan panel beserta seluruh riwayat pembacaannya.
+     *
+     * Baris aset cermin ruangan ini dibuang lebih dulu supaya daftar equipment
+     * pada laporan tidak menyisakan alat yang ruangannya sudah tidak ada.
      *
      * @param  PanelRuangan  $panelRuangan
      * @return RedirectResponse
@@ -153,11 +224,29 @@ class PanelRuanganController extends Controller
     {
         $nama = $panelRuangan->nama_ruangan;
 
+        $this->penyinkronAset->hapusCermin($panelRuangan);
+
         $panelRuangan->delete();
 
         return redirect()
             ->route('panel.index')
             ->with('success', 'Ruangan panel "' . $nama . '" beserta riwayat pembacaannya berhasil dihapus.');
+    }
+
+    /**
+     * Sinkronkan ulang baris aset cermin milik satu ruangan (tombol
+     * "Sinkronkan Aset" pada halaman detail).
+     *
+     * @param  PanelRuangan  $panelRuangan
+     * @return RedirectResponse
+     */
+    public function sinkronAset(PanelRuangan $panelRuangan): RedirectResponse
+    {
+        $sinkron = $this->penyinkronAset->syncOne($panelRuangan);
+
+        return redirect()
+            ->route('panel.ruangan.show', $panelRuangan)
+            ->with('success', $this->pesanSinkron($sinkron, $panelRuangan));
     }
 
     /**
@@ -229,9 +318,33 @@ class PanelRuanganController extends Controller
     }
 
     /**
+     * Data yang dipakai form tambah/ubah ruangan panel.
+     *
+     * @param  PanelRuangan  $ruangan  Ruangan yang sedang diisi (bisa instance baru)
+     * @return array<string, mixed>
+     */
+    private function dataForm(PanelRuangan $ruangan): array
+    {
+        return [
+            'ruangan'         => $ruangan,
+            'pilihanProtokol' => PanelRuangan::PROTOKOL,
+            'funclocGroups'   => $this->pilihanFuncloc->grupPerPt(),
+            'ambangBawaan'    => [
+                'atas'  => (float) config('panel.ambang.suhu_atas', 30),
+                'bawah' => (float) config('panel.ambang.suhu_bawah', 18),
+            ],
+            'portTcpBawaan'   => (int) config('panel.sketch.port_tcp', 5000),
+            'asetCermin'      => $this->penyinkronAset->asetCermin($ruangan),
+            'alasanLewat'     => $ruangan->exists
+                ? $this->penyinkronAset->alasanLewatSinkron($ruangan)
+                : null,
+        ];
+    }
+
+    /**
      * Validasi input form ruangan panel.
      *
-     * @param  Request  $request
+     * @param  Request            $request
      * @param  PanelRuangan|null  $ruangan  Diisi saat mengubah data yang sudah ada.
      * @return array<string, mixed> Data yang sudah tervalidasi.
      */
@@ -249,10 +362,14 @@ class PanelRuanganController extends Controller
             'keterangan'        => ['nullable', 'string', 'max:255'],
             'ip_address'        => ['required', 'string', 'ip'],
             'port'              => ['required', 'integer', 'min:1', 'max:65535'],
+            'port_tcp'          => ['nullable', 'integer', 'min:1', 'max:65535'],
             'protokol'          => ['nullable', 'string', Rule::in(array_keys(PanelRuangan::PROTOKOL))],
             'mac_address'       => ['nullable', 'string', 'max:17'],
             'ambang_suhu_atas'  => ['required', 'numeric', 'between:-50,150'],
             'ambang_suhu_bawah' => ['required', 'numeric', 'between:-50,150'],
+            'funcloc_id'        => ['nullable', 'integer', 'exists:functional_locations,id'],
+            'kode_alat'         => ['nullable', 'string', 'max:100', $this->penjagaKodeAlat($ruangan)],
+            'equipment_type'    => ['nullable', 'string', 'max:100'],
         ];
 
         $namaAtribut = [
@@ -261,14 +378,80 @@ class PanelRuanganController extends Controller
             'plant'             => 'plant',
             'keterangan'        => 'keterangan',
             'ip_address'        => 'alamat IP perangkat',
-            'port'              => 'port',
+            'port'              => 'port HTTP perangkat',
+            'port_tcp'          => 'port JSON TCP perangkat',
             'protokol'          => 'protokol perangkat',
             'mac_address'       => 'alamat MAC',
             'ambang_suhu_atas'  => 'ambang suhu atas',
             'ambang_suhu_bawah' => 'ambang suhu bawah',
+            'funcloc_id'        => 'lokasi (Functional Location)',
+            'kode_alat'         => 'kode alat',
+            'equipment_type'    => 'jenis alat',
         ];
 
         return $request->validate($aturan, [], $namaAtribut);
+    }
+
+    /**
+     * Penjaga Kode Alat: menolak kode yang sudah dipakai baris aset lain
+     * (perangkat IT atau ruang panel lain) supaya pencarian equipment tidak
+     * ambigu. Baris aset lama bertipe impor/manual yang berkode sama TETAP
+     * diperbolehkan, karena PanelAssetSyncService akan mengadopsinya.
+     *
+     * @param  PanelRuangan|null  $ruangan  Ruangan yang sedang diubah
+     * @return \Closure  Aturan validasi tambahan
+     */
+    private function penjagaKodeAlat(?PanelRuangan $ruangan): \Closure
+    {
+        return function (string $attribute, $value, $fail) use ($ruangan): void {
+            $kode = trim((string) $value);
+
+            if ($kode === '') {
+                return;
+            }
+
+            $bentrok = Asset::query()
+                ->where('tech_ident_no', $kode)
+                // Baris cermin milik ruangan ini sendiri tidak dihitung bentrok
+                // (kalau tidak, menyimpan perubahan pada kode alat yang sama
+                // selalu ditolak).
+                ->when($ruangan !== null, function ($query) use ($ruangan): void {
+                    $query->where(function ($sub) use ($ruangan): void {
+                        $sub->whereNull('panel_ruangan_id')
+                            ->orWhere('panel_ruangan_id', '!=', $ruangan->id);
+                    });
+                })
+                // Bentrok hanya bila baris itu milik modul lain (mis. perangkat
+                // IT) atau sudah dipakai ruangan panel lain. Baris aset lama
+                // bertipe impor/manual tetap diperbolehkan karena akan diadopsi.
+                ->where(function ($query): void {
+                    $query->whereIn('data_source', ['it_sync', 'panel_sync'])
+                        ->orWhereNotNull('panel_ruangan_id');
+                })
+                ->exists();
+
+            if ($bentrok) {
+                $fail('Kode alat ini sudah dipakai baris aset lain (perangkat IT atau ruang panel lain). Gunakan kode yang berbeda.');
+            }
+        };
+    }
+
+    /**
+     * Pesan hasil sinkronisasi baris aset cermin ruangan.
+     *
+     * @param  string        $hasil    Aksi hasil syncOne(): created, adopted, updated, skipped
+     * @param  PanelRuangan  $ruangan
+     * @return string
+     */
+    private function pesanSinkron(string $hasil, PanelRuangan $ruangan): string
+    {
+        return match ($hasil) {
+            'created' => 'Baris aset ruangan ini dibuat otomatis di Asset Management (sumber: ruang panel).',
+            'adopted' => 'Baris aset lama dengan kode alat yang sama disambungkan ke ruangan ini.',
+            'updated' => 'Baris aset ruangan ini diperbarui (lokasi, kode alat, dan jenis alat).',
+            default   => 'Ruangan ini belum bisa disinkronkan ke daftar aset: '
+                . ($this->penyinkronAset->alasanLewatSinkron($ruangan) ?? 'penyebab tidak diketahui.'),
+        };
     }
 
     /**
@@ -310,7 +493,7 @@ class PanelRuanganController extends Controller
         }
 
         if ($pembacaan === null) {
-            return 'Perangkat terjangkau, tetapi belum ada pembacaan sensor yang valid. Cek wiring sensor DHT11 pada GPIO4.';
+            return 'Perangkat terjangkau, tetapi belum ada pembacaan sensor yang valid. Cek wiring sensor DHT22 pada GPIO27; salah tipe sensor membuat library menolak datanya.';
         }
 
         return sprintf(
