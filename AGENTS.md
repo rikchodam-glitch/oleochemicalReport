@@ -1961,6 +1961,49 @@ Batasan penting lingkungan ini:
     (menolak pola baris `^\s*\+\s*\+` dan memastikan satuan C tetap ada); uji
     mutasi: tanda plus ganda dikembalikan → KEDUA test GAGAL.
 
+35. **Satu laporan dari form web membuat SELURUH tombol Done/Continue wizard
+    Telegram gagal menyimpan (07/10/2026).** Keluhan user: "report telegram di
+    produksi tidak bisa menyelesaikan report; tekan Done/Continue tidak
+    merespon". Semua service PROD memang jalan (queue:work, schedule:work,
+    telegram:poll, serve:8000, tunnel) dan log poller justru memuat
+    `Callback: wizard:confirm:save_done` berulang kali — jadi tombolnya
+    DIKIRIM, bukan tidak sampai. Akar masalahnya di
+    `PROD\storage\logs\laravel.log`: `production.ERROR: WizardService: Failed
+    to save report for chat ... {"error":"SQLSTATE[23000] ... 1062 Duplicate
+    entry 'RPT-20261007-0001' for key 'reports.report_code'"}`.
+    Penyebabnya DUA generator kode laporan hidup berdampingan:
+    `Report::generateReportCode()` (dipakai form web + `ReportCopyService`)
+    menghasilkan akhiran ACAK lewat `Str::random(4)`, sedangkan
+    `WizardReportSaverTrait::generateReportCode()` mengambil kode TERBESAR
+    hari itu (`orderByDesc('report_code')`) lalu menghitung
+    `(int) substr($kode, -4) + 1`. Begitu satu laporan dari form web dibuat
+    (`RPT-20261007-Q5UW`, id 1676, 10:30), kode itu menjadi nilai terbesar hari
+    itu (huruf diurutkan setelah angka) sehingga `(int) 'Q5UW'` = 0 dan kode
+    berikutnya selalu `0001` yang sudah terpakai → semua penyimpanan wizard
+    gagal 1062 sejak 12:50 (20 kegagalan tercatat sampai 13:07) dan teknisi
+    hanya melihat pesan galat.
+    Perbaikan di DEV (satu generator): `Report::generateReportCode()` kini
+    SATU-SATUNYA generator nomor urut harian dan MENGABAIKAN akhiran bukan
+    angka (kode acak tidak lagi meracuni urutan); `WizardReportSaverTrait::
+    generateReportCode()` hanya mendelegasikan ke sana; semua insert laporan
+    (induk, salinan kolaborasi, salinan multi alat) memakai
+    `WizardReportSaverTrait::buatLaporanKodeUnik()` yang mencoba ulang bila
+    kode bentrok (dua teknisi menyimpan bersamaan); pesan gagal simpan tidak
+    lagi memuat SQL mentah (detailnya tetap ada di log). Tidak perlu mengubah
+    DATA PROD: setelah perbaikan ini kode acak hari itu diabaikan sehingga
+    nomor urut lanjut di 0020.
+    Uji: `tests/Feature/ReportKodeUnikTest.php` (6 test, 18 assertions; uji
+    mutasi 07/10/2026: mengembalikan logika lama `orderByDesc` + `substr`
+    membuat 4 test GAGAL). Seluruh suite 446 test hijau (1955 assertions).
+    **Pelajaran: (1) generator kode yang dipakai bersama WAJIB satu saja —
+    format berbeda (angka vs acak) membuat satu jalur merusak jalur lain;
+    (2) nilai "terbesar" pada kolom kode berbasis TEKS tidak boleh dipakai apa
+    adanya untuk urutan numerik: kode berhuruf selalu menang dan cast `(int)`
+    atas huruf = 0; (3) gejala "tombol tidak merespon" pada Telegram hampir
+    selalu berarti handler-nya melempar galat — periksa `laravel.log` PROD
+    lebih dulu, jangan hanya melihat daftar proses/service; (4) pesan galat ke
+    pengguna jangan memuat pesan SQL mentah, simpan detailnya di log saja.**
+
 ## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN
 
 Nama resmi sistem per **30/09/2026** adalah **Oleochemical Maintenance**

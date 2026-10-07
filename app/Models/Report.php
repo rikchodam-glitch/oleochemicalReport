@@ -496,16 +496,44 @@ class Report extends Model
 
     /**
      * Generate kode laporan unik dengan format RPT-YYYYMMDD-XXXX.
-     * Dipakai oleh ReportWizardService pada Step 8 (Konfirmasi & Simpan).
+     * XXXX adalah nomor urut harian 4 digit (mulai 0001). Method ini dipakai
+     * SEMUA jalur pembuatan laporan (wizard Telegram, form web, dan baris
+     * salinan kolaborasi/multi alat) supaya format kodenya seragam.
+     *
+     * Kode yang berakhiran BUKAN angka (mis. RPT-20261007-Q5UW dari generator
+     * lama) sengaja DIABAIKAN saat menghitung nomor urut. Bila ikut dihitung,
+     * substr(-4) menghasilkan 0 sehingga nomor urut kembali ke 0001 dan seluruh
+     * penyimpanan gagal dengan galat duplikat (insiden 07/10/2026).
+     *
+     * @return string Kode laporan baru yang belum dipakai
      */
     public static function generateReportCode(): string
     {
         $prefix = 'RPT-' . now()->format('Ymd') . '-';
 
-        do {
-            $code = $prefix . strtoupper(Str::random(4));
-        } while (self::where('report_code', $code)->exists());
+        // Nomor urut terakhir hari ini, dibaca sekali lewat satu query.
+        $urutTerakhir = 0;
 
-        return $code;
+        foreach (self::where('report_code', 'like', $prefix . '%')->pluck('report_code') as $kodeLama) {
+            $ekor = substr((string) $kodeLama, -4);
+
+            if (ctype_digit($ekor)) {
+                $urutTerakhir = max($urutTerakhir, (int) $ekor);
+            }
+        }
+
+        $urut = $urutTerakhir + 1;
+
+        if ($urut <= 9999) {
+            return $prefix . str_pad((string) $urut, 4, '0', STR_PAD_LEFT);
+        }
+
+        // Seluruh 9999 nomor hari ini terpakai (praktis tidak terjadi):
+        // pakai akhiran acak sebagai jalan terakhir.
+        do {
+            $kode = $prefix . strtoupper(Str::random(4));
+        } while (self::where('report_code', $kode)->exists());
+
+        return $kode;
     }
 }

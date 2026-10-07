@@ -9,8 +9,10 @@ use App\Models\ReportAiSuggestion;
 use App\Models\Technician;
 use App\Services\CollaborationService;
 use App\Services\ReportContinuationMatcher;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 /**
  * WizardReportSaverTrait
@@ -196,8 +198,7 @@ trait WizardReportSaverTrait
                 $areaId = $dataLaporan['area_id'] ?? null;
             }
 
-            Report::create(array_merge($dataLaporan, [
-                'report_code'             => $this->generateReportCode(),
+            $this->buatLaporanKodeUnik(array_merge($dataLaporan, [
                 'technician_id'           => $technician->id,
                 'creator_id'              => $technician->id,
                 'asset_id'                => $asetId,
@@ -276,7 +277,9 @@ trait WizardReportSaverTrait
                 }
             }
 
-            $reportCode = $this->generateReportCode();
+            // Kode laporan dibangkitkan saat insert oleh buatLaporanKodeUnik()
+            // supaya bentrok kode (mis. dua teknisi menyimpan bersamaan)
+            // ditangani otomatis tanpa menggagalkan seluruh penyimpanan.
 
             // Tanggal laporan: pakai hasil deteksi parseDateFromText() dari Step 1,
             // fallback ke hari ini jika tidak terdeteksi/tidak valid.
@@ -318,11 +321,14 @@ trait WizardReportSaverTrait
             ];
 
             // Simpan laporan utama atas nama teknisi pengirim
-            $report = Report::create(array_merge($dataLaporan, [
-                'report_code'   => $reportCode,
+            $report = $this->buatLaporanKodeUnik(array_merge($dataLaporan, [
                 'technician_id' => $technician->id,
                 'creator_id'    => $technician->id,
             ]));
+
+            // Kode final yang benar-benar terpakai (bisa bergeser bila percobaan
+            // pertama bentrok dan kode dibangkitkan ulang).
+            $reportCode = $report->report_code;
 
             // Simpan sugesti AI (equipment/area) yang tercatat sepanjang wizard
             // ke report_ai_suggestions, sekarang setelah report_id tersedia.
@@ -375,8 +381,7 @@ trait WizardReportSaverTrait
                     continue;
                 }
 
-                Report::create(array_merge($dataLaporan, [
-                    'report_code'     => $this->generateReportCode(),
+                $this->buatLaporanKodeUnik(array_merge($dataLaporan, [
                     'technician_id'   => $kolaborator->id,
                     'creator_id'      => $technician->id,
                     'collaborator_of' => $report->id,
@@ -485,8 +490,8 @@ trait WizardReportSaverTrait
             ]);
 
             return $this->errorResponse(
-                "Terjadi kesalahan saat menyimpan laporan. Silakan coba lagi atau hubungi admin.\n" .
-                "Error: " . $e->getMessage()
+                "Laporan gagal disimpan. Tekan tombol simpan sekali lagi; bila masih gagal, " .
+                "hubungi admin (kode galatnya sudah tercatat di log server)."
             );
         }
     }
@@ -543,26 +548,64 @@ trait WizardReportSaverTrait
 
     /**
      * Generate kode laporan RPT-YYYYMMDD-XXXX.
-     * XXXX adalah sequence 4-digit unik per hari, dimulai dari 0001.
+     * Delegasi ke Report::generateReportCode() supaya format kode SAMA di semua
+     * jalur (wizard, form web, baris salinan) dan nomor urut harian tidak
+     * kembali ke 0001 gara-gara kode berakhiran acak (insiden 07/10/2026).
      *
      * @return string Kode laporan baru
      */
     protected function generateReportCode(): string
     {
-        $date     = now()->format('Ymd');
-        $prefix   = "RPT-{$date}-";
-        $lastCode = Report::where('report_code', 'like', $prefix . '%')
-            ->orderByDesc('report_code')
-            ->value('report_code');
+        return Report::generateReportCode();
+    }
 
-        if ($lastCode) {
-            $lastSeq = (int) substr($lastCode, -4);
-            $seq     = $lastSeq + 1;
-        } else {
-            $seq = 1;
+    /**
+     * Simpan laporan dengan kode unik.
+     * Bila kode bentrok (dua teknisi menyimpan pada detik yang sama), kode
+     * dibangkitkan ulang lalu insert dicoba lagi — supaya satu bentrok tidak
+     * menggagalkan seluruh penyimpanan laporan.
+     *
+     * @param  array $data Data laporan TANPA report_code
+     * @return Report       Laporan yang tersimpan
+     *
+     * @throws QueryException Bila insert gagal karena sebab lain
+     * @throws RuntimeException Bila kode unik tidak didapat setelah beberapa percobaan
+     */
+    protected function buatLaporanKodeUnik(array $data): Report
+    {
+        $percobaanMaksimal = 5;
+
+        for ($percobaan = 1; $percobaan <= $percobaanMaksimal; $percobaan++) {
+            try {
+                return Report::create(array_merge($data, [
+                    'report_code' => $this->generateReportCode(),
+                ]));
+            } catch (QueryException $e) {
+                if ($percobaan === $percobaanMaksimal || !$this->galatKodeLaporanBentrok($e)) {
+                    throw $e;
+                }
+
+                Log::warning('WizardService: kode laporan bentrok, kode dibangkitkan ulang', [
+                    'percobaan' => $percobaan,
+                    'pesan'     => $e->getMessage(),
+                ]);
+            }
         }
 
-        return $prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
+        throw new RuntimeException(
+            'Kode laporan unik tidak didapat setelah ' . $percobaanMaksimal . ' percobaan.'
+        );
+    }
+
+    /**
+     * Cek apakah galat database berasal dari kode laporan yang bentrok.
+     *
+     * @param  QueryException $e Galat query saat insert laporan
+     * @return bool              True bila penyebabnya duplikat report_code
+     */
+    protected function galatKodeLaporanBentrok(QueryException $e): bool
+    {
+        return str_contains($e->getMessage(), 'report_code');
     }
 
     /**
