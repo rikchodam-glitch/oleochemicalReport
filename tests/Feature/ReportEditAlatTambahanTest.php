@@ -127,13 +127,19 @@ function assetAlatTambahan(array $data): Asset
     ], $data));
 }
 
-test('halaman detail menampilkan bagian alat tambahan', function () {
+test('halaman detail menampilkan bagian alat tambahan dengan satu jalur tambah', function () {
     $this->actingAs($this->admin)
         ->get('/reports/' . $this->induk->id)
         ->assertStatus(200)
         ->assertSee('Alat / Lokasi Tambahan', false)
-        ->assertSee('item_tambah_lokasi', false)
-        ->assertSee('Tambah dari alat', false);
+        // Sejak 08/10/2026 penambahan item memakai satu jalur hierarki
+        // (PT -> Departemen -> Area -> Section -> Alat) lewat widget bersama
+        // data-pilih-hirarki; dropdown Functional Location tunggal dan tombol
+        // Tambah Lokasi yang lama sudah tidak ada.
+        ->assertSee('data-pilih-hirarki', false)
+        ->assertSee('data-url-tambah', false)
+        ->assertSee('Tambah dari alat', false)
+        ->assertDontSee('item_tambah_lokasi', false);
 });
 
 test('menambah alat tambahan membuat baris salinan dengan area dari alat itu', function () {

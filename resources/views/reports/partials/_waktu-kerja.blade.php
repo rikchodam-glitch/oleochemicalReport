@@ -1,20 +1,23 @@
-{{-- Field jam kerja laporan: JAM MULAI dan JAM SELESAI.
+{{-- Field jam kerja laporan: JAM MULAI, JAM SELESAI, dan DURASI.
 
-     Durasi pengerjaan BUKAN isian form dan tidak ditampilkan sebagai nilai
-     tersendiri di halaman edit. Angka man hour (kolom work_duration_minutes)
-     dihitung SERVER dari rentang jam ini saat laporan disimpan
-     (Report::durasiDariJam() dipakai ReportController::update()), jadi form
-     cukup meminta jamnya saja. Padanan aturan itu juga berlaku untuk laporan
-     yang masuk lewat wizard Telegram.
+     Durasi BUKAN isian: angkanya dihitung server dari rentang jam ini saat
+     laporan disimpan (Report::durasiDariJam() dipakai ReportController::update()),
+     jadi yang bisa diedit tetap jamnya. Di layar, durasi ditampilkan segera
+     (read-only) memakai aturan yang sama dengan server supaya admin tahu hasil
+     hitungannya sebelum menyimpan:
+       - jam selesai lebih kecil dari jam mulai = melewati tengah malam (+24 jam)
+       - kedua jam dikosongkan = durasi lama laporan dipertahankan server
+     Format label durasi disamakan dengan accessor Report::duration_label
+     ("X Jam Y Menit") supaya tampilan mode lihat dan mode edit tidak berbeda.
 
-     Dipisah jadi partial supaya blade halaman edit yang besar tidak perlu
+     Dipisah jadi partial supaya blade halaman detail yang besar tidak perlu
      ditulis ulang (lihat aturan edit blade di AGENTS.md).
 
      Parameter: $report = model Report yang sedang diedit. --}}
 <div class="border-t border-slate-100 pt-4">
     <h3 class="text-sm font-medium text-slate-900 mb-3">Waktu Pengerjaan</h3>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
             <label for="start_time" class="block text-sm font-medium text-slate-700 mb-1">Jam Mulai</label>
             <input type="time" id="start_time" name="start_time" form="form-edit-laporan" step="60"
@@ -34,6 +37,14 @@
                 <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
             @enderror
         </div>
+
+        <div>
+            <label for="durasi_kerja" class="block text-sm font-medium text-slate-700 mb-1">Durasi Man Hour</label>
+            <input type="text" id="durasi_kerja" readonly tabindex="-1"
+                   value="{{ $report->duration_label ?? '-' }}"
+                   class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600">
+            <p class="text-xs text-slate-400 mt-1">Dihitung otomatis dari jam di samping.</p>
+        </div>
     </div>
 
     <div class="mt-3 flex flex-wrap items-center gap-3">
@@ -42,7 +53,8 @@
             Kosongkan Jam
         </button>
         <p class="text-xs text-slate-400">
-            Durasi man hour laporan dihitung otomatis dari jam mulai sampai jam selesai saat laporan disimpan.
+            Rentang terpilih: <span id="rentang_kerja" class="font-medium text-slate-600">-</span>
+            &middot; mengosongkan kedua jam membuat durasi laporan yang sudah tersimpan dipakai kembali.
         </p>
     </div>
 
@@ -55,17 +67,19 @@
 <script>
     // Keterangan jam kerja pada form edit.
     //
-    // Halaman edit TIDAK punya isian durasi lagi: durasi man hour dihitung
-    // server dari rentang jam (lihat Report::durasiDariJam()). Skrip di sini
-    // hanya membantu admin: menandai rentang yang melewati tengah malam dan
-    // mengosongkan kedua jam dengan satu tombol.
+    // Halaman detail TIDAK punya isian durasi: durasi man hour dihitung server
+    // dari rentang jam (Report::durasiDariJam()). Skrip di sini menyiapkan
+    // tampilan durasi read-only + peringatan lintas tengah malam supaya admin
+    // tahu hasil hitungannya lebih dulu, memakai aturan yang sama dengan server.
     (function () {
         var mulai      = document.getElementById('start_time');
         var selesai    = document.getElementById('end_time');
+        var durasi     = document.getElementById('durasi_kerja');
+        var rentang    = document.getElementById('rentang_kerja');
         var peringatan = document.getElementById('peringatan_lintas_malam');
         var kosongkan  = document.getElementById('kosongkan_jam');
 
-        if (!mulai || !selesai || !peringatan) {
+        if (!mulai || !selesai || !durasi || !rentang || !peringatan) {
             return;
         }
 
@@ -80,33 +94,67 @@
             return (parseInt(cocok[1], 10) * 60) + parseInt(cocok[2], 10);
         }
 
-        // Peringatan hanya muncul bila jam selesai lebih kecil dari jam mulai,
-        // karena rentang seperti itu dihitung melewati tengah malam oleh server.
-        function segarkanPeringatan() {
+        // Label durasi dengan format yang sama seperti accessor duration_label.
+        function labelDurasi(menit) {
+            if (menit === null) {
+                return '-';
+            }
+
+            var jam    = Math.floor(menit / 60);
+            var sisa   = menit % 60;
+            var bagian = [];
+
+            if (jam > 0) {
+                bagian.push(jam + ' Jam');
+            }
+
+            if (sisa > 0) {
+                bagian.push(sisa + ' Menit');
+            }
+
+            return bagian.length ? bagian.join(' ') : '0 Menit';
+        }
+
+        // Segarkan tampilan durasi, rentang, dan peringatan lintas tengah malam.
+        function segarkan() {
             var menitMulai   = menitDariJam(mulai.value);
             var menitSelesai = menitDariJam(selesai.value);
 
-            if (menitMulai !== null && menitSelesai !== null && menitSelesai < menitMulai) {
-                peringatan.classList.remove('hidden');
+            if (menitMulai === null || menitSelesai === null) {
+                rentang.textContent = '-';
+                peringatan.classList.add('hidden');
 
                 return;
             }
 
-            peringatan.classList.add('hidden');
+            var lewatTengahMalam = menitSelesai < menitMulai;
+            var total            = menitSelesai - menitMulai;
+
+            if (lewatTengahMalam) {
+                total += 24 * 60;
+                peringatan.classList.remove('hidden');
+            } else {
+                peringatan.classList.add('hidden');
+            }
+
+            rentang.textContent = mulai.value + ' - ' + selesai.value;
+            durasi.value        = labelDurasi(total);
         }
 
-        mulai.addEventListener('change', segarkanPeringatan);
-        selesai.addEventListener('change', segarkanPeringatan);
+        mulai.addEventListener('change', segarkan);
+        selesai.addEventListener('change', segarkan);
+        mulai.addEventListener('input', segarkan);
+        selesai.addEventListener('input', segarkan);
 
         if (kosongkan) {
             kosongkan.addEventListener('click', function () {
                 mulai.value   = '';
                 selesai.value = '';
-                segarkanPeringatan();
+                segarkan();
             });
         }
 
-        segarkanPeringatan();
+        segarkan();
     })();
 </script>
 @endpush

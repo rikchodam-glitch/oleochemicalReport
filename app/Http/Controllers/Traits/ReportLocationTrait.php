@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Traits;
 
 use App\Models\Asset;
 use App\Models\FunctionalLocation;
+use App\Services\AssetLocationService;
 use Illuminate\Http\Request;
 
 /**
@@ -20,6 +21,7 @@ use Illuminate\Http\Request;
  *   - getFuncLocsByArea() : Daftar Functional Location berdasarkan area_id
  *   - getAssetsByArea()   : Daftar Asset berdasarkan area_id, opsional difilter funcloc_id
  *   - cariAsset()         : Pencarian alat lintas area (kode alat/nomor equipment/deskripsi)
+ *   - anakLokasi()        : Node anak FuncLoc + alat di bawahnya (pemilih lokasi bertingkat)
  *
  * Ketiganya menerima parameter `q` (kata kunci pencarian). Saat `q` diisi,
  * hasil dibatasi BATAS_CARI_LOKASI baris supaya satu area yang memuat ratusan
@@ -130,6 +132,112 @@ trait ReportLocationTrait
             ->values();
 
         return response()->json($assets);
+    }
+
+    /**
+     * Anak satu node Functional Location beserta alat di bawahnya, dipakai
+     * pemilih lokasi bertingkat (PT -> Departemen -> Area -> Section -> Alat)
+     * pada mode edit halaman detail laporan.
+     *
+     * Mengembalikan tiga hal sekaligus supaya satu langkah pilih hanya perlu
+     * satu permintaan:
+     *   - `induk`       : ringkasan node induk yang sedang dibuka (null = daftar PT)
+     *   - `nodes`       : node anak langsung yang masih aktif
+     *   - `assets`      : alat pada node induk, maksimal BATAS_CARI_LOKASI baris
+     *   - `jumlah_alat` : jumlah SELURUH alat node itu (supaya pemanggil tahu
+     *                     daftarnya dipotong; satu section di data nyata bisa
+     *                     memuat 200+ alat)
+     *
+     * Area node induk ikut dikirim supaya pemanggil mengisi kolom `area_id`
+     * laporan dari satu sumber aturan (AssetLocationService::areaId()), bukan
+     * menebak dari kode lokasi.
+     *
+     * @param  Request  $request  `parent_id` opsional (kosong = daftar PT), `q` opsional
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function anakLokasi(Request $request)
+    {
+        $indukId = (int) $request->get('parent_id', 0);
+        $kunci   = trim((string) $request->get('q', ''));
+
+        // Tanpa parent_id: tingkat teratas berisi PT (level 0).
+        if ($indukId <= 0) {
+            $nodes = FunctionalLocation::active()
+                ->whereNull('parent_id')
+                ->orderBy('code')
+                ->get(['id', 'code', 'name', 'level'])
+                ->map(fn (FunctionalLocation $node) => $this->ringkasNodeLokasi($node))
+                ->values();
+
+            return response()->json(['induk' => null, 'nodes' => $nodes, 'assets' => [], 'jumlah_alat' => 0]);
+        }
+
+        $induk = FunctionalLocation::active()->find($indukId);
+
+        if ($induk === null) {
+            return response()->json(['induk' => null, 'nodes' => [], 'assets' => [], 'jumlah_alat' => 0]);
+        }
+
+        $assetQuery = Asset::where('funcloc_id', $induk->id);
+
+        if ($kunci !== '') {
+            $assetQuery->where(function ($sub) use ($kunci) {
+                $this->kriteriaCariAlat($sub, $kunci);
+            });
+        }
+
+        // Jumlah seluruh alat pada node ini dikirim terpisah supaya pemanggil
+        // bisa memberi tahu bahwa daftarnya dipotong BATAS_CARI_LOKASI baris
+        // (satu section di data nyata bisa memuat 200+ alat).
+        $jumlahAlat = (clone $assetQuery)->count();
+
+        $assets = $assetQuery->orderBy('tech_ident_no')
+            ->limit(self::BATAS_CARI_LOKASI)
+            ->get(['id', 'equipment_no', 'tech_ident_no', 'description', 'funcloc_id', 'area_id'])
+            ->map(fn (Asset $aset) => [
+                'id'            => (int) $aset->id,
+                'equipment_no'  => $aset->equipment_no,
+                'tech_ident_no' => $aset->tech_ident_no,
+                'description'   => $aset->description,
+                'funcloc_id'    => $aset->funcloc_id,
+                'area_id'       => $aset->area_id,
+                'area_label'    => (string) $induk->code,
+            ])
+            ->values();
+
+        $nodes = $induk->children()
+            ->active()
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'level'])
+            ->map(fn (FunctionalLocation $node) => $this->ringkasNodeLokasi($node))
+            ->values();
+
+        $ringkasInduk            = $this->ringkasNodeLokasi($induk);
+        $ringkasInduk['area_id'] = app(AssetLocationService::class)->areaId($induk);
+
+        return response()->json([
+            'induk'       => $ringkasInduk,
+            'nodes'       => $nodes,
+            'assets'      => $assets,
+            'jumlah_alat' => $jumlahAlat,
+        ]);
+    }
+
+    /**
+     * Ringkasan satu node Functional Location untuk pemilih lokasi bertingkat.
+     *
+     * @param  FunctionalLocation  $node  Node yang diringkas
+     * @return array<string, mixed>      Kunci: id, code, name, level, label
+     */
+    private function ringkasNodeLokasi(FunctionalLocation $node): array
+    {
+        return [
+            'id'    => (int) $node->id,
+            'code'  => (string) $node->code,
+            'name'  => (string) $node->name,
+            'level' => (int) $node->level,
+            'label' => trim($node->code . ' - ' . $node->name, ' -'),
+        ];
     }
 
     /**

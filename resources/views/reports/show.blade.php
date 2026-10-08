@@ -130,9 +130,18 @@
                     <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
+                    {{-- Rentang jam kerja ditampilkan bersama durasi supaya mode
+                         lihat dan mode edit memakai keterangan yang sama
+                         (lihat partial _waktu-kerja pada mode edit). --}}
+                    @if($report->time_range)
+                        <span class="font-medium text-slate-700">{{ $report->time_range }}</span>
+                        <span class="text-slate-300">&middot;</span>
+                    @endif
+
+
                     <span class="font-medium text-slate-700">
                         @if($report->work_duration_minutes)
-                            {{ floor($report->work_duration_minutes / 60) }}j {{ $report->work_duration_minutes % 60 }}m
+                            {{ $report->duration_label ?? '-' }}
                         @else
                             -
                         @endif
@@ -366,6 +375,12 @@
                 </p>
 
                 @include('reports.partials._cari-alat', ['report' => $report])
+                {{-- Pemilih lokasi bertingkat: PT -> Departemen -> Area -> Section
+                     -> Alat, meniru alur wizard Telegram. Memilih node/alat
+                     mengisi Area + Functional Location + Kode Alat di atas. --}}
+                @include('reports.partials._pilih-lokasi-hirarki', ['report' => $report])
+
+
             </div>
         </div>
 
@@ -518,7 +533,7 @@
         <div class="bg-white rounded-xl border border-slate-200 p-6" id="bagian_foto">
             <div class="flex items-center justify-between mb-3">
                 <h3 class="font-medium text-slate-900">Foto Laporan</h3>
-                <span class="text-xs text-slate-400" x-text="photoGroups.documentation.length + ' foto'"></span>
+                <span class="flex items-center gap-2 text-xs text-slate-400"><button type="button" @click="galeriBuka('documentation', 0)" class="text-teal-700 hover:underline font-medium">Lihat semua</button><span x-text="photoGroups.documentation.length + ' foto'"></span></span>
             </div>
 
             @if($laporanInduk->id !== $report->id)
@@ -539,7 +554,7 @@
                         <div class="relative group">
                             <a :href="url" target="_blank" rel="noopener"
                                class="block aspect-square rounded-lg overflow-hidden border border-slate-200 hover:opacity-80 transition-opacity">
-                                <img :src="url" alt="Foto dokumentasi" class="w-full h-full object-cover">
+                                <img :src="url" alt="Foto dokumentasi" @click.prevent="galeriBuka('documentation', idx)" class="w-full h-full object-cover">
                             </a>
                             {{-- Tombol hapus: hanya muncul di mode edit --}}
                             <button
@@ -609,7 +624,7 @@
         <div class="bg-white rounded-xl border border-slate-200 p-6">
             <div class="flex items-center justify-between mb-3">
                 <h3 class="font-medium text-slate-900">Foto Hygiene Clearance</h3>
-                <span class="text-xs text-slate-400" x-text="photoGroups.hygiene.length + ' foto'"></span>
+                <span class="flex items-center gap-2 text-xs text-slate-400"><button type="button" @click="galeriBuka('hygiene', 0)" class="text-teal-700 hover:underline font-medium">Lihat semua</button><span x-text="photoGroups.hygiene.length + ' foto'"></span></span>
             </div>
 
             {{-- Grid foto dengan tombol hapus (muncul di mode edit) --}}
@@ -619,7 +634,7 @@
                         <div class="relative group">
                             <a :href="url" target="_blank" rel="noopener"
                                class="block aspect-square rounded-lg overflow-hidden border border-slate-200 hover:opacity-80 transition-opacity">
-                                <img :src="url" alt="Foto hygiene clearance" class="w-full h-full object-cover">
+                                <img :src="url" alt="Foto hygiene clearance" @click.prevent="galeriBuka('hygiene', idx)" class="w-full h-full object-cover">
                             </a>
                             {{-- Tombol hapus: hanya muncul di mode edit --}}
                             <button
@@ -848,6 +863,13 @@
         </template>
 
 
+        {{-- Popup galeri foto: markup-nya di-include SEKALI di sini (masih di
+             dalam komponen Alpine reportDetail) supaya tidak tampil berganda.
+             Tombol hapus di dalamnya hanya dirender untuk laporan INDUK karena
+             baris salinan memakai berkas foto yang sama. --}}
+        @include('reports.partials._galeri-foto', ['bolehHapusFoto' => $laporanInduk->id === $report->id])
+
+
     </div>{{-- /lg:col-span-2 --}}
 
     {{-- ======================================================
@@ -955,6 +977,12 @@
                 @endif
             </dl>
         </div>
+        {{-- ── Kartu Teknisi Pelaksana (profil + grafik kinerja) ──────────── --}}
+        {{-- Saat laporan berkolaborasi, chip teknisi di dalam kartu ini bisa
+             diklik untuk berpindah profil/grafik tanpa memuat ulang halaman. --}}
+        @include('reports.partials._kartu-teknisi', ['kartuTeknisi' => $kartuTeknisi])
+
+
 
     </div>{{-- /sidebar --}}
 
@@ -1033,6 +1061,176 @@ function reportDetail() {
         tutupPopup() {
             this.popup = null;
         },
+
+        // ── Popup galeri foto ─────────────────────────────────
+        // Foto yang diklik pada grid kecil dibuka BESAR di popup (partial
+        // _galeri-foto): tombol sebelumnya/berikutnya, panah kiri-kanan pada
+        // keyboard, geser (swipe) pada layar sentuh, dan strip thumbnail.
+        // Nilai `jenis`: 'documentation' atau 'hygiene'.
+        galeri: {
+            buka: false,
+            jenis: 'documentation',
+            indeks: 0,
+            geserDari: null,
+        },
+
+        /**
+         * Buka galeri foto pada jenis dan urutan tertentu.
+         *
+         * @param {string} jenis  'documentation' atau 'hygiene'
+         * @param {number} indeks Posisi foto yang diklik (0-based)
+         */
+        galeriBuka(jenis, indeks) {
+            var daftar = this.photoGroups[jenis] || [];
+
+            if (!daftar.length) {
+                return;
+            }
+
+            this.galeri.jenis  = jenis;
+            this.galeri.indeks = Math.min(Math.max(indeks || 0, 0), daftar.length - 1);
+            this.galeri.buka   = true;
+        },
+
+        /**
+         * Tutup popup galeri foto.
+         */
+        galeriTutup() {
+            this.galeri.buka = false;
+        },
+
+        /**
+         * Pindah ke galeri jenis lain (dokumentasi ke hygiene atau sebaliknya)
+         * bila jenis itu memang punya foto.
+         *
+         * @param {string} jenis 'documentation' atau 'hygiene'
+         */
+        galeriJenisBuka(jenis) {
+            if (!(this.photoGroups[jenis] || []).length) {
+                return;
+            }
+
+            this.galeri.jenis  = jenis;
+            this.galeri.indeks = 0;
+        },
+
+        /**
+         * URL foto yang sedang ditampilkan (string kosong bila tidak ada).
+         */
+        galeriFoto() {
+            var daftar = this.photoGroups[this.galeri.jenis] || [];
+
+            return daftar[this.galeri.indeks] || '';
+        },
+
+        /**
+         * Teks posisi foto pada popup, contoh "3 / 12".
+         */
+        galeriPosisi() {
+            var jumlah = (this.photoGroups[this.galeri.jenis] || []).length;
+
+            return jumlah ? (this.galeri.indeks + 1) + ' / ' + jumlah : '0 / 0';
+        },
+
+
+        /**
+         * Pindah satu foto ke belakang; dari foto pertama melingkar ke terakhir.
+         */
+        galeriSebelum() {
+            if (!this.galeri.buka) {
+                return;
+            }
+
+            var jumlah = (this.photoGroups[this.galeri.jenis] || []).length;
+
+            if (!jumlah) {
+                return;
+            }
+
+            this.galeri.indeks = (this.galeri.indeks - 1 + jumlah) % jumlah;
+        },
+
+        /**
+         * Pindah satu foto ke depan; dari foto terakhir melingkar ke pertama.
+         */
+        galeriBerikut() {
+            if (!this.galeri.buka) {
+                return;
+            }
+
+            var jumlah = (this.photoGroups[this.galeri.jenis] || []).length;
+
+            if (!jumlah) {
+                return;
+            }
+
+            this.galeri.indeks = (this.galeri.indeks + 1) % jumlah;
+        },
+
+        /**
+         * Lompat langsung ke satu foto lewat strip thumbnail.
+         *
+         * @param {number} indeks Posisi foto tujuan (0-based)
+         */
+        galeriKe(indeks) {
+            this.galeri.indeks = indeks;
+        },
+
+        /**
+         * Catat titik awal sentuhan untuk mendeteksi gerakan geser (swipe).
+         *
+         * @param {TouchEvent} kejadian Kejadian touchstart pada area foto
+         */
+        galeriGeserMulai(kejadian) {
+            this.galeri.geserDari = kejadian.touches && kejadian.touches.length
+                ? kejadian.touches[0].clientX
+                : null;
+        },
+
+        /**
+         * Geser ke kiri/kanan bila jaraknya cukup jauh (minimal 40 piksel).
+         *
+         * @param {TouchEvent} kejadian Kejadian touchend pada area foto
+         */
+        galeriGeserSelesai(kejadian) {
+            if (this.galeri.geserDari === null || !kejadian.changedTouches.length) {
+                this.galeri.geserDari = null;
+
+                return;
+            }
+
+            var jarak = kejadian.changedTouches[0].clientX - this.galeri.geserDari;
+            this.galeri.geserDari = null;
+
+            if (Math.abs(jarak) < 40) {
+                return;
+            }
+
+            if (jarak < 0) {
+                this.galeriBerikut();
+            } else {
+                this.galeriSebelum();
+            }
+        },
+
+        /**
+         * Hapus foto yang sedang dibuka di galeri (tombolnya hanya tampil di
+         * laporan INDUK pada mode edit). Bila foto terakhir terhapus, posisi
+         * digeser ke foto sebelumnya supaya popup tidak menampilkan gambar kosong.
+         */
+        async galeriHapus() {
+            var jenis  = this.galeri.jenis;
+            var indeks = this.galeri.indeks;
+
+            await this.deletePhoto(jenis, indeks);
+
+            var jumlah = (this.photoGroups[jenis] || []).length;
+
+            if (!this.deleteError[jenis] && this.galeri.indeks >= jumlah) {
+                this.galeri.indeks = Math.max(0, jumlah - 1);
+            }
+        },
+
 
         enableEditMode() {
             this.editMode = true;
@@ -1241,6 +1439,51 @@ function reportDetail() {
             this.funcLocId = aset.funcloc_id ?? null;
             this.assetId   = aset.id;
         },
+
+        /**
+         * Isi Area + Functional Location dari satu node lokasi hasil penelusuran
+         * hierarki (tanpa memilih alat). Dipakai pemilih lokasi bertingkat pada
+         * partial _pilih-lokasi-hirarki.
+         *
+         * @param {object} node Node lokasi: id, area_id, code, label
+         */
+        async terapkanLokasi(node) {
+            this.areaId = node.area_id ?? null;
+
+            if (this.areaId) {
+                await Promise.all([
+                    fetch(`{{ route('reports.locations.funclocs') }}?area_id=${this.areaId}`, {
+                        headers: { 'Accept': 'application/json' },
+                    })
+                        .then(res => res.json())
+                        .then(data => { this.funcLocs = data; }),
+
+                    fetch(`{{ route('reports.locations.assets') }}?area_id=${this.areaId}`, {
+                        headers: { 'Accept': 'application/json' },
+                    })
+                        .then(res => res.json())
+                        .then(data => { this.assets = data; }),
+                ]);
+            } else {
+                this.funcLocs = [];
+                this.assets   = [];
+            }
+
+            // Node terpilih wajib ada di daftar dropdown; kalau tidak, pilihannya
+            // tampak kosong walau nilainya sudah terpasang di form.
+            if (!this.funcLocs.some(item => item.id === node.id)) {
+                this.funcLocs.unshift({
+                    id: node.id,
+                    code: node.code || 'FuncLoc #' + node.id,
+                    name: node.label || '',
+                    level: null,
+                });
+            }
+
+            this.funcLocId = node.id;
+            this.assetId   = null;
+        },
+
 
         /**
          * Kosongkan Area, Functional Location, dan Kode Alat pada form.

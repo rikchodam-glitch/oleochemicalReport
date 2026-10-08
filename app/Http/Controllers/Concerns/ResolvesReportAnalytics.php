@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Concerns;
 
+use App\Services\TechnicianKinerjaService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -26,21 +27,13 @@ trait ResolvesReportAnalytics
     /**
      * Warna grafik per jenis pekerjaan, dipakai batang tren maupun donut
      * komposisi supaya satu jenis punya warna yang sama di kedua grafik.
+     * Nilainya dipusatkan di TechnicianKinerjaService::WARNA_JENIS_PEKERJAAN
+     * supaya grafik kinerja teknisi di halaman detail laporan memakai warna
+     * yang sama persis.
      *
      * @var array<string, string>
      */
-    protected array $warnaJenisPekerjaan = [
-        'CM'        => '#EF4444',
-        'dCM'       => '#F97316',
-        'PM'        => '#14B8A6',
-        'CM/PM'     => '#0E9E8E',
-        'EI'        => '#6366F1',
-        'Mekanik'   => '#F59E0B',
-        'Fabrikasi' => '#8B5CF6',
-        'Sipil'     => '#06B6D4',
-        'IT'        => '#EC4899',
-        'Project'   => '#64748B',
-    ];
+    protected array $warnaJenisPekerjaan = TechnicianKinerjaService::WARNA_JENIS_PEKERJAAN;
 
     /**
      * Ekspresi SQL format bulan (YYYY-MM) sesuai driver database yang aktif.

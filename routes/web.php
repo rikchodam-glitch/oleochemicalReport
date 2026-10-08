@@ -120,6 +120,9 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     Route::get('/reports/locations/assets', [ReportController::class, 'getAssetsByArea'])->name('reports.locations.assets');
     // Pencarian alat lintas area untuk kotak "Cari Alat" pada form edit laporan.
     Route::get('/reports/locations/cari-alat', [ReportController::class, 'cariAsset'])->name('reports.locations.cari-alat');
+    // Pemilih lokasi bertingkat (PT -> Departemen -> Area -> Section -> Alat)
+    // pada mode edit laporan: satu permintaan mengembalikan node anak + alat.
+    Route::get('/reports/locations/hirarki', [ReportController::class, 'anakLokasi'])->name('reports.locations.hirarki');
     Route::get('/reports/export/csv', [ReportController::class, 'exportCsv'])->name('reports.export-csv');
 
     // Hapus satu foto dari laporan — index adalah posisi dalam array JSON (0-based).

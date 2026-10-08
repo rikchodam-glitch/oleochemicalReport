@@ -1302,11 +1302,124 @@ Batasan penting lingkungan ini:
       berpengaruh ke tampilan).
     - Uji: `tests/Feature/ReportDetailTampilanTest.php` (4 test: urutan Temuan -> Root
       Cause lewat `assertSeeInOrder`, tombol popup + `x-show="popup === ..."` + tepat
-      2 `x-teleport="body"`, pemberitahuan "belum ada analisa AI", dan kartu Aksi
+      3 `x-teleport="body"` sejak galeri foto ditambahkan 08/10/2026 (dulu 2),
+      pemberitahuan "belum ada analisa AI", dan kartu Aksi
       Admin tanpa tombol status). Uji mutasi 06/10/2026: mematikan include temuan dan
       mengubah nama popup analisa membuat 2 test GAGAL. Seluruh suite **438 test hijau
       (1932 assertions)**, `php artisan view:cache` sukses, dan blok `<script>` hasil
       ekstraksi lolos `node --check`.
+
+25. **Mode edit halaman detail laporan dimaksimalkan (diputuskan 08/10/2026 atas
+    permintaan user, sudah ada kodenya).** Semua perubahan ada di copy DEV
+    `C:\laragon\www\oleochemicalReport`; PERUBAHAN INI BELUM NAIK KE PROD (menunggu
+    `Deploy-Laporan.bat`). Lima perbaikan sekaligus, semuanya menyentuh halaman detail
+    agar pengeditan tidak lagi "kurang rapi":
+    - **(1) Edit alat/lokasi memakai hierarki PT -> Departemen -> Area -> Section ->
+      Alat**, bukan lagi tiga dropdown datar (Area -> FuncLoc -> Kode Alat) yang
+      memaksa admin tahu Area lebih dulu. Endpoint BARU
+      `GET /reports/locations/hirarki` (`reports.locations.hirarki`,
+      `ReportLocationTrait::anakLokasi()`) mengembalikan SATU paket: `induk` (ringkasan
+      node induk + `area_id` dari `AssetLocationService::areaId()`), `nodes` (anak
+      langsung yang `active()` saja), `assets` (alat pada node itu, DIBATASI 50 baris
+      `BATAS_CARI_LOKASI`), dan `jumlah_alat` (jumlah SELURUH alat node itu). Tanpa
+      `parent_id` berarti daftar PT (level 0); alat bisa disaring dengan `q`.
+      **Bukti data nyata DEV 08/10/2026:** section `EPE-PROD-TF01-6010` (id 93) memuat
+      **426 alat**; sebelum dibatasi endpoint mengirim seluruh 426 baris (payload
+      >40 KB), sesudah dibatasi mengirim 50 baris + `jumlah_alat=426`.
+    - **(2) Widget pemilih lokasi dipakai BERSAMA** supaya logika hierarki tidak
+      ditulis dua kali: `reports\partials\_pilih-lokasi-hirarki-badan.blade.php`
+      (markup; elemennya ditandai `data-peran`: status/pt/departemen/area/section/
+      cari/alat/pesan) + `reports\partials\_pilih-lokasi-hirarki-script.blade.php`
+      (definisi TUNGGAL `window.pilihLokasiHirarki`, dibungkus `@once` +
+      `@push('scripts')` supaya tidak berulang walau partial-nya di-include dua kali).
+      Pembungkusnya cuma dua: `_pilih-lokasi-hirarki.blade.php` (`data-mode="laporan"`,
+      mengisi Area + FuncLoc + Kode Alat laporan lewat komponen Alpine `reportDetail()`
+      yang kini punya method `terapkanLokasi()`) dan panel alat tambahan
+      (`data-mode="item"`, mem-POST ke `reports.multi-items.store`). Pemilih menyimpan
+      `data-jalur` (JSON id root -> node terpilih dari
+      `FunctionalLocation::getAncestors()`) supaya pilihan lama terbuka kembali saat
+      halaman dimuat. Kotak "Cari Alat (semua area)" pada `_cari-alat` DIPERTAHANKAN
+      sebagai jalan pintas.
+    - **(3) Alat/lokasi tambahan dikelompokkan jadi SATU alur**:
+      `_alat-tambahan.blade.php` ditulis ulang. Dua jalur lama (kotak cari alat +
+      dropdown FuncLoc per Area dengan tombol "Tambah Lokasi") DIHAPUS, diganti satu
+      panel hierarki (mode item) + kotak pencarian cepat. Daftar item DIKELOMPOKKAN per
+      lokasi (Section) dengan lencana ALAT/LOKASI, dan
+      `ReportMultiItemController::daftarItem()` kini ikut mengirim `grup` (kode
+      Section: `functionalLocation?->code ?? asset?->functional_loc`) dan `jenis`
+      (`alat`/`lokasi`) supaya tampilan Blade dan daftar hasil fetch memakai
+      pengelompokan yang sama. `window.gambarDaftarAlatTambahan` dipakai pemilih
+      hierarki mode item untuk memperbarui daftar tanpa memuat ulang halaman.
+    - **(4) Popup galeri foto**: partial BARU `_galeri-foto.blade.php` (di-include
+      SEKALI dari `show.blade.php`, di dalam komponen Alpine `reportDetail()`, dan
+      menerima `$bolehHapusFoto`). Isinya foto besar + tombol sebelumnya/berikutnya +
+      panah kiri-kanan keyboard (`@keydown.arrow-left/right.window`) + geser/swipe
+      (`@touchstart`/`@touchend`, ambang 40 piksel) + penghitung posisi + strip
+      thumbnail + tombol pindah galeri Dokumentasi/Hygiene + tombol Hapus (HANYA
+      laporan induk). State & method-nya ada di `reportDetail()`
+      (`galeri: {buka, jenis, indeks, geserDari}`, `galeriBuka()`, `galeriTutup()`,
+      `galeriJenisBuka()`, `galeriFoto()`, `galeriPosisi()`, `galeriSebelum()`,
+      `galeriBerikut()`, `galeriKe()`, `galeriGeserMulai()`, `galeriGeserSelesai()`,
+      `galeriHapus()`). Thumbnail grid memakai
+      `@click.prevent="galeriBuka('...', idx)"` (preventDefault pada <img> sekaligus
+      membatalkan navigasi <a> induknya) dan tiap kartu foto dapat tombol "Lihat semua".
+    - **(5) Kolom kanan memuat kartu "Teknisi Pelaksana"**: service BARU
+      `app\Services\TechnicianKinerjaService.php` (`ringkasUntuk(array $idTeknisi)`,
+      agregasi SQL sekali untuk semua teknisi: hitungan per status, deret 12 bulan,
+      komposisi jenis pekerjaan) + partial BARU `_kartu-teknisi.blade.php` (komponen
+      Alpine `kartuKinerja`, Chart.js 4.4.0 dari CDN seperti halaman Teknisi). Kartu
+      menampilkan avatar inisial, nama, NIK, Bagian/Group, status, total/selesai/belum
+      selesai/bulan ini, grafik batang 12 bulan, dan komposisi jenis pekerjaan. **Bila
+      laporan berkolaborasi, seluruh teknisi muncul sebagai chip yang bisa diklik**
+      (ganti profil + grafik tanpa memuat ulang) dan ada tautan ke halaman detail
+      teknisi. Data disiapkan `ReportController::siapkanKartuTeknisi()` (pelaksana
+      induk -> pelaksana baris -> seluruh kolaborator; kartu disembunyikan bila tidak
+      ada data teknisi). ATURAN HITUNGAN: baris salinan multi alat (`multi_of`) TIDAK
+      dihitung, baris salinan kolaborasi DIHITUNG untuk kolaboratornya — sama seperti
+      daftar laporan dan man hour. Palet warna jenis pekerjaan kini SATU SUMBER:
+      `TechnicianKinerjaService::WARNA_JENIS_PEKERJAAN`, dan
+      `ResolvesReportAnalytics::$warnaJenisPekerjaan` merujuk konstanta itu (nilainya
+      tidak berubah, hanya dipusatkan).
+    - **(Jam & durasi konsisten)**: `_waktu-kerja.blade.php` ditulis ulang: JAM MULAI +
+      JAM SELESAI (tetap satu-satunya yang bisa diedit) + kolom **Durasi Man Hour
+      read-only** yang berubah langsung saat jam diubah (`labelDurasi()`), memakai
+      aturan SERVER yang sama: jam selesai < jam mulai = melewati tengah malam
+      (+24 jam, lihat `Report::durasiDariJam()`), dan format label sama dengan accessor
+      `Report::duration_label` ("X Jam Y Menit"). Form edit TETAP tidak mengirim kolom
+      durasi (keputusan 05/10/2026 tidak diubah). Mode lihat kini juga menampilkan
+      rentang jam (`Report::time_range`) di samping durasi, dan angkanya memakai
+      accessor yang sama (dulu hitungan Blade sendiri).
+    - Berkas yang disentuh: `routes/web.php` (1 rute baru),
+      `app\Http\Controllers\Traits\ReportLocationTrait.php`,
+      `app\Http\Controllers\ReportController.php` (data kartu teknisi),
+      `app\Http\Controllers\ReportMultiItemController.php` (grup + jenis),
+      `app\Http\Controllers\Concerns\ResolvesReportAnalytics.php` (palet dipusatkan),
+      `app\Services\TechnicianKinerjaService.php` (baru),
+      `resources\views\reports\show.blade.php` (penyisipan include + method galeri;
+      TIDAK ditulis ulang — pola `insert_line` dari bawah ke atas seperti item 24),
+      5 partial laporan (`_waktu-kerja` dan `_alat-tambahan` ditulis ulang;
+      `_pilih-lokasi-hirarki*` dari 1 menjadi 3 berkas), 4 test fitur baru, dan 2 test
+      lama disesuaikan (`ReportDetailTampilanTest` jumlah `x-teleport` 2 -> 3;
+      `ReportEditAlatTambahanTest` penanda `item_tambah_lokasi` -> `data-pilih-hirarki`).
+    - Uji: `ReportEditLokasiHirarkiTest` (7), `ReportGaleriFotoTest` (4),
+      `ReportKartuTeknisiTest` (5), `ReportDurasiKonsistenTest` (5). **Uji mutasi
+      08/10/2026 (nyata, dijalankan satu per satu lalu dikembalikan):**
+      (a) mengubah `whereNull('parent_id')` menjadi `whereNotNull('parent_id')` pada
+      daftar PT membuat 1 test GAGAL; (b) mengubah `if (lewatTengahMalam)` menjadi
+      `if (false)` membuat 1 test GAGAL; (c) memutus penghitung posisi galeri
+      (`x-text="galeriPosisi()"` diganti `galeriTutup()`) membuat 1 test GAGAL; (d)
+      melepas `whereNull('multi_of')` pada service kinerja membuat 1 test GAGAL
+      (total terbaca 2 padahal seharusnya 1). Pelajaran dari (c): penjaga markup WAJIB
+      memakai bentuk MARKUP (`x-text="..."`, `@click="..."`), bukan nama fungsi, karena
+      nama fungsi juga ada di blok `<script>` sehingga mutasi markup bisa lolos.
+      Seluruh suite **470 test hijau (2088 assertions)**, `php artisan view:cache`
+      sukses, semua blok `<script>` baru lolos `node --check` (echo Blade diganti `0`
+      lebih dulu), dan halaman diperiksa lewat HTTP nyata di DEV (`/debug-login` +
+      `curl` atas `/reports/775` dan `/reports/locations/hirarki?parent_id=93`).
+    - CATATAN: klaim "selesai" di sini TIDAK mencakup uji klik di peramban; yang sudah
+      dibuktikan adalah markup/endpoint/logika server + test otomatis + respons HTTP
+      nyata. Karena `.bat`/pintasan tidak berubah, deploy cukup lewat `Deploy-Laporan.bat`
+      seperti biasa (tidak ada migrasi baru).
 
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 

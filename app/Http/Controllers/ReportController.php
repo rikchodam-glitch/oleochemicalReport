@@ -8,6 +8,7 @@ use App\Models\Asset;
 use App\Models\FunctionalLocation;
 use App\Models\Report;
 use App\Models\Technician;
+use App\Services\TechnicianKinerjaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Storage;
@@ -432,8 +433,11 @@ class ReportController extends Controller
     // detail, karena halaman edit terpisah sudah tidak ada lagi.
     $pengelolaan = $this->dataPengelolaanLaporan($report);
 
+    // Data kartu "Teknisi Pelaksana" pada kolom kanan (profil + grafik kinerja).
+    $kartuTeknisi = $this->siapkanKartuTeknisi($report, $pengelolaan['laporanInduk'], $pengelolaan['kolaborator']);
+
     return view('reports.show', array_merge(
-        compact('report', 'areas', 'funcLocs', 'assets'),
+        compact('report', 'areas', 'funcLocs', 'assets', 'kartuTeknisi'),
         $pengelolaan
     ));
 }
@@ -474,6 +478,73 @@ class ReportController extends Controller
                 ->with(['asset', 'functionalLocation'])
                 ->orderBy('id')
                 ->get(),
+        ];
+    }
+
+    /**
+     * Siapkan data kartu "Teknisi Pelaksana" pada kolom kanan halaman detail:
+     * profil + angka kinerja + deret bulanan grafik untuk setiap teknisi yang
+     * terlibat pada pekerjaan ini.
+     *
+     * Teknisi yang ikut dihitung (urutannya juga urutan chip di tampilan):
+     *   1. pelaksana laporan INDUK (pemilik pekerjaan),
+     *   2. pelaksana baris yang sedang dibuka (mis. saat membuka baris salinan),
+     *   3. seluruh teknisi kolaborator laporan induk.
+     *
+     * Laporan tanpa teknisi (data lama) menghasilkan daftar kosong supaya kartu
+     * bisa disembunyikan, bukan menampilkan nama kosong.
+     *
+     * @param  Report                              $report        Laporan yang sedang dibuka
+     * @param  Report                              $laporanInduk  Laporan induk pekerjaan ini
+     * @param  \Illuminate\Support\Collection       $kolaborator   Baris salinan kolaborasi laporan induk
+     * @return array{pelaksana: int|null, daftar: array<int, array<string, mixed>>}
+     */
+    private function siapkanKartuTeknisi(Report $report, Report $laporanInduk, $kolaborator): array
+    {
+        $idTeknisi = [];
+
+        if ($laporanInduk->technician_id !== null) {
+            $idTeknisi[] = (int) $laporanInduk->technician_id;
+        }
+
+        if ($report->technician_id !== null) {
+            $idTeknisi[] = (int) $report->technician_id;
+        }
+
+        foreach ($kolaborator as $baris) {
+            if ($baris->technician_id !== null) {
+                $idTeknisi[] = (int) $baris->technician_id;
+            }
+        }
+
+        $idTeknisi = array_values(array_unique($idTeknisi));
+
+        if ($idTeknisi === []) {
+            return ['pelaksana' => null, 'daftar' => []];
+        }
+
+        $kinerja = app(TechnicianKinerjaService::class)->ringkasUntuk($idTeknisi);
+
+        // Tidak ada satu pun teknisi yang datanya masih ada: kartu disembunyikan.
+        if ($kinerja === []) {
+            return ['pelaksana' => null, 'daftar' => []];
+        }
+
+        // Pelaksana = pemilik laporan induk; bila datanya tidak ada, ambil
+        // teknisi pertama yang masih punya data kinerja.
+        $pelaksana = (int) ($laporanInduk->technician_id ?? $idTeknisi[0]);
+
+        if (! isset($kinerja[$pelaksana])) {
+            $pelaksana = (int) array_key_first($kinerja);
+        }
+
+        foreach ($kinerja as $id => $data) {
+            $kinerja[$id]['peran'] = $id === $pelaksana ? 'Pelaksana' : 'Kolaborator';
+        }
+
+        return [
+            'pelaksana' => $pelaksana,
+            'daftar'    => array_values($kinerja),
         ];
     }
 

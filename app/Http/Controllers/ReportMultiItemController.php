@@ -187,7 +187,7 @@ class ReportMultiItemController extends Controller
      * laporan; kode baris salinannya dikirim terpisah sebagai keterangan.
      *
      * @param  Report  $report  Laporan induk
-     * @return array<int, array{id: int, label: string, code: string, kode_alat: string, url: string}>
+     * @return array<int, array{id: int, label: string, code: string, kode_alat: string, grup: string, jenis: string, url: string}>
      */
     private function daftarItem(Report $report): array
     {
@@ -202,6 +202,13 @@ class ReportMultiItemController extends Controller
                 'kode_alat' => $item->asset?->tech_ident_no
                     ?? $item->functionalLocation?->code
                     ?? $item->multi_item_label,
+                // Pengelompokan tampilan: satu baris per lokasi (Section).
+                // Baris salinan alat menyimpan funcloc_id alatnya, jadi grup
+                // alat dan grup lokasi memakai sumber yang sama.
+                'grup'      => $item->functionalLocation?->code
+                    ?? $item->asset?->functional_loc
+                    ?? 'Tanpa lokasi',
+                'jenis'     => $item->asset_id !== null ? 'alat' : 'lokasi',
                 'url'       => $item->asset
                     ? route('assets.show', $item->asset)
                     : ($item->functionalLocation
