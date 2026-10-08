@@ -2180,27 +2180,49 @@ Batasan penting lingkungan ini:
     Pemicunya: sesudah `start-report.bat` copy DEV ditambah pemeriksaan
     pra-syarat, uji nyata dengan Laragon dimatikan menghasilkan
     `The system cannot find the batch label specified - laragon_mati` padahal
-    label `:laragon_mati` JELAS ADA di berkas itu. Penyelidikan 08/10/2026:
-    (a) berkas yang SAMA dijalankan dengan akhiran CRLF -> berjalan normal
-    (`[2/4] Pra-syarat : BERHENTI, Laragon belum jalan`); (b) berkas kecil
-    buatan (satu `goto` + padding 0..200 baris REM) berjalan BAIK dalam bentuk
-    LF maupun CRLF, jadi bukan sekadar soal ukuran/offset berkas;
-    (c) akar masalahnya di tingkat repo: `.gitattributes` (sebelum perbaikan)
+    label `:laragon_mati` JELAS ADA di berkas itu. Penyelidikan 08/10/2026
+    (semuanya uji nyata dengan berkas SALINAN, tidak menyentuh service):
+    (a) akhiran baris copy PROD memang LF MURNI -- pengukuran byte
+    membuktikan
+    `C:\laragon\www\oleochemicalReport-prod\start-report.bat` = CRLF 0 /
+    LF 38 (1.745 byte) dan copy PROD `stop-report.bat` = CRLF 0 / LF 31
+    (1.596 byte), sedangkan salinan DEV = 174 dan 161 CRLF (0 LF) karena DEV
+    BUKAN hasil checkout git;
+    (b) LF murni TIDAK selalu gagal, jadi JANGAN percaya "LF aman": versi
+    berkas yang lebih pendek (169 baris, keadaan ter-commit saat itu) JALAN
+    dalam bentuk LF, sedangkan berkas DEV terkini (175 baris, sesudah label
+    `:tidak_siap_paksa` ditambahkan) SELALU gagal bila disimpan LF murni --
+    9 dari 10 varian padding (0/1/2/3/4/5/6/8/12/20 baris `REM` di awal)
+    berbalas `LABEL-GAGAL`. Bentuk CRLF SELALU jalan (berkas DEV sekarang,
+    versi clone, maupun berkas kecil buatan);
+    (c) bentuk CAMPURAN (setengah LF lalu CRLF, setengah CRLF lalu LF, hanya
+    baris kosong sebelum label yang LF, hanya baris label yang LF, tiap 10
+    baris LF) semuanya JALAN, dan berkas kecil buatan (satu `goto` + padding
+    0..200 baris REM) juga jalan di LF maupun CRLF. Jadi kegagalan ini
+    bergantung ISI/UKURAN berkas (perilaku pencarian label cmd.exe yang tidak
+    dijamin untuk LF), BUKAN pola akhiran baris tertentu yang bisa dihindari
+    dengan menata ulang label.
+    Akar masalahnya di tingkat repo: `.gitattributes` (sebelum perbaikan)
     memuat `* text=auto eol=lf` sehingga SEMUA berkas teks -- termasuk `.bat` --
     dituliskan git sebagai LF, sedangkan copy PROD LAHIR dari `git clone`/
-    `git pull`. Jadi `.bat` yang tampak "bertahun-tahun benar" di DEV (CRLF,
-    karena DEV bukan hasil checkout) berubah perilaku begitu dibawa ke PROD.
+    `git pull`. Jadi `.bat` yang tampak "bertahun-tahun benar" di DEV berubah
+    perilaku begitu dibawa ke PROD.
     Perbaikan 08/10/2026 (commit khusus, copy DEV
     `C:\laragon\www\oleochemicalReport`): `.gitattributes` menambah
     `*.bat text eol=crlf` + `*.cmd text eol=crlf` SETELAH baris
     `* text=auto eol=lf` (baris belakangan menang), sehingga checkout/pull
     berikutnya menuliskan seluruh `.bat` terlacak (7 berkas: `start-report.bat`,
-    `stop-report.bat`, dan 5 di `sensor-suhu-esp32/`) dengan CRLF.
+    `stop-report.bat`, dan 5 di `sensor-suhu-esp32/`) dengan CRLF. Dibuktikan
+    lewat simulasi pull di clone sementara (`%TEMP%\uji-pull`): sebelum
+    perbaikan `start-report.bat` = LF 169 / CRLF 0, sesudah = CRLF 174 / LF 0,
+    dan `git ls-files --eol` berbunyi `i/lf w/crlf attr/text eol=crlf` untuk
+    ketujuh berkas `.bat` itu.
     Dampak ke PROD: baru terpasang sesudah `Deploy-Laporan.bat` dijalankan
-    manusia, dan SESUDAH deploy WAJIB diperiksa bahwa
-    `C:\laragon\www\oleochemicalReport-prod\start-report.bat` benar-benar
-    CRLF (hitung baris yang berakhiran `\r\n`), karena `.gitattributes` baru
-    dibaca git pada checkout yang sama.
+    manusia, dan SESUDAH deploy WAJIB diperiksa ULANG dengan menghitung byte
+    berkas PROD (LF-saja harus 0), karena `.gitattributes` baru dibaca git
+    pada checkout yang sama. Perintah periksa (PowerShell, hanya membaca):
+    `[IO.File]::ReadAllBytes('C:\laragon\www\oleochemicalReport-prod\start-report.bat')`
+    lalu hitung pasangan byte 13+10; hasil benar = CRLF 174 dan 0 LF-saja.
     Uji 08/10/2026 (empat skenario, memakai SALINAN berkas dengan `PROD`
     dialihkan ke `%TEMP%\uji-prod` + stub `cek-pra-syarat-prod.ps1` yang
     dipilih lewat variabel `SKENARIO`, jadi TIDAK ada service yang disentuh):
