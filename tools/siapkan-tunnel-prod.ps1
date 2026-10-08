@@ -74,7 +74,7 @@ Write-Host '3. cloudflared tunnel route dns oleo-report <domain>'
 Write-Host '4. Isi konfigurasi:'
 Write-Host ('   powershell -ExecutionPolicy Bypass -File ' + $MyInvocation.MyCommand.Path + ' -Domain <domain> -TunnelId <tunnel-id>')
 Write-Host '5. Jalankan tunnel dari copy PROD:'
-Write-Host ('   ' + $Cloudflared + ' tunnel --config ' + $FileKonfig + ' run')
+Write-Host ('   ' + $Cloudflared + ' --protocol http2 tunnel --config ' + $FileKonfig + ' run')
 Write-Host '6. Uji dari internet: buka https://<domain>'
 Write-Host '7. Permanen (butuh hak admin, jalankan di PowerShell sebagai Administrator):'
 Write-Host ('   ' + $Cloudflared + ' service install')

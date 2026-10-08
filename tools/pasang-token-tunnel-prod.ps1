@@ -345,7 +345,10 @@ if ((JumlahConnector) -ne 0) { throw 'Masih ada connector cloudflared yang jalan
 $env:TUNNEL_TOKEN = (Get-Content $FileToken -Raw).Trim()
 
 try {
-    Start-Process -FilePath $Cloudflared -ArgumentList 'tunnel', 'run' -WindowStyle Hidden `
+    # --protocol http2: jaringan ini memblokir egress UDP 7844 sehingga QUIC gagal
+    # ~2 menit sebelum cloudflared pindah ke http2 (lihat catatan di
+    # tools\jaga-service-prod.ps1 dan insiden 502 Bad Gateway 08/10/2026).
+    Start-Process -FilePath $Cloudflared -ArgumentList '--protocol', 'http2', 'tunnel', 'run' -WindowStyle Hidden `
         -RedirectStandardOutput (Join-Path $ProdPath 'storage\logs\tunnel.out.log') `
         -RedirectStandardError (Join-Path $ProdPath 'storage\logs\tunnel.err.log')
 } finally {

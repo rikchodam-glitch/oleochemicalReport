@@ -134,9 +134,13 @@ if (-not (Test-Path $Cloudflared)) {
 
             # Token dilewatkan lewat variabel lingkungan, bukan argumen perintah,
             # supaya tidak terlihat di daftar proses.
+            # --protocol http2 WAJIB di jaringan ini: egress UDP 7844 diblokir
+            # sehingga QUIC gagal berulang dan cloudflared baru pindah sendiri ke
+            # http2 setelah ~2 menit (penyebab 502 Bad Gateway 08/10/2026 09:52 WIB).
+            # Dipaksa http2 -> 4 koneksi terdaftar dalam ~3 detik (terverifikasi).
             $env:TUNNEL_TOKEN = $tokenTunnel
             try {
-                Start-Process -FilePath $Cloudflared -ArgumentList 'tunnel', 'run' -WindowStyle Hidden `
+                Start-Process -FilePath $Cloudflared -ArgumentList '--protocol', 'http2', 'tunnel', 'run' -WindowStyle Hidden `
                     -RedirectStandardOutput (Join-Path $ProdPath 'storage\logs\tunnel.out.log') `
                     -RedirectStandardError (Join-Path $ProdPath 'storage\logs\tunnel.err.log')
             } finally {
@@ -165,7 +169,8 @@ if (-not (Test-Path $Cloudflared)) {
                 Start-Sleep -Seconds 3
             }
 
-            Start-Process -FilePath $Cloudflared -ArgumentList 'tunnel', '--config', $KonfigTunnel, 'run' -WindowStyle Hidden `
+            # --protocol http2: alasannya sama dengan mode token di atas.
+            Start-Process -FilePath $Cloudflared -ArgumentList '--protocol', 'http2', 'tunnel', '--config', $KonfigTunnel, 'run' -WindowStyle Hidden `
                 -RedirectStandardOutput (Join-Path $ProdPath 'storage\logs\tunnel.out.log') `
                 -RedirectStandardError (Join-Path $ProdPath 'storage\logs\tunnel.err.log')
 

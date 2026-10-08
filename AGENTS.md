@@ -2045,6 +2045,60 @@ Batasan penting lingkungan ini:
     buru-buru menyalahkan format `.env`; (4) untuk integrasi luar, uji unduhnya
     dulu lewat skrip sementara tanpa menulis database supaya kegagalan
     izin/berkas privat ketahuan sebelum menyentuh data.**
+37. **502 Bad Gateway di domain publik BUKAN gangguan aplikasi, melainkan
+    connector cloudflared yang menunggu QUIC gagal ~2 menit sesudah restart
+    service (08/10/2026).** Keluhan user: `https://oleomtc.com` berbalas
+    Cloudflare 502 (Error code 502) pukul 02:52:17 UTC. Pemeriksaan langsung
+    saat itu membuktikan SEMUA lapisan lokal sehat: Apache PROD
+    (`curl.exe -H 'Host: oleo-prod.lvh.me' http://127.0.0.1/login`) = 200,
+    `artisan serve` port 8000 = 200, dan domain publik = 200 (sudah pulih
+    sendiri). Berkas `PROD\storage\logs\jaga-service.log` memuat
+    `[09:51:29] manual: php (queue/schedule/poll/serve): 5 proses dihentikan`
+    dan `[09:51:29] manual: tunnel cloudflared: 1 proses dihentikan` (kata
+    "manual:" HANYA ditulis oleh `tools\hentikan-service-prod.ps1` copy DEV,
+    jadi itu jejak `stop-report.bat` yang dijalankan manusia), lalu
+    `[09:51:42] tunnel cloudflared (mode token): dinyalakan`. Sesudah
+    dinyalakan, `PROD\storage\logs\tunnel.err.log` berisi 9 baris
+    `ERR Failed to dial a quic connection ... timeout: no recent network
+    activity` (02:51:54 - 02:53:35 UTC), baru pukul 02:53:43
+    `WRN ... egress UDP to port 7844 ... blocked or dropped` +
+    `Switching to fallback protocol http2`, sehingga 4
+    `Registered tunnel connection ... protocol=http2` baru terdaftar
+    02:53:44 - 02:53:46 UTC. Jendela 502 yang dilihat user (02:52:17 UTC)
+    tepat berada di antara restart dan keberhasilan fallback itu; Apache
+    sendiri TIDAK pernah mati (proses httpd hidup sejak 07:06:37 WIB, 2,8 jam
+    saat diperiksa).
+    Perbaikan 08/10/2026 (DEV): ketiga tempat yang menyalakan cloudflared
+    memakai `--protocol http2` — `tools\jaga-service-prod.ps1` baris 143 (mode
+    token) dan baris 173 (mode config), `tools\pasang-token-tunnel-prod.ps1`
+    baris 351, ditambah petunjuk manual di `tools\siapkan-tunnel-prod.ps1`
+    baris 77. Flag itu TIDAK muncul di `cloudflared tunnel run --help` versi
+    2026.9.3 (tersembunyi), karena itu dikonfirmasi dua cara: tes kontrol
+    `cloudflared --ini-bukan-flag-xyz tunnel run --help` memang berbalas
+    `Incorrect Usage. flag provided but not defined` (CLI ketat, jadi
+    `--protocol` pasti sah), lalu uji nyata memakai connector SEMENTARA dengan
+    token yang sama (replika, log dialihkan ke berkas sementara, connector
+    produksi tidak diganggu): 4 koneksi terdaftar dalam 3-4 detik dengan
+    `protocol=http2` dan NOL baris `Failed to dial`. Sesudah uji, jumlah proses
+    tunnel kembali 1 dan domain publik tetap 200. Jalur deteksi proses juga
+    dipastikan tidak rusak: CommandLine connector berbunyi
+    `"...\cloudflared.exe" --protocol http2 tunnel run` sehingga pola
+    `*tunnel run*` milik `cek-status-prod.ps1`, `hentikan-service-prod.ps1`,
+    dan `jaga-service-prod.ps1` tetap cocok.
+    **Pelajaran: (1) 502 dari Cloudflare = connector ADA tetapi dial ke
+    origin/edge gagal, sedangkan 530/1033 = connector TIDAK ada — bedakan
+    keduanya sebelum menyalahkan Apache; (2) waktu kejadian user wajib
+    disandingkan dengan cap waktu UTC di log (WIB = UTC+7) supaya jendela
+    insiden cocok; (3) kata "manual:" pada `jaga-service.log` adalah penanda
+    tercepat bahwa ada MANUSIA yang merestart service, bukan service yang mati
+    sendiri; (4) bila jaringan memblokir egress UDP 7844, jangan biarkan
+    cloudflared memilih protokol sendiri: paksa `--protocol http2`, karena
+    urutan percobaan QUIC (5s -> 8s -> 16s -> 32s ke banyak IP) memakan ~2
+    menit downtime padahal jalur http2 sehat; (5) `stop-report.bat` +
+    `start-report.bat` mematikan tunnel walau Apache tetap jalan, jadi kalau
+    hanya ingin memastikan service hidup sebaiknya cukup `start-report.bat`
+    (watchdog hanya menyalakan yang belum jalan dan tidak pernah mematikan
+    tunnel).**
 
 ## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN
 
