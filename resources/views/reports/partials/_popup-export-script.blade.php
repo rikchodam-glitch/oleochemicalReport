@@ -116,6 +116,33 @@
         }
 
         /**
+         * Sesuaikan pilihan "sertakan foto" dengan format berkas: gambar hanya
+         * bisa disematkan pada Excel, jadi pada CSV kotaknya dimatikan supaya
+         * pengguna tidak mengharapkan gambar pada berkas CSV.
+         */
+        function perbaruiCatatanFotoExport() {
+            var kotak = document.getElementById('export-sertakan-foto');
+            var baris = document.getElementById('export-baris-sertakan-foto');
+            var catatan = document.getElementById('export-catatan-foto');
+
+            if (!kotak || !baris || !catatan) {
+                return;
+            }
+
+            var excel = formatTerpilihExport() === 'excel';
+
+            kotak.disabled = !excel;
+
+            if (!excel) {
+                catatan.textContent = 'Format CSV hanya memuat tautan foto, gambar tidak disematkan.';
+            } else if (kotak.checked) {
+                catatan.textContent = 'Gambar foto akan disematkan pada berkas Excel.';
+            } else {
+                catatan.textContent = 'Tanpa centang ini berkas hanya memuat tautan foto.';
+            }
+        }
+
+        /**
          * Buka popup export, sekaligus memilih format berkas awal.
          * @param {string} format 'excel' atau 'csv'
          */
@@ -133,6 +160,7 @@
 
             terapkanFormatExport(formatTerpilihExport());
             perbaruiCatatanPeriodeExport();
+            perbaruiCatatanFotoExport();
 
             modal.classList.remove('hidden');
             modal.classList.add('flex');
@@ -159,10 +187,12 @@
             var sampai = document.getElementById('export-date-to');
             var tampilan = document.getElementById('export-tampilan');
             var barisGrub = document.getElementById('export-baris-grub');
+            var sertakanFoto = document.getElementById('export-sertakan-foto');
 
             document.querySelectorAll('[data-export-format]').forEach(function (radio) {
                 radio.addEventListener('change', function () {
                     terapkanFormatExport(formatTerpilihExport());
+                    perbaruiCatatanFotoExport();
                 });
             });
 
@@ -194,6 +224,12 @@
                     barisGrub.classList.toggle('hidden', tampilan.value !== 'shift');
                 });
             }
+
+            if (sertakanFoto) {
+                sertakanFoto.addEventListener('change', perbaruiCatatanFotoExport);
+            }
+
+            perbaruiCatatanFotoExport();
 
             if (form) {
                 form.addEventListener('submit', function () {

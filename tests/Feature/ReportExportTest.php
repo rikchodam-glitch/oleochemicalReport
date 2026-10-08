@@ -10,6 +10,7 @@ use App\Models\SubArea;
 use App\Models\Technician;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -50,6 +51,54 @@ function nilaiKolomExport($sheet, string $huruf): array
     }
 
     return $nilai;
+}
+
+/**
+ * Daftar nama berkas gambar di dalam berkas xlsx (folder xl/media).
+ *
+ * @param  string  $path  Path berkas xlsx
+ * @return array<int, string>
+ */
+function mediaExcelExport(string $path): array
+{
+    $zip = new ZipArchive();
+
+    if ($zip->open($path) !== true) {
+        return [];
+    }
+
+    $media = [];
+
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $nama = (string) $zip->getNameIndex($i);
+
+        if (str_starts_with($nama, 'xl/media/')) {
+            $media[] = $nama;
+        }
+    }
+
+    $zip->close();
+
+    return $media;
+}
+
+/**
+ * Byte gambar PNG kecil untuk menguji sematan foto pada berkas Excel.
+ *
+ * @return string
+ */
+function gambarUjiPng(): string
+{
+    $gambar = imagecreatetruecolor(8, 8);
+    imagefill($gambar, 0, 0, imagecolorallocate($gambar, 14, 158, 142));
+
+    ob_start();
+    imagepng($gambar);
+    $isi = (string) ob_get_clean();
+
+    imagedestroy($gambar);
+
+    return $isi;
 }
 
 beforeEach(function () {
@@ -163,6 +212,28 @@ beforeEach(function () {
         'jenis_pekerjaan'  => 'PM',
         'status'           => 'continue',
     ]);
+
+    // Teknisi pekerja SHIFT + laporannya, dipakai menguji pilihan tampilan
+    // "Keduanya (Reguler + Shift)" pada popup export. Secara bawaan (tampilan
+    // reguler) laporan ini TIDAK ikut, jadi test lama tidak berubah hasilnya.
+    $this->teknisiShift = Technician::create([
+        'name'    => 'Teknisi Shift Export Uji',
+        'nik'     => 'EXP003',
+        'group'   => 'grub_b',
+        'section' => 'mekanik',
+        'status'  => 'active',
+    ]);
+
+    $this->laporanShift = Report::create([
+        'technician_id'         => $this->teknisiShift->id,
+        'creator_id'            => $this->teknisiShift->id,
+        'report_date'           => $this->tanggal,
+        'report_code'           => 'RPT-EXPORT-SHIFT',
+        'work_description'      => 'Pekerjaan shift export uji',
+        'work_duration_minutes' => 480,
+        'jenis_pekerjaan'       => 'CM',
+        'status'                => 'completed',
+    ]);
 });
 
 // ============================================================
@@ -185,6 +256,13 @@ test('halaman laporan memuat tombol dan popup export dengan pengaturan tanggal &
         ->and($html)->toContain('name="tanpa_batas"')
         ->and($html)->toContain('data-export-cepat="bulan-lalu"')
         ->and($html)->toContain('id="export-baris-grub"')
+        // Pilihan tampilan boleh "Keduanya" (Reguler + Shift sekaligus).
+        ->and($html)->toContain('<option value="semua"')
+        ->and($html)->toContain('Keduanya (Reguler + Shift)')
+        // Foto: centang sertakan gambar (khusus Excel).
+        ->and($html)->toContain('id="export-baris-sertakan-foto"')
+        ->and($html)->toContain('name="sertakan_foto"')
+        ->and($html)->toContain('Sertakan foto dokumentasi')
         // Form mengarah ke rute Excel secara bawaan.
         ->and($html)->toContain(route('reports.export-excel'));
 });
@@ -227,7 +305,10 @@ test('export excel memuat blok judul, kolom lokasi/alat lengkap, dan tiga lembar
         ->and((string) $sheet->getCell('AA7')->getValue())->toBe('Deskripsi Pekerjaan')
         ->and((string) $sheet->getCell('AB7')->getValue())->toBe('Temuan')
         ->and((string) $sheet->getCell('AC7')->getValue())->toBe('Penyebab (Root Cause)')
-        ->and((string) $sheet->getCell('AI7')->getValue())->toBe('Dicatat Pada');
+        ->and((string) $sheet->getCell('AI7')->getValue())->toBe('Dicatat Pada')
+        // Dua kolom foto berupa TAUTAN selalu ada (kolom gambar hanya bila diminta).
+        ->and((string) $sheet->getCell('AJ7')->getValue())->toBe('Foto Dokumentasi (tautan)')
+        ->and((string) $sheet->getCell('AK7')->getValue())->toBe('Foto Hygiene (tautan)');
 
     // Baris data pertama: satu laporan lengkap dengan lokasi, alat, dan kolaborator.
     expect((string) $sheet->getCell('B8')->getValue())->toBe('RPT-EXPORT-0001')
@@ -254,7 +335,11 @@ test('export excel memuat blok judul, kolom lokasi/alat lengkap, dan tiga lembar
         ->and((string) $sheet->getCell('AC8')->getValue())->toBe('Seal aus')
         ->and((string) $sheet->getCell('AF8')->getValue())->toBe('1')
         ->and((string) $sheet->getCell('AG8')->getValue())->toBe('1')
-        ->and((string) $sheet->getCell('AH8')->getValue())->toBe('92%');
+        ->and((string) $sheet->getCell('AH8')->getValue())->toBe('92%')
+        // Tautan foto ditulis sebagai alamat absolut supaya bisa diklik dari Excel.
+        ->and((string) $sheet->getCell('AJ8')->getValue())->toContain('http')
+        ->and((string) $sheet->getCell('AJ8')->getValue())->toContain('foto-a.jpg')
+        ->and((string) $sheet->getCell('AK8')->getValue())->toContain('foto-b.jpg');
 
     $spreadsheet->disconnectWorksheets();
     unlink($path);
@@ -413,7 +498,10 @@ test('lembar Ringkasan dan Petunjuk memuat rekap serta dokumentasi kolom', funct
         // Dokumentasi kolom dijelaskan satu per satu.
         ->and(nilaiKolomExport($petunjuk, 'B'))->toContain('Kolaborator')
         ->and(nilaiKolomExport($petunjuk, 'B'))->toContain('Section (Lokasi)')
-        ->and(nilaiKolomExport($petunjuk, 'B'))->toContain('Equipment No');
+        ->and(nilaiKolomExport($petunjuk, 'B'))->toContain('Equipment No')
+        // Kolom foto (tautan & gambar) juga didokumentasikan.
+        ->and(nilaiKolomExport($petunjuk, 'B'))->toContain('Foto Dokumentasi (tautan)')
+        ->and(nilaiKolomExport($petunjuk, 'B'))->toContain('Foto Hygiene (tautan)');
 
     $spreadsheet->disconnectWorksheets();
     unlink($path);
@@ -445,6 +533,129 @@ test('export memakai filter halaman yang sedang aktif (pencarian dan area)', fun
     expect($kode)->toContain('RPT-EXPORT-0001')
         ->and($kode)->not->toContain('RPT-EXPORT-LAMA')
         ->and((string) $spreadsheet->getSheet(0)->getCell('A5')->getValue())->toContain('Area: EXPAREA - Area Export');
+
+    $spreadsheet->disconnectWorksheets();
+    unlink($path);
+});
+
+
+// ============================================================
+// FOTO PADA BERKAS EXPORT
+// ============================================================
+
+test('export excel menyematkan gambar foto ketika diminta', function () {
+    Storage::fake('telegram_photos', ['url' => '/storage/telegram-photos']);
+    Storage::disk('telegram_photos')->put('foto-a.jpg', gambarUjiPng());
+    Storage::disk('telegram_photos')->put('foto-b.jpg', gambarUjiPng());
+
+    $respons = $this->actingAs($this->admin)
+        ->get('/reports/export/excel?tanggal=' . $this->tanggal . '&sertakan_foto=1')
+        ->assertStatus(200);
+
+    [$spreadsheet, $path] = bukaExcelExport($respons);
+    $sheet = $spreadsheet->getSheet(0);
+
+    // Dua kolom gambar ditambahkan di belakang kolom tautan.
+    expect((string) $sheet->getCell('AL7')->getValue())->toBe('Foto Dokumentasi (gambar)')
+        ->and((string) $sheet->getCell('AM7')->getValue())->toBe('Foto Hygiene (gambar)')
+        ->and((string) $sheet->getCell('AL8')->getValue())->toBe('lihat gambar')
+        ->and((string) $sheet->getCell('AM8')->getValue())->toBe('lihat gambar')
+        // Keterangan jumlah pada blok judul menyebut gambar disertakan.
+        ->and((string) $sheet->getCell('A6')->getValue())->toContain('Foto:')
+        // Kolom tautan tetap terisi.
+        ->and((string) $sheet->getCell('AJ8')->getValue())->toContain('foto-a.jpg');
+
+    $spreadsheet->disconnectWorksheets();
+
+    // Bukti nyata: gambar benar-benar tertanam di dalam berkas xlsx.
+    expect(mediaExcelExport($path))->toHaveCount(2);
+
+    unlink($path);
+});
+
+test('export excel menandai foto yang berkasnya tidak ada di server', function () {
+    Storage::fake('telegram_photos', ['url' => '/storage/telegram-photos']);
+
+    $respons = $this->actingAs($this->admin)
+        ->get('/reports/export/excel?tanggal=' . $this->tanggal . '&sertakan_foto=1')
+        ->assertStatus(200);
+
+    [$spreadsheet, $path] = bukaExcelExport($respons);
+    $sheet = $spreadsheet->getSheet(0);
+
+    expect((string) $sheet->getCell('AL8')->getValue())->toBe('1 foto, berkasnya tidak ada di server ini')
+        ->and((string) $sheet->getCell('AM8')->getValue())->toBe('1 foto, berkasnya tidak ada di server ini');
+
+    $spreadsheet->disconnectWorksheets();
+
+    // Tanpa berkas foto, export tetap berhasil dan tanpa gambar sama sekali.
+    expect(mediaExcelExport($path))->toBeEmpty();
+
+    unlink($path);
+});
+
+test('export csv memuat kolom tautan foto tanpa kolom gambar', function () {
+    $isiCsv = $this->actingAs($this->admin)
+        ->get('/reports/export/csv?tanggal=' . $this->tanggal . '&sertakan_foto=1')
+        ->assertStatus(200)
+        ->streamedContent();
+
+    expect($isiCsv)->toContain('Foto Dokumentasi (tautan)')
+        ->and($isiCsv)->toContain('Foto Hygiene (tautan)')
+        ->and($isiCsv)->toContain('foto-a.jpg')
+        // Format CSV tidak menyematkan gambar, jadi kolom gambarnya tidak ada.
+        ->and($isiCsv)->not->toContain('Foto Dokumentasi (gambar)');
+});
+
+// ============================================================
+// TAMPILAN KEDUANYA (REGULER + SHIFT)
+// ============================================================
+
+test('pilihan tampilan keduanya memuat laporan reguler dan shift', function () {
+    // Reguler: laporan pekerja shift tidak ikut.
+    [$spreadsheet, $path] = bukaExcelExport(
+        $this->actingAs($this->admin)
+            ->get('/reports/export/excel?tampilan=reguler&tanpa_batas=1')
+            ->assertStatus(200)
+    );
+
+    $kode = nilaiKolomExport($spreadsheet->getSheet(0), 'B');
+
+    expect($kode)->toContain('RPT-EXPORT-0001')
+        ->and($kode)->not->toContain('RPT-EXPORT-SHIFT');
+
+    $spreadsheet->disconnectWorksheets();
+    unlink($path);
+
+    // Shift: laporan pekerja reguler tidak ikut.
+    [$spreadsheet, $path] = bukaExcelExport(
+        $this->actingAs($this->admin)
+            ->get('/reports/export/excel?tampilan=shift&tanpa_batas=1')
+            ->assertStatus(200)
+    );
+
+    $kode = nilaiKolomExport($spreadsheet->getSheet(0), 'B');
+
+    expect($kode)->toContain('RPT-EXPORT-SHIFT')
+        ->and($kode)->not->toContain('RPT-EXPORT-0001')
+        ->and((string) $spreadsheet->getSheet(0)->getCell('A5')->getValue())->toContain('Tampilan: Shift');
+
+    $spreadsheet->disconnectWorksheets();
+    unlink($path);
+
+    // Keduanya: dua-duanya ikut, dan grub DIABAIKAN (grub hanya berlaku untuk
+    // tampilan Shift).
+    [$spreadsheet, $path] = bukaExcelExport(
+        $this->actingAs($this->admin)
+            ->get('/reports/export/excel?tampilan=semua&grub=grub_b&tanpa_batas=1')
+            ->assertStatus(200)
+    );
+
+    $kode = nilaiKolomExport($spreadsheet->getSheet(0), 'B');
+
+    expect($kode)->toContain('RPT-EXPORT-0001')
+        ->and($kode)->toContain('RPT-EXPORT-SHIFT')
+        ->and((string) $spreadsheet->getSheet(0)->getCell('A5')->getValue())->toContain('Tampilan: Reguler + Shift (keduanya)');
 
     $spreadsheet->disconnectWorksheets();
     unlink($path);

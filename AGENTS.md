@@ -1599,6 +1599,53 @@ Batasan penting lingkungan ini:
     - Verifikasi 08/10/2026: seluruh suite **489 test hijau (2254 assertions)**,
       `php artisan view:cache` sukses, dan blok `<script>` partial export lolos
       `node --check` (echo blade diganti `0` lebih dulu).
+    - **FOTO IKUT TEREXPORT (permintaan user 08/10/2026, sudah ada kodenya).**
+      Dua kolom BARU selalu ikut: `Foto Dokumentasi (tautan)` dan
+      `Foto Hygiene (tautan)` (berisi URL PUBLIK absolut, satu URL per baris
+      sel; lebih dari 5 tautan diringkas "+N foto lainnya"), sehingga kolom
+      jumlah foto lama ("Foto Dokumentasi"/"Foto Hygiene") tetap ada.
+      Centang BARU `sertakan_foto` pada popup menambah dua kolom gambar
+      (`Foto Dokumentasi (gambar)`, `Foto Hygiene (gambar)`) yang isinya
+      GAMBAR DISEMATKAN (foto PERTAMA tiap jenis per laporan, tinggi 56 px,
+      tinggi baris 46 pt) lewat `Drawing` PhpSpreadsheet; batas
+      `BATAS_GAMBAR_EXPORT = 300` gambar per berkas, selebihnya diberi tulisan
+      "lihat kolom tautan (batas gambar tercapai)". Foto yang berkasnya TIDAK
+      ADA di server ini (DEV memang tidak memuat foto asli) hanya diberi
+      catatan "N foto, berkasnya tidak ada di server ini" - JANGAN menggantinya
+      dengan sel kosong, kalau tidak data tampak hilang. Blok judul tetap 6
+      baris dan header kolom tetap di BARIS 7; dua kolom gambar ditambahkan
+      SETELAH kolom terakhir supaya huruf kolom lama A..AI tidak bergeser
+      (35 -> 37 kolom, atau 39 bila gambar disertakan). CSV hanya memuat kolom
+      tautan (tidak bisa menyematkan gambar); kotak centangnya dimatikan
+      otomatis oleh skrip popup saat format CSV dipilih. Penjaga penting:
+      `berkasLokalExport()` memeriksa `exists()` + `getimagesize()` di dalam
+      `try/catch` supaya disk awan, berkas rusak, atau berkas hilang TIDAK
+      pernah menggagalkan seluruh export.
+    - **TAMPILAN "KEDUANYA" (Reguler + Shift) pada popup export (permintaan
+      user 08/10/2026).** Popup mengirim `tampilan=semua`; server
+      menerjemahkannya lewat `ReportExportTrait::tampilanExport()`, dan
+      `ReportController::applyGroupFilter()` LANGSUNG `return` untuk nilai itu
+      (tanpa penyaringan grup sama sekali) serta `grub` DIABAIKAN. Label filter
+      pada berkas berbunyi "Tampilan: Reguler + Shift (keduanya)". Halaman
+      Laporan TIDAK terpengaruh karena `ReportController::index()` selalu
+      memaksa 'reguler'/'shift'.
+    - Uji tambahan 08/10/2026: `tests/Feature/ReportExportTest.php` menjadi
+      **13 test (156 assertions)** dengan 4 test baru (sematan gambar; foto
+      yang berkasnya tidak ada; CSV tetap hanya tautan; tampilan "keduanya"
+      memuat reguler DAN shift sekaligus walau `grub` dikirim). Uji mutasi
+      nyata: (a) `setWorksheet()` dimatikan membuat test sematan gambar GAGAL;
+      (b) penjaga `tampilan === 'semua'` di `applyGroupFilter()` dimatikan
+      membuat test "keduanya" GAGAL; (c) dua kolom tautan foto dihilangkan
+      membuat 3 test GAGAL. Bukti nyata DEV lewat HTTP (foto contoh dipasang
+      sementara ke `storage/app/public/telegram-photos`, lalu dihapus lagi):
+      `?date_from=2026-09-26&date_to=2026-09-27&sertakan_foto=1` -> 200, 1
+      gambar tertanam di `xl/media/`, catatan "berkasnya tidak ada di server
+      ini" muncul untuk laporan yang berkasnya tidak ada; berkas yang sama
+      dengan `tampilan=semua` -> 3 gambar tertanam (2 dok + 1 hygiene), baris
+      data 24 -> 29, label "Reguler + Shift (keduanya)" terbaca, dan kolom
+      Bagian/Group memuat "Reguler" DAN "Grub". Seluruh suite **493 test hijau
+      (2294 assertions)**.
+
 
 
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)

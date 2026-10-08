@@ -119,7 +119,7 @@ class ReportController extends Controller
      *     dipersempit ke satu grub.
      *
      * @param  Request      $request
-     * @param  string       $tampilan             'reguler' atau 'shift'
+     * @param  string       $tampilan             'reguler', 'shift', atau 'semua' (keduanya)
      * @param  string|null  $grubAktif            Kunci grub terpilih (khusus shift)
      * @param  bool         $sertakanJenisStatus  Ikutkan filter jenis_pekerjaan & status
      * @return \Illuminate\Database\Eloquent\Builder<Report>
@@ -201,7 +201,7 @@ class ReportController extends Controller
      * atau rentang bila date_from / date_to diisi.
      *
      * @param  Request         $request
-     * @param  string          $tampilan             'reguler' atau 'shift'
+     * @param  string          $tampilan             'reguler', 'shift', atau 'semua' (keduanya)
      * @param  string|null     $grubAktif            Kunci grub terpilih (khusus shift)
      * @param  \Carbon\Carbon  $tanggalAktif         Tanggal aktif (dipakai bila tanpa rentang)
      * @param  bool            $sertakanJenisStatus  Ikutkan filter jenis_pekerjaan & status
@@ -235,12 +235,20 @@ class ReportController extends Controller
      * Terapkan filter grup teknisi sesuai tampilan yang dipilih.
      *
      * @param  \Illuminate\Database\Eloquent\Builder<Report>  $query
-     * @param  string       $tampilan
+     * @param  string       $tampilan  'reguler', 'shift', atau 'semua'
      * @param  string|null  $grubAktif
      * @return void
      */
     private function applyGroupFilter($query, string $tampilan, ?string $grubAktif): void
     {
+        // Tampilan 'semua' (diputuskan user 08/10/2026) = pilihan "Keduanya"
+        // pada popup export: pekerja reguler DAN shift ikut, jadi tidak ada
+        // penyaringan grup sama sekali. Halaman Laporan tidak pernah mengirim
+        // nilai ini (selalu 'reguler' atau 'shift'), jadi perilakunya utuh.
+        if ($tampilan === 'semua') {
+            return;
+        }
+
         if ($tampilan === 'shift') {
             // Tampilan Shift hanya memuat pekerja shift (Grub A-D). Reguler dan
             // Reguler Staff BUKAN shift, jadi tidak boleh ikut di sini.

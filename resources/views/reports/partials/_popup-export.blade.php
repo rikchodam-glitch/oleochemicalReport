@@ -15,7 +15,7 @@
                     <h3 class="text-sm font-semibold text-slate-800">Export Laporan</h3>
                     <p class="text-xs text-slate-400 mt-0.5">
                         Atur rentang tanggal dan jenis pekerjaan. Berkas memuat kolom lokasi &amp; alat yang lengkap,
-                        ditambah lembar Ringkasan dan Petunjuk pemakaian.
+                        foto (tautan selalu, gambar bila dicentang), ditambah lembar Ringkasan dan Petunjuk pemakaian.
                     </p>
                 </div>
                 <button type="button" onclick="tutupExport()" title="Tutup"
@@ -65,6 +65,23 @@
                             </span>
                         </label>
                     </div>
+                </div>
+
+                {{-- Isi berkas: foto disematkan (khusus Excel) --}}
+                <div id="export-baris-sertakan-foto">
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Isi Berkas</p>
+                    <label class="flex items-start gap-2.5 rounded-lg border border-slate-200 px-3 py-2.5 cursor-pointer hover:bg-slate-50">
+                        <input type="checkbox" name="sertakan_foto" value="1" id="export-sertakan-foto"
+                               class="mt-0.5 rounded border-slate-300 text-teal-600 focus:ring-teal-500">
+                        <span>
+                            <span class="block text-sm font-medium text-slate-800">Sertakan foto dokumentasi &amp; hygiene</span>
+                            <span class="block text-[11px] text-slate-500">
+                                Foto pertama tiap jenis ditempel sebagai gambar pada kolom "... (gambar)", maksimal 300 gambar.
+                                Tautan seluruh foto selalu ikut pada kolom "... (tautan)". Pilihan ini hanya berlaku untuk Excel.
+                            </span>
+                        </span>
+                    </label>
+                    <p id="export-catatan-foto" class="text-[11px] text-slate-400 mt-1"></p>
                 </div>
 
                 {{-- Rentang tanggal --}}
@@ -136,6 +153,7 @@
                                     class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
                                 <option value="reguler" {{ $tampilan === 'reguler' ? 'selected' : '' }}>Reguler</option>
                                 <option value="shift" {{ $tampilan === 'shift' ? 'selected' : '' }}>Shift</option>
+                                <option value="semua" {{ request('tampilan') === 'semua' ? 'selected' : '' }}>Keduanya (Reguler + Shift)</option>
                             </select>
                         </div>
                         <div id="export-baris-grub" class="{{ $tampilan === 'shift' ? '' : 'hidden' }}">
