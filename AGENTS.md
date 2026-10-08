@@ -1491,6 +1491,36 @@ Batasan penting lingkungan ini:
       peramban nyata; yang dibuktikan adalah status DOM awal (tertutup) dan
       penjaga kode `classList.toggle` + `aria-expanded`.
 
+27. **Daftar laporan: kode laporan diganti Temuan + Penyebab, baris tabel
+    ditandai `data-laporan-id` (diputuskan 08/10/2026, sudah ada kodenya).**
+    Semua perubahan ada di copy DEV `C:\laragon\www\oleochemicalReport`; BELUM
+    naik ke PROD (tunggu `Deploy-Laporan.bat`; TIDAK ada migrasi baru). Commit
+    `194d5dc` (sudah di `hub/main`).
+    - `resources/views/reports/index.blade.php` kolom Pekerjaan TIDAK lagi
+      menampilkan `report_code` (pemisah `|` yang dulu mengiringinya ikut
+      hilang). Yang tampil di bawah deskripsi pekerjaan sekarang: lencana
+      `LANJUTAN` (bila `continued_from_id` terisi), lalu
+      `Temuan: <finding>` dan `Penyebab: <root_cause>`, masing-masing dipotong
+      80 karakter (`Str::limit`), HANYA bila kolomnya terisi. Kode laporan tetap
+      tersimpan di kolom `report_code` dan tetap dipakai untuk tautan/arsip serta
+      kotak filter "Cari kode laporan" — yang dihapus hanya TAMPILANNYA di tabel.
+    - Karena kode laporan tidak lagi tampil, baris tabel diberi penanda
+      `data-laporan-id="{{ $report->id }}"` pada tag `<tr>`. SELURUH test yang
+      dulu mencocokkan kode laporan kini memakai penanda itu
+      (`LocationDetailPageTest`, `ReportContinueStatusTest`,
+      `ReportIndexViewTest`, `ReportMultiEquipmentTest`,
+      `ReportProjectWorkTypeTest`, `ReportTeknisiKolaborasiTest`). Untuk test
+      berikutnya: JANGAN kembali memakai teks kode laporan sebagai penanda baris
+      di halaman daftar laporan.
+    - Penjaga baru: `tests/Feature/ReportIndexTemuanTest.php` (6 test) memastikan
+      urutan deskripsi -> Temuan -> Penyebab, laporan tanpa temuan/penyebab tidak
+      menampilkan labelnya, pemotongan 80 karakter, lencana LANJUTAN tetap ada,
+      dan baris membawa `data-laporan-id` tanpa kode laporan. Uji mutasi
+      08/10/2026: melepas penanda `data-laporan-id` pada `<tr>` membuat 6 test
+      GAGAL (di `ReportIndexTemuanTest` + `ReportTeknisiKolaborasiTest` +
+      `ReportMultiEquipmentTest`).
+    - Seluruh suite **480 test hijau (2138 assertions)** dan
+      `php artisan view:cache` sukses (08/10/2026).
 
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
