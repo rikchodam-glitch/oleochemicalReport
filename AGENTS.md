@@ -2004,6 +2004,48 @@ Batasan penting lingkungan ini:
     lebih dulu, jangan hanya melihat daftar proses/service; (4) pesan galat ke
     pengguna jangan memuat pesan SQL mentah, simpan detailnya di log saja.**
 
+36. **Blok `google_sheets` di `config/cm.php` HILANG sehingga Sync Google
+    Sheets selalu berkata "URL belum dikonfigurasi di .env" padahal .env sudah
+    terisi (08/10/2026).** Keluhan user: "tidak bisa sync data CM". Pesan yang
+    tampil di halaman Overview CM (`CmController::syncGoogleSheets`, baris
+    745-752) berbunyi "Sync Google Sheets: Data CM: URL belum dikonfigurasi di
+    .env | Finding CM: URL belum dikonfigurasi di .env". Penyebabnya: di
+    `C:\laragon\www\oleochemicalReport\config\cm.php` hanya tinggal JUDUL
+    KOMENTAR "Google Sheets — Sumber Data Sync" (baris 67-77), sedangkan array
+    `'google_sheets' => ['data_cm_url' => env('GOOGLE_SHEETS_DATA_CM_URL'),
+    'finding_cm_url' => env('GOOGLE_SHEETS_FINDING_CM_URL')]` sudah TIDAK ADA,
+    jadi `config('cm.google_sheets.data_cm_url')` bernilai null. Kedua `.env`
+    (DEV dan PROD, baris 69-70) SEJAK AWAL sudah berisi URL yang benar.
+    Perbaikan 08/10/2026 (DEV): blok itu dikembalikan ke `config/cm.php`, dan
+    pesan dilewati kini menyebut nama kunci env-nya
+    (`'URL belum dikonfigurasi di .env (GOOGLE_SHEETS_DATA_CM_URL)'`, lewat
+    `SyncGoogleSheetsJob::$sources['env_key']`).
+    Audit yang dijalankan (skrip sementara, sudah dihapus): 18 kunci
+    `config('cm.*')` yang dipakai kode diperiksa, hanya kunci itu yang hilang.
+    Satu temuan lain `cm.temperature_high_threshold` memang tidak pernah
+    didefinisikan tetapi AMAN karena kodenya memakai nilai cadangan
+    (`config('cm.temperature_high_threshold', 80)`,
+    `app/Http/Controllers/CmController.php:353`).
+    Bukti unduh (uji dry-run tanpa menulis database, 08/10/2026): Data CM HTTP
+    200 (1.223.704 byte, sheet "Data AppSheet" + "Status CM" lengkap), Finding
+    CM HTTP 200 (6.794.360 byte, sheet "Finding CM" lengkap).
+    Uji: `tests/Feature/CmGoogleSheetsConfigTest.php` (3 test, 12 assertions;
+    uji mutasi 08/10/2026: mengganti nama kunci `google_sheets` membuat test
+    "config cm memuat kunci google sheets..." GAGAL — 1 failed, 2 passed).
+    Seluruh suite 449 test hijau (1967 assertions).
+    **Pelajaran: (1) pesan galat yang menyuruh "isi .env" belum tentu benar —
+    periksa dulu apakah kunci `config()`-nya memang ada di folder `config/`,
+    karena `config('x.y')` yang tidak terdefinisi mengembalikan null tanpa
+    error apa pun (blok komentar yang tertinggal adalah jejaknya);
+    (2) audit "kunci config dipakai vs terdefinisi" murah dilakukan: regex
+    `config\('cm\.` atas `app/`, `resources/`, `tests/` lalu bandingkan dengan
+    `Config::has()` — jalankan setiap habis menyunting berkas di `config/`;
+    (3) `.env` boleh memakai kutip dan spasi setelah tanda `=`
+    (`KEY= "https://..."`) — terbukti dibaca utuh oleh phpdotenv, jadi jangan
+    buru-buru menyalahkan format `.env`; (4) untuk integrasi luar, uji unduhnya
+    dulu lewat skrip sementara tanpa menulis database supaya kegagalan
+    izin/berkas privat ketahuan sebelum menyentuh data.**
+
 ## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN
 
 Nama resmi sistem per **30/09/2026** adalah **Oleochemical Maintenance**

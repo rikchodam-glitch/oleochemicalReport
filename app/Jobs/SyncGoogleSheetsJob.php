@@ -57,12 +57,14 @@ class SyncGoogleSheetsJob implements ShouldQueue
     {
         $sources = [
             'data_cm' => [
+                'env_key'        => 'GOOGLE_SHEETS_DATA_CM_URL',
                 'url'            => config('cm.google_sheets.data_cm_url'),
                 'tipe_import'    => 'cm_excel',
                 'import_job'     => ProcessCmExcelImport::class,
                 'required_sheets' => ['Data AppSheet', 'Status CM'],
             ],
             'finding_cm' => [
+                'env_key'        => 'GOOGLE_SHEETS_FINDING_CM_URL',
                 'url'            => config('cm.google_sheets.finding_cm_url'),
                 'tipe_import'    => 'cm_findings',
                 'import_job'     => ProcessCmFindingsImport::class,
@@ -76,7 +78,7 @@ class SyncGoogleSheetsJob implements ShouldQueue
             if (empty($source['url'])) {
                 $results[$key] = [
                     'status'  => 'skipped',
-                    'message' => 'URL belum dikonfigurasi di .env',
+                    'message' => 'URL belum dikonfigurasi di .env (' . $source['env_key'] . ')',
                 ];
                 continue;
             }
