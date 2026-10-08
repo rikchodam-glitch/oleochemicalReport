@@ -182,6 +182,7 @@
                                 'Sipil'     => 'bg-orange-100 text-orange-700 border-orange-200',
                                 'IT'        => 'bg-indigo-100 text-indigo-700 border-indigo-200',
                                 'Project'   => 'bg-rose-100 text-rose-700 border-rose-200',
+                                'UMUM'      => 'bg-teal-100 text-teal-700 border-teal-200',
                             ];
                             $jColor = $jenisColors[$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-400';
                         @endphp
@@ -485,6 +486,7 @@
                                     'Sipil'     => 'bg-orange-100 text-orange-700 border-orange-200',
                                     'IT'        => 'bg-indigo-100 text-indigo-700 border-indigo-200',
                                     'Project'   => 'bg-rose-100 text-rose-700 border-rose-200',
+                                    'UMUM'      => 'bg-teal-100 text-teal-700 border-teal-200',
                                 ];
                                 $jColor = $jenisColors[$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-400';
                             @endphp

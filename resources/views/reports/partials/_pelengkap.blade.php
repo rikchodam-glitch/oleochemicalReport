@@ -35,6 +35,8 @@
                     <option value="dCM" {{ old('jenis_pekerjaan', $report->jenis_pekerjaan) === 'dCM' ? 'selected' : '' }}>dCM (Deferred)</option>
                     <option value="PM" {{ old('jenis_pekerjaan', $report->jenis_pekerjaan) === 'PM' ? 'selected' : '' }}>PM (Preventive)</option>
                     <option value="Project" {{ old('jenis_pekerjaan', $report->jenis_pekerjaan) === 'Project' ? 'selected' : '' }}>Project</option>
+                    <option value="UMUM" {{ old('jenis_pekerjaan', $report->jenis_pekerjaan) === 'UMUM' ? 'selected' : '' }}>UMUM</option>
+                    <option value="IT" {{ old('jenis_pekerjaan', $report->jenis_pekerjaan) === 'IT' ? 'selected' : '' }}>IT</option>
                 </select>
                 @error('jenis_pekerjaan')
                     <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
@@ -151,12 +153,19 @@
             'zpm5': [['Fabrikasi', 'Fabrikasi']],
             'zpm7': [['Sipil', 'Sipil']],
             'zpm8': [['Project', 'Project']],
-            '': [['CM', 'CM (Corrective)'], ['dCM', 'dCM (Deferred)'], ['PM', 'PM (Preventive)'], ['Project', 'Project']]
+            '': [['CM', 'CM (Corrective)'], ['dCM', 'dCM (Deferred)'], ['PM', 'PM (Preventive)'], ['Project', 'Project'], ['UMUM', 'UMUM'], ['IT', 'IT']]
         };
 
         var wc = wcSelect.value;
         var list = options[wc] || options[''];
         var current = jenisSelect.getAttribute('data-value') || jenisSelect.value;
+
+        // Nilai lama yang belum ada di daftar (mis. jenis pekerjaan dari
+        // klasifikasi lama) tetap dipertahankan sebagai satu pilihan supaya
+        // tidak terhapus saat laporan disimpan.
+        if (wc === '' && current !== '' && !list.some(function (pair) { return pair[0] === current; })) {
+            list = list.concat([[current, current]]);
+        }
 
         jenisSelect.innerHTML = '';
 

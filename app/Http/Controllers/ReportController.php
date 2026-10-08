@@ -55,6 +55,7 @@ class ReportController extends Controller
         $countSipil     = (clone $queryRingkasan)->where('jenis_pekerjaan', 'Sipil')->count();
         $countIT        = (clone $queryRingkasan)->where('jenis_pekerjaan', 'IT')->count();
         $countProject   = (clone $queryRingkasan)->where('jenis_pekerjaan', 'Project')->count();
+        $countUmum      = (clone $queryRingkasan)->where('jenis_pekerjaan', 'UMUM')->count();
         $countContinue  = (clone $queryRingkasan)->where('status', 'continue')->count();
         $countDone      = (clone $queryRingkasan)->where('status', 'completed')->count();
 
@@ -93,7 +94,7 @@ class ReportController extends Controller
         return view('reports.index', compact(
             'reports', 'areas', 'technicians', 'grubOptions',
             'totalLaporan', 'countEI', 'countMekanik', 'countCmPm', 'countFabrikasi', 'countSipil',
-            'countIT', 'countProject', 'countContinue', 'countDone',
+            'countIT', 'countProject', 'countUmum', 'countContinue', 'countDone',
             'tampilan', 'grubAktif', 'tanggalAktif', 'pakaiRentang', 'tanggalSekitar'
         ));
     }
@@ -386,7 +387,7 @@ class ReportController extends Controller
             'asset_id'                => 'nullable|exists:assets,id',
             'report_type'             => 'required|in:equipment_repair,area_work,general',
             'work_classification'     => 'nullable|in:zpm1,zpm3,zpm6,zpm5,zpm7,zpm8',
-            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil,IT,Project',
+            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil,IT,Project,UMUM',
             'linked_finding_id'       => 'nullable|exists:cm_findings,id',
             'sesuai_rencana'          => 'nullable|in:ya,tidak',
             'tanggal_kejadian'        => 'nullable|date',
@@ -591,7 +592,7 @@ class ReportController extends Controller
             'funcloc_id'              => 'nullable|exists:functional_locations,id',
             'asset_id'                => 'nullable|exists:assets,id',
             'work_classification'     => 'nullable|in:zpm1,zpm3,zpm6,zpm5,zpm7,zpm8',
-            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil,IT,Project',
+            'jenis_pekerjaan'         => 'nullable|in:CM,dCM,PM,EI,Mekanik,CM/PM,Fabrikasi,Sipil,IT,Project,UMUM',
             'linked_finding_id'       => 'nullable|exists:cm_findings,id',
             'sesuai_rencana'          => 'nullable|in:ya,tidak',
             'tanggal_kejadian'        => 'nullable|date',
@@ -648,9 +649,9 @@ class ReportController extends Controller
             $validated['sesuai_rencana'] = null;
         }
 
-        // Form edit web belum menyediakan pilihan jenis pekerjaan IT (hanya di
-        // wizard Telegram), sehingga menyimpan lewat form ini tidak boleh
-        // menghapus klasifikasi IT yang sudah tercatat.
+        // Jaring pengaman: bila form tidak mengirim jenis pekerjaan sama sekali
+        // (isian dikosongkan), klasifikasi IT yang sudah tercatat tidak ikut
+        // terhapus — jenis ini dulu hanya bisa dipilih dari wizard Telegram.
         if (empty($validated['jenis_pekerjaan']) && $report->jenis_pekerjaan === 'IT') {
             $validated['jenis_pekerjaan'] = 'IT';
         }

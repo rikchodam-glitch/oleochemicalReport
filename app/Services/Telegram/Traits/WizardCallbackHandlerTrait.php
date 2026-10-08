@@ -529,6 +529,10 @@ trait WizardCallbackHandlerTrait
      * sedangkan ZPM 3/5/7/8 langsung ditentukan jenis pekerjaannya secara
      * otomatis (ZPM 8 = Project).
      *
+     * Pilihan 'umum' TIDAK punya kode ZPM: kolom work_classification dibiarkan
+     * kosong dan hanya jenis_pekerjaan diisi 'UMUM', lalu wizard langsung lanjut
+     * ke pencarian equipment (tanpa step pilihan EI/Mekanik/IT).
+     *
      * @param  string $chatId       Chat ID Telegram
      * @param  string $callbackData Data callback classification:<kode>
      * @param  array  $state        State wizard saat ini
@@ -537,10 +541,23 @@ trait WizardCallbackHandlerTrait
     protected function handleWorkClassificationCallback(string $chatId, string $callbackData, array $state): array
     {
         $classification = str_replace('classification:', '', $callbackData);
-        $allowed        = ['zpm1', 'zpm3', 'zpm6', 'zpm5', 'zpm7', 'zpm8'];
+        $allowed        = ['zpm1', 'zpm3', 'zpm6', 'zpm5', 'zpm7', 'zpm8', 'umum'];
 
         if (!in_array($classification, $allowed, true)) {
             return $this->errorResponse('Klasifikasi pekerjaan tidak dikenali.');
+        }
+
+        // Pilihan 'umum' tidak punya kode ZPM: work_classification dibiarkan
+        // kosong, jenis pekerjaan langsung diisi 'UMUM', lalu lanjut mencari
+        // equipment seperti klasifikasi lain.
+        if ($classification === 'umum') {
+            $state['work_classification'] = null;
+            $state['jenis_pekerjaan']     = 'UMUM';
+            $state                        = $this->pushStepHistory($state, self::STEP_WORK_CLASSIFICATION);
+            $state['step']                = self::STEP_EQUIPMENT_SEARCH;
+            $this->saveState($chatId, $state);
+
+            return $this->processEquipmentSearch($chatId, $state);
         }
 
         $state['work_classification'] = $classification;

@@ -131,7 +131,7 @@
                         <span class="font-normal normal-case text-slate-400">(boleh pilih lebih dari satu)</span>
                     </p>
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        @foreach(['EI', 'Mekanik', 'CM/PM', 'CM', 'dCM', 'PM', 'Fabrikasi', 'Sipil', 'IT', 'Project'] as $jenisOpsi)
+                        @foreach(['EI', 'Mekanik', 'CM/PM', 'CM', 'dCM', 'PM', 'Fabrikasi', 'Sipil', 'IT', 'Project', 'UMUM'] as $jenisOpsi)
                             <label class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer text-sm text-slate-700">
                                 <input type="checkbox" name="jenis_pekerjaan_multi[]" value="{{ $jenisOpsi }}"
                                        class="rounded border-slate-300 text-teal-600 focus:ring-teal-500"

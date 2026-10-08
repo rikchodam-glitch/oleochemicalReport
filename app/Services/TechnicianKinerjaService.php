@@ -52,6 +52,7 @@ class TechnicianKinerjaService
         'Sipil'     => '#06B6D4',
         'IT'        => '#EC4899',
         'Project'   => '#64748B',
+        'UMUM'      => '#0EA5E9',
     ];
 
     /**

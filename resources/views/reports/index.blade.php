@@ -103,6 +103,7 @@
         'Sipil'     => 'bg-orange-100 text-orange-700 border-orange-200',
         'IT'        => 'bg-indigo-100 text-indigo-700 border-indigo-200',
         'Project'   => 'bg-rose-100 text-rose-700 border-rose-200',
+        'UMUM'      => 'bg-teal-100 text-teal-700 border-teal-200',
     ];
 
     $zpmLabels = [
@@ -122,6 +123,7 @@
         ['jenis' => 'Sipil',     'nilai' => $countSipil,     'teks' => 'text-orange-600',  'border' => 'border-orange-200'],
         ['jenis' => 'IT',        'nilai' => $countIT,        'teks' => 'text-indigo-600',  'border' => 'border-indigo-200'],
         ['jenis' => 'Project',   'nilai' => $countProject,   'teks' => 'text-rose-600',    'border' => 'border-rose-200'],
+        ['jenis' => 'UMUM',      'nilai' => $countUmum,      'teks' => 'text-teal-600',    'border' => 'border-teal-200'],
     ];
 
     $jenisAktif  = (string) request('jenis_pekerjaan', '');
@@ -400,7 +402,7 @@
                 <select name="jenis_pekerjaan"
                         class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
                     <option value="">Semua Jenis</option>
-                    @foreach(['EI', 'Mekanik', 'CM/PM', 'Fabrikasi', 'Sipil', 'IT', 'Project'] as $jenisOpsi)
+                    @foreach(['EI', 'Mekanik', 'CM/PM', 'Fabrikasi', 'Sipil', 'IT', 'Project', 'UMUM'] as $jenisOpsi)
                         <option value="{{ $jenisOpsi }}" {{ request('jenis_pekerjaan') === $jenisOpsi ? 'selected' : '' }}>{{ $jenisOpsi }}</option>
                     @endforeach
                 </select>

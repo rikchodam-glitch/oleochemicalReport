@@ -113,7 +113,7 @@ trait WizardStepHandlerTrait
      * ditangani WizardCallbackHandlerTrait::handleWorkClassificationCallback().
      *
      * @param  array $state State wizard saat ini
-     * @return array Respons dengan message dan keyboard 6 pilihan klasifikasi
+     * @return array Respons dengan message dan keyboard 7 pilihan klasifikasi
      */
     protected function buildWorkClassificationPrompt(array $state): array
     {
@@ -124,6 +124,10 @@ trait WizardStepHandlerTrait
             ['text' => 'ZPM 5 - Fabrikasi',              'callback_data' => 'classification:zpm5'],
             ['text' => 'ZPM 7 - Sipil',                  'callback_data' => 'classification:zpm7'],
             ['text' => 'ZPM 8 - Project',                'callback_data' => 'classification:zpm8'],
+            // Pilihan UMUM sengaja diletakkan setelah Project dan TIDAK memakai
+            // kode ZPM: tombol ini hanya mengisi jenis pekerjaan 'UMUM' tanpa
+            // klasifikasi ZPM (work_classification dibiarkan kosong).
+            ['text' => 'UMUM',                           'callback_data' => 'classification:umum'],
         ];
 
         foreach ($this->navigationButtons($state) as $navButton) {

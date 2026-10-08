@@ -1631,7 +1631,7 @@ trait ReportExportTrait
             'NIK'                    => 'NIK teknisi pelaksana.',
             'Bagian / Group'         => 'Bagian (section) dan Group kerja teknisi, mis. "Mekanik - Reguler Staff".',
             'Kolaborator'            => 'Nama rekan yang ikut mengerjakan laporan ini (dipisah koma). Kolaborasi tetap satu baris, tidak dibuat baris tambahan.',
-            'Jenis Pekerjaan'        => 'Klasifikasi pekerjaan: CM, dCM, PM, CM/PM, EI, Mekanik, Fabrikasi, Sipil, IT, atau Project.',
+            'Jenis Pekerjaan'        => 'Klasifikasi pekerjaan: CM, dCM, PM, CM/PM, EI, Mekanik, Fabrikasi, Sipil, IT, Project, atau UMUM.',
             'Klasifikasi (ZPM)'      => 'Klasifikasi wizard ZPM (ZPM 1 Corrective, ZPM 3 Preventive, ZPM 5 Fabrikasi, ZPM 6 Planned, ZPM 7 Sipil, ZPM 8 Project).',
             'Tipe Laporan'           => 'Perbaikan Equipment, Pekerjaan Area, atau Umum.',
             'Status'                 => 'Done (selesai), Continue (belum selesai), atau Perlu Diperiksa.',
