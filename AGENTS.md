@@ -2100,6 +2100,77 @@ Batasan penting lingkungan ini:
     (watchdog hanya menyalakan yang belum jalan dan tidak pernah mematikan
     tunnel).**
 
+38. **`start-report.bat`/`stop-report.bat` ditulis ulang dengan pemeriksaan
+    pra-syarat dan pemulihan otomatis (08/10/2026), dan dua jebakan PowerShell
+    baru ketahuan dari UJI NYATA, bukan dari peninjauan kode.** Semua perubahan
+    ada di copy DEV `C:\laragon\www\oleochemicalReport`.
+    - `tools\cek-pra-syarat-prod.ps1` menjadi SATU-SATUNYA pemeriksa keadaan
+      sebelum service dinyalakan/dihentikan. Keluarannya dua lapis: ringkasan
+      `[pra] ...` untuk manusia PLUS penanda `KUNCI=NILAI` untuk dibaca `.bat`
+      (`SERVICE_PHP`, `SERVICE_TUNNEL`, `PROSES_COPY_DEV`,
+      `PELAYAN_8000=PROD|DEV|MATI`, `POLL_GANDA=0|1`, `LARAGON_MATI=0|1`,
+      `MODE_PEMELIHARAAN=0|1`, `SIAP=0|1`). JANGAN mengganti penanda ini dengan
+      kalimat: `.bat` mencocokkannya huruf demi huruf lewat `find`, dan kalimat
+      ringkasannya memakai `write` yang spasi/formatnya berubah-ubah.
+    - Dua sinyal BARU dipilih karena pemeriksaan lewat command line TIDAK
+      cukup: (a) `PELAYAN_8000` diselidiki dengan memanggil `/debug-login`
+      (302 = copy DEV, 404 = copy PROD, 000 = port mati) sebab aplikasi yang
+      dijalankan `artisan` memakai jalur RELATIF sehingga command line-nya
+      tidak memuat `oleochemicalReport`/`oleochemicalReport-prod` sama sekali;
+      (b) `POLL_GANDA` menghitung lebih dari satu proses `telegram:poll`
+      (dua poller = bot mati total, HTTP 409, Riwayat Insiden #21).
+    - `start-report.bat`: kalau service sudah jalan ia hanya MELAPORKAN keadaan
+      (tidak mematikan apa pun, tidak me-restart tunnel), menolak jalan lebih
+      dulu bila `LARAGON_MATI=1` (kata `paksa` untuk memaksa), dan sesudah
+      watchdog diverifikasi `PELAYAN_8000=PROD` + `POLL_GANDA=0`. Opsi lama
+      (`uji`, `nopause`, `hentikan`, `tunnel`) tetap ada.
+    - `stop-report.bat`: mode `tunnel` menghentikan service latar TETAPI
+      membiarkan connector cloudflared hidup lewat opsi BARU `-BiarkanTunnel`
+      pada `tools\hentikan-service-prod.ps1` (skrip itu kini juga mengingatkan
+      bahwa angka "sisa proses tunnel: 1" memang diharapkan pada mode itu).
+      Kedua `.bat` memakai berkas sementara BERNAMA UNIK (`%RANDOM%`) dan
+      menghapusnya di SEMUA label keluar, karena salinan DEV dan PROD bisa
+      dijalankan bersamaan di satu komputer (nama tetap sempat saling menimpa).
+    - Jebakan 1: `ProsesCopyDev()` semula mencocokkan command line `*artisan*`,
+      padahal proses ANAK `artisan serve` berbunyi
+      `php.exe -S 0.0.0.0:8000 ...\Foundation\resources\server.php` -- tanpa
+      kata "artisan". Akibatnya tugas lama `Oleo Serve` dari copy DEV (Riwayat
+      Insiden #21) LOLOS dari deteksi. Perbaikan: pola `artisan` ATAU
+      `server.php`. Dibuktikan dengan menjalankan satu proses DEV sementara
+      (`php -S 127.0.0.1:8099 ...\Foundation\resources\server.php`, lalu
+      dihentikan lagi): sebelum perbaikan tidak terdeteksi, sesudah perbaikan
+      muncul `[pra] proses copy DEV : 1 proses -> digantikan watchdog saat
+      start-report.bat` dan `PROSES_COPY_DEV=1`, dan `SERVICE_PHP` naik dari 5
+      ke 6.
+    - Jebakan 2: **`angka + 'teks'` di PowerShell mencoba PENJUMLAHAN NUMERIK**,
+      bukan penggabungan teks (`Cannot convert value "proses -> digantikan
+      watchdog saat start-report.bat" to type "System.Int32"` /
+      `InvalidCastFromStringToInteger`). Dua baris ringkasan
+      (`$jumlahDev + ' proses ...'` dan `$jumlahPoll + ' proses ...'`) gagal
+      TOTAL sehingga barisnya HILANG dari keluaran, sementara skrip tetap
+      lanjut ke baris berikutnya dan seolah sehat. Perbaikan: `[string]$angka +
+      ' teks'`; pola aman lain yang sudah dipakai berkas itu adalah mengawali
+      rangkaian dengan teks (`'queue=' + $angka`). Pelajaran: awali setiap
+      rangkaian penggabungan dengan nilai bertipe TEKS -- sama seperti
+      pelajaran tanda plus ganda di JavaScript pada Riwayat Insiden #34.
+    - Uji yang dijalankan 08/10/2026 (semuanya nyata, bukan asumsi): sintaks
+      kedua `.bat` dengan `cmd /c "... uji paksa nopause < NUL > berkas 2>&1"`
+      lalu membaca BERKASNYA (JANGAN lewat pipe), sintaks kedua `.ps1` lewat
+      `Parser::ParseFile`, audit label/goto (`start-report.bat` 16 label,
+      `stop-report.bat` 18 label, NIHIL label ganda, NIHIL `goto` tanpa label),
+      audit encoding (kedua `.bat` murni CRLF dan murni ASCII, 0 byte di atas
+      127), plus uji dengan proses DEV sementara di atas. Hasil saat itu:
+      `SERVICE_PHP=6`, `SERVICE_TUNNEL=1`, `PROSES_COPY_DEV=0` (tanpa proses
+      sementara), `PELAYAN_8000=PROD`, `POLL_GANDA=0`, `LARAGON_MATI=0`,
+      `SIAP=1`.
+    - Perlu diingat: kedua `.bat` copy DEV menunjuk copy PROD, sehingga
+      pemeriksaan pra-syarat BARU aktif di PROD hanya setelah
+      `Deploy-Laporan.bat` dijalankan. Sebelum itu `.bat` menampilkan
+      "DILEWATI: tools\cek-pra-syarat-prod.ps1 belum ada di copy PROD" dan
+      tetap melanjutkan seperti perilaku lama, jadi tidak ada risiko gagal
+      hanya karena berkas belum tersalin.
+
+
 ## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN
 
 Nama resmi sistem per **30/09/2026** adalah **Oleochemical Maintenance**

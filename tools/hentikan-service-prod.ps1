@@ -6,7 +6,12 @@
       - schedule:work  (penjadwal: shifts:generate, ai:reset-quota, dsb)
       - telegram:poll  (bot Telegram)
       - serve:8000     (artisan serve + proses anak php -S 0.0.0.0:8000)
-      - tunnel cloudflared (domain publik, hostname dibaca dari APP_URL di .env PROD)
+      - tunnel cloudflared (domain publik; DILEWATI bila opsi -BiarkanTunnel dipakai)
+
+    Opsi -BiarkanTunnel (dipakai stop-report.bat tunnel) hanya menghentikan
+    service latar, connector tunnel dibiarkan hidup. Karena tunnel mengarah ke
+    Apache port 80 yang tetap menyajikan copy PROD, situs publik TIDAK ikut
+    mati - berguna untuk menjeda bot/antrean tanpa memutus pengguna.
 
     Sekaligus MENONAKTIFKAN tugas Windows "oleo-jaga-service-prod" (dipakai
     opsi -BiarkanJadwal kalau jadwal itu tidak ingin diubah) — tanpa itu
@@ -22,7 +27,8 @@
     atau tools\jaga-service-prod.ps1.
 #>
 param(
-    [switch]$BiarkanJadwal
+    [switch]$BiarkanJadwal,
+    [switch]$BiarkanTunnel
 )
 
 $ErrorActionPreference = 'Stop'
@@ -122,7 +128,12 @@ if ($BiarkanJadwal) {
 
 # ==== 2. Proses service dihentikan ====
 Hentikan (ProsesPhpService) 'php (queue/schedule/poll/serve)'
-Hentikan (ProsesTunnel) 'tunnel cloudflared'
+
+if ($BiarkanTunnel) {
+    Write-Host '[stop] tunnel cloudflared dibiarkan (opsi -BiarkanTunnel): domain publik tetap jalan.'
+} else {
+    Hentikan (ProsesTunnel) 'tunnel cloudflared'
+}
 
 Start-Sleep -Seconds 3
 
@@ -139,6 +150,10 @@ try {
 
 Write-Host ('[stop] sisa proses php service : ' + $sisaPhp)
 Write-Host ('[stop] sisa proses tunnel      : ' + $sisaTunnel)
+
+if ($BiarkanTunnel) {
+    Write-Host '[stop] tunnel sengaja dibiarkan (opsi -BiarkanTunnel): angka 1 di atas memang diharapkan.'
+}
 Write-Host ('[stop] port 8000               : ' + $kode8000 + ' (000 = mati)')
 Write-Host '[stop] vhost Apache PROD tetap jalan: http://localhost/'
 Write-Host '[stop] SELESAI.'
