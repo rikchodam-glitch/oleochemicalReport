@@ -1,10 +1,12 @@
 * text=auto eol=lf
-# Berkas batch WAJIB CRLF: cmd.exe tidak selalu menemukan label/goto pada berkas
-# .bat berakhiran LF murni (terbukti 08/10/2026: berkas yang sama berbalas
+# Berkas batch WAJIB CRLF: cmd.exe TIDAK menjamin menemukan label/goto pada
+# berkas .bat berakhiran LF murni (terbukti 08/10/2026 pada start-report.bat:
 # "The system cannot find the batch label specified - laragon_mati" saat LF,
-# tetapi jalan normal saat CRLF). Tanpa baris ini git menuliskan .bat sebagai LF,
-# sehingga start-report.bat/stop-report.bat di copy PROD kehilangan sebagian
-# cabangnya tanpa pesan yang jelas.
+# sedangkan bentuk CRLF selalu jalan). Hasil untuk LF bergantung isi/ukuran
+# berkas -- versi pendek pernah jalan lalu GAGAL begitu berkas bertambah
+# panjang, jadi LF tidak boleh diandalkan. Tanpa baris ini git menuliskan .bat
+# sebagai LF, sehingga start-report.bat/stop-report.bat di copy PROD
+# kehilangan sebagian cabangnya tanpa pesan yang jelas.
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
