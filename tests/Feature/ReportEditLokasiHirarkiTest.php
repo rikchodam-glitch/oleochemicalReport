@@ -24,6 +24,11 @@ uses(RefreshDatabase::class);
  *   4. Halaman detail memuat pemilihnya beserta jalur lokasi laporan yang
  *      sedang tersimpan (dipakai untuk membuka kembali pilihan saat dimuat).
  *   5. Penambahan alat/lokasi tambahan memakai pemilih yang sama (mode item).
+ *   6. Mode edit memakai SATU ringkasan lokasi; kolom Area / Functional Location
+ *      / Kode Alat yang lama disembunyikan supaya tidak ada dua tampilan pilihan
+ *      yang sama-sama bisa diubah.
+ *   7. Daftar alat dikelompokkan per Equipment Type (termasuk TANPA TIPE), bisa
+ *      dibuka-tutup, dan digulir supaya halaman tidak memanjang.
  */
 beforeEach(function () {
     $this->seed();
@@ -221,3 +226,51 @@ test('panel alat tambahan memakai pemilih hierarki yang sama dengan mode item', 
         ->assertSee('Tambah sebagai alat', false)
         ->assertSee('Tambah lokasi ini', false);
 });
+
+test('endpoint hirarki mengirim tipe alat untuk pengelompokan di layar', function () {
+    // Pengelompokan daftar alat per Equipment Type dilakukan di layar, jadi
+    // endpoint wajib mengirim kolomnya; alat yang tipenya kosong tetap ikut
+    // terkirim (masuk kelompok TANPA TIPE), bukan disembunyikan.
+    $this->alat->update(['equipment_type' => 'Pump']);
+
+    $balasan = $this->actingAs($this->admin)
+        ->getJson('/reports/locations/hirarki?parent_id=' . $this->section->id);
+
+    $alat = collect($balasan->json('assets'));
+
+    expect($alat->firstWhere('tech_ident_no', 'HIR-P01')['equipment_type'])->toBe('Pump')
+        ->and($alat->firstWhere('tech_ident_no', 'HIR-K01')['equipment_type'])->toBeNull();
+});
+
+test('halaman detail memakai satu ringkasan lokasi dan menyembunyikan kolom lama', function () {
+    $balasan = $this->actingAs($this->admin)->get('/reports/' . $this->laporan->id);
+
+    $balasan->assertStatus(200)
+        ->assertSee('Lokasi &amp; Alat Terpilih', false)
+        ->assertSee('x-text="namaArea(areaId)"', false)
+        ->assertSee('x-text="namaFuncLoc(funcLocId)"', false)
+        ->assertSee('x-text="namaAlat(assetId)"', false)
+        // Kolom aslinya tetap ada di form (sumber nilai yang dikirim) tetapi
+        // disembunyikan supaya tidak ada dua tampilan pilihan yang sama.
+        ->assertSee('id="area_id"', false)
+        ->assertSee('hidden grid grid-cols-1 sm:grid-cols-3 gap-3', false)
+        // Catatan lama yang menyuruh memilih Area lebih dulu sudah tidak berlaku.
+        ->assertDontSee('Pilih Area terlebih dahulu untuk memunculkan', false);
+});
+
+test('daftar alat hierarki dikelompokkan per tipe, tertutup lebih dulu, dan digulir', function () {
+    $balasan = $this->actingAs($this->admin)->get('/reports/' . $this->laporan->id);
+
+    $balasan->assertStatus(200)
+        // Alat tanpa Equipment Type tetap tampil pada kelompok TANPA TIPE.
+        ->assertSee("var TANPA_TIPE = 'TANPA TIPE';", false)
+        // Baris alat dimasukkan ke kotak kelompok tipe, bukan lagi datar ke daftar.
+        ->assertSee('var kotakTipe = {};', false)
+        ->assertSee('kotakTipe[kelompok.tipe] = kotak.isi;', false)
+        // Kelompok dibiarkan tertutup dan bisa dibuka lewat judulnya.
+        ->assertSee("tombol.setAttribute('aria-expanded', 'false');", false)
+        ->assertSee("var terbuka = !isi.classList.toggle('hidden');", false)
+        // Isi daftar digulir supaya halaman tidak memanjang.
+        ->assertSee("gulir.className = 'max-h-64 overflow-y-auto divide-y divide-slate-100';", false);
+});
+

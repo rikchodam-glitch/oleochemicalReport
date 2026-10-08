@@ -144,6 +144,7 @@ trait ReportLocationTrait
      *   - `induk`       : ringkasan node induk yang sedang dibuka (null = daftar PT)
      *   - `nodes`       : node anak langsung yang masih aktif
      *   - `assets`      : alat pada node induk, maksimal BATAS_CARI_LOKASI baris
+     *                     (termasuk equipment_type untuk pengelompokan di layar)
      *   - `jumlah_alat` : jumlah SELURUH alat node itu (supaya pemanggil tahu
      *                     daftarnya dipotong; satu section di data nyata bisa
      *                     memuat 200+ alat)
@@ -193,15 +194,16 @@ trait ReportLocationTrait
 
         $assets = $assetQuery->orderBy('tech_ident_no')
             ->limit(self::BATAS_CARI_LOKASI)
-            ->get(['id', 'equipment_no', 'tech_ident_no', 'description', 'funcloc_id', 'area_id'])
+            ->get(['id', 'equipment_no', 'tech_ident_no', 'description', 'equipment_type', 'funcloc_id', 'area_id'])
             ->map(fn (Asset $aset) => [
-                'id'            => (int) $aset->id,
-                'equipment_no'  => $aset->equipment_no,
-                'tech_ident_no' => $aset->tech_ident_no,
-                'description'   => $aset->description,
-                'funcloc_id'    => $aset->funcloc_id,
-                'area_id'       => $aset->area_id,
-                'area_label'    => (string) $induk->code,
+                'id'             => (int) $aset->id,
+                'equipment_no'   => $aset->equipment_no,
+                'tech_ident_no'  => $aset->tech_ident_no,
+                'description'    => $aset->description,
+                'equipment_type' => $aset->equipment_type,
+                'funcloc_id'     => $aset->funcloc_id,
+                'area_id'        => $aset->area_id,
+                'area_label'     => (string) $induk->code,
             ])
             ->values();
 

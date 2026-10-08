@@ -1421,6 +1421,77 @@ Batasan penting lingkungan ini:
       nyata. Karena `.bat`/pintasan tidak berubah, deploy cukup lewat `Deploy-Laporan.bat`
       seperti biasa (tidak ada migrasi baru).
 
+26. **Mode edit halaman detail dirapikan lagi: satu input lokasi, daftar alat
+    dikelompokkan per tipe + digulir, panel alat tambahan pindah ke bawah
+    lokasi utama (diputuskan 08/10/2026 atas permintaan user, sudah ada kodenya).**
+    Semua perubahan ada di copy DEV `C:\laragon\www\oleochemicalReport`; BELUM naik
+    ke PROD (tunggu `Deploy-Laporan.bat`; TIDAK ada migrasi baru).
+    - Keluhan asal user (screenshot halaman detail mode edit): (a) "kenapa inputan
+      lokasinya ada dua?", (b) daftar equipment terlalu panjang bila satu area
+      memuat banyak alat, (c) minta pengelompokan alat per tipe termasuk yang tanpa
+      tipe dengan mode collapse, (d) panel "Lokasi & Alat Tambahan" diminta berada
+      di bawah alat/lokasi utama.
+    - **(a) Satu input lokasi.** Penyebab duanya: kolom lama Area / Functional
+      Location / Kode Alat (tiga dropdown datar) MASIH dirender di samping pemilih
+      hierarki baru, padahal keduanya mengisi field yang sama. Sekarang pembungkus
+      tiga dropdown itu diberi kelas `hidden`
+      (`<div class="hidden grid grid-cols-1 sm:grid-cols-3 gap-3">`) sehingga hanya
+      TERSEMBUNYI (tetap dirender, tetap dikirim form lewat
+      `form="form-edit-laporan"`, dan tetap jadi sasaran `x-model` + `isiManual()`
+      pemilih hierarki). Penggantinya satu kartu ringkasan "Lokasi & Alat Terpilih"
+      dengan `x-text="namaArea(areaId)"` / `namaFuncLoc(funcLocId)` /
+      `namaAlat(assetId)`. Pesan galat `@error('area_id' | 'funcloc_id' |
+      'asset_id')` DIPINDAH ke kartu ringkasan (yang lama di dalam kolom tersembunyi
+      dibuang supaya tidak ganda), dan catatan lama "Pilih Area terlebih dahulu..."
+      diganti petunjuk memakai hierarki/kotak pencarian. Method Alpine baru:
+      `cariLabelLokasi()`, `namaArea()`, `namaFuncLoc()`, `namaAlat()`; data baru:
+      `areaDaftar`, `labelLokasiAwal`, `equipmentTagAwal`.
+      **JEBAKAN BLADE yang sudah kena sekali:** `@json([...])` TIDAK boleh diberi
+      array bersarang/berkoma karena `JsonDirective` memecah argumen pada KOMA
+      PERTAMA (sisanya dianggap opsi) sehingga muncul
+      `syntax error, unexpected token ";" expecting "]"` dan SELURUH suite merah.
+      Karena itu `$areaDaftar` dan `$labelLokasiAwal` disiapkan di blok `@php`
+      sebelum `@push('scripts')`, lalu hanya `@json($variabel)` yang ditulis.
+    - **(b) Daftar alat digulir:** `gambarAlat()`
+      (`_pilih-lokasi-hirarki-script`) menggambar
+      `gulir.className = 'max-h-64 overflow-y-auto divide-y divide-slate-100'`.
+      Kepala daftar (nama lokasi + tombol "Pakai lokasi ini") dan baris jumlah
+      ("Menampilkan 50 dari 426 alat...") tetap DI LUAR area gulir.
+    - **(c) Pengelompokan per Equipment Type + collapse:** endpoint
+      `reports.locations.hirarki` (`ReportLocationTrait::anakLokasi()`) kini ikut
+      mengirim `equipment_type`, dan di layar baris alat dimasukkan ke kotak
+      `kotakTipe[tipeAlat(item)]` (bukan lagi datar ke `<div data-peran="alat">`).
+      Kelompok = Equipment Type; yang kosong masuk kelompok `TANPA TIPE` (mengikuti
+      penamaan `WizardFuncLocPickerTrait::TANPA_TIPE_LABEL`, dan TANPA TIPE selalu
+      diletakkan paling akhir). Judul kelompok = tombol `aria-expanded` yang
+      membuka/menutup isi (`class="hidden"`), dan SEMUA kelompok tertutup saat
+      daftar pertama kali digambar.
+    - **(d) Posisi panel alat/lokasi tambahan:** include `_alat-tambahan` DIPINDAH
+      dari kartu sendiri (dulu di bawah, setelah Kolaborasi Teknisi) ke dalam kartu
+      "Deskripsi Pekerjaan" pada blok mode edit, tepat setelah include
+      `_pilih-lokasi-hirarki`, sehingga pembatas `border-t` milik partial itu
+      sekarang berfungsi sebagai pemisah sub-bagian.
+    - Uji: `ReportEditLokasiHirarkiTest` bertambah 3 test (payload
+      `equipment_type`, ringkasan satu lokasi + kolom lama tersembunyi, dan
+      pengelompokan/collapse/gulir) serta `ReportEditAlatTambahanTest` bertambah 1
+      test urutan (`assertSeeInOrder(['Telusuri Hierarki Lokasi', 'Alat / Lokasi
+      Tambahan'])` dan `['Alat / Lokasi Tambahan', 'Root Cause</h3>']`). Seluruh
+      suite **474 test hijau (2108 assertions)**, `php artisan view:cache` sukses,
+      dan blok `<script>` widget hierarki lolos `node --check`.
+    - Bukti render NYATA (Chrome headless `--headless=new --dump-dom` atas
+      `http://oleochemicalReport.test/reports/775` sesudah `/debug-login`): ringkasan
+      berbunyi "TF01 - TF01", "EPE-PROD-TF01-6010 - Storage & Pump Area TF", dan
+      "P101 - Pompa Input Feed RBDPO T101/T102"; daftar alat memuat 3 kelompok
+      (`AC` 7 alat, `BREATHER VALVE` 30 alat, `TANPA TIPE` 13 alat) yang semuanya
+      `aria-expanded="false"` dengan isi `class="hidden"`, di dalam wadah
+      `max-h-64 overflow-y-auto`, disertai catatan "Menampilkan 50 dari 426 alat";
+      urutan markup Telusuri Hierarki Lokasi (61181) < Alat / Lokasi Tambahan
+      (63615) < Root Cause (68767); tag `<div>` buka/tutup seimbang 178/178.
+    - CATATAN: klik judul kelompok untuk membuka daftarnya BELUM diuji lewat klik
+      peramban nyata; yang dibuktikan adalah status DOM awal (tertutup) dan
+      penjaga kode `classList.toggle` + `aria-expanded`.
+
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file

@@ -190,6 +190,24 @@
                 daftarAlat.appendChild(tidakAda);
             }
 
+            // Daftar alat bisa memuat ratusan baris (satu section di data nyata
+            // ada yang 426 alat), jadi isinya DIGULIR sendiri supaya halaman
+            // tidak memanjang, dan barisnya DIKELOMPOKKAN per Equipment Type
+            // (alat yang tipenya belum diisi masuk kelompok TANPA TIPE).
+            // Setiap kelompok dibiarkan TERTUTUP lebih dulu.
+            var gulir = document.createElement('div');
+            gulir.className = 'max-h-64 overflow-y-auto divide-y divide-slate-100';
+            daftarAlat.appendChild(gulir);
+
+            var kotakTipe = {};
+
+            kelompokAlat(alat).forEach(function (kelompok) {
+                var kotak = kotakKelompokAlat(kelompok);
+
+                kotakTipe[kelompok.tipe] = kotak.isi;
+                gulir.appendChild(kotak.bungkus);
+            });
+
             alat.forEach(function (item, posisi) {
                 var baris = document.createElement('div');
                 baris.className = 'flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-100 last:border-b-0';
@@ -217,11 +235,114 @@
 
                 baris.appendChild(info);
                 baris.appendChild(tombol);
-                daftarAlat.appendChild(baris);
+                var wadahBaris = kotakTipe[tipeAlat(item)] || gulir;
+
+                wadahBaris.appendChild(baris);
             });
 
             daftarAlat.classList.remove('hidden');
         }
+
+        // Label kelompok alat yang Equipment Type-nya belum diisi (penamaan ini
+        // mengikuti pemilih alat pada wizard Telegram).
+        var TANPA_TIPE = 'TANPA TIPE';
+
+        // Tipe alat satu baris. Kolom Equipment Type yang kosong dianggap
+        // kelompok TANPA TIPE supaya alatnya tetap bisa dipilih.
+        //
+        // @param {object} item Data alat dari server (punya equipment_type)
+        // @return {string} Label tipe alat
+        function tipeAlat(item) {
+            var tipe = String(item.equipment_type || '').trim();
+
+            return tipe !== '' ? tipe : TANPA_TIPE;
+        }
+
+        // Kelompokkan daftar alat per Equipment Type. Kelompok TANPA TIPE
+        // diletakkan paling akhir supaya alat yang tipenya sudah diisi terbaca
+        // lebih dulu.
+        //
+        // @param {Array} daftar Daftar alat dari server
+        // @return {Array} Daftar { tipe, alat } yang sudah terurut
+        function kelompokAlat(daftar) {
+            var urutan = [];
+            var peta   = {};
+
+            daftar.forEach(function (item) {
+                var tipe = tipeAlat(item);
+
+                if (!peta[tipe]) {
+                    peta[tipe] = { tipe: tipe, alat: [] };
+                    urutan.push(tipe);
+                }
+
+                peta[tipe].alat.push(item);
+            });
+
+            urutan.sort(function (a, b) {
+                if (a === TANPA_TIPE || b === TANPA_TIPE) {
+                    return a === b ? 0 : (a === TANPA_TIPE ? 1 : -1);
+                }
+
+                return a.localeCompare(b);
+            });
+
+            return urutan.map(function (tipe) {
+                return peta[tipe];
+            });
+        }
+
+        // Kotak satu kelompok tipe alat: judulnya bisa diklik untuk membuka atau
+        // menutup isinya, dan kelompok dibiarkan TERTUTUP lebih dulu supaya
+        // daftar alat yang panjang tidak memanjangkan halaman.
+        //
+        // @param {object} kelompok Data { tipe, alat }
+        // @return {object} { bungkus, isi } — `isi` diisi baris alat oleh pemanggil
+        function kotakKelompokAlat(kelompok) {
+            var bungkus = document.createElement('div');
+
+            var tombol = document.createElement('button');
+            tombol.type = 'button';
+            tombol.setAttribute('aria-expanded', 'false');
+            tombol.className = 'w-full flex items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-slate-50';
+
+            var kiri = document.createElement('span');
+            kiri.className = 'flex items-center gap-2 min-w-0';
+
+            var panah = document.createElement('span');
+            panah.className = 'shrink-0 inline-block text-slate-400 text-xs transition-transform';
+            panah.textContent = '>';
+            kiri.appendChild(panah);
+
+            var judul = document.createElement('span');
+            judul.className = 'text-xs font-medium text-slate-700 truncate';
+            judul.textContent = kelompok.tipe;
+            kiri.appendChild(judul);
+            tombol.appendChild(kiri);
+
+            var jumlah = document.createElement('span');
+            jumlah.className = 'shrink-0 text-xs text-slate-400';
+            jumlah.textContent = kelompok.alat.length + ' alat';
+            tombol.appendChild(jumlah);
+
+            var isi = document.createElement('div');
+            isi.className = 'hidden divide-y divide-slate-100';
+
+            tombol.addEventListener('click', function () {
+                // classList.toggle mengembalikan true saat kelas 'hidden' kini
+                // TERPASANG, jadi kelompok terbuka ketika nilainya false.
+                var terbuka = !isi.classList.toggle('hidden');
+
+                tombol.setAttribute('aria-expanded', terbuka ? 'true' : 'false');
+                panah.style.transform = terbuka ? 'rotate(90deg)' : '';
+            });
+
+            bungkus.appendChild(tombol);
+            bungkus.appendChild(isi);
+
+            return { bungkus: bungkus, isi: isi };
+        }
+
 
         // Aksi tombol pada tingkat lokasi.
         function pakaiLokasi(induk) {

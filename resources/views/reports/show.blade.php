@@ -309,10 +309,43 @@
                 </div>
             </div>
 
-            {{-- Lokasi & Alat: EDIT (dropdown dinamis) --}}
+            {{-- Lokasi & Alat: EDIT — satu ringkasan pilihan + pemilih hierarki.
+                 Kolom Area / Functional Location / Kode Alat yang lama tetap ada
+                 di form (sumber nilai yang dikirim) tetapi disembunyikan supaya
+                 tidak ada dua tampilan pilihan yang sama-sama bisa diubah. --}}
             <div x-show="editMode" x-cloak class="mt-4 space-y-3">
-                <p class="text-xs font-medium text-slate-700">Lokasi & Alat</p>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {{-- Ringkasan lokasi & alat yang tersimpan: satu-satunya tampilan
+                     pilihan lokasi pada mode edit. --}}
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p class="text-xs font-medium text-slate-700 mb-1">Lokasi &amp; Alat Terpilih</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                        <div>
+                            <p class="text-xs text-slate-400">Area</p>
+                            <p class="font-medium text-slate-700" x-text="namaArea(areaId)"></p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-400">Functional Location</p>
+                            <p class="font-medium text-slate-700" x-text="namaFuncLoc(funcLocId)"></p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-400">Kode Alat</p>
+                            <p class="font-medium text-slate-700" x-text="namaAlat(assetId)"></p>
+                        </div>
+                    </div>
+
+                    @error('area_id')
+                        <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                    @enderror
+                    @error('funcloc_id')
+                        <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                    @enderror
+                    @error('asset_id')
+                        <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
+                {{-- Kolom asli form (disembunyikan): nilai Area / Functional
+                     Location / Kode Alat yang dikirim saat menyimpan. --}}
+                <div class="hidden grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {{-- Area --}}
                     <div>
                         <label class="block text-xs text-slate-500 mb-1">Area</label>
@@ -328,9 +361,6 @@
                                 </option>
                             @endforeach
                         </select>
-                        @error('area_id')
-                            <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
-                        @enderror
                     </div>
 
                     {{-- Functional Location --}}
@@ -346,9 +376,6 @@
                                 <option :value="fl.id" x-text="fl.code + ' - ' + fl.name"></option>
                             </template>
                         </select>
-                        @error('funcloc_id')
-                            <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
-                        @enderror
                     </div>
 
                     {{-- Asset --}}
@@ -365,13 +392,10 @@
                                 </option>
                             </template>
                         </select>
-                        @error('asset_id')
-                            <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
-                        @enderror
                     </div>
                 </div>
                 <p class="text-xs text-slate-400">
-                    Pilih Area terlebih dahulu untuk memunculkan pilihan Functional Location dan Asset.
+                    Pilih alat atau lokasi lewat penelusuran hierarki di bawah, atau pakai kotak pencarian alat bila kodenya sudah diketahui.
                 </p>
 
                 @include('reports.partials._cari-alat', ['report' => $report])
@@ -379,6 +403,16 @@
                      -> Alat, meniru alur wizard Telegram. Memilih node/alat
                      mengisi Area + Functional Location + Kode Alat di atas. --}}
                 @include('reports.partials._pilih-lokasi-hirarki', ['report' => $report])
+
+                {{-- Alat/lokasi tambahan ditempatkan TEPAT di bawah alat/lokasi
+                     utama supaya pekerjaan multi item terbaca satu tempat dengan
+                     lokasinya (dulu jauh di bawah, setelah Kolaborasi Teknisi). --}}
+                @include('reports.partials._alat-tambahan', [
+                    'report'       => $report,
+                    'laporanInduk' => $laporanInduk,
+                    'alatTambahan' => $alatTambahan,
+                    'funcLocs'     => $funcLocs,
+                ])
 
 
             </div>
@@ -428,16 +462,6 @@
                 'laporanInduk'   => $laporanInduk,
                 'kolaborator'    => $kolaborator,
                 'teknisiPilihan' => $teknisiPilihan,
-            ])
-        </div>
-
-        {{-- ── Alat / Lokasi Tambahan (mode edit) ─────────── --}}
-        <div x-show="editMode" x-cloak class="bg-white rounded-xl border border-slate-200 p-6">
-            @include('reports.partials._alat-tambahan', [
-                'report'       => $report,
-                'laporanInduk' => $laporanInduk,
-                'alatTambahan' => $alatTambahan,
-                'funcLocs'     => $funcLocs,
             ])
         </div>
 
@@ -989,6 +1013,30 @@
 </div>{{-- /grid --}}
 @endsection
 
+@php
+    // Ringkasan lokasi pada mode edit: daftar Area (dropdown lamanya dirender
+    // server sehingga Alpine tidak punya daftarnya) plus label cadangan bila
+    // nilai laporan tidak ada pada daftar prefetch area laporan.
+    // Disiapkan di sini, bukan langsung di dalam direktif JSON, karena direktif
+    // itu memecah argumen pada koma pertama (array bersarang tidak bisa).
+    $areaDaftar = $areas->mapWithKeys(
+        fn ($area) => [$area->id => trim($area->code . ' - ' . $area->name, ' -')]
+    )->all();
+
+    $labelLokasiAwal = [
+        'area'    => $report->area
+            ? [$report->area->id => trim($report->area->code . ' - ' . $report->area->name, ' -')]
+            : [],
+        'funcloc' => $report->functionalLocation
+            ? [$report->functionalLocation->id => trim($report->functionalLocation->code . ' - ' . $report->functionalLocation->name, ' -')]
+            : [],
+        'alat'    => $report->asset
+            ? [$report->asset->id => trim(($report->asset->tech_ident_no ?? $report->asset->equipment_no ?? ('#' . $report->asset->id)) . ' - ' . ($report->asset->description ?? ''), ' -')]
+            : [],
+    ];
+@endphp
+
+
 @push('scripts')
 <script>
 function reportDetail() {
@@ -1028,6 +1076,13 @@ function reportDetail() {
         funcLocId: {{ old('funcloc_id', $report->funcloc_id) ?? 'null' }},
         assetId: {{ old('asset_id', $report->asset_id) ?? 'null' }},
         funcLocs: @json($funcLocs),
+
+        // Ringkasan lokasi mode edit: daftar Area dan label cadangan disiapkan di
+        // blok PHP sebelum script ini (direktif JSON Blade memecah argumen pada
+        // koma pertama sehingga array bersarang tidak boleh ditulis langsung).
+        areaDaftar: @json($areaDaftar),
+        labelLokasiAwal: @json($labelLokasiAwal),
+        equipmentTagAwal: @json($report->equipment_tag),
         assets: @json($assets),
 
         // ── Inisialisasi ──────────────────────────────────────
@@ -1484,6 +1539,85 @@ function reportDetail() {
             this.assetId   = null;
         },
 
+
+        // ── Ringkasan lokasi & alat (mode edit) ───────────────
+        // Kolom Area / Functional Location / Kode Alat yang lama disembunyikan
+        // dan diganti satu ringkasan ini, jadi labelnya dicari dari daftar yang
+        // tersedia (perbandingan longgar supaya tipe data dari form tidak jadi
+        // masalah).
+
+        /**
+         * Cari label pada kumpulan pasangan id => label.
+         *
+         * @param {object} daftar Kumpulan pasangan id => label
+         * @param {number|string|null} id Id yang dicari
+         * @returns {string|null} Label bila ada, atau null
+         */
+        cariLabelLokasi(daftar, id) {
+            if (!daftar) {
+                return null;
+            }
+
+            const label = daftar[String(id)];
+
+            return label === undefined ? null : label;
+        },
+
+        /**
+         * Nama Area terpilih untuk ringkasan lokasi.
+         *
+         * @param {number|string|null} id Id area
+         * @returns {string} Label area atau '-'
+         */
+        namaArea(id) {
+            if (!id) {
+                return '-';
+            }
+
+            return this.cariLabelLokasi(this.areaDaftar, id) ?? ('Area #' + id);
+        },
+
+        /**
+         * Nama Functional Location terpilih untuk ringkasan lokasi.
+         *
+         * @param {number|string|null} id Id Functional Location
+         * @returns {string} Label lokasi atau '-'
+         */
+        namaFuncLoc(id) {
+            if (!id) {
+                return '-';
+            }
+
+            const baris = this.funcLocs.find(item => String(item.id) === String(id));
+
+            if (baris) {
+                return baris.code + (baris.name ? ' - ' + baris.name : '');
+            }
+
+            return this.cariLabelLokasi(this.labelLokasiAwal.funcloc, id) ?? ('FuncLoc #' + id);
+        },
+
+        /**
+         * Nama Kode Alat terpilih untuk ringkasan lokasi.
+         *
+         * @param {number|string|null} id Id aset
+         * @returns {string} Label alat atau '-'
+         */
+        namaAlat(id) {
+            if (!id) {
+                return this.equipmentTagAwal || '-';
+            }
+
+            const baris = this.assets.find(item => String(item.id) === String(id));
+
+            if (baris) {
+                const kode = baris.tech_ident_no || baris.equipment_no || ('#' + baris.id);
+
+                return kode + (baris.description ? ' - ' + baris.description : '');
+            }
+
+            return this.cariLabelLokasi(this.labelLokasiAwal.alat, id) ?? ('Alat #' + id);
+        },
 
         /**
          * Kosongkan Area, Functional Location, dan Kode Alat pada form.

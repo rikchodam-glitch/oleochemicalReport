@@ -25,6 +25,8 @@ uses(RefreshDatabase::class);
  *   4. Baris salinan multi item TIDAK dihitung pada man hour (aturan yang sama
  *      dengan salinan buatan wizard Telegram).
  *   5. Laporan salinan tidak boleh menambah item sendiri; dikelola dari induk.
+ *   6. Panel alat tambahan berada tepat di bawah alat/lokasi utama pada halaman
+ *      detail (dulu jauh di bawah, setelah Kolaborasi Teknisi).
  */
 
 beforeEach(function () {
@@ -265,3 +267,15 @@ test('baris salinan multi item tidak ikut dihitung pada man hour', function () {
     expect($harian['jumlah_pekerjaan'])->toBe(1)
         ->and($harian['menit'])->toBe(120);
 });
+
+test('panel alat tambahan berada tepat di bawah alat/lokasi utama', function () {
+    // Pemicu (08/10/2026): bagian alat/lokasi tambahan dulu berada jauh di bawah
+    // (setelah Kolaborasi Teknisi) sehingga lokasi pekerjaan dan alat
+    // tambahannya terpisah. Sekarang letaknya tepat setelah pemilih lokasi utama.
+    $this->actingAs($this->admin)
+        ->get('/reports/' . $this->induk->id)
+        ->assertStatus(200)
+        ->assertSeeInOrder(['Telusuri Hierarki Lokasi', 'Alat / Lokasi Tambahan'], false)
+        ->assertSeeInOrder(['Alat / Lokasi Tambahan', 'Root Cause</h3>'], false);
+});
+
