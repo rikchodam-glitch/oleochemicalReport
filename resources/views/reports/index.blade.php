@@ -9,6 +9,15 @@
 @endsection
 
 @section('header-actions')
+    <button type="button" onclick="bukaExport('excel')" title="Export laporan dengan pengaturan rentang tanggal & jenis pekerjaan"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
+        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 10v6m0 0l-3-3m3 3l3-3M4 6a2 2 0 012-2h6l2 2h4a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V6z"/>
+        </svg>
+        Export Laporan
+    </button>
+
     <a href="{{ route('reports.export-csv', request()->query()) }}"
        class="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
         <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -835,5 +844,12 @@
         });
     </script>
 @endpush
+
+{{-- Popup Export Laporan: pengaturan rentang tanggal, jenis pekerjaan, dan
+     filter lain sebelum berkas diunduh. Dipisah sebagai partial supaya berkas
+     ini (839 baris) tidak perlu ditulis ulang. --}}
+@include('reports.partials._popup-export')
+@include('reports.partials._popup-export-script')
+
 
 @endsection

@@ -123,6 +123,10 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     // Pemilih lokasi bertingkat (PT -> Departemen -> Area -> Section -> Alat)
     // pada mode edit laporan: satu permintaan mengembalikan node anak + alat.
     Route::get('/reports/locations/hirarki', [ReportController::class, 'anakLokasi'])->name('reports.locations.hirarki');
+    // Export laporan: Excel (.xlsx, tiga lembar) dan CSV. Keduanya memakai
+    // filter yang sama dengan halaman Laporan plus kunci khusus popup export
+    // (jenis_pekerjaan_multi[], tanpa_batas).
+    Route::get('/reports/export/excel', [ReportController::class, 'exportExcel'])->name('reports.export-excel');
     Route::get('/reports/export/csv', [ReportController::class, 'exportCsv'])->name('reports.export-csv');
 
     // Hapus satu foto dari laporan — index adalah posisi dalam array JSON (0-based).

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Traits\ReportExportTrait;
 use App\Http\Controllers\Traits\ReportLocationTrait;
 use App\Models\Area;
 use App\Models\Asset;
@@ -10,11 +11,11 @@ use App\Models\Report;
 use App\Models\Technician;
 use App\Services\TechnicianKinerjaService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Storage;
 
 class ReportController extends Controller
 {
+    use ReportExportTrait;
     use ReportLocationTrait;
 
     /**
@@ -219,7 +220,12 @@ class ReportController extends Controller
         }
 
         if (! $request->filled('date_from') && ! $request->filled('date_to')) {
-            $query->whereDate('report_date', $tanggalAktif->toDateString());
+            // Khusus popup Export Laporan: centang "seluruh data" mengirim
+            // tanpa_batas=1 sehingga batas tanggal satu hari dilewati. Halaman
+            // Laporan tidak pernah mengirim kunci ini, jadi perilakunya utuh.
+            if (! $request->boolean('tanpa_batas')) {
+                $query->whereDate('report_date', $tanggalAktif->toDateString());
+            }
         }
 
         return $query;
@@ -837,85 +843,6 @@ class ReportController extends Controller
         $report->update([$column => array_values($photos)]);
 
         return response()->json(['success' => true]);
-    }
-
-    public function exportCsv(Request $request)
-    {
-        $tampilan     = $request->get('tampilan') === 'shift' ? 'shift' : 'reguler';
-        $grubAktif    = $tampilan === 'shift' ? $this->resolveGrub($request->get('grub')) : null;
-        $tanggalAktif = $this->resolveTanggal($request->get('tanggal'));
-
-        // Memakai filter yang sama dengan halaman laporan (reguler/shift, grub,
-        // tanggal, dan laporan kolaborasi yang sudah dikonsolidasi satu baris).
-        $query = $this->buildReportQuery($request, $tampilan, $grubAktif, $tanggalAktif);
-
-        $reports = $query
-            ->with(['technician', 'area', 'collaboratorReports.technician'])
-            // Urutan sama dengan halaman laporan: yang terbaru di atas.
-            ->orderByDesc('report_date')
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->get();
-
-        $headers = [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="reports-export.csv"',
-        ];
-
-        $callback = function () use ($reports) {
-            $output = fopen('php://output', 'w');
-            fputcsv($output, [
-                'Kode Laporan',
-                'Tanggal',
-                'Teknisi',
-                'Kolaborator',
-                'Deskripsi',
-                'Area',
-                'Tipe',
-                'Klasifikasi',
-                'Jenis Pekerjaan',
-                'Status',
-                'Durasi (menit)',
-                'Root Cause',
-                'Jml Foto Dokumentasi',
-                'Jml Foto Hygiene',
-                'AI Confidence',
-            ]);
-
-            foreach ($reports as $report) {
-                // Hitung durasi dalam menit jika wizard_started_at dan submitted_at tersedia
-                $durasiMenit = '-';
-                if (!empty($report->wizard_started_at) && !empty($report->submitted_at)) {
-                    $durasiMenit = (int) \Carbon\Carbon::parse($report->wizard_started_at)
-                        ->diffInMinutes(\Carbon\Carbon::parse($report->submitted_at));
-                }
-
-                fputcsv($output, [
-                    $report->report_code ?? '-',
-                    $report->report_date->format('Y-m-d'),
-                    $report->technician->name,
-                    $report->collaboratorReports
-                        ->map(fn ($kolaborator) => $kolaborator->technician?->name)
-                        ->filter()
-                        ->implode(', ') ?: '-',
-                    $report->work_description,
-                    $report->area?->code ?? '-',
-                    $report->report_type,
-                    $report->work_classification ?? '-',
-                    $report->jenis_pekerjaan ?? '-',
-                    $report->status,
-                    $durasiMenit,
-                    $report->root_cause ?? '-',
-                    count($report->photo_documentation ?? []),
-                    count($report->photo_hygiene_clearance ?? []),
-                    $report->ai_confidence ? $report->ai_confidence . '%' : '-',
-                ]);
-            }
-
-            fclose($output);
-        };
-
-        return Response::stream($callback, 200, $headers);
     }
 
     public function destroy(Report $report)
