@@ -2119,11 +2119,17 @@ Batasan penting lingkungan ini:
       tidak memuat `oleochemicalReport`/`oleochemicalReport-prod` sama sekali;
       (b) `POLL_GANDA` menghitung lebih dari satu proses `telegram:poll`
       (dua poller = bot mati total, HTTP 409, Riwayat Insiden #21).
-    - `start-report.bat`: kalau service sudah jalan ia hanya MELAPORKAN keadaan
-      (tidak mematikan apa pun, tidak me-restart tunnel), menolak jalan lebih
-      dulu bila `LARAGON_MATI=1` (kata `paksa` untuk memaksa), dan sesudah
-      watchdog diverifikasi `PELAYAN_8000=PROD` + `POLL_GANDA=0`. Opsi lama
-      (`uji`, `nopause`, `hentikan`, `tunnel`) tetap ada.
+    - `start-report.bat`: memeriksa `SIAP=1` dan BERHENTI bila ada masalah (kata
+      `paksa` untuk memaksa); `LARAGON_MATI=1` (Apache 80 DAN MySQL 3306
+      dua-duanya mati) memakai pesan sendiri supaya pengguna tahu harus membuka
+      Laragon, sedangkan `MODE_PEMELIHARAAN=1`, `PELAYAN_8000=DEV`, dan
+      `POLL_GANDA=1` ditampilkan sebagai CATATAN karena ketiganya ditangani
+      watchdog. Langkah 3 selalu menjalankan `tools\jaga-service-prod.ps1` (aman
+      diulang: hanya menyalakan service yang belum jalan, membuang proses
+      DUPLIKAT, dan TIDAK pernah mematikan tunnel), lalu langkah 4 menjalankan
+      `tools\cek-status-prod.ps1` dan mengharapkan baris `8000/login : 200`
+      (`findstr /r /c:"8000/login *: 200"`). Opsi `uji` dan `nopause` tetap ada,
+      ditambah `paksa`.
     - `stop-report.bat`: mode `tunnel` menghentikan service latar TETAPI
       membiarkan connector cloudflared hidup lewat opsi BARU `-BiarkanTunnel`
       pada `tools\hentikan-service-prod.ps1` (skrip itu kini juga mengingatkan
@@ -2169,6 +2175,59 @@ Batasan penting lingkungan ini:
       "DILEWATI: tools\cek-pra-syarat-prod.ps1 belum ada di copy PROD" dan
       tetap melanjutkan seperti perilaku lama, jadi tidak ada risiko gagal
       hanya karena berkas belum tersalin.
+39. **Berkas `.bat` berakhiran LF murni membuat sebagian `goto`/label TIDAK
+    ditemukan cmd.exe, dan copy PROD SELALU menerima LF dari git (08/10/2026).**
+    Pemicunya: sesudah `start-report.bat` copy DEV ditambah pemeriksaan
+    pra-syarat, uji nyata dengan Laragon dimatikan menghasilkan
+    `The system cannot find the batch label specified - laragon_mati` padahal
+    label `:laragon_mati` JELAS ADA di berkas itu. Penyelidikan 08/10/2026:
+    (a) berkas yang SAMA dijalankan dengan akhiran CRLF -> berjalan normal
+    (`[2/4] Pra-syarat : BERHENTI, Laragon belum jalan`); (b) berkas kecil
+    buatan (satu `goto` + padding 0..200 baris REM) berjalan BAIK dalam bentuk
+    LF maupun CRLF, jadi bukan sekadar soal ukuran/offset berkas;
+    (c) akar masalahnya di tingkat repo: `.gitattributes` (sebelum perbaikan)
+    memuat `* text=auto eol=lf` sehingga SEMUA berkas teks -- termasuk `.bat` --
+    dituliskan git sebagai LF, sedangkan copy PROD LAHIR dari `git clone`/
+    `git pull`. Jadi `.bat` yang tampak "bertahun-tahun benar" di DEV (CRLF,
+    karena DEV bukan hasil checkout) berubah perilaku begitu dibawa ke PROD.
+    Perbaikan 08/10/2026 (commit khusus, copy DEV
+    `C:\laragon\www\oleochemicalReport`): `.gitattributes` menambah
+    `*.bat text eol=crlf` + `*.cmd text eol=crlf` SETELAH baris
+    `* text=auto eol=lf` (baris belakangan menang), sehingga checkout/pull
+    berikutnya menuliskan seluruh `.bat` terlacak (7 berkas: `start-report.bat`,
+    `stop-report.bat`, dan 5 di `sensor-suhu-esp32/`) dengan CRLF.
+    Dampak ke PROD: baru terpasang sesudah `Deploy-Laporan.bat` dijalankan
+    manusia, dan SESUDAH deploy WAJIB diperiksa bahwa
+    `C:\laragon\www\oleochemicalReport-prod\start-report.bat` benar-benar
+    CRLF (hitung baris yang berakhiran `\r\n`), karena `.gitattributes` baru
+    dibaca git pada checkout yang sama.
+    Uji 08/10/2026 (empat skenario, memakai SALINAN berkas dengan `PROD`
+    dialihkan ke `%TEMP%\uji-prod` + stub `cek-pra-syarat-prod.ps1` yang
+    dipilih lewat variabel `SKENARIO`, jadi TIDAK ada service yang disentuh):
+    `SIAP=0` tanpa `paksa` -> GAGAL + petunjuk "Perbaiki dulu"; `SIAP=0` +
+    `paksa` -> lanjut ("ada masalah, dilanjutkan karena opsi paksa");
+    `LARAGON_MATI=1` tanpa `paksa` -> BERHENTI + "Buka Laragon, klik Start
+    All"; `LARAGON_MATI=1` + `paksa` -> lanjut. Inilah yang membuat `paksa`
+    benar-benar berguna: sebelumnya blok `:tidak_siap` TIDAK memeriksa opsi
+    `paksa`, sehingga pengguna yang mengetik `paksa` tetap berhenti -- pesan
+    "paksa dengan: start-report.bat paksa" hanya benar untuk masalah Laragon.
+    Label baru `:tidak_siap_paksa` menutup celah itu.
+    **Pelajaran: (1) JANGAN memakai LF untuk berkas `.bat`/`.cmd`: cmd.exe
+    tidak menjamin menemukan label lewat `goto` pada berkas berakhiran LF, dan
+    kegagalannya muncul sebagai "cannot find the batch label specified"
+    walaupun labelnya ada -- perbaikannya di `.gitattributes`
+    (`*.bat text eol=crlf`), BUKAN dengan menambah/merapikan label;
+    (2) `.bat` yang "sudah lama jalan" di DEV belum tentu punya akhiran baris
+    yang sama di PROD: periksa `git check-attr text eol -- <berkas>` atau
+    `git ls-files --eol` sebelum menuduh logikanya salah; (3) setiap opsi
+    "paksa" WAJIB diuji DUA KALI (dengan dan tanpa) pada SETIAP cabang
+    berhenti, karena satu cabang yang lupa memeriksa `paksa` hanya ketahuan
+    dari uji itu; (4) saat menguji `.bat`, jalankan SALINAN dengan `PROD`
+    dialihkan ke folder stub di `%TEMP%` supaya service produksi tidak pernah
+    tersentuh, dan tetap alihkan keluaran ke BERKAS -- jangan lewat pipe
+    (Riwayat Insiden #31).**
+
+
 
 
 ## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN

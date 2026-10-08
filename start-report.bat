@@ -14,7 +14,7 @@ REM
 REM  Cara pakai:
 REM    start-report.bat           nyalakan lalu laporkan hasilnya
 REM    start-report.bat uji       hanya periksa, TIDAK menyalakan apa pun
-REM    start-report.bat paksa     tetap lanjut walau Laragon belum jalan
+REM    start-report.bat paksa     tetap lanjut walau pra-syarat tidak lolos
 REM    start-report.bat nopause   jangan menunggu tombol di akhir
 REM  Dua opsi boleh digabung, mis. start-report.bat uji nopause
 REM
@@ -90,11 +90,16 @@ echo   Jalankan Deploy-Laporan.bat supaya pemeriksaan ini ikut terpasang.
 goto :nyalakan
 
 :tidak_siap
+if defined PAKSA goto :tidak_siap_paksa
 echo [2/4] Pra-syarat : GAGAL
 echo.
 echo   Ada masalah yang menghalangi service jalan - lihat daftar di atas.
 echo   Perbaiki dulu, atau paksa dengan: start-report.bat paksa
 goto :selesai
+
+:tidak_siap_paksa
+echo [2/4] Pra-syarat : ada masalah, dilanjutkan karena opsi paksa.
+goto :nyalakan
 
 :laragon_mati
 if defined PAKSA goto :laragon_paksa
