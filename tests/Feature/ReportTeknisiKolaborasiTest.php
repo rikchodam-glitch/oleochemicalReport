@@ -92,9 +92,11 @@ test('daftar disaring ke teknisi kolaborator memuat salinan kolaborasinya', func
         ->get('/reports?tanggal=' . $this->tanggal . '&technician_id=' . $this->kolaborator->id);
 
     $respons->assertStatus(200)
-        ->assertSee('KOLAB-01', false)
+        // Kode laporan tidak lagi tampil di tabel, baris dikenali lewat penanda
+        // data-laporan-id (id laporan).
+        ->assertSee('data-laporan-id="' . $this->salinanKolaborasi->id . '"', false)
         // Laporan induk milik orang lain tidak ikut terbawa.
-        ->assertDontSee('INDUK-01', false);
+        ->assertDontSee('data-laporan-id="' . $this->induk->id . '"', false);
 });
 
 test('daftar disaring ke teknisi pelapor tetap satu baris induk tanpa salinan multi', function () {
@@ -102,9 +104,9 @@ test('daftar disaring ke teknisi pelapor tetap satu baris induk tanpa salinan mu
         ->get('/reports?tanggal=' . $this->tanggal . '&technician_id=' . $this->pelapor->id);
 
     $respons->assertStatus(200)
-        ->assertSee('INDUK-01', false)
-        ->assertDontSee('KOLAB-01', false)
-        ->assertDontSee('MULTI-01', false);
+        ->assertSee('data-laporan-id="' . $this->induk->id . '"', false)
+        ->assertDontSee('data-laporan-id="' . $this->salinanKolaborasi->id . '"', false)
+        ->assertDontSee('data-laporan-id="' . $this->salinanMulti->id . '"', false);
 });
 
 test('daftar umum tanpa saringan teknisi tetap mengonsolidasi kolaborasi', function () {
@@ -112,15 +114,15 @@ test('daftar umum tanpa saringan teknisi tetap mengonsolidasi kolaborasi', funct
         ->get('/reports?tanggal=' . $this->tanggal);
 
     $respons->assertStatus(200)
-        ->assertSee('INDUK-01', false)
+        ->assertSee('data-laporan-id="' . $this->induk->id . '"', false)
         ->assertSee('Berkolaborasi dengan:', false)
         ->assertSee('Teknisi Kolaborator Uji', false)
-        ->assertDontSee('KOLAB-01', false)
-        ->assertDontSee('MULTI-01', false);
+        ->assertDontSee('data-laporan-id="' . $this->salinanKolaborasi->id . '"', false)
+        ->assertDontSee('data-laporan-id="' . $this->salinanMulti->id . '"', false);
 });
 
 test('jumlah baris teknisi kolaborator sama dengan kolom Pekerjaan rincian man hour harian', function () {
-    Report::create([
+    $kedua = Report::create([
         'technician_id'         => $this->kolaborator->id,
         'creator_id'            => $this->pelapor->id,
         'collaborator_of'       => $this->induk->id,
@@ -142,9 +144,9 @@ test('jumlah baris teknisi kolaborator sama dengan kolom Pekerjaan rincian man h
         ->get('/reports?tanggal=' . $this->tanggal . '&technician_id=' . $this->kolaborator->id);
 
     $respons->assertStatus(200)
-        ->assertSee('KOLAB-01', false)
-        ->assertSee('KOLAB-02', false)
-        ->assertDontSee('INDUK-01', false);
+        ->assertSee('data-laporan-id="' . $this->salinanKolaborasi->id . '"', false)
+        ->assertSee('data-laporan-id="' . $kedua->id . '"', false)
+        ->assertDontSee('data-laporan-id="' . $this->induk->id . '"', false);
 
     expect($harian['jumlah_pekerjaan'])->toBe(2)
         ->and($harian['menit'])->toBe(180);

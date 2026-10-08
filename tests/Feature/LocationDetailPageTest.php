@@ -169,21 +169,23 @@ test('pencarian halaman laporan menemukan kode lokasi, kode laporan, dan kode al
     $this->actingAs($this->admin)
         ->get('/reports?search=' . $this->flSection->code . $rentang)
         ->assertStatus(200)
-        ->assertSee('LOK-LANGSUNG-01', false)
-        ->assertSee('LOK-LEWAT-ALAT-01', false);
+        // Kode laporan tidak lagi ditampilkan di tabel halaman Laporan, jadi baris
+        // dikenali lewat penanda data-laporan-id (id laporan).
+        ->assertSee('data-laporan-id="' . $this->laporanLokasi->id . '"', false)
+        ->assertSee('data-laporan-id="' . $this->laporanAlat->id . '"', false);
 
     // Kode laporan.
     $this->actingAs($this->admin)
         ->get('/reports?search=LOK-LEWAT-ALAT-01' . $rentang)
         ->assertStatus(200)
-        ->assertSee('LOK-LEWAT-ALAT-01', false)
-        ->assertDontSee('LOK-LANGSUNG-01', false);
+        ->assertSee('data-laporan-id="' . $this->laporanAlat->id . '"', false)
+        ->assertDontSee('data-laporan-id="' . $this->laporanLokasi->id . '"', false);
 
     // Kode alat (Tech Ident No) milik laporan perbaikan.
     $this->actingAs($this->admin)
         ->get('/reports?search=LOK-P-01' . $rentang)
         ->assertStatus(200)
-        ->assertSee('LOK-LEWAT-ALAT-01', false);
+        ->assertSee('data-laporan-id="' . $this->laporanAlat->id . '"', false);
 });
 
 

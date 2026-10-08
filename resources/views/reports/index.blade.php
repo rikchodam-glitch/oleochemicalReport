@@ -494,7 +494,10 @@
                             ->values()
                             ->all();
                     @endphp
+                    {{-- Penanda baris (id laporan) untuk telusur dan pengujian; kode
+                         laporan sendiri tidak lagi ditampilkan di tabel ini. --}}
                     <tr class="hover:bg-slate-50 transition-colors cursor-pointer"
+                        data-laporan-id="{{ $report->id }}"
                         onclick="window.location='{{ route('reports.show', $report) }}'">
 
                         {{-- Pekerjaan: kolom utama --}}
@@ -502,18 +505,25 @@
                             <p class="text-slate-800 text-sm font-medium leading-snug whitespace-normal break-words">
                                 {{ $report->work_description ?: '(tanpa deskripsi pekerjaan)' }}
                             </p>
-                            <p class="text-xs text-slate-400 mt-1">
-                                {{ $report->report_code ?? '-' }}
-                                @if($report->continued_from_id)
-                                    <span class="inline-flex ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-100">
-                                        LANJUTAN
-                                    </span>
-                                @endif
-                                @if($report->root_cause)
-                                    <span class="text-slate-200 mx-1">|</span>
-                                    Penyebab: {{ \Illuminate\Support\Str::limit($report->root_cause, 80) }}
-                                @endif
-                            </p>
+                            @if($report->continued_from_id)
+                                <span class="inline-flex mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-100">
+                                    LANJUTAN
+                                </span>
+                            @endif
+
+                            @if($report->finding)
+                                <p class="text-xs text-slate-500 mt-1 leading-snug">
+                                    <span class="text-slate-400">Temuan:</span>
+                                    {{ \Illuminate\Support\Str::limit($report->finding, 80) }}
+                                </p>
+                            @endif
+
+                            @if($report->root_cause)
+                                <p class="text-xs text-slate-500 {{ $report->finding ? 'mt-0.5' : 'mt-1' }} leading-snug">
+                                    <span class="text-slate-400">Penyebab:</span>
+                                    {{ \Illuminate\Support\Str::limit($report->root_cause, 80) }}
+                                </p>
+                            @endif
                         </td>
 
                         {{-- Teknisi + daftar kolaborator --}}

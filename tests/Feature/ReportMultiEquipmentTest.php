@@ -255,7 +255,9 @@ test('halaman laporan hanya menampilkan baris induk dengan daftar alatnya', func
     $this->actingAs($this->admin)
         ->get('/reports?tanggal=' . now()->toDateString())
         ->assertStatus(200)
-        ->assertSee('RPT-20260926-0011', false)
+        // Kode laporan tidak lagi tampil di tabel, baris dikenali lewat penanda
+        // data-laporan-id (id laporan).
+        ->assertSee('data-laporan-id="' . $induk->id . '"', false)
         // Cukup penanda jumlah kolaborasi yang bisa diklik untuk membuka popup.
         ->assertSee('1 KOLABORASI', false)
         ->assertSee('tampilkanKolaborasi(' . $induk->id . ')', false)
@@ -266,7 +268,7 @@ test('halaman laporan hanya menampilkan baris induk dengan daftar alatnya', func
         ->assertSee(route('assets.show', $this->asetTambahan), false)
         ->assertDontSee('Lihat Laporan', false)
         ->assertDontSee('/reports/' . $salinan->id, false)
-        ->assertDontSee('RPT-20260926-0012', false);
+        ->assertDontSee('data-laporan-id="' . $salinan->id . '"', false);
 
     // Detail laporan induk mencantumkan alat lain (tautan ke detail alat, bukan
     // ke halaman laporan salinan); detail salinan menautkan induk.

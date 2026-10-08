@@ -190,10 +190,12 @@ test('halaman laporan bisa difilter status continue dan menampilkan rantai lanju
     $this->actingAs($this->admin)
         ->get('/reports?' . $rentang . '&status=continue')
         ->assertStatus(200)
-        ->assertSee('RPT-20260925-0001', false)
+        // Kode laporan tidak lagi tampil di tabel, baris dikenali lewat penanda
+        // data-laporan-id (id laporan).
+        ->assertSee('data-laporan-id="' . $this->laporanContinue->id . '"', false)
         // Penanda status Continue kini tampil sebagai lencana pada kolom Status.
         ->assertSee('data-status="continue"', false)
-        ->assertDontSee('RPT-20260926-0003', false);
+        ->assertDontSee('data-laporan-id="' . $lanjutan->id . '"', false);
 
     // Halaman detail laporan lanjutan menunjuk ke laporan asalnya.
     $this->actingAs($this->admin)

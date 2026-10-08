@@ -89,7 +89,9 @@ test('halaman laporan menampilkan badge, kartu, dan filter jenis Project', funct
     $this->actingAs($this->admin)
         ->get('/reports?tanggal=' . now()->toDateString())
         ->assertStatus(200)
-        ->assertSee('PRJ-LAPORAN-01', false)
+        // Kode laporan tidak lagi tampil di tabel, baris dikenali lewat penanda
+        // data-laporan-id (id laporan).
+        ->assertSee('data-laporan-id="' . $this->laporanProject->id . '"', false)
         ->assertSee('Project', false)
         // Pilihan filter jenis pekerjaan dan klasifikasi ZPM.
         ->assertSee('value="Project"', false)
@@ -99,15 +101,15 @@ test('halaman laporan menampilkan badge, kartu, dan filter jenis Project', funct
     $this->actingAs($this->admin)
         ->get('/reports?tanggal=' . now()->toDateString() . '&jenis_pekerjaan=Project')
         ->assertStatus(200)
-        ->assertSee('PRJ-LAPORAN-01', false)
-        ->assertDontSee('PRJ-LAPORAN-02', false);
+        ->assertSee('data-laporan-id="' . $this->laporanProject->id . '"', false)
+        ->assertDontSee('data-laporan-id="' . $this->laporanSipil->id . '"', false);
 
     // Filter klasifikasi ZPM 8 juga menyaring laporan Project.
     $this->actingAs($this->admin)
         ->get('/reports?tanggal=' . now()->toDateString() . '&work_classification=zpm8')
         ->assertStatus(200)
-        ->assertSee('PRJ-LAPORAN-01', false)
-        ->assertDontSee('PRJ-LAPORAN-02', false);
+        ->assertSee('data-laporan-id="' . $this->laporanProject->id . '"', false)
+        ->assertDontSee('data-laporan-id="' . $this->laporanSipil->id . '"', false);
 });
 
 test('halaman detail mode edit menawarkan ZPM 8 dan jenis Project lalu menyimpannya', function () {

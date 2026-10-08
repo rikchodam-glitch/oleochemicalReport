@@ -171,19 +171,20 @@ test('laporan kolaborasi tampil satu baris dengan daftar kolaborator', function 
     $respons = $this->actingAs($this->admin)->get('/reports?tanggal=' . $this->tanggal);
 
     $respons->assertStatus(200)
-        // Satu baris pekerjaan untuk laporan induk
-        ->assertSee('REG-INDUK-01', false)
+        // Satu baris pekerjaan untuk laporan induk (kode laporan tidak lagi
+        // ditampilkan, baris dikenali lewat penanda data-laporan-id).
+        ->assertSee('data-laporan-id="' . $this->laporanInduk->id . '"', false)
         ->assertSee('Berkolaborasi dengan:', false)
         ->assertSee('Teknisi Grub D Uji', false)
         // Salinan kolaborasi TIDAK dirender sebagai baris sendiri
-        ->assertDontSee('SALINAN-KOLAB-01', false);
+        ->assertDontSee('data-laporan-id="' . $this->laporanAnak->id . '"', false);
 });
 
 test('pekerjaan milik teknisi grub D tetap muncul sebagai baris tersendiri', function () {
     $this->actingAs($this->admin)
         ->get('/reports?tanggal=' . $this->tanggal . '&tampilan=shift&grub=grub_d')
         ->assertStatus(200)
-        ->assertSee('GRUPD-KERJA-01', false);
+        ->assertSee('data-laporan-id="' . $this->laporanGrubD->id . '"', false);
 });
 
 // ============================================================
