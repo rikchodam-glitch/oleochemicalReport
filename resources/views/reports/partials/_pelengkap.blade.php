@@ -10,6 +10,7 @@
             <div>
                 <label for="work_classification" class="block text-sm font-medium text-slate-700 mb-1">Klasifikasi Pekerjaan (Wizard)</label>
                 <select id="work_classification" name="work_classification" form="form-edit-laporan"
+                        data-value="{{ old('work_classification', $report->work_classification) }}"
                         onchange="syncJenisPekerjaan()"
                         class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">- Pilih Klasifikasi -</option>
@@ -133,7 +134,7 @@
 <script>
     // Sinkronkan opsi "Jenis Pekerjaan" berdasarkan klasifikasi ZPM yang
     // dipilih (dipindahkan dari halaman reports.edit yang sudah dihapus).
-    // - ZPM 1 / ZPM 6 : pilih EI atau Mekanik
+    // - ZPM 1 / ZPM 6 : pilih EI, Mekanik, atau IT
     // - ZPM 3          : otomatis CM/PM
     // - ZPM 5          : otomatis Fabrikasi
     // - ZPM 7          : otomatis Sipil
@@ -147,8 +148,8 @@
         }
 
         var options = {
-            'zpm1': [['EI', 'EI'], ['Mekanik', 'Mekanik']],
-            'zpm6': [['EI', 'EI'], ['Mekanik', 'Mekanik']],
+            'zpm1': [['EI', 'EI'], ['Mekanik', 'Mekanik'], ['IT', 'IT']],
+            'zpm6': [['EI', 'EI'], ['Mekanik', 'Mekanik'], ['IT', 'IT']],
             'zpm3': [['CM/PM', 'CM/PM']],
             'zpm5': [['Fabrikasi', 'Fabrikasi']],
             'zpm7': [['Sipil', 'Sipil']],
@@ -156,14 +157,22 @@
             '': [['CM', 'CM (Corrective)'], ['dCM', 'dCM (Deferred)'], ['PM', 'PM (Preventive)'], ['Project', 'Project'], ['UMUM', 'UMUM'], ['IT', 'IT']]
         };
 
+        var wcAsli = wcSelect.getAttribute('data-value') || '';
         var wc = wcSelect.value;
         var list = options[wc] || options[''];
         var current = jenisSelect.getAttribute('data-value') || jenisSelect.value;
 
-        // Nilai lama yang belum ada di daftar (mis. jenis pekerjaan dari
-        // klasifikasi lama) tetap dipertahankan sebagai satu pilihan supaya
-        // tidak terhapus saat laporan disimpan.
-        if (wc === '' && current !== '' && !list.some(function (pair) { return pair[0] === current; })) {
+        // Klasifikasi ZPM sengaja diganti ke kode lain: jenis pekerjaan
+        // mengikuti daftar ZPM yang baru supaya tidak ada kombinasi janggal
+        // (mis. ZPM 3 dengan jenis IT).
+        if (wc !== '' && wc !== wcAsli) {
+            current = '';
+        }
+
+        // Nilai lama yang tidak ada di daftar (mis. jenis pekerjaan IT pada
+        // klasifikasi ZPM 6) tetap dipertahankan sebagai satu pilihan supaya
+        // tidak terhapus diam-diam saat laporan disimpan.
+        if (current !== '' && !list.some(function (pair) { return pair[0] === current; })) {
             list = list.concat([[current, current]]);
         }
 

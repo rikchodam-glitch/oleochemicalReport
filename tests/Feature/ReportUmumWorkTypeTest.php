@@ -152,3 +152,31 @@ test('jenis pekerjaan di luar daftar tetap ditolak validasi', function () {
     expect($this->laporanUmum->fresh()->jenis_pekerjaan)->toBe('UMUM');
 });
 
+test('form edit menawarkan IT pada klasifikasi ZPM 1/6 dan mempertahankan jenis lama', function () {
+    $this->actingAs($this->admin)
+        ->get('/reports/' . $this->laporanIT->id)
+        ->assertStatus(200)
+        // Klasifikasi ZPM 1 dan ZPM 6 menawarkan EI, Mekanik, dan IT.
+        ->assertSee("'zpm1': [['EI', 'EI'], ['Mekanik', 'Mekanik'], ['IT', 'IT']]", false)
+        ->assertSee("'zpm6': [['EI', 'EI'], ['Mekanik', 'Mekanik'], ['IT', 'IT']]", false)
+        // Nilai lama yang tidak ada di daftar ZPM tetap dipertahankan. Dulu
+        // syaratnya hanya berlaku saat klasifikasi kosong, sehingga laporan
+        // ZPM 6 dengan jenis IT berubah menjadi EI begitu halaman disimpan.
+        ->assertSee("if (current !== '' && !list.some(function (pair) { return pair[0] === current; }))", false)
+        ->assertDontSee("if (wc === '' && current !== ''", false)
+        // Klasifikasi asli diingat supaya penggantian ZPM yang disengaja tidak
+        // mempertahankan jenis pekerjaan ZPM lama.
+        ->assertSee('data-value="zpm1"', false)
+        ->assertSee("var wcAsli = wcSelect.getAttribute('data-value') || '';", false);
+});
+
+test('halaman buat laporan memakai aturan jenis pekerjaan yang sama', function () {
+    $this->actingAs($this->admin)
+        ->get('/reports/create')
+        ->assertStatus(200)
+        ->assertSee("'zpm6': [['EI', 'EI'], ['Mekanik', 'Mekanik'], ['IT', 'IT']]", false)
+        ->assertSee("if (current !== '' && !list.some(function (pair) { return pair[0] === current; }))", false)
+        ->assertDontSee("if (wc === '' && current !== ''", false)
+        ->assertSee("var wcAsli = wcSelect.getAttribute('data-value') || '';", false);
+});
+

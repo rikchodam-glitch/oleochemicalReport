@@ -1659,12 +1659,31 @@ Batasan penting lingkungan ini:
       menjadi kode ZPM baru tanpa instruksi user.
     - **Form web (mode edit halaman detail + halaman tambah):** pilihan jenis
       pekerjaan kini memuat **IT** dan **UMUM** (sebelumnya IT tidak ada di form
-      web, sehingga laporan IT hanya bisa dipilih dari wizard Telegram). Di
-      `_pelengkap.blade.php` dan `create.blade.php`, JS `syncJenisPekerjaan()`
-      menambahkan nilai lama yang belum ada di daftar HANYA saat klasifikasi
-      kosong, supaya nilai seperti `EI`/`Sipil` tidak terhapus diam-diam saat
-      laporan disimpan; perilaku klasifikasi ZPM (mengunci satu pilihan) tidak
-      berubah.
+      web, sehingga laporan IT hanya bisa dipilih dari wizard Telegram).
+    - **Aturan daftar jenis pekerjaan per klasifikasi ZPM (DIPUTUSKAN USER
+      08/10/2026, jangan diubah tanpa instruksi):** JS `syncJenisPekerjaan()`
+      di `_pelengkap.blade.php` (mode edit halaman detail) DAN `create.blade.php`
+      membangun ulang daftar pilihan mengikuti klasifikasi:
+      `zpm1`/`zpm6` -> **EI, Mekanik, IT** (IT ditambahkan 08/10/2026; sebelumnya
+      `_pelengkap` hanya EI + Mekanik padahal `create.blade.php` sudah memuat IT
+      sejak awal - itulah sebab keluhan user "Jenis Pekerjaan hanya ada Mekanik
+      dan EI padahal laporannya dipilih ZPM 6"), `zpm3` -> CM/PM,
+      `zpm5` -> Fabrikasi, `zpm7` -> Sipil, `zpm8` -> Project, klasifikasi kosong
+      -> CM, dCM, PM, Project, UMUM, IT.
+    - **Nilai lama SELALU dipertahankan** (`if (current !== '' && !list.some(...)`,
+      TANPA syarat `wc === ''` seperti sebelumnya): jenis pekerjaan yang tidak ada
+      di daftar ZPM-nya tetap muncul sebagai satu pilihan dan tetap terpilih.
+      Syarat lama membuat baris ber-`zpm6` + `IT` berubah menjadi `EI` begitu
+      halaman detail disimpan (saat itu tidak ada satupun option yang `selected`
+      sehingga peramban mengirim option PERTAMA) - terbukti nyata: 43 baris
+      database PROD `oleochemical` dan 10 baris DEV `oleochemical_dev` berada di
+      kombinasi itu. JANGAN mengembalikan syarat `wc === ''`.
+    - **Klasifikasi yang SENGAJA diganti tetap mengikuti ZPM baru:** kedua select
+      klasifikasi diberi `data-value` (nilai saat halaman dimuat) dan JS membaca
+      `wcAsli`; bila `wc !== '' && wc !== wcAsli` maka nilai lama TIDAK
+      dipertahankan (mencegah kombinasi janggal seperti ZPM 3 + IT). MENGOSONGKAN
+      klasifikasi TIDAK termasuk penggantian itu, jadi nilai lama tetap terpilih
+      (perilaku lama dipertahankan).
     - **Database & tampilan:** migration
       `2026_10_08_000001_add_umum_to_reports_jenis_pekerjaan.php` menambah nilai
       `UMUM` pada ENUM `reports.jenis_pekerjaan` lewat `->change()` (aman untuk
@@ -1673,21 +1692,47 @@ Batasan penting lingkungan ini:
       palet grafik `TechnicianKinerjaService::WARNA_JENIS_PEKERJAAN` menambah
       `UMUM => #0EA5E9`; petunjuk Excel menyebut UMUM; validasi
       `ReportController` (store + update) menerima `UMUM`.
-    - **Jebakan yang harus diingat:** nilai `reports.jenis_pekerjaan` yang tidak
-      ada di daftar pilihan form akan TERHAPUS saat laporan disimpan (select
-      terkirim kosong) - karena itu penambahan "nilai lama" di JS itu wajib, dan
-      setiap jenis pekerjaan baru berikutnya WAJIB ikut ditambahkan ke keempat
-      daftar: `_pelengkap.blade.php`, `create.blade.php`, filter
+    - **Jebakan yang harus diingat:** daftar pilihan dibangun ulang per
+      klasifikasi, jadi nilai `reports.jenis_pekerjaan` yang tidak ada di daftar
+      ZPM-nya akan TERGANTI option PERTAMA (bukan menjadi kosong, tetapi salah
+      isi) saat laporan disimpan - itulah sebabnya penjaga "nilai lama selalu
+      dipertahankan" WAJIB ada, dan setiap jenis pekerjaan baru berikutnya WAJIB
+      ikut ditambahkan ke KEEMPAT daftar: daftar `zpm*` + daftar kosong di
+      `_pelengkap.blade.php`, hal yang sama di `create.blade.php`, filter
       `reports/index.blade.php`, dan checklist `_popup-export.blade.php`.
-    - Uji: `tests/Feature/ReportUmumWorkTypeTest.php` (6 test). Bukti nyata DEV
-      08/10/2026: ENUM MySQL `oleochemical_dev` berbunyi
+    - Uji: `tests/Feature/ReportUmumWorkTypeTest.php` (8 test; 2 test baru
+      08/10/2026 menjaga isi daftar `zpm1`/`zpm6` + penjaga nilai lama +
+      `data-value` klasifikasi pada KEDUA halaman). Bukti nyata DEV 08/10/2026:
+      ENUM MySQL `oleochemical_dev` berbunyi
       `enum('CM','dCM','PM','EI','Mekanik','CM/PM','Fabrikasi','Sipil','IT','Project','UMUM')`,
       halaman `/reports` memuat `data-kartu="jenis-UMUM"` + opsi filter UMUM +
       centang export UMUM, halaman detail memuat `>UMUM</option>` dan
-      `>IT</option>`, dan logika JS diuji dengan DOM tiruan di Node
-      (`data-value="EI"` + klasifikasi kosong -> EI tetap terpilih; klasifikasi
-      `zpm5` tetap mengunci `Fabrikasi`). Seluruh suite **505 test hijau
-      (2341 assertions)**.
+      `>IT</option>`.
+    - Bukti render/perilaku JS 08/10/2026: DOM laporan uji DEV `/reports/766`
+      (`RPT-20260926-0052`, `work_classification=zpm6`, `jenis_pekerjaan=IT`)
+      dibaca dengan Chrome headless `--dump-dom` -> SEBELUM perbaikan pilihannya
+      hanya `- Pilih -, EI, Mekanik` (IT hilang, tidak ada option terpilih =
+      peramban menampilkan EI), SESUDAH perbaikan menjadi
+      `- Pilih -, EI, Mekanik, IT`. Perilaku pemilihan diuji DUA alat: DOM tiruan
+      Node dan peramban NYATA Chrome headless (halaman probe `file://` yang
+      menyisipkan blok script asli hasil ekstraksi dari halaman DEV) -> A) muat
+      ZPM 6 + IT: opsi `['', 'EI', 'Mekanik', 'IT']` dan nilai terpilih `IT`;
+      B) ganti ke ZPM 3: `['CM/PM']` -> `CM/PM`; B2) ganti ke ZPM 8:
+      `['Project']`; C) klasifikasi dikosongkan: daftar penuh dan `IT` tetap
+      terpilih; D) ZPM 3 dengan jenis lama `Fabrikasi`: `['', 'CM/PM', 'Fabrikasi']`
+      dan `Fabrikasi` tetap terpilih; E) halaman Buat Laporan (klasifikasi kosong)
+      dengan `UMUM`: `UMUM` tetap terpilih. Semua skenario LULUS.
+    - Uji mutasi 08/10/2026 (nyata, dijalankan satu per satu lalu dikembalikan):
+      (a) menghapus `['IT', 'IT']` dari daftar `zpm6` di `_pelengkap.blade.php`
+      membuat 1 test GAGAL; (b) mengembalikan syarat `wc === '' &&` pada penjaga
+      nilai lama membuat 1 test GAGAL. Seluruh suite **507 test hijau
+      (2353 assertions)**.
+    - CATATAN alat: `opt.selected = true` di JavaScript TIDAK muncul sebagai
+      atribut `selected` pada keluaran `chrome --headless=new --dump-dom` (diuji
+      terisolasi: `document.title` bernilai `nilai=IT` membuktikan `select.value`
+      benar, tetapi dump tetap menulis `<option value="IT">IT</option>`). Jadi
+      pembuktian "option terpilih" harus lewat `select.value`/perilaku, JANGAN
+      lewat pencarian atribut `selected` di hasil dump.
 
 30. **Format pesan pengingat ruang panel (BC sensor suhu) diubah (diputuskan
     08/10/2026 atas permintaan user, sudah ada kodenya).** Semua perubahan ada di
