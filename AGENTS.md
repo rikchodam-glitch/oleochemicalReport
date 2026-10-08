@@ -1646,6 +1646,104 @@ Batasan penting lingkungan ini:
       Bagian/Group memuat "Reguler" DAN "Grub". Seluruh suite **493 test hijau
       (2294 assertions)**.
 
+29. **Jenis pekerjaan UMUM pada wizard Telegram + pilihan IT/UMUM di form web
+    (diputuskan 08/10/2026 atas permintaan user, sudah ada kodenya).** Semua
+    perubahan ada di copy DEV `C:\laragon\www\oleochemicalReport`; commit
+    `bc46384` (sudah di `hub/main`).
+    - **Telegram:** keyboard klasifikasi wizard (`buildWorkClassificationPrompt()`)
+      kini punya tombol **`UMUM`** TEPAT SETELAH `ZPM 8 - Project`. Tombol itu
+      SENGAJA tidak memakai kode ZPM: `handleWorkClassificationCallback()`
+      menangani nilai `umum` lebih dulu, mengisi `jenis_pekerjaan = 'UMUM'`
+      sambil membiarkan `work_classification` KOSONG, lalu langsung lanjut ke
+      pencarian equipment (tidak masuk step EI/Mekanik/IT). Jangan menggantinya
+      menjadi kode ZPM baru tanpa instruksi user.
+    - **Form web (mode edit halaman detail + halaman tambah):** pilihan jenis
+      pekerjaan kini memuat **IT** dan **UMUM** (sebelumnya IT tidak ada di form
+      web, sehingga laporan IT hanya bisa dipilih dari wizard Telegram). Di
+      `_pelengkap.blade.php` dan `create.blade.php`, JS `syncJenisPekerjaan()`
+      menambahkan nilai lama yang belum ada di daftar HANYA saat klasifikasi
+      kosong, supaya nilai seperti `EI`/`Sipil` tidak terhapus diam-diam saat
+      laporan disimpan; perilaku klasifikasi ZPM (mengunci satu pilihan) tidak
+      berubah.
+    - **Database & tampilan:** migration
+      `2026_10_08_000001_add_umum_to_reports_jenis_pekerjaan.php` menambah nilai
+      `UMUM` pada ENUM `reports.jenis_pekerjaan` lewat `->change()` (aman untuk
+      MySQL maupun SQLite). Halaman Laporan menambah kartu ringkasan
+      (`$countUmum`), warna badge, pilihan filter, dan kotak centang export;
+      palet grafik `TechnicianKinerjaService::WARNA_JENIS_PEKERJAAN` menambah
+      `UMUM => #0EA5E9`; petunjuk Excel menyebut UMUM; validasi
+      `ReportController` (store + update) menerima `UMUM`.
+    - **Jebakan yang harus diingat:** nilai `reports.jenis_pekerjaan` yang tidak
+      ada di daftar pilihan form akan TERHAPUS saat laporan disimpan (select
+      terkirim kosong) - karena itu penambahan "nilai lama" di JS itu wajib, dan
+      setiap jenis pekerjaan baru berikutnya WAJIB ikut ditambahkan ke keempat
+      daftar: `_pelengkap.blade.php`, `create.blade.php`, filter
+      `reports/index.blade.php`, dan checklist `_popup-export.blade.php`.
+    - Uji: `tests/Feature/ReportUmumWorkTypeTest.php` (6 test). Bukti nyata DEV
+      08/10/2026: ENUM MySQL `oleochemical_dev` berbunyi
+      `enum('CM','dCM','PM','EI','Mekanik','CM/PM','Fabrikasi','Sipil','IT','Project','UMUM')`,
+      halaman `/reports` memuat `data-kartu="jenis-UMUM"` + opsi filter UMUM +
+      centang export UMUM, halaman detail memuat `>UMUM</option>` dan
+      `>IT</option>`, dan logika JS diuji dengan DOM tiruan di Node
+      (`data-value="EI"` + klasifikasi kosong -> EI tetap terpilih; klasifikasi
+      `zpm5` tetap mengunci `Fabrikasi`). Seluruh suite **505 test hijau
+      (2341 assertions)**.
+
+30. **Format pesan pengingat ruang panel (BC sensor suhu) diubah (diputuskan
+    08/10/2026 atas permintaan user, sudah ada kodenya).** Semua perubahan ada di
+    copy DEV `C:\laragon\www\oleochemicalReport`; BELUM naik ke PROD (tunggu
+    `Deploy-Laporan.bat`; TIDAK ada migrasi baru untuk perubahan ini).
+    - Bentuk pesan sekarang (satu blok per ruangan, contoh nyata dari data DEV):
+      ```
+      Halo Erik Khoirul Adam, kondisi terkini Ruang Panel Server (EPE)
+      <b>Suhu Rata-rata: 25,02 C / Kelembapan: 77,91 %</b>
+      Suhu Terkini: 24,00 C / Kelembapan: 70,90 %
+      <b>Kondisi: SUHU NORMAL (berdasarkan suhu rata-rata)</b>
+      Perangkat: offline, pembacaan terakhir 06/10/2026 12:11
+
+      Dashboard lengkap: https://oleomtc.com/panel
+      ```
+      Judul lama ("Pengingat harian ruang panel - Oleochemical Maintenance"),
+      penomoran ruangan, baris "Suhu:", ambang batas di dalam pesan, dan baris
+      "Detail:" per ruangan SUDAH DIHAPUS sesuai format yang diminta user.
+    - **`Suhu Rata-rata` = rata-rata `rata_rata_jam` jam TERAKHIR (bawaan 24
+      jam)** - nilai ini DIPILIH USER saat dikonfirmasi 08/10/2026, jangan
+      diganti tanpa menanyakan lagi. Diatur
+      `config('panel.notifikasi.rata_rata_jam')` (env
+      `PANEL_NOTIFIKASI_RATA_RATA_JAM`). **Lencana kondisi juga dinilai dari suhu
+      RATA-RATA** (bukan pembacaan terakhir) supaya lonjakan sesaat tidak
+      langsung dilaporkan sebagai terlalu panas; `Suhu Terkini` tetap pembacaan
+      paling baru. Ruangan tanpa pembacaan dalam jendela itu memakai tanda `-`
+      dengan kondisi `BELUM ADA DATA` (sengaja TIDAK jatuh ke pembacaan lama
+      supaya data basi tidak tampak seperti kondisi sekarang).
+    - Perhitungan agregatnya ada di method BARU
+      `App\Services\PanelRiwayatService::ringkasRentang(PanelRuangan, sejak,
+      sampai)` (COUNT + AVG suhu/kelembapan, batas rentang memakai objek waktu -
+      lihat Riwayat Insiden #23); `PanelNotifikasiService` menyuntik service itu
+      di konstruktor.
+    - `susunPesan(Technician $teknisi, ?CarbonInterface $sekarang = null)`
+      menerima waktu acuan supaya uji bisa memakai data historis, dan `kirim()`
+      meneruskan `$waktu` ke sana - JANGAN memakai `now()` di dalam
+      `susunPesan()` karena pengingat diuji dengan waktu acuan.
+    - Sapaan ("Halo <nama>, kondisi terkini ...") hanya ditulis pada blok
+      PERTAMA; blok berikutnya berbunyi "Kondisi terkini ..." dan pesan ditutup
+      satu baris "Dashboard lengkap: <APP_URL>/panel". Nama ruangan sekaligus
+      menjadi tautan `<a href="<APP_URL>/panel/ruangan/{id}">` supaya akses
+      per-ruangan yang dulu ada di baris "Detail:" tidak hilang - kalau tautan
+      itu tidak diinginkan, cukup ganti menjadi teks biasa (APP_URL WAJIB
+      absolut; kalau kosong tautannya rusak).
+    - Uji: `tests/Feature/PanelPesanPengingatTest.php` (6 test: format lengkap,
+      kondisi dari rata-rata, jendela 24 jam, ruangan tanpa pembacaan, sapaan
+      sekali untuk banyak ruangan, pengiriman otomatis memakai format baru).
+      Uji mutasi 08/10/2026: (a) mengembalikan kondisi ke `$terakhir?->suhu`
+      membuat 2 test GAGAL; (b) melebarkan jendela menjadi `subYears(10)` membuat
+      2 test GAGAL. Seluruh suite **505 test hijau (2341 assertions)**. Bukti
+      pesan nyata: skrip sementara atas database DEV ruangan id 3 (369 pembacaan)
+      mencetak pesan sesuai format di atas, lalu data ujinya dibersihkan.
+    - CATATAN: penjaga lama `tests/Feature/PanelPengingatTelegramTest.php` tetap
+      hijau karena pembacaan fixture-nya (06/10/2026 07:55) masih berada di dalam
+      jendela 24 jam waktu acuan uji (06/10/2026 08:00/13:30).
+
 
 
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)

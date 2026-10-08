@@ -62,6 +62,10 @@ return [
         // boleh dikirim. Jendela ini membuat pengingat tetap terkirim walau
         // penjadwal sempat mati beberapa menit pada menit yang tepat.
         'jendela_menit' => (int) env('PANEL_NOTIFIKASI_JENDELA_MENIT', 15),
+
+        // Rentang (jam) pembacaan yang dipakai menghitung "Suhu Rata-rata" dan
+        // menentukan lencana kondisi pada pesan pengingat. Bawaan 24 jam terakhir.
+        'rata_rata_jam' => (int) env('PANEL_NOTIFIKASI_RATA_RATA_JAM', 24),
     ],
 
     'tampilan' => [

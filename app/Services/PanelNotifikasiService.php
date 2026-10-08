@@ -30,7 +30,8 @@ class PanelNotifikasiService
     public function __construct(
         protected TelegramService $telegram,
         protected JamKerjaService $jamKerja,
-        protected ShiftPatternService $polaShift
+        protected ShiftPatternService $polaShift,
+        protected PanelRiwayatService $riwayat
     ) {
     }
 
@@ -128,10 +129,26 @@ class PanelNotifikasiService
     /**
      * Susun pesan pengingat kondisi ruangan milik satu teknisi.
      *
-     * @param  Technician  $teknisi  Penanggung jawab penerima pesan
+     * Format pesan (satu blok per ruangan):
+     *
+     *   Halo <nama>, kondisi terkini <ruangan> (<lokasi>)
+     *   Suhu Rata-rata: xx,xx C / Kelembapan: xx,xx %        (tebal)
+     *   Suhu Terkini: xx,xx C / Kelembapan: xx,xx %
+     *   Kondisi: TERLALU PANAS (berdasarkan suhu rata-rata)  (tebal)
+     *   Perangkat: offline, pembacaan terakhir dd/mm/yyyy HH:ii
+     *
+     * Sapaan hanya ditulis pada blok PERTAMA supaya pesan dengan beberapa ruangan
+     * tetap enak dibaca. Angka "Suhu Rata-rata" beserta lencana kondisi dihitung
+     * dari pembacaan `config('panel.notifikasi.rata_rata_jam')` jam terakhir
+     * (bawaan 24 jam), sedangkan "Suhu Terkini" tetap pembacaan paling baru.
+     * Nama ruangan sekaligus menjadi tautan ke halaman detail ruangan, dan pesan
+     * ditutup satu baris tautan dashboard.
+     *
+     * @param  Technician            $teknisi   Penanggung jawab penerima pesan
+     * @param  CarbonInterface|null  $sekarang  Waktu acuan; null berarti waktu sekarang
      * @return array{pesan: string, jumlah: int} Pesan siap kirim dan jumlah ruangan
      */
-    public function susunPesan(Technician $teknisi): array
+    public function susunPesan(Technician $teknisi, ?CarbonInterface $sekarang = null): array
     {
         $ruangan = $teknisi->panelYangDitangani()
             ->with('pembacaanTerakhir')
@@ -142,36 +159,43 @@ class PanelNotifikasiService
             return ['pesan' => '', 'jumlah' => 0];
         }
 
-        $baris = [
-            'Pengingat harian ruang panel - Oleochemical Maintenance',
-            '',
-            'Halo ' . $this->aman($teknisi->name) . ', kondisi terkini '
-                . $ruangan->count() . ' ruangan panel yang menjadi tanggung jawab Anda:',
-            '',
-        ];
-
+        $waktu       = $sekarang ?? now();
         $alamatDasar = rtrim((string) config('app.url'), '/');
+        $sejak       = $waktu->copy()->subHours(max(1, (int) config('panel.notifikasi.rata_rata_jam', 24)));
+
+        $baris = [];
 
         foreach ($ruangan as $nomor => $satu) {
-            $terakhir     = $satu->pembacaanTerakhir;
-            $labelKondisi = match ($satu->kondisiSuhu($terakhir?->suhu)) {
+            $terakhir = $satu->pembacaanTerakhir;
+            $ringkas  = $this->riwayat->ringkasRentang($satu, $sejak, $waktu);
+
+            // Kondisi dinilai dari SUHU RATA-RATA (bukan pembacaan terakhir) agar
+            // lonjakan sesaat tidak langsung dilaporkan sebagai terlalu panas.
+            $labelKondisi = match ($satu->kondisiSuhu($ringkas['suhu'])) {
                 'tinggi' => 'TERLALU PANAS',
                 'rendah' => 'TERLALU DINGIN',
                 'normal' => 'SUHU NORMAL',
                 default  => 'BELUM ADA DATA',
             };
 
-            $baris[] = ($nomor + 1) . '. ' . $this->aman($satu->nama_ruangan)
-                . ' (' . $this->aman($satu->labelLokasi()) . ')';
-            $baris[] = '   Suhu: ' . $this->angka($terakhir?->suhu, ' C')
+            // Nama ruangan sekaligus menjadi tautan ke halaman detailnya.
+            $tautanRuangan = $alamatDasar . '/panel/ruangan/' . $satu->id;
+            $namaRuangan   = '<a href="' . $this->aman($tautanRuangan) . '">'
+                . $this->aman($satu->nama_ruangan) . ' (' . $this->aman($satu->labelLokasi()) . ')</a>';
+
+            $sapaan = $nomor === 0
+                ? 'Halo ' . $this->aman($teknisi->name) . ', kondisi terkini '
+                : 'Kondisi terkini ';
+
+            $baris[] = $sapaan . $namaRuangan;
+            $baris[] = '<b>Suhu Rata-rata: ' . $this->angka($ringkas['suhu'], ' C')
+                . ' / Kelembapan: ' . $this->angka($ringkas['kelembapan'], ' %') . '</b>';
+            $baris[] = 'Suhu Terkini: ' . $this->angka($terakhir?->suhu, ' C')
                 . ' / Kelembapan: ' . $this->angka($terakhir?->kelembapan, ' %');
-            $baris[] = '   Kondisi: ' . $labelKondisi . ' (ambang '
-                . number_format((float) $satu->ambang_suhu_bawah, 0) . ' s/d '
-                . number_format((float) $satu->ambang_suhu_atas, 0) . ' C)';
-            $baris[] = '   Perangkat: ' . ($satu->apakahOnline() ? 'online' : 'offline')
+            $baris[] = '<b>Kondisi: ' . $labelKondisi . ' (berdasarkan suhu rata-rata)</b>';
+            $baris[] = 'Perangkat: ' . ($satu->apakahOnline() ? 'online' : 'offline')
                 . ', pembacaan terakhir '
                 . ($terakhir?->waktu?->format('d/m/Y H:i') ?? 'belum ada');
-            $baris[] = '   Detail: ' . $alamatDasar . '/panel/ruangan/' . $satu->id;
             $baris[] = '';
         }
 
@@ -274,7 +298,7 @@ class PanelNotifikasiService
                 continue;
             }
 
-            $pesan = $this->susunPesan($teknisi);
+            $pesan = $this->susunPesan($teknisi, $waktu);
 
             if ($pesan['jumlah'] === 0) {
                 $ringkasan['dilewati']++;

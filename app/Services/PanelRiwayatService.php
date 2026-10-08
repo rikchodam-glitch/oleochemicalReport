@@ -55,6 +55,38 @@ class PanelRiwayatService
     }
 
     /**
+     * Rata-rata suhu & kelembapan satu ruangan pada satu RENTANG WAKTU.
+     *
+     * Dipakai pengingat harian Telegram: angka "Suhu Rata-rata" beserta penentuan
+     * kondisinya dihitung dari pembacaan `config('panel.notifikasi.rata_rata_jam')`
+     * jam terakhir (bawaan 24 jam), sedangkan "Suhu Terkini" tetap pembacaan
+     * paling baru.
+     *
+     * Batas rentang dikirim sebagai objek waktu (bukan tanggal polos) supaya
+     * perilakunya sama di MySQL maupun SQLite - lihat pelajaran insiden #23.
+     *
+     * @param  PanelRuangan     $ruangan  Ruangan yang dihitung
+     * @param  CarbonInterface  $sejak    Batas awal rentang (inklusif)
+     * @param  CarbonInterface  $sampai   Batas akhir rentang (inklusif)
+     * @return array{suhu: float|null, kelembapan: float|null, jumlah: int} Rata-rata dan jumlah pembacaan
+     */
+    public function ringkasRentang(PanelRuangan $ruangan, CarbonInterface $sejak, CarbonInterface $sampai): array
+    {
+        $rekap = $ruangan->pembacaan()
+            ->whereBetween('waktu', [$sejak, $sampai])
+            ->selectRaw('COUNT(*) as jumlah')
+            ->selectRaw('AVG(suhu) as suhu_rata')
+            ->selectRaw('AVG(kelembapan) as kelembapan_rata')
+            ->first();
+
+        return [
+            'jumlah'     => (int) ($rekap?->jumlah ?? 0),
+            'suhu'       => $rekap?->suhu_rata === null ? null : round((float) $rekap->suhu_rata, 2),
+            'kelembapan' => $rekap?->kelembapan_rata === null ? null : round((float) $rekap->kelembapan_rata, 2),
+        ];
+    }
+
+    /**
      * Total ringkas seluruh baris rekap (dipakai keterangan di atas tabel).
      *
      * @param  array<int, array<string, mixed>>  $harian  Hasil harian()
