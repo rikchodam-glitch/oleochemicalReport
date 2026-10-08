@@ -1522,6 +1522,85 @@ Batasan penting lingkungan ini:
     - Seluruh suite **480 test hijau (2138 assertions)** dan
       `php artisan view:cache` sukses (08/10/2026).
 
+28. **Export laporan profesional: popup rentang tanggal + jenis pekerjaan, Excel
+    tiga lembar, dan CSV berblok judul (diputuskan 08/10/2026 atas permintaan
+    user, sudah ada kodenya).** Semua perubahan ada di copy DEV
+    `C:\laragon\www\oleochemicalReport`; BELUM naik ke PROD (tunggu
+    `Deploy-Laporan.bat`; TIDAK ada migrasi baru).
+    - **Aturan baris (KEPUTUSAN USER, jangan diubah tanpa instruksi):** satu
+      laporan = satu baris. Salinan kolaborasi TIDAK dibuatkan baris sendiri,
+      nama kolaborator cukup dicantumkan pada kolom `Kolaborator`; salinan multi
+      alat juga tidak menjadi baris (`multi_of`). Sama dengan tabel halaman
+      Laporan (lihat keputusan 17).
+    - **Trait BARU** `app\Http\Controllers\Traits\ReportExportTrait.php`
+      (dipakai `ReportController`, bersama `ReportLocationTrait`). Isinya:
+      `exportExcel()` (3 lembar), `exportCsv()`, `ambilLaporanExport()`,
+      `barisExportLaporan()`, `lokasiExportLaporan()`, `kolomExportLaporan()`,
+      `keteranganKolomExport()`, helper label/jam/durasi, dan penulis lembar
+      `tulisSheetRingkasan()` + `tulisSheetPetunjuk()`.
+      Dipakai bersama karena trait dikompilasi ke dalam kelas, jadi ia boleh
+      memanggil method privat `ReportController` (`buildReportQuery`,
+      `resolveGrub`, `resolveTanggal`) — pola yang sama dengan
+      `AssetExportTrait` di `AssetController`.
+    - **Tata letak Excel:** blok judul A1 (teal `FF0E9E8E`) + baris 2-6
+      keterangan (sistem, `Periode:`, `Diekspor:`, `Filter:`, `Jumlah:`),
+      header tabel di **baris 7**, 35 kolom A..AI, border, zebra, autofilter,
+      freeze pane, dan pengaturan cetak landscape (baris 1-7 diulang).
+      Nilai ditulis `setCellValueExplicit` sebagai TEKS (kode alat/nomor
+      equipment tidak boleh berubah). **Jangan memakai `chr(64 + n)` untuk
+      kolom** seperti export asset (15 kolom): di sini kolom melewati Z sehingga
+      WAJIB `Coordinate::stringFromColumnIndex()`.
+    - **Kolom lokasi/alat dibuat eksplisit** (permintaan user "lokasi serta alat
+      yang jelas"): PT, Departemen, Area, Sub Area, Section (Lokasi), Kode Alat,
+      Deskripsi Alat, Equipment No, ditambah kolom `Alat / Lokasi Tambahan`.
+      Sumbernya berurutan `report->functionalLocation` -> `report->asset` ->
+      `report->area` (lewat `Report::area->department->company` bila perlu),
+      semua di-eager-load di `ambilLaporanExport()` supaya tidak N+1.
+    - **Lembar pendukung:** `Ringkasan` (rekap jumlah + durasi + porsi per Jenis
+      Pekerjaan, Status, PT, dan Teknisi, masing-masing dengan baris TOTAL) dan
+      `Petunjuk` (aturan baris data + tabel arti 35 kolom). Dokumentasi inilah
+      bagian "penataan dokumentasi" yang diminta user.
+    - **Popup export** dipisah sebagai partial supaya `reports/index.blade.php`
+      (855 baris setelah perubahan) tidak perlu ditulis ulang:
+      `resources/views/reports/partials/_popup-export.blade.php` (markup,
+      `@push('modals')`) + `_popup-export-script.blade.php` (JavaScript biasa,
+      `@push('scripts')`, mengikuti popup kolaborasi halaman itu — BUKAN
+      Alpine). Isinya: format berkas (Excel/CSV), rentang tanggal + tombol cepat
+      (hari ini, 7 hari, bulan ini, bulan lalu, seluruh data), checkbox
+      `tanpa_batas`, checklist `jenis_pekerjaan_multi[]` (boleh banyak), lalu
+      tampilan/grub, status, tipe, klasifikasi ZPM, area, dan teknisi yang
+      diisi awal dari filter halaman. Tombol "Export Laporan" ditambahkan lewat
+      `insert_line` di `header-actions` (tautan "Export CSV" lama TETAP ada).
+    - **Kunci request khusus export** (halaman Laporan tidak pernah
+      mengirimnya, jadi perilaku halaman utuh): `jenis_pekerjaan_multi[]`
+      (banyak jenis; diterapkan `whereIn` di `ambilLaporanExport()`) dan
+      `tanpa_batas=1` (mengabaikan batas tanggal). Yang terakhir dibaca di
+      `ReportController::buildReportQuery()` — jangan hapus pemeriksaan itu,
+      kalau tidak centang "Seluruh data" tetap tersaring satu hari.
+    - **Rute:** `GET /reports/export/excel` -> `reports.export-excel` (BARU) dan
+      `GET /reports/export/csv` -> `reports.export-csv` (tetap ada; format CSV
+      sekarang berblok judul + BOM dan memuat kolom `Kolaborator` seperti
+      sebelumnya supaya `ReportIndexViewTest` tetap hijau). Dua rute statis itu
+      WAJIB di atas wildcard `{report}` milik `Route::resource`.
+      `ReportController::exportCsv()` yang lama (15 kolom polos) sudah DIHAPUS
+      beserta import `Illuminate\Support\Facades\Response` yang jadi tak
+      terpakai — jangan dihidupkan lagi.
+    - Uji: `tests/Feature/ReportExportTest.php` (9 test, 116 assertions):
+      popup di halaman, blok judul + header baris 7 + 35 kolom, isi kolom lokasi
+      alat/PT/section, kolaborasi tidak jadi baris (nama tetap di kolomnya),
+      filter rentang tanggal, `jenis_pekerjaan_multi` (satu & dua nilai),
+      `tanpa_batas`, CSV (BOM + blok judul), lembar Ringkasan/Petunjuk, dan
+      export mengikuti filter `search`/`area_id`.
+    - Jebakan yang sudah kena sekali: `Font::setColor()` butuh argumen —
+      rantai gaya WAJIB `->getFont()->setBold(true)->getColor()->setARGB(...)`
+      (sempat tertulis `setColor()` sehingga seluruh export Excel berbalas 500
+      dan gejalanya hanya "Expected response status code [200] but received
+      500").
+    - Verifikasi 08/10/2026: seluruh suite **489 test hijau (2254 assertions)**,
+      `php artisan view:cache` sukses, dan blok `<script>` partial export lolos
+      `node --check` (echo blade diganti `0` lebih dulu).
+
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file
