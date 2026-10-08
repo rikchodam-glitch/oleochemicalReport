@@ -104,6 +104,23 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
     di copy PROD tidak ditemukan, pintasan berhenti dengan pesan jelas.
     `Pasang-Token-Tunnel.bat` bersifat INTERAKTIF (Read-Host untuk menempel
     token tunnel baru), jadi JANGAN dijalankan lewat pipe/tanpa manusia.
+  - **Salinan LANGSUNG di Desktop (diminta user, 08/10/2026):** selain peluncur
+    di atas, ada dua SALINAN APA ADANYA dari berkas copy DEV, yaitu
+    `C:\Users\sapusr\Desktop\start-report.bat` dan
+    `C:\Users\sapusr\Desktop\stop-report.bat` (byte-identik dengan DEV; dibuktikan
+    `Get-FileHash` SHA256 sama dan CRLF utuh: start 174 / stop 161, LF-saja 0).
+    Gunanya: versi TERBARU (pra-syarat + opsi `paksa` + opsi `tunnel`) bisa
+    diklik dari Desktop tanpa menunggu `Deploy-Laporan.bat`. Keduanya tetap
+    bekerja pada copy PROD karena jalur di dalam berkasnya ABSOLUT
+    (`set "PROD=C:\laragon\www\oleochemicalReport-prod"`) dan TIDAK memakai
+    `%~dp0`, jadi aman dijalankan dari Desktop.
+    Konsekuensinya: salinan itu TIDAK ikut berubah saat berkas DEV/PROD
+    diperbarui, jadi setiap kali `start-report.bat`/`stop-report.bat` diubah,
+    SALIN ULANG
+    (`Copy-Item -LiteralPath C:\laragon\www\oleochemicalReport\<berkas> -Destination C:\Users\sapusr\Desktop -Force`)
+    lalu pastikan hash/akhiran barisnya tetap sama. Uji aman TANPA menyalakan
+    atau mematikan service: `start-report.bat uji nopause` dan
+    `stop-report.bat uji nopause`.
   - Memeriksa status service TANPA mengubah apa pun: klik
     `Cek-Status-Laporan.bat`, atau
     `powershell -NoProfile -ExecutionPolicy Bypass -File tools\cek-status-prod.ps1`
