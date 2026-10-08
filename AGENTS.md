@@ -2219,10 +2219,15 @@ Batasan penting lingkungan ini:
     ketujuh berkas `.bat` itu.
     Dampak ke PROD: baru terpasang sesudah `Deploy-Laporan.bat` dijalankan
     manusia, dan SESUDAH deploy WAJIB diperiksa ULANG dengan menghitung byte
-    berkas PROD (LF-saja harus 0), karena `.gitattributes` baru dibaca git
-    pada checkout yang sama. Perintah periksa (PowerShell, hanya membaca):
+    KEDUA berkas PROD (LF-saja harus 0), karena `.gitattributes` baru dibaca
+    git pada checkout yang sama. Perintah periksa (PowerShell, hanya membaca):
     `[IO.File]::ReadAllBytes('C:\laragon\www\oleochemicalReport-prod\start-report.bat')`
-    lalu hitung pasangan byte 13+10; hasil benar = CRLF 174 dan 0 LF-saja.
+    lalu hitung pasangan byte 13+10; hasil benar = `start-report.bat` CRLF 174 /
+    LF-saja 0 dan `stop-report.bat` CRLF 161 / LF-saja 0. Simulasi checkout
+    pada clone bersih 08/10/2026 sudah membuktikan angka itu (sebelum: CRLF 0 /
+    LF 38 dan 31; sesudah: 174/0 dan 161/0, working tree bersih, dan berkas
+    hasil checkout DIJALANKAN tanpa galat label), jadi kalau hasil di PROD
+    berbeda berarti `.gitattributes` belum ikut ter-pull.
     Uji 08/10/2026 (empat skenario, memakai SALINAN berkas dengan `PROD`
     dialihkan ke `%TEMP%\uji-prod` + stub `cek-pra-syarat-prod.ps1` yang
     dipilih lewat variabel `SKENARIO`, jadi TIDAK ada service yang disentuh):
