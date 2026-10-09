@@ -3033,10 +3033,42 @@ baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
 - **Hak akses**: modul memakai pola `sparepart.*` di `config/akses.php`; unggah
   berkas dan pengelolaan daftar pantau adalah aksi TULIS sehingga hanya akun
   `admin` (mode hanya baca middleware) yang bisa menjalankannya.
+- **Berkas export disamakan dengan dashboard lama (diputuskan user 09/10/2026,
+  sudah ada kodenya; commit `6fb27fb` + `fdef226`; BELUM naik ke PROD)**: isi
+  berkas EXPORT dibuat setara sheet "Data Lengkap" pada
+  `Integrasi_PR_PO_SparePart.xlsx` TANPA mengubah database maupun halaman web.
+  - **Satuan** HANYA diambil dari kolom `UN` laporan stok gudang (G001); kolom
+    `sp_pantau.uom` TIDAK lagi dipakai sebagai cadangan
+    (`SparepartExportTrait::nilaiBaris()`), jadi material di luar G001
+    bersatuan KOSONG seperti sel legacy-nya. Bukti 09/10/2026: 449/449 cocok,
+    0 beda, 39 sel kosong di kedua berkas (sebelumnya `30004876` berisi "Pcs"
+    dari UOM daftar pantau).
+  - **Stok Tersedia pada BERKAS ditulis `0`** bila material tidak punya baris
+    G001 (`m_g_baris` = 0 dan nilainya NULL) mengikuti rumus dashboard lama.
+    `sp_material.stok_tersedia` TETAP NULL dan halaman web tetap menampilkan
+    tanda hubung (`font-medium text-slate-800">-</td>`), jadi berkas export
+    dan tabel keadaan memang sengaja berbeda pada kolom itu (kolom I berkas =
+    `0`, HTML = `-`, DB = NULL, ketiganya diperiksa test baru).
+  - **Kolom tambahan** supaya setara legacy: `Requisitioner`, `Jml PO`,
+    `Semua No PO`, `Purchaser PO Terakhir`, `Vendor PO Terakhir` (`HEADER_SP`
+    bertambah dan `KOLOM_TEKS_SP` kini `[1, 12, 18, 19, 20, 28, 33]` karena
+    `Semua No PO` juga nomor dokumen yang wajib teks). Kolom MRP (Stock by SAP,
+    Safety Stock, Stok Min MRP, Max Stock, Min vs MRP) BELUM ada karena berkas
+    EXPORT MRP belum pernah diimport ke modul.
+  - **Pembaca satuan ikut diperbaiki** (`SparepartReader::JUDUL_STOK_OPSIONAL
+    = ['UN']`): kolom UN tidak wajib ada, tetapi wajib dipetakan bila ada.
+    Sebelumnya `$kolom['UN'] ?? 0` membuat pembacaan jatuh ke kolom 0
+    (`S. Loc`) sehingga satuan berisi kode LOKASI (tertangkap lewat test, bukan
+    dari peninjauan kode).
+  - Bukti paritas 09/10/2026 di DEV (berkas export dibandingkan berkas legacy):
+    `Stok Min` 449/449 cocok, `Stok Tersedia` 449/449 cocok, `Sisa G001`
+    449/449 cocok, `Satuan` 449/449 cocok (0 beda, 39 kosong di kedua berkas).
+    Skrip pembanding sementara sudah dihapus lagi setelah dipakai.
 - **Uji**: `tests/Feature/SparepartImportTest.php` (9 test) dan
-  `tests/Feature/SparepartPantauHalamanTest.php` (10 test); fixture bersama di
+  `tests/Feature/SparepartPantauHalamanTest.php` (10 test, termasuk penjaga
+  paritas Satuan/Stok Tersedia berkas export); fixture bersama di
   `tests/Pest.php` (`spUjiBerkas()`, `spUjiXlsx()`, `spUjiFolder()`). Seluruh
-  suite **526 test hijau (2.468 assertions)** dan `php artisan view:cache`
+  suite **527 test hijau (2.481 assertions)** dan `php artisan view:cache`
   sukses. Verifikasi nyata DEV: `/sparepart`, `/sparepart/impor`,
   `/sparepart/pantau`, `/sparepart/riwayat`, `/sparepart/export` semua 200;
   `/sparepart?status=reorder` memuat 50 baris (seluruhnya berlabel REORDER).
