@@ -32,6 +32,20 @@ class SparepartReader
     /** Judul kolom wajib pada lembar rekap stok gudang (G001). */
     public const JUDUL_STOK = ['S. Loc', 'Kode', 'Nama Item', 'Stok Awal'];
 
+    /**
+     * Judul kolom pendukung lembar G001 (boleh tidak ada).
+     *
+     * "UN" adalah kolom satuan (PCS, SET, L, ...). Kolom ini TIDAK dijadikan
+     * wajib supaya laporan stok versi lama tanpa kolom satuan tetap bisa
+     * diimpor, tetapi WAJIB dipetakan bila ada: sebelumnya kolom ini tidak
+     * ikut dipetakan sehingga pembacaan satuan jatuh ke indeks kolom 0
+     * (kolom "S. Loc") dan satuan tiap material berisi kode lokasi
+     * (dibuktikan 09/10/2026: g_satuan == g_lokasi untuk semua baris uji).
+     * Kecocokan kolom "UN" dengan kolom Satuan dashboard lama sudah
+     * diverifikasi: 410 baris sama, 0 beda.
+     */
+    public const JUDUL_STOK_OPSIONAL = ['UN'];
+
     /** Judul kolom wajib pada lembar barang masuk. */
     public const JUDUL_MASUK = ['Kode', 'Qty'];
 
@@ -129,7 +143,7 @@ class SparepartReader
         $judul = [];
 
         try {
-            $kolG001 = $this->petaKolomWajib($buku, $g001, self::JUDUL_STOK, $path, $judul);
+            $kolG001 = $this->petaKolomWajib($buku, $g001, self::JUDUL_STOK, $path, $judul, self::JUDUL_STOK_OPSIONAL);
             $kolMas  = $this->petaKolomWajib($buku, $masukLm, self::JUDUL_MASUK, $path, $judul);
             $kolKel  = $this->petaKolomWajib($buku, $keluarLm, self::JUDUL_KELUAR, $path, $judul);
 
@@ -441,6 +455,7 @@ class SparepartReader
      * @param  array<int, string> $wajib  Judul kolom yang wajib ada
      * @param  string             $path   Path berkas (untuk pesan galat)
      * @param  array<string, mixed> $judul Penampung judul per lembar
+     * @param  array<int, string> $opsional Judul kolom yang boleh tidak ada
      * @return array<string, int>         Peta judul kolom => indeks kolom
      *
      * @throws SparepartFormatException Bila judul wajib tidak ditemukan
@@ -450,12 +465,13 @@ class SparepartReader
         string $lembar,
         array $wajib,
         string $path,
-        array &$judul
+        array &$judul,
+        array $opsional = []
     ): array {
         $rows  = $this->barisLembar($buku, $lembar);
         $lokal = [];
 
-        [$barisJudul, $kolom] = $this->cariJudul($rows, $wajib, [], basename($path), $lokal);
+        [$barisJudul, $kolom] = $this->cariJudul($rows, $wajib, $opsional, basename($path), $lokal);
 
         $judul[$lembar] = $lokal;
         $kolom['__judul'] = $barisJudul;
@@ -629,8 +645,12 @@ class SparepartReader
                 $g['nama_item'] = mb_substr(self::teks($rows[$i][$kolom['Nama Item'] ?? 0] ?? ''), 0, 255);
             }
 
-            $sloc   = self::teks($rows[$i][$kolom['S. Loc'] ?? 0] ?? '');
-            $satuan = self::teks($rows[$i][$kolom['UN'] ?? 0] ?? '');
+            $sloc = self::teks($rows[$i][$kolom['S. Loc'] ?? 0] ?? '');
+
+            // Satuan dibaca lewat sel() supaya kolom "UN" yang TIDAK ada di
+            // berkas menghasilkan string kosong, bukan nilai kolom lain
+            // (lihat catatan JUDUL_STOK_OPSIONAL).
+            $satuan = self::teks($this->sel($rows[$i], $kolom, 'UN') ?? '');
 
             if ($sloc !== '' && ! in_array($sloc, $g['sloc'], true)) {
                 $g['sloc'][] = $sloc;
