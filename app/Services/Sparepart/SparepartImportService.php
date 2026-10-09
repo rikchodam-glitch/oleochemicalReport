@@ -2,319 +2,439 @@
 
 namespace App\Services\Sparepart;
 
-use App\Models\SpBatch;
-use App\Models\SpG001;
-use App\Models\SpIntegrasi;
-use App\Models\SpMonitoring;
-use App\Models\SpMrp;
-use App\Models\SpPo;
-use App\Models\SpPr;
-use App\Services\Sparepart\Concerns\SparepartPenyimpananTrait;
+use App\Models\SpImpor;
+use App\Models\SpMaterial;
+use App\Models\SpPantau;
+use App\Services\Sparepart\Concerns\SparepartHitungTrait;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
 
 /**
- * Mengisi tabel integrasi PR/PO Spare Part dari lima berkas sumber.
+ * Import berkas Integrasi PR/PO Spare Part.
  *
- * Berkas sumber memakai nama tetap, mengikuti proses lama pada folder periode:
- * 1. SparePart_Monitoring.csv - monitoring stok minimum per material,
- * 2. G001_clean.csv           - stok gudang per material/SLoc,
- * 3. EXPORT PR.XLSX           - permintaan pembelian (SAP ME5A),
- * 4. EXPORT PO.XLSX           - pesanan pembelian (SAP ME2M),
- * 5. EXPORT MRP.XLSX          - nilai MRP (SAP MD07).
+ * Alur satu kali import:
+ * 1. baca berkas yang diunggah (format dikunci SparepartReader; berkas salah
+ *    format membatalkan import SEBELUM ada baris database yang ditulis),
+ * 2. upsert keadaan per kode material pada tabel sp_material (hanya kode yang
+ *    ada di daftar pantau),
+ * 3. hitung ulang status REORDER dan kolom aksi,
+ * 4. simpan analisa import pada tabel sp_impor.
  *
- * Urutan kerja satu batch: baca berkas, simpan baris mentah ke tabel sp_*,
- * hitung baris hasil per material (sp_integrasi), lalu tutup batch. Batch
- * dengan periode yang sama selalu diganti lebih dulu, sehingga import ulang
- * pada periode yang sama bersifat idempoten (tidak pernah berbaris ganda).
+ * Berkas boleh sebagian: bagian yang tidak diunggah memakai nilai terakhir
+ * yang tersimpan, sehingga update mingguan cukup mengunggah berkas yang
+ * berubah.
  */
 class SparepartImportService
 {
-    use SparepartPenyimpananTrait;
+    use SparepartHitungTrait;
 
-    public const BERKAS_MONITORING = 'SparePart_Monitoring.csv';
+    /** Kunci berkas sumber laporan stok gudang. */
+    public const SUMBER_STOK = 'stok';
 
-    public const BERKAS_G001 = 'G001_clean.csv';
+    /** Kunci berkas sumber EXPORT PR (SAP ME5A). */
+    public const SUMBER_PR = 'pr';
 
-    public const BERKAS_PR = 'EXPORT PR.XLSX';
+    /** Kunci berkas sumber EXPORT PO (SAP ME2M). */
+    public const SUMBER_PO = 'po';
 
-    public const BERKAS_PO = 'EXPORT PO.XLSX';
+    /**
+     * Kolom tabel sp_material yang disalin dari baris lama bila berkas
+     * sumbernya TIDAK ikut diunggah pada import ini.
+     */
+    private const BLOK_STOK = [
+        'stok_tersedia', 'g_baris', 'g_awal', 'g_masuk', 'g_keluar', 'g_sisa', 'g_satuan', 'g_lokasi',
+    ];
 
-    public const BERKAS_MRP = 'EXPORT MRP.XLSX';
+    private const BLOK_PR = [
+        'pr_no', 'pr_status_aksi', 'pr_status', 'pr_qty', 'pr_line', 'pr_terbuka', 'pr_nums', 'req_list',
+    ];
 
-    /** Jumlah baris untuk setiap satu perintah insert. */
-    private const UKURAN_SISIP = 500;
+    private const BLOK_PO = [
+        'po_no', 'po_sisa', 'po_line', 'po_uniq', 'po_closed', 'po_open', 'po_sisa_total',
+        'po_tanggal', 'po_tanggal_teks', 'po_nums', 'purch', 'vendor', 'po_prev', 'vendor_prev',
+        'purch_last', 'vendor_last',
+    ];
 
-    /** Toleransi pembanding stok minimum monitoring dengan Reorder Pt MRP. */
-    private const TOLERANSI_MIN = 0.001;
-
-    /** Panjang maksimal nilai teks pada tabel hasil (mengikuti kolom database). */
-    private const BATAS_DESKRIPSI = 255;
-
-    private const BATAS_PENANDA = 100;
-
-    private const BATAS_PR_STATUS = 120;
-
-    private const BATAS_PURCH = 60;
-
-    private const BATAS_LOKASI = 255;
-
-    private const BATAS_SATUAN = 40;
-
-    private const BATAS_NO_DOKUMEN = 40;
-
-    private const BATAS_KET = 120;
-
+    /**
+     * @param  SparepartReader $pembaca Pembaca berkas sumber
+     */
     public function __construct(private SparepartReader $pembaca)
     {
     }
 
     /**
-     * Menjalankan satu kali import untuk satu periode.
+     * Menjalankan satu kali import.
      *
-     * @param  string   $folder  Folder periode berisi berkas sumber
-     * @param  string   $periode Label periode (mis. "07 Okt 26")
-     * @param  int|null $oleh    Id pengguna yang menjalankan import
-     * @return SpBatch Batch hasil import yang sudah berstatus selesai
+     * @param  array<string, string|null> $berkas Path berkas per kunci sumber (boleh sebagian)
+     * @param  int|null                   $oleh   Id pengguna yang menjalankan import
+     * @param  string|null                $label  Catatan label import
+     * @return SpImpor                            Riwayat import yang sudah selesai
      *
-     * @throws RuntimeException Bila folder atau salah satu berkas sumber tidak ada
+     * @throws RuntimeException Bila tidak ada berkas yang bisa dibaca
      */
-    public function import(string $folder, string $periode, ?int $oleh = null): SpBatch
+    public function import(array $berkas, ?int $oleh = null, ?string $label = null): SpImpor
     {
-        $berkas = $this->berkasWajib($folder);
+        $dipakai = [];
 
-        $this->bersihkanBatchLama($periode);
+        foreach ([self::SUMBER_STOK, self::SUMBER_PR, self::SUMBER_PO] as $kunci) {
+            $path = $berkas[$kunci] ?? null;
 
-        $batch = SpBatch::create([
-            'periode' => $periode,
-            'folder'  => $folder,
-            'status'  => 'proses',
-            'oleh'    => $oleh,
+            if (is_string($path) && $path !== '' && is_file($path)) {
+                $dipakai[$kunci] = $path;
+            }
+        }
+
+        if ($dipakai === []) {
+            throw new RuntimeException('Tidak ada berkas yang bisa dibaca. Pilih minimal satu berkas sumber.');
+        }
+
+        $baca  = $this->baca($dipakai);
+        $impor = SpImpor::create([
+            'label'  => $label,
+            'status' => SpImpor::STATUS_PROSES,
+            'oleh'   => $oleh,
         ]);
 
         try {
-            $ringkasan = DB::transaction(fn (): array => $this->jalankan($batch, $berkas));
+            $hasil = DB::transaction(fn (): array => $this->jalankan($baca));
         } catch (Throwable $e) {
-            $batch->update([
-                'status' => 'gagal',
+            $impor->update([
+                'status' => SpImpor::STATUS_GAGAL,
                 'pesan'  => mb_substr($e->getMessage(), 0, 500),
             ]);
 
             throw $e;
         }
 
-        $batch->update([
-            'status'            => 'selesai',
-            'ringkasan'         => $ringkasan,
-            'jumlah_monitoring' => $ringkasan['jumlah']['monitoring'],
-            'jumlah_g001'       => $ringkasan['jumlah']['g001'],
-            'jumlah_pr'         => $ringkasan['jumlah']['pr'],
-            'jumlah_po'         => $ringkasan['jumlah']['po'],
-            'jumlah_mrp'        => $ringkasan['jumlah']['mrp'],
-            'jumlah_hasil'      => $ringkasan['jumlah']['hasil'],
-            'selesai_at'        => Carbon::now(),
+        $analisa = $hasil['analisa'];
+
+        $impor->update([
+            'berkas'         => $analisa['sumber'],
+            'analisa'        => $analisa,
+            'status'         => SpImpor::STATUS_SELESAI,
+            'jumlah_pantau'  => (int) ($analisa['pantau']['total'] ?? 0),
+            'jumlah_stok'    => (int) ($analisa['sumber'][self::SUMBER_STOK]['baris'] ?? 0),
+            'jumlah_pr'      => (int) ($analisa['sumber'][self::SUMBER_PR]['baris'] ?? 0),
+            'jumlah_po'      => (int) ($analisa['sumber'][self::SUMBER_PO]['baris'] ?? 0),
+            'jumlah_keadaan' => (int) ($analisa['keadaan']['baru'] ?? 0) + (int) ($analisa['keadaan']['diperbarui'] ?? 0),
+            'selesai_at'     => Carbon::now(),
         ]);
 
-        return $batch->refresh();
+        return $impor->refresh();
     }
 
     /**
-     * Mencari kelima berkas sumber pada folder periode.
+     * Membaca seluruh berkas yang diunggah memakai pembaca berbasis format.
      *
-     * Berkas PR/PO/MRP boleh berada di folder lain (folder "sumber") selama
-     * masih bersebelahan dengan folder periode, sesuai kebiasaan folder lama.
-     *
-     * @param  string $folder Folder periode
-     * @return array<string, string> Path berkas per kunci (monitoring, g001, pr, po, mrp)
-     *
-     * @throws RuntimeException Bila folder atau salah satu berkas tidak ada
+     * @param  array<string, string> $dipakai Path berkas per kunci sumber
+     * @return array<string, array<string, mixed>> Hasil baca per kunci sumber
      */
-    public function berkasWajib(string $folder): array
+    private function baca(array $dipakai): array
     {
-        if (! is_dir($folder)) {
-            throw new RuntimeException('Folder periode tidak ditemukan: ' . $folder);
+        $baca = [];
+
+        foreach ($dipakai as $kunci => $path) {
+            $baca[$kunci] = match ($kunci) {
+                self::SUMBER_STOK => $this->pembaca->bacaStok($path),
+                self::SUMBER_PR   => $this->pembaca->bacaPr($path),
+                self::SUMBER_PO   => $this->pembaca->bacaPo($path),
+            };
+
+            $baca[$kunci]['nama'] = basename($path);
         }
 
-        $folder = rtrim(str_replace('\\', '/', $folder), '/');
-        $sumber = $this->folderSumber($folder);
-
-        $kandidat = [
-            'monitoring' => [$folder . '/_monitoring/' . self::BERKAS_MONITORING, $folder . '/' . self::BERKAS_MONITORING],
-            'g001'       => [$folder . '/' . self::BERKAS_G001],
-            'pr'         => [$folder . '/' . self::BERKAS_PR, $sumber . '/' . self::BERKAS_PR],
-            'po'         => [$folder . '/' . self::BERKAS_PO, $sumber . '/' . self::BERKAS_PO],
-            'mrp'        => [$folder . '/' . self::BERKAS_MRP, $sumber . '/' . self::BERKAS_MRP],
-        ];
-
-        $hasil = [];
-        $hilang = [];
-
-        foreach ($kandidat as $kunci => $pilihan) {
-            $ketemu = '';
-
-            foreach ($pilihan as $path) {
-                if (is_file($path)) {
-                    $ketemu = $path;
-                    break;
-                }
-            }
-
-            if ($ketemu === '') {
-                $hilang[] = basename($pilihan[0]);
-                continue;
-            }
-
-            $hasil[$kunci] = $ketemu;
-        }
-
-        if ($hilang !== []) {
-            throw new RuntimeException('Berkas sumber belum lengkap di folder ' . $folder
-                . ': ' . implode(', ', array_unique($hilang)));
-        }
-
-        return $hasil;
+        return $baca;
     }
 
     /**
-     * Menentukan folder sumber berkas PR/PO/MRP.
+     * Inti import: upsert keadaan material dan menyusun analisa.
      *
-     * Bila folder periode sendiri sudah memuat EXPORT PR.XLSX, folder itulah
-     * yang dipakai. Bila belum, folder bersebelahan yang memuat berkas itu
-     * dipakai (yang paling baru diubah), supaya berkas tidak perlu dipindahkan.
-     *
-     * @param  string $folder Folder periode (sudah memakai pemisah "/")
-     * @return string Folder sumber
+     * @param  array<string, array<string, mixed>> $baca Hasil baca berkas per kunci sumber
+     * @return array<string, mixed>                      Analisa hasil import
      */
-    private function folderSumber(string $folder): string
-    {
-        if (is_file($folder . '/' . self::BERKAS_PR)) {
-            return $folder;
-        }
-
-        $kandidat = [];
-
-        foreach ((array) glob(dirname($folder) . '/*', GLOB_ONLYDIR) as $tetangga) {
-            $tetangga = str_replace('\\', '/', (string) $tetangga);
-
-            if ($tetangga === $folder || ! is_file($tetangga . '/' . self::BERKAS_PR)) {
-                continue;
-            }
-
-            $kandidat[$tetangga] = (int) filemtime($tetangga . '/' . self::BERKAS_PR);
-        }
-
-        if ($kandidat === []) {
-            return $folder;
-        }
-
-        arsort($kandidat);
-
-        return (string) array_key_first($kandidat);
-    }
-
-    /**
-     * Menghapus batch lama dengan periode yang sama beserta seluruh isinya.
-     *
-     * Baris mentah dan baris hasil ikut terhapus lewat aturan cascade pada
-     * foreign key, jadi cukup menghapus baris batch-nya.
-     *
-     * @param  string $periode Label periode
-     * @return void
-     */
-    private function bersihkanBatchLama(string $periode): void
-    {
-        SpBatch::where('periode', $periode)->get()->each(
-            fn (SpBatch $lama) => $lama->delete()
-        );
-    }
-
-    /**
-     * Membaca kelima berkas, menyimpan baris mentah, lalu menghitung hasil.
-     *
-     * @param  SpBatch               $batch  Batch yang sedang diisi
-     * @param  array<string, string> $berkas Path berkas sumber
-     * @return array<string, mixed> Ringkasan hasil import
-     */
-    private function jalankan(SpBatch $batch, array $berkas): array
+    private function jalankan(array $baca): array
     {
         $kini = Carbon::now();
 
-        $monitoring = $this->pembaca->bacaMonitoring($berkas['monitoring']);
-        $g001 = $this->pembaca->bacaG001($berkas['g001']);
-        $pr = $this->pembaca->bacaPr($berkas['pr']);
-        $po = $this->pembaca->bacaPo($berkas['po']);
-        $mrp = $this->pembaca->bacaMrp($berkas['mrp']);
+        $pantau = SpPantau::query()->where('aktif', true)->get()->keyBy('kode_material');
+        $lama   = SpMaterial::query()->get()->keyBy('kode_material');
 
-        $this->simpanMonitoring($batch->id, $monitoring['data'], $kini);
-        $this->simpanG001($batch->id, $g001['data'], $kini);
-        $this->simpanPr($batch->id, $pr['data'], $kini);
-        $this->simpanPo($batch->id, $po['data'], $kini);
-        $this->simpanMrp($batch->id, $mrp['data'], $kini);
+        $adaStok = array_key_exists(self::SUMBER_STOK, $baca);
+        $adaPr   = array_key_exists(self::SUMBER_PR, $baca);
+        $adaPo   = array_key_exists(self::SUMBER_PO, $baca);
 
-        $hitung = $this->hitungIntegrasi(
-            $monitoring['data'],
-            $g001['data'],
-            $pr['data'],
-            $po['data'],
-            $mrp['data']
-        );
+        $stok = $adaStok ? (array) $baca[self::SUMBER_STOK]['data'] : [];
+        $pr   = $adaPr ? (array) $baca[self::SUMBER_PR]['data'] : [];
+        $po   = $adaPo ? (array) $baca[self::SUMBER_PO]['data'] : [];
 
-        $this->simpanIntegrasi($batch->id, $hitung['baris'], $kini);
+        $kodePantau = $pantau->keys()->all();
 
-        return [
-            'jumlah'   => [
-                'monitoring' => $monitoring['baris'],
-                'g001'       => $g001['baris'],
-                'pr'         => $pr['baris'],
-                'po'         => $po['baris'],
-                'mrp'        => $mrp['baris'],
-                'hasil'      => count($hitung['baris']),
+        $analisa = [
+            'sumber'      => $this->analisaSumber($baca),
+            'pantau'      => [
+                'total'              => $pantau->count(),
+                'bercatatan_stok'    => $adaStok ? count(array_intersect(array_keys($stok), $kodePantau)) : null,
+                'tanpa_catatan_stok' => $adaStok
+                    ? $pantau->count() - count(array_intersect(array_keys($stok), $kodePantau))
+                    : null,
             ],
-            'aksi'     => $hitung['aksi'],
-            'stok'     => $hitung['stok'],
-            'min'      => $hitung['min'],
-            'material' => [
-                'pr'        => count($pr['data']),
-                'po'        => count($po['data']),
-                'mrp'       => count($mrp['data']),
-                'pr_irisan' => $hitung['pr_irisan'],
-                'po_irisan' => $hitung['po_irisan'],
-            ],
+            'luar_pantau' => [],
+            'keadaan'     => ['baru' => 0, 'diperbarui' => 0, 'tetap' => 0],
+            'status'      => ['reorder' => 0, 'aman' => 0, 'belum_dinilai' => 0, 'naik_reorder' => [], 'turun_aman' => []],
+            'aksi'        => [],
+            'catatan'     => [],
         ];
-    }
 
-    /**
-     * Menyimpan baris mentah monitoring stok ke tabel sp_monitoring.
-     *
-     * @param  int                                  $batchId Id batch
-     * @param  array<string, array<string, mixed>>  $data    Data hasil baca
-     * @param  Carbon                               $kini    Cap waktu baris
-     * @return void
-     */
-    private function simpanMonitoring(int $batchId, array $data, Carbon $kini): void
-    {
-        if ($data === []) {
-            return;
+        foreach (SpMaterial::AKSI as $nilai) {
+            $analisa['aksi'][$nilai] = 0;
         }
 
-        $baris = [];
+        foreach ([self::SUMBER_STOK => $stok, self::SUMBER_PR => $pr, self::SUMBER_PO => $po] as $sumber => $data) {
+            if (! array_key_exists($sumber, $baca)) {
+                continue;
+            }
 
-        foreach ($data as $item) {
-            $baris[] = [
-                'batch_id'      => $batchId,
-                'kode_material' => $item['kode_material'],
-                'deskripsi'     => $this->potong($item['deskripsi'], self::BATAS_DESKRIPSI),
-                'stok_min'      => $this->angkaAtau($item['stok_min']),
-                'stok_tersedia' => $this->angkaAtau($item['stok_tersedia']),
-                'reorder'       => $item['reorder'] ? 1 : 0,
-                'penanda'       => $this->potong($item['penanda'], self::BATAS_PENANDA),
-                'created_at'    => $kini,
-                'updated_at'    => $kini,
+            $luar = array_values(array_map(
+                fn (mixed $k): string => (string) $k,
+                array_diff(array_keys($data), $kodePantau)
+            ));
+
+            if ($luar !== []) {
+                $analisa['catatan'][] = count($luar) . ' material pada berkas ' . $sumber
+                    . ' tidak ada di daftar pantau sehingga tidak ikut dihitung.';
+            }
+
+            $analisa['luar_pantau'][$sumber] = [
+                'jumlah' => count($luar),
+                'contoh' => array_slice($luar, 0, 20),
             ];
         }
 
-        $this->sisip('sp_monitoring', $baris);
+        $tulis = [];
+
+        foreach ($pantau as $kode => $barisPantau) {
+            $sebelum = $lama->get($kode);
+
+            $payload = $this->keadaanPantau(
+                (string) $kode,
+                $barisPantau,
+                $sebelum,
+                $adaStok ? ($stok[$kode] ?? null) : null,
+                $adaStok,
+                $adaPr ? (array) ($pr[$kode] ?? []) : [],
+                $adaPr,
+                $adaPo ? (array) ($po[$kode] ?? []) : [],
+                $adaPo,
+                $kini
+            );
+
+            $this->catatPerubahan($analisa, $payload, $sebelum);
+
+            $tulis[] = $payload;
+        }
+
+        if ($tulis !== []) {
+            SpMaterial::upsert(
+                $tulis,
+                ['kode_material'],
+                array_values(array_diff(array_keys($tulis[0]), ['kode_material', 'created_at']))
+            );
+        }
+
+        return ['analisa' => $analisa];
+    }
+
+    /**
+     * Menyusun nilai satu baris sp_material untuk satu kode pantau.
+     *
+     * Bagian berkas yang TIDAK diunggah pada import ini disalin dari baris
+     * lama (nilai terakhir), lalu penanda, status reorder, kolom aksi, dan
+     * keterangan dihitung ulang dari gabungan sumber yang sudah lengkap.
+     *
+     * @param  string                           $kode      Kode material
+     * @param  SpPantau                         $pantau    Baris daftar pantau material
+     * @param  SpMaterial|null                  $sebelum   Keadaan sebelumnya (null bila material baru)
+     * @param  array<string, mixed>|null        $g         Ringkasan stok gudang material
+     * @param  bool                             $adaStok   Apakah berkas stok gudang diunggah
+     * @param  array<int, array<string, mixed>> $prBaris   Baris PR material
+     * @param  bool                             $adaPr     Apakah berkas PR diunggah
+     * @param  array<int, array<string, mixed>> $poBaris   Baris PO material
+     * @param  bool                             $adaPo     Apakah berkas PO diunggah
+     * @param  Carbon                           $kini      Cap waktu import
+     * @return array<string, mixed>                        Baris siap upsert
+     */
+    private function keadaanPantau(
+        string $kode,
+        SpPantau $pantau,
+        ?SpMaterial $sebelum,
+        ?array $g,
+        bool $adaStok,
+        array $prBaris,
+        bool $adaPr,
+        array $poBaris,
+        bool $adaPo,
+        Carbon $kini
+    ): array {
+        $stokTersedia = $adaStok ? ($g === null ? null : (float) $g['sisa']) : null;
+
+        $payload = $this->keadaanMaterial(
+            $kode,
+            $pantau->deskripsi,
+            $pantau->stok_min,
+            $stokTersedia,
+            $adaStok ? $g : null,
+            $prBaris,
+            $poBaris
+        );
+
+        if ($sebelum !== null) {
+            $payload['deskripsi'] = $payload['deskripsi'] ?? $sebelum->deskripsi;
+        }
+
+        if (! $adaStok && $sebelum !== null) {
+            foreach (self::BLOK_STOK as $kolom) {
+                $payload[$kolom] = $sebelum->getAttribute($kolom);
+            }
+        }
+
+        if (! $adaPr && $sebelum !== null) {
+            foreach (self::BLOK_PR as $kolom) {
+                $payload[$kolom] = $sebelum->getAttribute($kolom);
+            }
+        }
+
+        if (! $adaPo && $sebelum !== null) {
+            foreach (self::BLOK_PO as $kolom) {
+                $payload[$kolom] = $sebelum->getAttribute($kolom);
+            }
+        }
+
+        $prTerbuka  = (int) ($payload['pr_terbuka'] ?? 0) > 0;
+        $adaPrBaris = (int) ($payload['pr_line'] ?? 0) > 0;
+        $adaPoBaris = (int) ($payload['po_line'] ?? 0) > 0;
+        $poTerbuka  = (int) ($payload['po_open'] ?? 0) > 0;
+
+        $payload['aksi'] = $poTerbuka
+            ? SpMaterial::AKSI_KEJAR
+            : ($prTerbuka
+                ? SpMaterial::AKSI_BUAT_PO
+                : ($adaPrBaris ? SpMaterial::AKSI_CEK : SpMaterial::AKSI_BUAT_PR));
+
+        $payload['reorder'] = ($payload['stok_min'] !== null
+            && (float) ($payload['stok_tersedia'] ?? 0.0) <= (float) $payload['stok_min']) ? 1 : 0;
+
+        $penanda = [];
+
+        if ($payload['stok_tersedia'] === null) {
+            $penanda[] = 'tanpa catatan stok gudang';
+        }
+
+        if ($payload['stok_min'] === null) {
+            $penanda[] = 'stok minimum belum diisi';
+        }
+
+        $payload['penanda'] = $this->potong(implode('; ', $penanda), self::BATAS_PENANDA);
+
+        $payload['ket'] = ($adaPrBaris || $adaPoBaris)
+            ? 'Sudah ada PR/PO'
+            : ($payload['reorder'] ? 'REORDER - belum ada PR/PO' : 'AMAN');
+
+        $payload['stok_diupdate_at'] = $adaStok ? $kini : $sebelum?->stok_diupdate_at;
+        $payload['pr_diupdate_at']   = $adaPr ? $kini : $sebelum?->pr_diupdate_at;
+        $payload['po_diupdate_at']   = $adaPo ? $kini : $sebelum?->po_diupdate_at;
+        $payload['created_at']       = $sebelum?->created_at ?? $kini;
+        $payload['updated_at']       = $kini;
+
+        return $payload;
+    }
+
+    /**
+     * Mencatat perubahan satu material ke dalam analisa import.
+     *
+     * @param  array<string, mixed> $analisa Analisa yang sedang disusun (referensi)
+     * @param  array<string, mixed> $payload Nilai baru material
+     * @param  SpMaterial|null      $sebelum Keadaan lama material
+     * @return void
+     */
+    private function catatPerubahan(array &$analisa, array $payload, ?SpMaterial $sebelum): void
+    {
+        $kode = (string) $payload['kode_material'];
+
+        if ($payload['stok_min'] === null) {
+            $analisa['status']['belum_dinilai']++;
+        } elseif ($payload['reorder']) {
+            $analisa['status']['reorder']++;
+        } else {
+            $analisa['status']['aman']++;
+        }
+
+        $analisa['aksi'][$payload['aksi']] = (int) ($analisa['aksi'][$payload['aksi']] ?? 0) + 1;
+
+        if ($sebelum === null) {
+            $analisa['keadaan']['baru']++;
+
+            return;
+        }
+
+        $lewati  = ['created_at', 'updated_at', 'stok_diupdate_at', 'pr_diupdate_at', 'po_diupdate_at', 'po_tanggal'];
+        $berubah = false;
+
+        foreach (array_keys($payload) as $kolom) {
+            if (in_array($kolom, $lewati, true)) {
+                continue;
+            }
+
+            // Dibandingkan longgar supaya nilai angka/teks yang sama tidak
+            // dianggap berubah hanya karena tipe data PHP-nya berbeda.
+            if ($payload[$kolom] != $sebelum->getAttribute($kolom)) {
+                $berubah = true;
+                break;
+            }
+        }
+
+        if ($berubah) {
+            $analisa['keadaan']['diperbarui']++;
+        } else {
+            $analisa['keadaan']['tetap']++;
+        }
+
+        if (! $sebelum->reorder && $payload['reorder'] && count($analisa['status']['naik_reorder']) < 20) {
+            $analisa['status']['naik_reorder'][] = $kode;
+        }
+
+        if ($sebelum->reorder && ! $payload['reorder'] && count($analisa['status']['turun_aman']) < 20) {
+            $analisa['status']['turun_aman'][] = $kode;
+        }
+    }
+
+    /**
+     * Menyusun rincian baca tiap berkas sumber untuk ditampilkan sebagai analisa.
+     *
+     * @param  array<string, array<string, mixed>> $baca Hasil baca berkas per kunci sumber
+     * @return array<string, array<string, mixed>>       Rincian per kunci sumber
+     */
+    private function analisaSumber(array $baca): array
+    {
+        $hasil = [];
+
+        foreach ([self::SUMBER_STOK, self::SUMBER_PR, self::SUMBER_PO] as $kunci) {
+            $ada = array_key_exists($kunci, $baca);
+
+            $hasil[$kunci] = [
+                'dipakai'   => $ada,
+                'nama'      => $ada ? (string) ($baca[$kunci]['nama'] ?? '') : null,
+                'lembar'    => $ada ? (array) ($baca[$kunci]['lembar'] ?? []) : [],
+                'baris'     => $ada ? (int) ($baca[$kunci]['baris'] ?? 0) : 0,
+                'diabaikan' => $ada ? (int) ($baca[$kunci]['diabaikan'] ?? 0) : 0,
+                'dokumen'   => $ada ? (int) ($baca[$kunci]['dokumen'] ?? 0) : null,
+                'material'  => $ada ? count((array) ($baca[$kunci]['data'] ?? [])) : 0,
+                'judul'     => $ada ? (array) ($baca[$kunci]['judul'] ?? []) : [],
+                'catatan'   => $ada ? (array) ($baca[$kunci]['catatan'] ?? []) : [],
+            ];
+        }
+
+        return $hasil;
     }
 }

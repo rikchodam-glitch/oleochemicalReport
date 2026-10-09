@@ -3,207 +3,391 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Traits\SparepartExportTrait;
-use App\Models\SpBatch;
-use App\Models\SpIntegrasi;
-use Illuminate\Database\Eloquent\Builder;
+use App\Models\SpImpor;
+use App\Models\SpMaterial;
+use App\Models\SpPantau;
+use App\Services\Sparepart\SparepartImportService;
+use App\Services\Sparepart\SparepartPantauService;
+use App\Services\Sparepart\SparepartUnggahan;
+use Illuminate\Contracts\Database\Query\Builder as QueryBuilder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 /**
- * Halaman modul Sparepart (Integrasi PR/PO).
+ * Halaman modul Spare Part (Integrasi PR/PO).
  *
- * Halaman ini HANYA MEMBACA hasil import. Proses import sendiri tetap
- * dijalankan lewat perintah artisan sparepart:import supaya pekerjaan berat
- * (baca lima berkas sumber) tidak berjalan di dalam request HTTP.
- *
- * Terdapat dua layar:
- * 1. daftar periode (index) beserta ringkasan periode terbaru,
- * 2. rincian per material satu periode (show) beserta ekspor Excel-nya.
- *
- * Aturan barisnya sama dengan tabel sp_integrasi: satu baris mewakili satu
- * kode material pada satu batch (satu kali import).
+ * Halaman awal LANGSUNG berupa tabel keadaan seluruh material daftar pantau
+ * (satu baris per kode material, nilainya selalu mutakhir karena setiap import
+ * memperbarui baris yang sama). Halaman lain: import berkas, daftar pantau
+ * (sumber filter/populasi), dan riwayat import beserta analisanya.
  */
 class SparepartController extends Controller
 {
     use SparepartExportTrait;
 
-    /** Jumlah baris rincian yang ditampilkan per halaman. */
+    /** Jumlah baris tabel keadaan yang ditampilkan per halaman. */
     private const BARIS_PER_HALAMAN = 50;
 
-    /** Nilai saringan kolom reorder yang dikenal halaman rincian. */
-    private const SARINGAN_REORDER = ['ya', 'tidak'];
+    /**
+     * Nilai saringan status stok yang dikenal halaman.
+     *
+     * @var array<string, string>
+     */
+    public const STATUS_SARING = [
+        'reorder' => 'Perlu reorder (REORDER)',
+        'aman'    => 'Stok aman',
+        'belum'   => 'Tanpa catatan stok',
+    ];
 
     /**
-     * Tampilkan daftar periode yang pernah diimport beserta ringkasan periode
-     * terbaru.
+     * Nilai saringan "punya data" yang dikenal halaman.
      *
-     * Urutan memakai id menurun, bukan kolom periode, karena kolom periode
-     * berisi teks bebas (mis. "07 Okt 26") sehingga tidak bisa diurutkan
-     * secara kronologis.
-     *
-     * @return View
+     * @var array<string, string>
      */
-    public function index(): View
+    public const PUNYA_SARING = [
+        'stok' => 'Punya catatan stok',
+        'pr'   => 'Punya PR',
+        'po'   => 'Punya PO',
+    ];
+
+    /**
+     * Halaman utama: tabel keadaan seluruh material daftar pantau.
+     *
+     * @param  Request $request Permintaan HTTP (saringan dan nomor halaman)
+     * @return View             Halaman tabel keadaan
+     */
+    public function index(Request $request): View
     {
-        $terbaru   = SpBatch::query()->orderByDesc('id')->first();
-        $ringkasan = $terbaru?->ringkasan ?? [];
+        $saringan = $this->saringan($request);
 
         return view('sparepart.index', [
-            'batches'   => SpBatch::query()->with('pengguna')->orderByDesc('id')->paginate(15)->withQueryString(),
-            'terbaru'   => $terbaru,
-            'ringkasan' => $ringkasan,
-            'kartuAksi' => $this->kartuAksi($ringkasan),
+            'saringan'  => $saringan,
+            'baris'     => $this->queryKeadaan($saringan)->paginate(self::BARIS_PER_HALAMAN)->withQueryString(),
+            'ringkasan' => $this->ringkasan(),
+            'kartuAksi' => $this->kartuAksi(),
+            'terakhir'  => SpImpor::query()->orderByDesc('id')->first(),
         ]);
     }
 
     /**
-     * Tampilkan rincian hasil integrasi satu periode.
+     * Mengunduh tabel keadaan (mengikuti saringan yang sedang dipakai) sebagai Excel.
      *
-     * @param  SpBatch $batch   Batch yang dibuka (route model binding)
-     * @param  Request $request Permintaan HTTP (saringan dan nomor halaman)
-     * @return View
-     */
-    public function show(SpBatch $batch, Request $request): View
-    {
-        $saringan = $this->saringanRincian($request);
-
-        return view('sparepart.show', [
-            'batch'         => $batch,
-            'saringan'      => $saringan,
-            'rincian'       => $this->queryRincian($batch, $saringan)
-                ->orderByDesc('reorder')
-                ->orderBy('kode_material')
-                ->paginate(self::BARIS_PER_HALAMAN)
-                ->withQueryString(),
-            'rekapAksi'     => $this->rekapAksi($batch),
-            'jumlahReorder' => (int) SpIntegrasi::query()
-                ->where('batch_id', $batch->id)
-                ->where('reorder', true)
-                ->count(),
-        ]);
-    }
-
-    /**
-     * Unduh rincian hasil integrasi satu periode sebagai berkas Excel.
-     *
-     * Saringan yang dipakai sama dengan layar rincian, jadi berkas yang diunduh
-     * selalu berisi baris yang sedang dilihat pengguna.
-     *
-     * @param  SpBatch $batch   Batch yang diekspor (route model binding)
      * @param  Request $request Permintaan HTTP (saringan)
-     * @return StreamedResponse
+     * @return StreamedResponse Berkas Excel
      */
-    public function export(SpBatch $batch, Request $request): StreamedResponse
+    public function export(Request $request): StreamedResponse
     {
-        $saringan = $this->saringanRincian($request);
+        $saringan = $this->saringan($request);
 
-        $baris = $this->queryRincian($batch, $saringan)
-            ->orderByDesc('reorder')
-            ->orderBy('kode_material')
-            ->get();
-
-        return $this->exportRincianExcel($batch, $baris, $this->labelSaringan($saringan));
+        return $this->exportKeadaanExcel(
+            $this->queryKeadaan($saringan)->get(),
+            $this->labelSaringan($saringan),
+            $this->ringkasan()
+        );
     }
 
     /**
-     * Saringan halaman rincian yang sudah divalidasi.
+     * Halaman unggah berkas import.
      *
-     * Nilai yang tidak dikenal (mis. aksi karangan) sengaja diabaikan supaya
-     * tautan yang salah ketik tidak menghasilkan halaman kosong yang
-     * menyesatkan.
+     * @return View Halaman form unggah
+     */
+    public function impor(): View
+    {
+        return view('sparepart.impor', [
+            'terakhir'     => SpImpor::query()->orderByDesc('id')->first(),
+            'jumlahPantau' => SpPantau::query()->where('aktif', true)->count(),
+        ]);
+    }
+
+    /**
+     * Memproses unggahan berkas import.
+     *
+     * Berkas disimpan sementara di storage lalu dibaca layanan import; berkas
+     * sementara selalu dihapus lagi setelah dipakai (termasuk saat gagal).
+     *
+     * @param  Request                $request Permintaan HTTP (berkas unggahan)
+     * @param  SparepartImportService $layanan Layanan import keadaan material
+     * @param  SparepartPantauService $pantau  Layanan daftar pantau
+     * @return RedirectResponse                 Pengalihan ke riwayat import
+     */
+    public function imporProses(
+        Request $request,
+        SparepartImportService $layanan,
+        SparepartPantauService $pantau
+    ): RedirectResponse {
+        $request->validate([
+            'stok'        => ['nullable', 'file', 'mimes:xlsx,xls', 'max:51200'],
+            'pr'          => ['nullable', 'file', 'mimes:xlsx,xls', 'max:51200'],
+            'po'          => ['nullable', 'file', 'mimes:xlsx,xls', 'max:51200'],
+            'pantau'      => ['nullable', 'file', 'mimes:xlsx,xls,csv', 'max:51200'],
+            'label'       => ['nullable', 'string', 'max:120'],
+            'mode_pantau' => ['nullable', 'in:gabung,ganti'],
+        ], [], [
+            'stok'   => 'berkas stok gudang',
+            'pr'     => 'berkas EXPORT PR',
+            'po'     => 'berkas EXPORT PO',
+            'pantau' => 'berkas daftar pantau',
+        ]);
+
+        if (! $request->hasFile('stok') && ! $request->hasFile('pr') && ! $request->hasFile('po')) {
+            return back()
+                ->withInput()
+                ->with('error', 'Pilih minimal satu berkas sumber (stok gudang, EXPORT PR, atau EXPORT PO).');
+        }
+
+        $tersimpan     = [];
+        $catatanPantau = null;
+
+        try {
+            foreach (['stok', 'pr', 'po', 'pantau'] as $kunci) {
+                if ($request->hasFile($kunci)) {
+                    $tersimpan[$kunci] = $this->simpanSementara($request->file($kunci), $kunci);
+                }
+            }
+
+            if (isset($tersimpan['pantau'])) {
+                $catatanPantau = $pantau->imporDariBerkas(
+                    $tersimpan['pantau'],
+                    $request->input('mode_pantau') === SparepartPantauService::MODE_GANTI
+                        ? SparepartPantauService::MODE_GANTI
+                        : SparepartPantauService::MODE_GABUNG
+                );
+            }
+
+            $impor = $layanan->import(
+                [
+                    SparepartImportService::SUMBER_STOK => $tersimpan['stok'] ?? null,
+                    SparepartImportService::SUMBER_PR   => $tersimpan['pr'] ?? null,
+                    SparepartImportService::SUMBER_PO   => $tersimpan['po'] ?? null,
+                ],
+                $request->user()?->id,
+                (string) ($request->input('label') ?? '') ?: null
+            );
+        } catch (Throwable $e) {
+            return back()->withInput()->with('error', 'Import dibatalkan: ' . $e->getMessage());
+        } finally {
+            foreach ($tersimpan as $path) {
+                @unlink($path);
+            }
+        }
+
+        $pesan = 'Import selesai. Rincian analisanya ada di halaman ini.';
+
+        if (is_array($catatanPantau)) {
+            $pesan = 'Daftar pantau: ' . $catatanPantau['kode'] . ' kode (baru ' . $catatanPantau['baru']
+                . ', diperbarui ' . $catatanPantau['diperbarui'] . ', dihapus ' . $catatanPantau['dihapus'] . '). ' . $pesan;
+        }
+
+        return redirect()
+            ->route('sparepart.riwayat', ['impor' => $impor->id])
+            ->with('success', $pesan);
+    }
+
+    /**
+     * Riwayat import beserta analisanya.
+     *
+     * @param  Request $request Permintaan HTTP (opsional: id import yang dibuka)
+     * @return View             Halaman riwayat import
+     */
+    public function riwayat(Request $request): View
+    {
+        $dibuka = null;
+
+        if ($request->filled('impor')) {
+            $dibuka = SpImpor::query()->with('pengguna')->find((int) $request->input('impor'));
+        }
+
+        return view('sparepart.riwayat', [
+            'daftar' => SpImpor::query()->with('pengguna')->orderByDesc('id')->paginate(10)->withQueryString(),
+            'dibuka' => $dibuka,
+        ]);
+    }
+
+    /**
+     * Membaca saringan halaman dari permintaan HTTP.
      *
      * @param  Request $request Permintaan HTTP
-     * @return array<string, string> Saringan: search, aksi, reorder
+     * @return array<string, string> Saringan yang sudah dibersihkan
      */
-    private function saringanRincian(Request $request): array
+    private function saringan(Request $request): array
     {
-        $search  = trim((string) $request->query('search', ''));
-        $aksi    = (string) $request->query('aksi', '');
-        $reorder = (string) $request->query('reorder', '');
+        $aksi   = (string) $request->input('aksi', '');
+        $status = (string) $request->input('status', '');
+        $punya  = (string) $request->input('punya', '');
+        $urut   = (string) $request->input('urut', 'reorder');
 
         return [
-            'search'  => mb_substr($search, 0, 100),
-            'aksi'    => in_array($aksi, SpIntegrasi::AKSI, true) ? $aksi : '',
-            'reorder' => in_array($reorder, self::SARINGAN_REORDER, true) ? $reorder : '',
+            'q'      => trim((string) $request->input('q', '')),
+            'aksi'   => in_array($aksi, SpMaterial::AKSI, true) ? $aksi : '',
+            'status' => array_key_exists($status, self::STATUS_SARING) ? $status : '',
+            'punya'  => array_key_exists($punya, self::PUNYA_SARING) ? $punya : '',
+            'urut'   => in_array($urut, ['reorder', 'kode', 'stok', 'aksi', 'terakhir'], true) ? $urut : 'reorder',
         ];
     }
 
     /**
-     * Query rincian satu batch sesuai saringan layar.
+     * Query tabel keadaan: daftar pantau digabung keadaan materialnya.
      *
-     * @param  SpBatch               $batch    Batch yang dibaca
-     * @param  array<string, string> $saringan Saringan hasil saringanRincian()
-     * @return Builder<SpIntegrasi>
+     * Kolom keadaan diberi awalan m_ supaya tidak bertabrakan dengan kolom
+     * daftar pantau (keduanya punya deskripsi dan stok_min).
+     *
+     * @param  array<string, string> $saringan Saringan halaman
+     * @return QueryBuilder                    Query siap ditampilkan
      */
-    private function queryRincian(SpBatch $batch, array $saringan): Builder
+    private function queryKeadaan(array $saringan): QueryBuilder
     {
-        $query = SpIntegrasi::query()->where('batch_id', $batch->id);
+        $query = DB::table('sp_pantau')
+            ->leftJoin('sp_material', 'sp_material.kode_material', '=', 'sp_pantau.kode_material')
+            ->where('sp_pantau.aktif', true)
+            ->select([
+                'sp_pantau.kode_material',
+                'sp_pantau.deskripsi as deskripsi_pantau',
+                'sp_pantau.stok_min as stok_min_pantau',
+                'sp_pantau.plant',
+                'sp_pantau.model',
+                'sp_pantau.tag_no',
+                'sp_pantau.uom',
+                'sp_pantau.sumber',
+                'sp_material.id as m_id',
+                'sp_material.deskripsi as m_deskripsi',
+                'sp_material.stok_min as m_stok_min',
+                'sp_material.stok_tersedia as m_stok_tersedia',
+                'sp_material.reorder as m_reorder',
+                'sp_material.penanda as m_penanda',
+                'sp_material.aksi as m_aksi',
+                'sp_material.pr_no as m_pr_no',
+                'sp_material.pr_status_aksi as m_pr_status_aksi',
+                'sp_material.pr_status as m_pr_status',
+                'sp_material.pr_qty as m_pr_qty',
+                'sp_material.pr_line as m_pr_line',
+                'sp_material.pr_terbuka as m_pr_terbuka',
+                'sp_material.pr_nums as m_pr_nums',
+                'sp_material.req_list as m_req_list',
+                'sp_material.po_no as m_po_no',
+                'sp_material.po_sisa as m_po_sisa',
+                'sp_material.po_line as m_po_line',
+                'sp_material.po_uniq as m_po_uniq',
+                'sp_material.po_closed as m_po_closed',
+                'sp_material.po_open as m_po_open',
+                'sp_material.po_sisa_total as m_po_sisa_total',
+                'sp_material.po_tanggal_teks as m_po_tanggal_teks',
+                'sp_material.po_nums as m_po_nums',
+                'sp_material.purch as m_purch',
+                'sp_material.vendor as m_vendor',
+                'sp_material.po_prev as m_po_prev',
+                'sp_material.vendor_prev as m_vendor_prev',
+                'sp_material.purch_last as m_purch_last',
+                'sp_material.vendor_last as m_vendor_last',
+                'sp_material.g_baris as m_g_baris',
+                'sp_material.g_awal as m_g_awal',
+                'sp_material.g_masuk as m_g_masuk',
+                'sp_material.g_keluar as m_g_keluar',
+                'sp_material.g_sisa as m_g_sisa',
+                'sp_material.g_satuan as m_g_satuan',
+                'sp_material.g_lokasi as m_g_lokasi',
+                'sp_material.ket as m_ket',
+                'sp_material.stok_diupdate_at as m_stok_diupdate_at',
+                'sp_material.pr_diupdate_at as m_pr_diupdate_at',
+                'sp_material.po_diupdate_at as m_po_diupdate_at',
+                'sp_material.updated_at as m_diubah_at',
+            ]);
 
-        if ($saringan['search'] !== '') {
-            $kunci = $saringan['search'];
+        if ($saringan['q'] !== '') {
+            $kunci = $saringan['q'];
 
-            $query->where(function (Builder $sub) use ($kunci): void {
-                $sub->where('kode_material', 'like', '%' . $kunci . '%')
-                    ->orWhere('deskripsi', 'like', '%' . $kunci . '%')
-                    ->orWhere('pr_no', 'like', '%' . $kunci . '%')
-                    ->orWhere('po_no', 'like', '%' . $kunci . '%')
-                    ->orWhere('vendor', 'like', '%' . $kunci . '%');
+            $query->where(function (QueryBuilder $sub) use ($kunci): void {
+                $sub->where('sp_pantau.kode_material', 'like', '%' . $kunci . '%')
+                    ->orWhere('sp_pantau.deskripsi', 'like', '%' . $kunci . '%')
+                    ->orWhere('sp_material.deskripsi', 'like', '%' . $kunci . '%')
+                    ->orWhere('sp_material.pr_no', 'like', '%' . $kunci . '%')
+                    ->orWhere('sp_material.po_no', 'like', '%' . $kunci . '%')
+                    ->orWhere('sp_material.vendor', 'like', '%' . $kunci . '%');
             });
         }
 
         if ($saringan['aksi'] !== '') {
-            $query->where('aksi', $saringan['aksi']);
+            $query->where('sp_material.aksi', $saringan['aksi']);
         }
 
-        if ($saringan['reorder'] === 'ya') {
-            $query->where('reorder', true);
-        } elseif ($saringan['reorder'] === 'tidak') {
-            $query->where('reorder', false);
+        if ($saringan['status'] === 'reorder') {
+            $query->where('sp_material.reorder', true);
+        } elseif ($saringan['status'] === 'aman') {
+            $query->whereNotNull('sp_material.stok_min')->where('sp_material.reorder', false);
+        } elseif ($saringan['status'] === 'belum') {
+            $query->whereNull('sp_material.stok_min');
         }
 
-        return $query;
+        if ($saringan['punya'] === 'stok') {
+            $query->whereNotNull('sp_material.stok_tersedia');
+        } elseif ($saringan['punya'] === 'pr') {
+            $query->where('sp_material.pr_line', '>', 0);
+        } elseif ($saringan['punya'] === 'po') {
+            $query->where('sp_material.po_line', '>', 0);
+        }
+
+        return match ($saringan['urut']) {
+            'kode'     => $query->orderBy('sp_pantau.kode_material'),
+            'stok'     => $query->orderByRaw('sp_material.stok_tersedia is null, sp_material.stok_tersedia asc'),
+            'aksi'     => $query->orderBy('sp_material.aksi')->orderBy('sp_pantau.kode_material'),
+            'terakhir' => $query->orderByDesc('sp_material.updated_at'),
+            default    => $query->orderByDesc('sp_material.reorder')->orderBy('sp_pantau.kode_material'),
+        };
     }
 
     /**
-     * Jumlah material per nilai kolom aksi pada satu batch.
+     * Ringkasan angka halaman: jumlah per status stok dan per kepemilikan data.
      *
-     * @param  SpBatch $batch Batch yang dihitung
-     * @return array<string, int> Peta nilai aksi => jumlah baris
+     * @return array<string, int> Peta label => jumlah
      */
-    private function rekapAksi(SpBatch $batch): array
+    private function ringkasan(): array
     {
-        $rekap = SpIntegrasi::query()
-            ->where('batch_id', $batch->id)
+        $baris = DB::table('sp_pantau')
+            ->leftJoin('sp_material', 'sp_material.kode_material', '=', 'sp_pantau.kode_material')
+            ->where('sp_pantau.aktif', true)
+            ->selectRaw('COUNT(*) AS total')
+            ->selectRaw('SUM(CASE WHEN sp_material.stok_min IS NULL THEN 1 ELSE 0 END) AS belum')
+            ->selectRaw('SUM(CASE WHEN sp_material.stok_min IS NOT NULL AND sp_material.reorder = 1 THEN 1 ELSE 0 END) AS reorder')
+            ->selectRaw('SUM(CASE WHEN sp_material.stok_min IS NOT NULL AND sp_material.reorder = 0 THEN 1 ELSE 0 END) AS aman')
+            ->selectRaw('SUM(CASE WHEN sp_material.stok_tersedia IS NULL THEN 1 ELSE 0 END) AS tanpa_stok')
+            ->selectRaw('SUM(CASE WHEN sp_material.pr_line > 0 THEN 1 ELSE 0 END) AS punya_pr')
+            ->selectRaw('SUM(CASE WHEN sp_material.po_line > 0 THEN 1 ELSE 0 END) AS punya_po')
+            ->first();
+
+        return [
+            'total'      => (int) ($baris->total ?? 0),
+            'reorder'    => (int) ($baris->reorder ?? 0),
+            'aman'       => (int) ($baris->aman ?? 0),
+            'belum'      => (int) ($baris->belum ?? 0),
+            'tanpa_stok' => (int) ($baris->tanpa_stok ?? 0),
+            'punya_pr'   => (int) ($baris->punya_pr ?? 0),
+            'punya_po'   => (int) ($baris->punya_po ?? 0),
+        ];
+    }
+
+    /**
+     * Jumlah material per nilai kolom aksi.
+     *
+     * @return array<int, array<string, mixed>> Kartu aksi (nilai, label, jumlah)
+     */
+    private function kartuAksi(): array
+    {
+        $rekap = DB::table('sp_material')
             ->groupBy('aksi')
             ->selectRaw('aksi, COUNT(*) AS jumlah')
             ->pluck('jumlah', 'aksi');
 
-        $hasil = [];
-
-        foreach (SpIntegrasi::AKSI as $nilai) {
-            $hasil[$nilai] = (int) ($rekap[$nilai] ?? 0);
-        }
-
-        return $hasil;
-    }
-
-    /**
-     * Kartu ringkasan aksi untuk halaman daftar periode.
-     *
-     * @param  array<string, mixed> $ringkasan Ringkasan batch terbaru
-     * @return array<int, array<string, mixed>> Daftar kartu (label, nilai, jumlah)
-     */
-    private function kartuAksi(array $ringkasan): array
-    {
-        $aksi  = (array) ($ringkasan['aksi'] ?? []);
         $kartu = [];
 
-        foreach (SpIntegrasi::AKSI as $nilai) {
+        foreach (SpMaterial::AKSI as $nilai) {
             $kartu[] = [
-                'label'  => SpIntegrasi::labelAksi($nilai),
                 'nilai'  => $nilai,
-                'jumlah' => (int) ($aksi[$nilai] ?? 0),
+                'label'  => SpMaterial::labelAksi($nilai),
+                'jumlah' => (int) ($rekap[$nilai] ?? 0),
             ];
         }
 
@@ -213,8 +397,8 @@ class SparepartController extends Controller
     /**
      * Keterangan saringan untuk baris judul berkas Excel.
      *
-     * @param  array<string, string> $saringan Saringan halaman rincian
-     * @return string                          Contoh: "Aksi: BUAT PO | Hanya material REORDER"
+     * @param  array<string, string> $saringan Saringan halaman
+     * @return string                          Contoh: "Aksi: BUAT PO | Pencarian: seal"
      */
     private function labelSaringan(array $saringan): string
     {
@@ -224,18 +408,33 @@ class SparepartController extends Controller
             $bagian[] = 'Aksi: ' . $saringan['aksi'];
         }
 
-        if ($saringan['reorder'] === 'ya') {
-            $bagian[] = 'Hanya material REORDER';
+        if ($saringan['status'] !== '') {
+            $bagian[] = 'Status: ' . self::STATUS_SARING[$saringan['status']];
         }
 
-        if ($saringan['reorder'] === 'tidak') {
-            $bagian[] = 'Hanya material stok aman';
+        if ($saringan['punya'] !== '') {
+            $bagian[] = self::PUNYA_SARING[$saringan['punya']];
         }
 
-        if ($saringan['search'] !== '') {
-            $bagian[] = 'Pencarian: ' . $saringan['search'];
+        if ($saringan['q'] !== '') {
+            $bagian[] = 'Pencarian: ' . $saringan['q'];
         }
 
         return $bagian === [] ? '(tanpa saringan)' : implode(' | ', $bagian);
+    }
+
+    /**
+     * Menyimpan berkas unggahan ke folder sementara di storage.
+     *
+     * Nama berkas diberi cap waktu dan angka acak supaya unggahan bersamaan
+     * tidak saling menimpa.
+     *
+     * @param  UploadedFile $berkas Berkas unggahan
+     * @param  string       $kunci  Kunci sumber (stok/pr/po/pantau)
+     * @return string               Path berkas sementara
+     */
+    private function simpanSementara(UploadedFile $berkas, string $kunci): string
+    {
+        return (new SparepartUnggahan())->simpan($berkas, $kunci);
     }
 }

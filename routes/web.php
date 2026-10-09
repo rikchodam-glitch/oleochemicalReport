@@ -21,6 +21,7 @@ use App\Http\Controllers\ReportCollaborationController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReportMultiItemController;
 use App\Http\Controllers\SparepartController;
+use App\Http\Controllers\SparepartPantauController;
 use App\Http\Controllers\StorageController;
 use App\Http\Controllers\ShiftScheduleController;
 use App\Http\Controllers\TechnicianController;
@@ -295,15 +296,22 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     Route::put('/panel/ruangan/{panelRuangan}', [PanelRuanganController::class, 'update'])->name('panel.ruangan.update');
     Route::delete('/panel/ruangan/{panelRuangan}', [PanelRuanganController::class, 'destroy'])->name('panel.ruangan.destroy');
 
-    // Integrasi PR/PO Spare Part: hasil impor lima berkas sumber (monitoring
-    // stok, G01, PR, PO, dan MRP) per kode material. Halaman hanya MEMBACA
-    // hasil import; proses import dijalankan lewat perintah artisan
-    // sparepart:import supaya pekerjaan berat tidak berjalan di dalam request
-    // HTTP. Rute ekspor ditulis sebelum '/sparepart/{batch}' agar segmen
-    // tambahan tidak pernah tertangkap rute detail.
-    Route::get('/sparepart/{batch}/export', [SparepartController::class, 'export'])->name('sparepart.export');
+    // Integrasi PR/PO Spare Part: daftar pantau (populasi material), keadaan
+    // terkini per kode material (hasil upsert tiap import), import berkas, dan
+    // riwayat import. Halaman awal langsung berupa tabel keadaan.
     Route::get('/sparepart', [SparepartController::class, 'index'])->name('sparepart.index');
-    Route::get('/sparepart/{batch}', [SparepartController::class, 'show'])->name('sparepart.show');
+    Route::get('/sparepart/export', [SparepartController::class, 'export'])->name('sparepart.export');
+    Route::get('/sparepart/impor', [SparepartController::class, 'impor'])->name('sparepart.impor');
+    Route::post('/sparepart/impor', [SparepartController::class, 'imporProses'])->name('sparepart.impor.proses');
+    Route::get('/sparepart/riwayat', [SparepartController::class, 'riwayat'])->name('sparepart.riwayat');
+
+    // Daftar pantau: sumber populasi halaman di atas, dapat diimpor maupun
+    // diedit manual (tambah/ubah/hapus).
+    Route::get('/sparepart/pantau', [SparepartPantauController::class, 'index'])->name('sparepart.pantau');
+    Route::post('/sparepart/pantau', [SparepartPantauController::class, 'store'])->name('sparepart.pantau.store');
+    Route::post('/sparepart/pantau/impor', [SparepartPantauController::class, 'impor'])->name('sparepart.pantau.impor');
+    Route::put('/sparepart/pantau/{pantau}', [SparepartPantauController::class, 'update'])->name('sparepart.pantau.update');
+    Route::delete('/sparepart/pantau/{pantau}', [SparepartPantauController::class, 'destroy'])->name('sparepart.pantau.destroy');
 
     // Manajemen user (akun teknisi) dan hak akses halaman per Bagian.
     // Route statis WAJIB ditulis sebelum route berparameter /users/{user}

@@ -2,47 +2,44 @@
 
 namespace App\Console\Commands;
 
+use App\Exceptions\SparepartFormatException;
+use App\Models\SpMaterial;
 use App\Services\Sparepart\SparepartImportService;
+use App\Services\Sparepart\SparepartPantauService;
 use Illuminate\Console\Command;
 use Throwable;
 
 /**
- * Impor Integrasi PR/PO Spare Part satu periode dari folder berkas sumber.
+ * Impor berkas Integrasi PR/PO Spare Part dari baris perintah.
  *
- * Lima berkas yang wajib ada di folder periode: SparePart_Monitoring.csv,
- * G001_clean.csv, EXPORT PR.XLSX, EXPORT PO.XLSX, dan EXPORT MRP.XLSX. Berkas
- * PR/PO/MRP boleh berada di folder bersebelahan yang memuatnya (lihat
- * SparepartImportService::berkasWajib()).
- *
- * Import pada periode yang sama selalu mengganti batch lama, sehingga aman
- * dijalankan berulang untuk periode yang sama.
+ * Dipakai sebagai alternatif halaman unggah (mis. untuk pengujian atau saat
+ * berkas berada di server): ketiga berkas sumber boleh sebagian, dan daftar
+ * pantau dapat ikut diimpor lewat opsi --pantau.
  */
 class SparepartImportCommand extends Command
 {
     protected $signature = 'sparepart:import
-        {folder : Folder periode berisi berkas sumber}
-        {--periode= : Label periode; dikosongkan berarti memakai nama folder}
-        {--oleh= : Id pengguna yang menjalankan import (opsional)}';
+        {--stok= : Path laporan stok gudang (xlsx)}
+        {--pr= : Path EXPORT PR (xlsx, SAP ME5A)}
+        {--po= : Path EXPORT PO (xlsx, SAP ME2M)}
+        {--pantau= : Path berkas daftar pantau (xlsx sheet MASTER DATA atau CSV)}
+        {--ganti-pantau : Daftar pantau diganti seluruhnya dengan isi berkas --pantau}
+        {--label= : Catatan label import}
+        {--oleh= : Id pengguna yang menjalankan import}';
 
-    protected $description = 'Impor data Integrasi PR/PO Spare Part dari folder periode (batch lama periode sama diganti)';
+    protected $description = 'Impor keadaan Spare Part (stok gudang, PR, PO) dan perbarui tabel per kode material';
 
     /**
-     * Menjalankan impor dan menampilkan ringkasannya.
+     * Menjalankan import dan menampilkan analisanya.
      *
-     * @param  SparepartImportService $layanan Layanan impor integrasi sparepart
+     * @param  SparepartImportService $layanan Import keadaan material
+     * @param  SparepartPantauService $pantau  Pengelola daftar pantau
      * @return int                             Kode keluar (SUCCESS atau FAILURE)
      */
-    public function handle(SparepartImportService $layanan): int
+    public function handle(SparepartImportService $layanan, SparepartPantauService $pantau): int
     {
-        $folder = (string) $this->argument('folder');
-        $periode = (string) ($this->option('periode') ?? '');
-        $oleh = (string) ($this->option('oleh') ?? '');
-
-        if ($periode === '') {
-            $periode = basename(rtrim(str_replace('\\', '/', $folder), '/'));
-
-            $this->line('Periode tidak diisi, memakai nama folder: ' . $periode);
-        }
+        $oleh  = (string) ($this->option('oleh') ?? '');
+        $label = (string) ($this->option('label') ?? '');
 
         if ($oleh !== '' && ! is_numeric($oleh)) {
             $this->error('Opsi --oleh harus berupa angka id pengguna.');
@@ -51,38 +48,87 @@ class SparepartImportCommand extends Command
         }
 
         try {
-            $batch = $layanan->import($folder, $periode, $oleh === '' ? null : (int) $oleh);
+            if ((string) ($this->option('pantau') ?? '') !== '') {
+                $this->info('Mengimpor daftar pantau...');
+
+                $hasil = $pantau->imporDariBerkas(
+                    (string) $this->option('pantau'),
+                    $this->option('ganti-pantau') ? SparepartPantauService::MODE_GANTI : SparepartPantauService::MODE_GABUNG
+                );
+
+                $this->line(sprintf(
+                    'Daftar pantau %s: %d kode (baru %d, diperbarui %d, dihapus %d).',
+                    $hasil['nama'],
+                    $hasil['kode'],
+                    $hasil['baru'],
+                    $hasil['diperbarui'],
+                    $hasil['dihapus']
+                ));
+            }
+
+            $impor = $layanan->import(
+                [
+                    SparepartImportService::SUMBER_STOK => (string) ($this->option('stok') ?? '') ?: null,
+                    SparepartImportService::SUMBER_PR   => (string) ($this->option('pr') ?? '') ?: null,
+                    SparepartImportService::SUMBER_PO   => (string) ($this->option('po') ?? '') ?: null,
+                ],
+                $oleh === '' ? null : (int) $oleh,
+                $label === '' ? null : $label
+            );
+        } catch (SparepartFormatException $e) {
+            $this->error('Format berkas tidak sesuai: ' . $e->getMessage());
+
+            return self::FAILURE;
         } catch (Throwable $e) {
             $this->error('Impor gagal: ' . $e->getMessage());
 
             return self::FAILURE;
         }
 
-        $this->info(sprintf(
-            'Batch #%d "%s" selesai: monitoring %d, G001 %d, PR %d, PO %d, MRP %d, hasil %d.',
-            $batch->id,
-            $batch->periode,
-            $batch->jumlah_monitoring,
-            $batch->jumlah_g001,
-            $batch->jumlah_pr,
-            $batch->jumlah_po,
-            $batch->jumlah_mrp,
-            $batch->jumlah_hasil
-        ));
+        $analisa = (array) ($impor->analisa ?? []);
 
-        $ringkasan = (array) ($batch->ringkasan ?? []);
+        $this->info(sprintf('Impor #%d selesai.', $impor->id));
 
-        foreach ((array) ($ringkasan['aksi'] ?? []) as $nama => $jumlah) {
-            $this->line(sprintf('  %-26s %d', $nama, $jumlah));
+        foreach ((array) ($analisa['sumber'] ?? []) as $kunci => $rincian) {
+            if (empty($rincian['dipakai'])) {
+                $this->line(sprintf('  %-5s : tidak diunggah', $kunci));
+                continue;
+            }
+
+            $this->line(sprintf(
+                '  %-5s : %s (%d baris dibaca, %d diabaikan, %d material)',
+                $kunci,
+                $rincian['nama'],
+                $rincian['baris'],
+                $rincian['diabaikan'],
+                $rincian['material']
+            ));
         }
 
-        $min = (array) ($ringkasan['min'] ?? []);
+        $keadaan = (array) ($analisa['keadaan'] ?? []);
+        $status  = (array) ($analisa['status'] ?? []);
+
         $this->line(sprintf(
-            '  Stok minimum vs MRP: Sama %d, Beda %d, tanpa MRP %d',
-            $min['sama'] ?? 0,
-            $min['beda'] ?? 0,
-            $min['tanpa_mrp'] ?? 0
+            'Keadaan: baru %d, diperbarui %d, tidak berubah %d.',
+            $keadaan['baru'] ?? 0,
+            $keadaan['diperbarui'] ?? 0,
+            $keadaan['tetap'] ?? 0
         ));
+
+        $this->line(sprintf(
+            'Status stok: REORDER %d, aman %d, belum dinilai %d.',
+            $status['reorder'] ?? 0,
+            $status['aman'] ?? 0,
+            $status['belum_dinilai'] ?? 0
+        ));
+
+        foreach ((array) ($analisa['aksi'] ?? []) as $aksi => $jumlah) {
+            $this->line(sprintf('  %-26s %d', SpMaterial::labelAksi((string) $aksi), $jumlah));
+        }
+
+        foreach ((array) ($analisa['catatan'] ?? []) as $catatan) {
+            $this->warn('  ' . $catatan);
+        }
 
         return self::SUCCESS;
     }

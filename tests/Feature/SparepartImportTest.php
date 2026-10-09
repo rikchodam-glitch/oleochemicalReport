@@ -1,299 +1,234 @@
 <?php
 
-use App\Models\SpBatch;
-use App\Models\SpIntegrasi;
+use App\Exceptions\SparepartFormatException;
+use App\Models\SpImpor;
+use App\Models\SpMaterial;
 use App\Services\Sparepart\SparepartImportService;
+use App\Services\Sparepart\SparepartPantauService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 uses(RefreshDatabase::class);
 
 // ============================================================
-// INTEGRASI PR/PO SPARE PART (modul sparepart, pengujian)
+// MODUL SPARE PART: IMPORT KEADAAN MATERIAL (upsert per kode)
 // ============================================================
 
-afterEach(function () {
-    foreach (glob(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'sparepart-uji-*') ?: [] as $folder) {
-        foreach (glob($folder . DIRECTORY_SEPARATOR . '*') ?: [] as $berkas) {
-            @unlink($berkas);
-        }
-
-        @rmdir($folder);
-    }
-});
-
 /**
- * Menulis satu berkas XLSX sederhana (baris judul + baris data).
+ * Menyiapkan daftar pantau dari berkas fixture lalu mengembalikan path berkas.
  *
- * @param  string                       $path  Path berkas tujuan
- * @param  array<int, mixed>            $judul Baris judul
- * @param  array<int, array<int, mixed>> $baris Baris data
- * @return void
+ * @return array<string, string> Path berkas fixture (stok, pr, po, pantau)
  */
-function spUjiTulisXlsx(string $path, array $judul, array $baris): void
+function spSiapkan(): array
 {
-    $buku = new Spreadsheet();
-    $sheet = $buku->getActiveSheet();
-    $sheet->fromArray($judul, null, 'A1');
-    $sheet->fromArray($baris, null, 'A2');
-    (new Xlsx($buku))->save($path);
-    $buku->disconnectWorksheets();
+    $berkas = spUjiBerkas();
+    app(SparepartPantauService::class)->imporDariBerkas($berkas['pantau']);
+
+    return $berkas;
 }
 
 /**
- * Membuat folder periode sementara berisi lima berkas sumber.
+ * Nilai satu kolom keadaan material.
  *
- * Empat material dipakai supaya menutup KEEMPAT nilai kolom aksi:
- * 30000001 PR terbuka tanpa PO        -> BUAT PO
- * 30000002 PR terbuka + PO terbuka    -> KEJAR KEDATANGAN (PO OPEN)
- * 30000003 PR tertutup tanpa PO open  -> CEK / BUAT PR BARU
- * 30000004 tanpa PR maupun PO         -> BUAT PR
- *
- * @param  array<string, string> $ubah Isi berkas pengganti (kunci: monitoring, g001, mrp)
- * @return string                      Path folder periode
+ * @param  string $kode  Kode material
+ * @param  string $kolom Nama kolom
+ * @return mixed         Nilai kolom (null bila barisnya tidak ada)
  */
-function spUjiFolder(array $ubah = []): string
+function spNilai(string $kode, string $kolom): mixed
 {
-    $folder = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'sparepart-uji-' . bin2hex(random_bytes(4));
-
-    if (! is_dir($folder)) {
-        mkdir($folder, 0777, true);
-    }
-
-    $monitoring = $ubah['monitoring'] ?? "Kode Material,Deskripsi,Stok Minimum,Stok Tersedia,Status,Penanda\n"
-        . "30000001,BRACKET UJI,1,0,REORDER,\n"
-        . "30000002,SEAL UJI,1,5,REORDER,\n"
-        . "30000003,BEARING UJI,2,0,REORDER,\n"
-        . "30000004,V-BELT UJI,3,1,REORDER,\n";
-
-    file_put_contents($folder . DIRECTORY_SEPARATOR . 'SparePart_Monitoring.csv', $monitoring);
-
-    $g001 = $ubah['g001'] ?? "S.Loc,Kode,Nama Item,Stok Awal,Masuk,Keluar,Sisa Stok,UN\n"
-        . "A1.1,30000003,BEARING UJI,5,2,1,6,PCS\n"
-        . "A1.2,30000003,BEARING UJI,1,0,0,1,PCS\n"
-        . "C1.3,30000002,AIR FILTER,1,0,0,1,PCS\n";
-
-    file_put_contents($folder . DIRECTORY_SEPARATOR . 'G001_clean.csv', $g001);
-
-    spUjiTulisXlsx(
-        $folder . DIRECTORY_SEPARATOR . 'EXPORT PR.XLSX',
-        [
-            'Item', 'Processing status', 'Deletion Indicator', 'Purchase order', 'Material',
-            'Quantity requested', 'Delivery Date', 'Requisitioner', 'Purchasing Group',
-        ],
-        [
-            ['Purchase Requisition 1000000001', '', '', '', '', '', '', '', ''],
-            ['10', 'N', '', '', '30000001', 5, '2026-10-01', 'PPIC', 'A01'],
-            ['Purchase Requisition 1000000002', '', '', '', '', '', '', '', ''],
-            ['10', 'N', '', '4500000001', '30000002', 2, '2026-10-02', 'PPIC', 'A02'],
-            ['Purchase Requisition 1000000003', '', '', '', '', '', '', '', ''],
-            ['10', 'B', '', '4500000002', '30000003', 3, '2026-09-02', 'STORE', 'A03'],
-        ]
-    );
-
-    spUjiTulisXlsx(
-        $folder . DIRECTORY_SEPARATOR . 'EXPORT PO.XLSX',
-        [
-            'Purchasing Document', 'Material', 'Supplier/Supplying Plant', 'Order Quantity',
-            'Deletion Indicator', 'Our Reference', 'Document Date', 'Plant', 'Still to be delivered',
-        ],
-        [
-            ['4500000001', '30000002', 'VENDOR UJI', 10, '', 'DAVD', '2026-10-02', '7011', 10],
-            ['4500000002', '30000003', 'VENDOR UJI', 3, '', 'DAVD2', '2026-09-02', '7011', 0],
-        ]
-    );
-
-    if (isset($ubah['mrpRusak'])) {
-        file_put_contents($folder . DIRECTORY_SEPARATOR . 'EXPORT MRP.XLSX', 'bukan berkas excel');
-    } else {
-        spUjiTulisXlsx(
-            $folder . DIRECTORY_SEPARATOR . 'EXPORT MRP.XLSX',
-            ['Material', 'Plnt stock', 'Safety Stk', 'Reorder Pt'],
-            [
-                ['30000001', 5, 2, 1],
-                ['30000002', 5, 2, 5],
-                ['30000003', 6, 2, 2],
-            ]
-        );
-    }
-
-    return $folder;
+    return SpMaterial::query()->where('kode_material', $kode)->value($kolom);
 }
 
-test('impor menyimpan baris mentah dan ringkasan hasil hitung', function () {
-    $folder = spUjiFolder();
+test('import mengisi keadaan material sesuai aturan stok dan kolom aksi', function () {
+    $berkas = spSiapkan();
 
-    $batch = app(SparepartImportService::class)->import($folder, 'Uji Okt 26');
+    $impor = app(SparepartImportService::class)->import([
+        SparepartImportService::SUMBER_STOK => $berkas['stok'],
+        SparepartImportService::SUMBER_PR   => $berkas['pr'],
+        SparepartImportService::SUMBER_PO   => $berkas['po'],
+    ], null, 'Uji lengkap');
 
-    expect($batch->status)->toBe('selesai')
-        ->and($batch->jumlah_monitoring)->toBe(4)
-        ->and($batch->jumlah_g001)->toBe(3)
-        ->and($batch->jumlah_pr)->toBe(3)
-        ->and($batch->jumlah_po)->toBe(2)
-        ->and($batch->jumlah_mrp)->toBe(3)
-        ->and($batch->jumlah_hasil)->toBe(4)
-        ->and($batch->selesai_at)->not->toBeNull();
+    expect($impor->status)->toBe(SpImpor::STATUS_SELESAI)
+        ->and(SpMaterial::query()->count())->toBe(5);
 
-    expect(DB::table('sp_monitoring')->count())->toBe(4)
-        ->and(DB::table('sp_g001')->count())->toBe(2)
-        ->and(DB::table('sp_pr')->count())->toBe(3)
-        ->and(DB::table('sp_po')->count())->toBe(2)
-        ->and(DB::table('sp_mrp')->count())->toBe(3);
+    // PO terbuka -> KEJAR KEDATANGAN, stok 0 -> REORDER.
+    expect((float) spNilai('30000002', 'stok_tersedia'))->toBe(0.0)
+        ->and((bool) spNilai('30000002', 'reorder'))->toBeTrue()
+        ->and(spNilai('30000002', 'aksi'))->toBe(SpMaterial::AKSI_KEJAR)
+        ->and(spNilai('30000002', 'po_no'))->toBe('4500000001')
+        ->and((int) spNilai('30000002', 'po_open'))->toBe(1)
+        ->and(spNilai('30000002', 'vendor'))->toBe('VENDOR UJI');
 
-    expect($batch->ringkasan['aksi'])->toBe([
-        SpIntegrasi::AKSI_KEJAR   => 1,
-        SpIntegrasi::AKSI_BUAT_PO => 1,
-        SpIntegrasi::AKSI_CEK     => 1,
-        SpIntegrasi::AKSI_BUAT_PR => 1,
-    ]);
+    // Stok awal 5 + barang masuk 2 = 7 -> aman; PR tertutup -> CEK.
+    expect((float) spNilai('30000003', 'stok_tersedia'))->toBe(7.0)
+        ->and((bool) spNilai('30000003', 'reorder'))->toBeFalse()
+        ->and((float) spNilai('30000003', 'g_masuk'))->toBe(2.0)
+        ->and(spNilai('30000003', 'aksi'))->toBe(SpMaterial::AKSI_CEK);
 
-    expect($batch->ringkasan['stok'])->toBe(['total' => 4, 'aman' => 0, 'reorder' => 4])
-        ->and($batch->ringkasan['min'])->toBe(['sama' => 2, 'beda' => 1, 'tanpa_mrp' => 1])
-        ->and($batch->ringkasan['material']['pr_irisan'])->toBe(3)
-        ->and($batch->ringkasan['material']['po_irisan'])->toBe(2);
+    // Tanpa catatan stok -> dihitung seperti nol -> REORDER; PR terbuka -> BUAT PO.
+    expect(spNilai('30000001', 'stok_tersedia'))->toBeNull()
+        ->and((bool) spNilai('30000001', 'reorder'))->toBeTrue()
+        ->and(spNilai('30000001', 'aksi'))->toBe(SpMaterial::AKSI_BUAT_PO)
+        ->and((int) spNilai('30000001', 'pr_terbuka'))->toBe(1)
+        ->and(spNilai('30000001', 'pr_status_aksi'))->toBe('Terbuka (belum PO)')
+        ->and((string) spNilai('30000001', 'penanda'))->toContain('tanpa catatan stok gudang');
+
+    expect(spNilai('30000004', 'aksi'))->toBe(SpMaterial::AKSI_BUAT_PR)
+        ->and(spNilai('30000004', 'po_prev'))->toBe('4500000003')
+        ->and((int) spNilai('30000004', 'po_uniq'))->toBe(1)
+        ->and(spNilai('30000005', 'aksi'))->toBe(SpMaterial::AKSI_BUAT_PR)
+        ->and((float) spNilai('30000005', 'stok_tersedia'))->toBe(2.0);
 });
 
-test('pemilihan dokumen PR/PO dan kolom aksi tiap material benar', function () {
-    app(SparepartImportService::class)->import(spUjiFolder(), 'Uji Okt 26');
-
-    $kejar = SpIntegrasi::where('kode_material', '30000002')->firstOrFail();
-
-    expect($kejar->aksi)->toBe(SpIntegrasi::AKSI_KEJAR)
-        ->and($kejar->po_no)->toBe('4500000001')
-        ->and((float) $kejar->po_sisa)->toBe(10.0)
-        ->and($kejar->po_open)->toBe(1)
-        ->and($kejar->po_closed)->toBe(0)
-        ->and($kejar->po_uniq)->toBe(1)
-        ->and($kejar->po_line)->toBe(1)
-        ->and((float) $kejar->po_sisa_total)->toBe(10.0)
-        ->and($kejar->po_tanggal?->format('Y-m-d'))->toBe('2026-10-02')
-        ->and($kejar->po_tanggal_teks)->toBe('02-OCT-2026')
-        ->and($kejar->pr_no)->toBe('1000000002')
-        ->and($kejar->pr_status)->toBe('Terbuka 1 / Closed 0')
-        ->and($kejar->pr_status_aksi)->toBe('Terbuka (belum PO)')
-        ->and((float) $kejar->pr_qty)->toBe(2.0)
-        ->and($kejar->purch)->toBe('DAVD')
-        ->and($kejar->vendor)->toBe('VENDOR UJI')
-        ->and($kejar->purch_last)->toBe('DAVD')
-        ->and($kejar->vendor_last)->toBe('VENDOR UJI')
-        ->and($kejar->min_cmp)->toBe('Beda')
-        ->and($kejar->ket)->toBe('Sudah ada PR/PO')
-        ->and($kejar->g_baris)->toBe(1)
-        ->and((float) $kejar->g_sisa)->toBe(1.0)
-        ->and($kejar->g_satuan)->toBe('PCS')
-        ->and($kejar->g_lokasi)->toBe('C1.3')
-        ->and((float) $kejar->mrp_reorder)->toBe(5.0);
-
-    $buatPo = SpIntegrasi::where('kode_material', '30000001')->firstOrFail();
-
-    expect($buatPo->aksi)->toBe(SpIntegrasi::AKSI_BUAT_PO)
-        ->and($buatPo->po_no)->toBeNull()
-        ->and($buatPo->pr_no)->toBe('1000000001')
-        ->and($buatPo->pr_status)->toBe('Terbuka 1 / Closed 0')
-        ->and($buatPo->purch)->toBe('A01')
-        ->and($buatPo->req_list)->toBe('PPIC')
-        ->and($buatPo->min_cmp)->toBe('Sama')
-        ->and($buatPo->ket)->toBe('Sudah ada PR/PO');
-
-    $cek = SpIntegrasi::where('kode_material', '30000003')->firstOrFail();
-
-    expect($cek->aksi)->toBe(SpIntegrasi::AKSI_CEK)
-        ->and($cek->po_no)->toBe('4500000002')
-        ->and($cek->po_open)->toBe(0)
-        ->and($cek->po_closed)->toBe(1)
-        ->and($cek->pr_status)->toBe('Terbuka 0 / Closed 1')
-        ->and($cek->pr_status_aksi)->toBe('Sudah jadi PO')
-        ->and($cek->purch)->toBe('DAVD2')
-        ->and($cek->g_baris)->toBe(2)
-        ->and((float) $cek->g_sisa)->toBe(7.0)
-        ->and($cek->g_lokasi)->toBe('A1.1; A1.2')
-        ->and($cek->min_cmp)->toBe('Sama');
-
-    $buatPr = SpIntegrasi::where('kode_material', '30000004')->firstOrFail();
-
-    expect($buatPr->aksi)->toBe(SpIntegrasi::AKSI_BUAT_PR)
-        ->and($buatPr->po_no)->toBeNull()
-        ->and($buatPr->pr_no)->toBeNull()
-        ->and($buatPr->pr_line)->toBe(0)
-        ->and($buatPr->pr_qty)->toBeNull()
-        ->and($buatPr->min_cmp)->toBe('-')
-        ->and($buatPr->ket)->toBe('REORDER - belum ada PR/PO')
-        ->and($buatPr->g_baris)->toBe(0)
-        ->and($buatPr->g_awal)->toBeNull();
-});
-
-test('impor ulang periode yang sama mengganti batch lama tanpa menggandakan baris', function () {
-    $folder = spUjiFolder();
+test('import sebagian mempertahankan nilai sumber yang tidak diunggah', function () {
+    $berkas  = spSiapkan();
     $layanan = app(SparepartImportService::class);
 
-    $pertama = $layanan->import($folder, 'Uji Okt 26');
-    $kedua = $layanan->import($folder, 'Uji Okt 26');
+    $layanan->import([
+        SparepartImportService::SUMBER_STOK => $berkas['stok'],
+        SparepartImportService::SUMBER_PR   => $berkas['pr'],
+        SparepartImportService::SUMBER_PO   => $berkas['po'],
+    ]);
 
-    expect($kedua->id)->not->toBe($pertama->id)
-        ->and(SpBatch::count())->toBe(1)
-        ->and(SpBatch::where('periode', 'Uji Okt 26')->count())->toBe(1)
-        ->and(DB::table('sp_integrasi')->count())->toBe(4)
-        ->and(DB::table('sp_monitoring')->count())->toBe(4)
-        ->and(DB::table('sp_pr')->count())->toBe(3)
-        ->and(DB::table('sp_integrasi')->where('batch_id', $pertama->id)->count())->toBe(0);
+    // Berkas PO baru: sisa kirim PO 4500000001 berubah dari 5 menjadi 9.
+    $poBaru = spUjiXlsx('po-uji-baru.xlsx', [
+        'Sheet1' => [
+            ['Document Date', 'Purchasing Document', 'Supplier/Supplying Plant', 'Material', 'Order Quantity', 'Deletion Indicator', 'Still to be delivered (qty)', 'Our Reference', 'Plant'],
+            [46001, '4500000001', 'VENDOR UJI BARU', '30000002', 10, '', 9, 'DAVD', '7011'],
+        ],
+    ]);
+
+    $impor = $layanan->import([SparepartImportService::SUMBER_PO => $poBaru]);
+
+    expect((float) spNilai('30000002', 'po_sisa'))->toBe(9.0)
+        ->and(spNilai('30000002', 'vendor'))->toBe('VENDOR UJI BARU')
+        // Nilai stok dan PR dari import sebelumnya tetap dipakai.
+        ->and((float) spNilai('30000002', 'stok_tersedia'))->toBe(0.0)
+        ->and(spNilai('30000001', 'pr_no'))->toBe('1000000001')
+        ->and((int) spNilai('30000005', 'po_line'))->toBe(0)
+        ->and((int) ($impor->analisa['sumber'][SparepartImportService::SUMBER_STOK]['dipakai'] ?? 1))->toBe(0);
 });
 
-test('folder periode yang tidak ada menolak impor tanpa membuat batch', function () {
-    $folder = spUjiFolder() . '-tidak-ada';
+test('berkas tanpa lembar stok gudang ditolak tanpa menulis data', function () {
+    $berkas = spUjiBerkas();
 
-    expect(fn () => app(SparepartImportService::class)->import($folder, 'Uji Okt 26'))
-        ->toThrow(RuntimeException::class);
+    expect(fn () => app(SparepartImportService::class)->import([
+        SparepartImportService::SUMBER_STOK => $berkas['pr'],
+    ]))->toThrow(SparepartFormatException::class);
 
-    expect(SpBatch::count())->toBe(0);
+    expect(SpMaterial::query()->count())->toBe(0)
+        ->and(SpImpor::query()->count())->toBe(0);
 });
 
-test('berkas sumber rusak membuat batch gagal dan tidak menyisakan baris mentah', function () {
-    $folder = spUjiFolder(['mrpRusak' => '1']);
+test('berkas dengan judul kolom wajib hilang ditolak dan menyebut kolomnya', function () {
+    $prRusak = spUjiXlsx('pr-rusak.xlsx', [
+        'Sheet1' => [
+            ['Item of requisition', 'Purchase Order', 'Deletion indicator', 'Material', 'Quantity requested', 'Delivery Date'],
+            ['10', '4500000001', '', '30000002', 2, '05.10.2026'],
+        ],
+    ]);
 
-    $galat = null;
+    $hilang = [];
 
     try {
-        app(SparepartImportService::class)->import($folder, 'Uji Okt 26');
-    } catch (Throwable $e) {
-        $galat = $e;
+        app(SparepartImportService::class)->import([SparepartImportService::SUMBER_PR => $prRusak]);
+    } catch (SparepartFormatException $e) {
+        $hilang = $e->getHilang();
     }
 
-    expect($galat)->not->toBeNull()
-        ->and($galat->getMessage())->not->toBe('');
-
-    $batch = SpBatch::where('periode', 'Uji Okt 26')->firstOrFail();
-
-    expect($batch->status)->toBe('gagal')
-        ->and($batch->pesan)->not->toBeNull()
-        ->and(DB::table('sp_monitoring')->count())->toBe(0)
-        ->and(DB::table('sp_pr')->count())->toBe(0)
-        ->and(DB::table('sp_integrasi')->count())->toBe(0);
+    expect($hilang)->toContain('Processing status')
+        ->and($hilang)->toContain('Purchase order')
+        ->and($hilang)->toContain('Deletion Indicator');
 });
 
-test('perintah sparepart:import menjalankan impor satu folder periode', function () {
-    $folder = spUjiFolder();
+test('analisa mencatat material di luar daftar pantau', function () {
+    $berkas = spSiapkan();
 
-    $this->artisan('sparepart:import', ['folder' => $folder])
-        ->expectsOutputToContain('Batch #')
-        ->assertExitCode(0);
+    $impor = app(SparepartImportService::class)->import([
+        SparepartImportService::SUMBER_STOK => $berkas['stok'],
+        SparepartImportService::SUMBER_PR   => $berkas['pr'],
+        SparepartImportService::SUMBER_PO   => $berkas['po'],
+    ]);
 
-    expect(SpBatch::where('periode', basename($folder))->value('status'))->toBe('selesai');
+    $analisa = (array) $impor->analisa;
+
+    expect((int) $analisa['luar_pantau']['pr']['jumlah'])->toBe(1)
+        ->and((array) $analisa['luar_pantau']['pr']['contoh'])->toContain('30009999')
+        ->and((int) $analisa['luar_pantau']['po']['jumlah'])->toBe(1)
+        ->and(SpMaterial::query()->where('kode_material', '30009999')->exists())->toBeFalse();
 });
 
-test('perintah sparepart:import gagal dengan kode keluar 1 bila folder tidak ada', function () {
-    $this->artisan('sparepart:import', ['folder' => sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'tidak-ada-sparepart'])
-        ->assertExitCode(1);
+test('analisa mencatat material yang statusnya berubah menjadi REORDER', function () {
+    $berkas  = spSiapkan();
+    $layanan = app(SparepartImportService::class);
 
-    expect(SpBatch::count())->toBe(0);
+    $layanan->import([
+        SparepartImportService::SUMBER_STOK => $berkas['stok'],
+        SparepartImportService::SUMBER_PR   => $berkas['pr'],
+        SparepartImportService::SUMBER_PO   => $berkas['po'],
+    ]);
+
+    // Berkas stok baru: BEARING UJI (30000003) habis, sebelumnya sisa 7.
+    $stokBaru = spUjiXlsx('stok-uji-baru.xlsx', [
+        'G001' => [
+            ['S. Loc', 'Kode', 'Nama Item', 'Stok Awal', 'Masuk', 'Keluar', 'Sisa Stok', 'UN'],
+            ['A1.2', '30000003', 'BEARING UJI', 0, 0, 0, 0, 'PCS'],
+            ['A1.4', '30000005', 'GASKET UJI', 2, 0, 0, 2, 'PCS'],
+        ],
+        'MASUK 1' => [
+            ['Tanggal', 'Kode', 'Nama Item', 'Qty', 'Uom', 'No. PO', 'Request by'],
+        ],
+        'KELUAR 1' => [
+            ['Tanggal', 'Kode', 'Nama Item', 'Jumlah', 'Uom', 'User', 'MvT'],
+        ],
+    ]);
+
+    $impor = $layanan->import([SparepartImportService::SUMBER_STOK => $stokBaru]);
+
+    expect((array) $impor->analisa['status']['naik_reorder'])->toContain('30000003')
+        ->and((bool) spNilai('30000003', 'reorder'))->toBeTrue()
+        ->and((float) spNilai('30000003', 'stok_tersedia'))->toBe(0.0);
 });
 
-test('perintah sparepart:import menolak opsi oleh yang bukan angka', function () {
-    $folder = spUjiFolder();
+test('perintah sparepart:import menjalankan import dan mencatat riwayatnya', function () {
+    $berkas = spSiapkan();
 
-    $this->artisan('sparepart:import', ['folder' => $folder, '--oleh' => 'bukan-angka'])
-        ->assertExitCode(1);
+    $this->artisan('sparepart:import', [
+        '--stok'  => $berkas['stok'],
+        '--pr'    => $berkas['pr'],
+        '--po'    => $berkas['po'],
+        '--label' => 'Uji perintah',
+    ])->assertExitCode(0);
 
-    expect(SpBatch::count())->toBe(0);
+    expect(SpImpor::query()->count())->toBe(1)
+        ->and(SpImpor::query()->value('label'))->toBe('Uji perintah')
+        ->and(DB::table('sp_material')->count())->toBe(5);
 });
+
+test('perintah sparepart:import melaporkan kegagalan bila tidak ada berkas', function () {
+    $this->artisan('sparepart:import')->assertExitCode(1);
+
+    expect(SpImpor::query()->count())->toBe(0);
+});
+
+test('import kedua memperbarui baris yang sama tanpa menambah baris baru', function () {
+    $berkas  = spSiapkan();
+    $layanan = app(SparepartImportService::class);
+
+    $layanan->import([
+        SparepartImportService::SUMBER_STOK => $berkas['stok'],
+        SparepartImportService::SUMBER_PR   => $berkas['pr'],
+        SparepartImportService::SUMBER_PO   => $berkas['po'],
+    ]);
+
+    $impor = $layanan->import([
+        SparepartImportService::SUMBER_STOK => $berkas['stok'],
+        SparepartImportService::SUMBER_PR   => $berkas['pr'],
+        SparepartImportService::SUMBER_PO   => $berkas['po'],
+    ]);
+
+    expect(SpMaterial::query()->count())->toBe(5)
+        ->and((int) ($impor->analisa['keadaan']['baru'] ?? -1))->toBe(0)
+        ->and((int) ($impor->analisa['keadaan']['tetap'] ?? 0))->toBe(5);
+});
+

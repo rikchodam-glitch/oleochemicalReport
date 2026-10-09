@@ -2,37 +2,44 @@
 
 namespace App\Services\Sparepart;
 
+use App\Exceptions\SparepartFormatException;
 use DateTimeInterface;
-use PhpOffice\PhpSpreadsheet\Reader\Xlsx;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use RuntimeException;
+use Throwable;
 
 /**
- * Pembaca lima berkas sumber Integrasi PR/PO Spare Part.
+ * Pembaca berkas sumber Integrasi PR/PO Spare Part.
  *
- * Lima sumbernya:
- * 1. SparePart_Monitoring.csv  - stok minimum & stok tersedia per material (input manual).
- * 2. G001_clean.csv            - stok gudang aktual per SLoc.
- * 3. EXPORT PR.XLSX            - daftar permintaan pembelian (SAP ME5A).
- * 4. EXPORT PO.XLSX            - daftar pesanan pembelian (SAP ME2M).
- * 5. EXPORT MRP.XLSX           - plant stock, safety stock, reorder point (SAP MD07).
+ * Tiga berkas dibaca (nama berkas bebas, isinya yang dikunci):
+ * 1. laporan stok gudang (lembar G001, MASUK, dan KELUAR),
+ * 2. EXPORT PR (SAP ME5A),
+ * 3. EXPORT PO (SAP ME2M).
  *
- * Seluruh pembacaan XLSX memakai `setReadDataOnly(true)` dan kolom dikenali
- * dari NAMA JUDUL (bukan posisi), supaya revisi berkas SAP yang menggeser
- * urutan kolom tidak merusak hasil import.
+ * Judul kolom dikenali dari NAMA JUDUL (bukan posisi) dan judul wajib
+ * diperiksa lebih dulu; bila ada yang hilang, SparepartFormatException
+ * dilempar supaya import dibatalkan sebelum menulis apa pun.
+ *
+ * Seluruh XLSX dibaca dengan setReadDataOnly(true) dan hanya lembar yang perlu.
  */
 class SparepartReader
 {
-    /**
-     * Pola kode material yang dianggap sah (angka minimal 6 digit).
-     */
+    /** Pola kode material yang dianggap sah (angka minimal 6 digit). */
     public const POLA_KODE = '/^\d{6,}$/';
 
-    /**
-     * Judul kolom yang dibutuhkan pada EXPORT PR.XLSX.
-     *
-     * @var array<int, string>
-     */
-    public const KOLOM_PR = [
+    /** Judul kolom wajib pada lembar rekap stok gudang (G001). */
+    public const JUDUL_STOK = ['S. Loc', 'Kode', 'Nama Item', 'Stok Awal'];
+
+    /** Judul kolom wajib pada lembar barang masuk. */
+    public const JUDUL_MASUK = ['Kode', 'Qty'];
+
+    /** Judul kolom wajib pada lembar barang keluar. */
+    public const JUDUL_KELUAR = ['Kode', 'Jumlah'];
+
+    /** Judul kolom wajib pada berkas EXPORT PR (SAP ME5A). */
+    public const JUDUL_PR = [
         'Processing status',
         'Deletion Indicator',
         'Purchase order',
@@ -43,94 +50,562 @@ class SparepartReader
         'Purchasing Group',
     ];
 
-    /**
-     * Judul kolom yang dibutuhkan pada EXPORT PO.XLSX.
-     *
-     * @var array<int, string>
-     */
-    public const KOLOM_PO = [
+    /** Judul kolom wajib pada berkas EXPORT PO (SAP ME2M). */
+    public const JUDUL_PO = [
         'Purchasing Document',
-        'Material',
         'Supplier/Supplying Plant',
+        'Material',
         'Order Quantity',
         'Deletion Indicator',
         'Our Reference',
         'Document Date',
-        'Plant',
     ];
 
     /**
-     * Judul kolom yang dibutuhkan pada EXPORT MRP.XLSX.
-     *
-     * @var array<int, string>
+     * Judul kolom PO yang dicari dari AWALAN karena nama lengkapnya memuat
+     * satuan (mis. "Still to be delivered (qty)").
      */
-    public const KOLOM_MRP = [
-        'Material',
-        'Plnt stock',
-        'Safety Stk',
-        'Reorder Pt',
-    ];
+    public const JUDUL_PO_AWALAN = 'Still to be delivered';
+
+    /** Judul kolom wajib pada berkas daftar pantau (sheet MASTER DATA). */
+    public const JUDUL_PANTAU = ['Kode Material'];
+
+    /** Judul kolom pendukung daftar pantau (boleh tidak ada). */
+    public const JUDUL_PANTAU_OPSIONAL = ['Deskripsi', 'Jumlah', 'Plant', 'Model', 'Tag No.', 'UOM'];
+
+    /** Batas baris yang dipindai untuk mencari baris judul kolom. */
+    private const BATAS_CARI_JUDUL = 30;
 
     /**
-     * Membaca SparePart_Monitoring.csv (baris pertama = judul).
+     * Membaca laporan stok gudang: stok awal per S.Loc, barang masuk, dan keluar.
      *
-     * Kolom yang dipakai: 0 Kode Material, 1 Deskripsi, 2 Stok Minimum,
-     * 3 Stok Tersedia, 4 Status (memuat kata REORDER), 5 Penanda.
-     * Hanya kode material berbentuk angka minimal 6 digit yang disimpan.
+     * Sisa stok TIDAK diambil dari sel formula berkas, melainkan dihitung
+     * (stok awal + masuk - keluar) per kode material supaya material yang
+     * punya lebih dari satu baris S.Loc tidak dihitung ganda. Cara ini sudah
+     * dibandingkan dengan sel "Sisa Stok" berkas nyata (09/10/2026) dan
+     * cocok, serta setara dengan sheet StokManual milik pengguna (410
+     * material cocok, 0 beda).
      *
-     * @param  string $path Path berkas CSV
-     * @return array{data: array<string, array<string, mixed>>, baris: int}
+     * @param  string $path Path berkas laporan stok gudang (xlsx)
+     * @return array<string, mixed> Data per material + rincian baca
+     *
+     * @throws SparepartFormatException Bila lembar/judul kolom wajib tidak ada
      */
-    public function bacaMonitoring(string $path): array
+    public function bacaStok(string $path): array
     {
-        $data = [];
-        $baris = 0;
+        $daftar  = $this->daftarLembar($path);
+        $g001    = $this->cariLembar($daftar, 'G001');
+        $masukLm = $this->cariLembar($daftar, 'MASUK');
+        $keluarLm = $this->cariLembar($daftar, 'KELUAR');
 
-        foreach ($this->bacaCsv($path) as $i => $s) {
-            if ($i === 0) {
-                continue;
-            }
+        $hilang = [];
 
-            $kode = self::teks($s[0] ?? '');
-            if (! $this->kodeSah($kode)) {
-                continue;
-            }
-
-            $baris++;
-            $data[$kode] = [
-                'kode_material'  => $kode,
-                'deskripsi'      => mb_substr(self::teks($s[1] ?? ''), 0, 255),
-                'stok_min'       => self::angka($s[2] ?? 0),
-                'stok_tersedia'  => self::angka($s[3] ?? 0),
-                'reorder'        => mb_stripos(self::teks($s[4] ?? ''), 'REORDER') !== false,
-                'penanda'        => mb_substr(self::teks($s[5] ?? ''), 0, 100),
-            ];
+        if ($g001 === null) {
+            $hilang[] = 'lembar G001';
         }
 
-        return ['data' => $data, 'baris' => $baris];
+        if ($masukLm === null) {
+            $hilang[] = 'lembar MASUK';
+        }
+
+        if ($keluarLm === null) {
+            $hilang[] = 'lembar KELUAR';
+        }
+
+        if ($hilang !== []) {
+            throw SparepartFormatException::untukBerkas(
+                basename($path),
+                $hilang,
+                $daftar,
+                'Unggah laporan stok gudang yang memuat lembar G001, MASUK, dan KELUAR.'
+            );
+        }
+
+        $reader = IOFactory::createReaderForFile($path);
+        $reader->setReadDataOnly(true);
+        $reader->setLoadSheetsOnly([$g001, $masukLm, $keluarLm]);
+        $buku = $reader->load($path);
+
+        $judul = [];
+
+        try {
+            $kolG001 = $this->petaKolomWajib($buku, $g001, self::JUDUL_STOK, $path, $judul);
+            $kolMas  = $this->petaKolomWajib($buku, $masukLm, self::JUDUL_MASUK, $path, $judul);
+            $kolKel  = $this->petaKolomWajib($buku, $keluarLm, self::JUDUL_KELUAR, $path, $judul);
+
+            $masuk  = $this->jumlahKolom($buku, $masukLm, $kolMas, 'Kode', 'Qty');
+            $keluar = $this->jumlahKolom($buku, $keluarLm, $kolKel, 'Kode', 'Jumlah');
+            $stok   = $this->rangkumStok($buku, $g001, $kolG001);
+        } finally {
+            $buku->disconnectWorksheets();
+        }
+
+        $ganda = 0;
+
+        foreach ($stok['data'] as $kode => $item) {
+            $item['masuk']  = (float) ($masuk[$kode] ?? 0.0);
+            $item['keluar'] = (float) ($keluar[$kode] ?? 0.0);
+            $item['sisa']   = $item['stok_awal'] + $item['masuk'] - $item['keluar'];
+
+            if ($item['baris'] > 1) {
+                $ganda++;
+            }
+
+            $stok['data'][$kode] = $item;
+        }
+
+        $catatan = [];
+
+        if ($ganda > 0) {
+            $catatan[] = $ganda . ' material punya lebih dari satu baris S.Loc; barang masuk dan keluar dihitung sekali per material.';
+        }
+
+        return [
+            'data'      => $stok['data'],
+            'baris'     => $stok['baris'] + (int) $masuk['__baris'] + (int) $keluar['__baris'],
+            'diabaikan' => $stok['diabaikan'],
+            'lembar'    => [$g001, $masukLm, $keluarLm],
+            'judul'     => $judul,
+            'catatan'   => $catatan,
+        ];
     }
 
     /**
-     * Membaca G001_clean.csv dan menjumlahkan stok per material.
+     * Membaca berkas EXPORT PR (SAP ME5A).
      *
-     * Kolom yang dipakai: 0 S.Loc, 1 Kode, 2 Nama Item, 3 Stok Awal,
-     * 4 Masuk, 5 Keluar, 6 Sisa Stok, 7 UN.
+     * Nomor PR diambil dari baris dokumen yang sel A-nya dimulai "Purchase
+     * Requisition" dan berlaku sampai baris dokumen berikutnya. Baris item
+     * hanya diproses bila sel A berbentuk angka dan kolom Material terisi.
      *
-     * @param  string $path Path berkas CSV
-     * @return array{data: array<string, array<string, mixed>>, baris: int}
+     * @param  string $path Path berkas xlsx
+     * @return array<string, mixed> Baris per material + rincian baca
+     *
+     * @throws SparepartFormatException Bila judul kolom wajib tidak ada
      */
-    public function bacaG001(string $path): array
+    public function bacaPr(string $path): array
     {
-        $data = [];
-        $baris = 0;
+        $lembar = $this->daftarLembar($path)[0] ?? '';
+        $rows   = $this->bacaLembar($path, $lembar);
+        $judul  = [];
 
-        foreach ($this->bacaCsv($path) as $i => $s) {
-            if ($i === 0) {
+        [$barisJudul, $kolom] = $this->cariJudul($rows, self::JUDUL_PR, [], basename($path), $judul);
+
+        $data      = [];
+        $nomor     = [];
+        $baris     = 0;
+        $diabaikan = 0;
+        $prNo      = '';
+
+        foreach ($rows as $i => $r) {
+            if ($i <= $barisJudul) {
                 continue;
             }
 
-            $kode = self::teks($s[1] ?? '');
-            if ($kode === '') {
+            $selA = self::teks($r[0] ?? '');
+
+            if (stripos($selA, 'Purchase Requisition') === 0) {
+                $prNo = trim(substr($selA, strlen('Purchase Requisition')));
+                $nomor[$prNo] = true;
+                continue;
+            }
+
+            if ($selA === '' || ! is_numeric($selA)) {
+                $diabaikan++;
+                continue;
+            }
+
+            $material = self::teks($this->sel($r, $kolom, 'Material'));
+
+            if ($material === '') {
+                $diabaikan++;
+                continue;
+            }
+
+            $deletion = self::teks($this->sel($r, $kolom, 'Deletion Indicator'));
+            $baris++;
+
+            $data[$material][] = [
+                'kode_material'      => $material,
+                'no_pr'              => mb_substr($prNo, 0, 40),
+                'processing_status'  => mb_substr(strtoupper(self::teks($this->sel($r, $kolom, 'Processing status'))), 0, 10),
+                'deletion_indicator' => mb_substr($deletion, 0, 20),
+                'batal'              => preg_match('/true/i', $deletion) === 1,
+                'qty_requested'      => self::angka($this->sel($r, $kolom, 'Quantity requested')),
+                'tanggal_kirim'      => self::hari($this->sel($r, $kolom, 'Delivery Date')) ?: null,
+                'no_po'              => mb_substr(self::teks($this->sel($r, $kolom, 'Purchase order')), 0, 40),
+                'requisitioner'      => mb_substr(self::teks($this->sel($r, $kolom, 'Requisitioner')), 0, 100),
+                'purchasing_group'   => mb_substr(self::teks($this->sel($r, $kolom, 'Purchasing Group')), 0, 20),
+            ];
+        }
+
+        return [
+            'data'      => $data,
+            'baris'     => $baris,
+            'diabaikan' => $diabaikan,
+            'dokumen'   => count($nomor),
+            'lembar'    => [$lembar],
+            'judul'     => $judul,
+            'catatan'   => $prNo === '' ? ['Tidak ada baris Purchase Requisition yang terbaca; kolom No PR akan kosong.'] : [],
+        ];
+    }
+
+    /**
+     * Membaca berkas EXPORT PO (SAP ME2M).
+     *
+     * Kolom sisa kirim dicari dari AWALAN judulnya ("Still to be delivered")
+     * karena nama lengkapnya memuat satuan (mis. "(qty)"). Baris tanpa nomor
+     * PO atau tanpa material diabaikan.
+     *
+     * @param  string $path Path berkas xlsx
+     * @return array<string, mixed> Baris per material + rincian baca
+     *
+     * @throws SparepartFormatException Bila judul kolom wajib tidak ada
+     */
+    public function bacaPo(string $path): array
+    {
+        $lembar = $this->daftarLembar($path)[0] ?? '';
+        $rows   = $this->bacaLembar($path, $lembar);
+        $judul  = [];
+
+        [$barisJudul, $kolom] = $this->cariJudul($rows, self::JUDUL_PO, [], basename($path), $judul);
+
+        $kolom['sisa_kirim'] = $this->kolomAwalan($rows[$barisJudul] ?? [], self::JUDUL_PO_AWALAN);
+
+        if ($kolom['sisa_kirim'] === null) {
+            throw SparepartFormatException::untukBerkas(
+                basename($path),
+                [self::JUDUL_PO_AWALAN . ' (qty)'],
+                $judul,
+                'Unggah hasil ekspor SAP ME2M yang memuat kolom sisa kirim.'
+            );
+        }
+
+        $data      = [];
+        $nomor     = [];
+        $baris     = 0;
+        $diabaikan = 0;
+
+        foreach ($rows as $i => $r) {
+            if ($i <= $barisJudul) {
+                continue;
+            }
+
+            $noPo     = self::teks($this->sel($r, $kolom, 'Purchasing Document'));
+            $material = self::teks($this->sel($r, $kolom, 'Material'));
+
+            if ($noPo === '' || $material === '') {
+                $diabaikan++;
+                continue;
+            }
+
+            $sisa     = self::angka($this->sel($r, $kolom, 'sisa_kirim'));
+            $deletion = self::teks($this->sel($r, $kolom, 'Deletion Indicator'));
+            $status   = $deletion !== '' ? 'DELETED' : ($sisa > 0 ? 'OPEN' : 'CLOSED');
+
+            $baris++;
+            $nomor[$noPo] = true;
+
+            $data[$material][] = [
+                'kode_material'   => $material,
+                'no_po'           => mb_substr($noPo, 0, 40),
+                'tanggal_dokumen' => self::hari($this->sel($r, $kolom, 'Document Date')) ?: null,
+                'sisa_kirim'      => $sisa,
+                'status'          => $status,
+                'vendor'          => mb_substr(self::teks($this->sel($r, $kolom, 'Supplier/Supplying Plant')), 0, 255),
+                'our_reference'   => mb_substr(self::teks($this->sel($r, $kolom, 'Our Reference')), 0, 100),
+                'plant'           => mb_substr(self::teks($this->sel($r, $kolom, 'Plant')), 0, 20),
+                'order_qty'       => self::angka($this->sel($r, $kolom, 'Order Quantity')),
+            ];
+        }
+
+        return [
+            'data'      => $data,
+            'baris'     => $baris,
+            'diabaikan' => $diabaikan,
+            'dokumen'   => count($nomor),
+            'lembar'    => [$lembar],
+            'judul'     => $judul,
+            'catatan'   => [],
+        ];
+    }
+
+    /**
+     * Membaca berkas daftar pantau: xlsx (dicari lembar seperti MASTER DATA)
+     * atau CSV dengan kolom "Kode Material".
+     *
+     * @param  string $path Path berkas xlsx/csv
+     * @return array<string, mixed> Baris daftar pantau + rincian baca
+     *
+     * @throws SparepartFormatException Bila kolom "Kode Material" tidak ada
+     */
+    public function bacaPantau(string $path): array
+    {
+        if (strtolower((string) pathinfo($path, PATHINFO_EXTENSION)) === 'csv') {
+            return $this->bacaPantauCsv($path);
+        }
+
+        $daftar = $this->daftarLembar($path);
+        $lembar = $this->pilihLembarPantau($daftar) ?? ($daftar[0] ?? '');
+        $rows   = $this->bacaLembar($path, $lembar);
+        $judul  = [];
+
+        [$barisJudul, $kolom] = $this->cariJudul(
+            $rows,
+            self::JUDUL_PANTAU,
+            self::JUDUL_PANTAU_OPSIONAL,
+            basename($path),
+            $judul
+        );
+
+        return $this->susunPantau($rows, $barisJudul, $kolom, [$lembar], $judul);
+    }
+
+    /**
+     * Memilih lembar daftar pantau dari daftar nama lembar.
+     *
+     * Nama yang dipakai lebih dulu: tepat "MASTER DATA", lalu lembar yang
+     * namanya dimulai "MASTER". Bila tidak ada, null (pemanggil memakai
+     * lembar pertama dan kepala kolomnya diperiksa seperti biasa).
+     *
+     * @param  array<int, string> $daftar Daftar nama lembar berkas
+     * @return string|null                Nama lembar pilihan
+     */
+    private function pilihLembarPantau(array $daftar): ?string
+    {
+        foreach ($daftar as $nama) {
+            if ($this->normJudul($nama) === 'master data') {
+                return $nama;
+            }
+        }
+
+        return $this->cariLembar($daftar, 'MASTER');
+    }
+
+    /**
+     * Membuka berkas Excel dengan hanya lembar yang diperlukan.
+     *
+     * @param  string            $path   Path berkas
+     * @param  array<int, string> $lembar Nama lembar yang dimuat
+     * @return Spreadsheet               Buku kerja
+     */
+    private function bukaBerkas(string $path, array $lembar): Spreadsheet
+    {
+        $reader = IOFactory::createReaderForFile($path);
+        $reader->setReadDataOnly(true);
+        $reader->setLoadSheetsOnly($lembar);
+
+        return $reader->load($path);
+    }
+
+    /**
+     * Baris satu lembar buku kerja yang sudah dibuka.
+     *
+     * @param  Spreadsheet $buku Buku kerja
+     * @param  string      $nama Nama lembar
+     * @return array<int, array<int, mixed>> Baris lembar (kosong bila lembar tidak ada)
+     */
+    private function barisLembar(Spreadsheet $buku, string $nama): array
+    {
+        $lembar = $buku->getSheetByName($nama);
+
+        return $lembar === null ? [] : $lembar->toArray(null, false, false, false);
+    }
+
+    /**
+     * Membaca satu lembar berkas Excel menjadi array baris.
+     *
+     * @param  string $path Path berkas
+     * @param  string $nama Nama lembar
+     * @return array<int, array<int, mixed>> Baris lembar
+     *
+     * @throws RuntimeException Bila nama lembar kosong
+     */
+    private function bacaLembar(string $path, string $nama): array
+    {
+        if ($nama === '') {
+            throw new RuntimeException('Berkas ' . basename($path) . ' tidak memuat lembar data.');
+        }
+
+        $buku = $this->bukaBerkas($path, [$nama]);
+        $rows = $this->barisLembar($buku, $nama);
+        $buku->disconnectWorksheets();
+
+        return $rows;
+    }
+
+    /**
+     * Memeriksa judul kolom satu lembar buku kerja yang sudah dibuka.
+     *
+     * @param  Spreadsheet        $buku   Buku kerja
+     * @param  string             $lembar Nama lembar
+     * @param  array<int, string> $wajib  Judul kolom yang wajib ada
+     * @param  string             $path   Path berkas (untuk pesan galat)
+     * @param  array<string, mixed> $judul Penampung judul per lembar
+     * @return array<string, int>         Peta judul kolom => indeks kolom
+     *
+     * @throws SparepartFormatException Bila judul wajib tidak ditemukan
+     */
+    private function petaKolomWajib(
+        Spreadsheet $buku,
+        string $lembar,
+        array $wajib,
+        string $path,
+        array &$judul
+    ): array {
+        $rows  = $this->barisLembar($buku, $lembar);
+        $lokal = [];
+
+        [$barisJudul, $kolom] = $this->cariJudul($rows, $wajib, [], basename($path), $lokal);
+
+        $judul[$lembar] = $lokal;
+        $kolom['__judul'] = $barisJudul;
+
+        return $kolom;
+    }
+
+    /**
+     * Mencari baris judul kolom di antara baris-baris lembar.
+     *
+     * Baris judul = baris pertama yang memuat SELURUH judul wajib. Judul
+     * dibandingkan setelah dinormalkan (huruf kecil, spasi dirapikan) supaya
+     * spasi ganda dari ekspor SAP tidak menggagalkan import.
+     *
+     * @param  array<int, array<int, mixed>> $rows       Baris lembar
+     * @param  array<int, string>            $wajib      Judul kolom yang wajib ada
+     * @param  array<int, string>            $opsional   Judul kolom yang boleh tidak ada
+     * @param  string                        $namaBerkas Nama berkas untuk pesan galat
+     * @param  array<int, string>            $judul      Penampung judul yang ditemukan
+     * @return array<int, mixed>                        [indeks baris judul, peta judul => indeks kolom]
+     *
+     * @throws SparepartFormatException Bila judul wajib tidak ditemukan
+     */
+    private function cariJudul(array $rows, array $wajib, array $opsional, string $namaBerkas, array &$judul): array
+    {
+        $batas     = min(count($rows), self::BATAS_CARI_JUDUL);
+        $terbanyak = [];
+
+        for ($i = 0; $i < $batas; $i++) {
+            $peta = [];
+
+            foreach ((array) $rows[$i] as $c => $sel) {
+                $norm = $this->normJudul($sel);
+
+                if ($norm !== '' && ! isset($peta[$norm])) {
+                    $peta[$norm] = $c;
+                }
+            }
+
+            if ($peta === []) {
+                continue;
+            }
+
+            if (count($peta) > count($terbanyak)) {
+                $terbanyak = $peta;
+            }
+
+            $kurang = [];
+
+            foreach ($wajib as $w) {
+                if (! isset($peta[$this->normJudul($w)])) {
+                    $kurang[] = $w;
+                }
+            }
+
+            if ($kurang !== []) {
+                continue;
+            }
+
+            $kolom = [];
+
+            foreach ($wajib as $w) {
+                $kolom[$w] = $peta[$this->normJudul($w)];
+            }
+
+            foreach ($opsional as $o) {
+                $idx = $peta[$this->normJudul($o)] ?? null;
+
+                if ($idx !== null) {
+                    $kolom[$o] = $idx;
+                }
+            }
+
+            $judul = array_values(array_filter(
+                array_map(fn (mixed $v): string => trim((string) $v), (array) $rows[$i]),
+                fn (string $v): bool => $v !== ''
+            ));
+
+            return [$i, $kolom];
+        }
+
+        throw SparepartFormatException::untukBerkas(
+            $namaBerkas,
+            $wajib,
+            array_keys($terbanyak),
+            'Periksa kembali berkas sumbernya: urutan kolom boleh bergeser, tetapi nama judul tidak boleh hilang atau berubah.'
+        );
+    }
+
+    /**
+     * Menjumlahkan satu kolom angka per kode material dari lembar barang masuk
+     * atau keluar.
+     *
+     * @param  Spreadsheet       $buku      Buku kerja
+     * @param  string            $lembar    Nama lembar
+     * @param  array<string, int> $kolom    Peta judul kolom
+     * @param  string            $kolKode  Judul kolom kode material
+     * @param  string            $kolNilai Judul kolom angka yang dijumlahkan
+     * @return array<string, float>        Peta kode => jumlah (kunci "__baris" = jumlah baris dipakai)
+     */
+    private function jumlahKolom(Spreadsheet $buku, string $lembar, array $kolom, string $kolKode, string $kolNilai): array
+    {
+        $hasil = ['__baris' => 0.0];
+        $rows  = $this->barisLembar($buku, $lembar);
+        $mulai = (int) ($kolom['__judul'] ?? 0) + 1;
+        $iKode = $kolom[$kolKode] ?? null;
+        $iNilai = $kolom[$kolNilai] ?? null;
+
+        if ($iKode === null || $iNilai === null) {
+            return $hasil;
+        }
+
+        for ($i = $mulai; $i < count($rows); $i++) {
+            $kode = self::teks($rows[$i][$iKode] ?? '');
+
+            if ($kode === '' || ! is_numeric($kode)) {
+                continue;
+            }
+
+            $hasil['__baris'] = (float) $hasil['__baris'] + 1;
+            $hasil[$kode]     = (float) ($hasil[$kode] ?? 0.0) + self::angka($rows[$i][$iNilai] ?? 0);
+        }
+
+        return $hasil;
+    }
+
+    /**
+     * Merangkum stok awal per kode material dari lembar G001.
+     *
+     * @param  Spreadsheet        $buku   Buku kerja
+     * @param  string             $lembar Nama lembar rekap stok
+     * @param  array<string, int> $kolom  Peta judul kolom
+     * @return array<string, mixed>       Data per material + jumlah baris dibaca
+     */
+    private function rangkumStok(Spreadsheet $buku, string $lembar, array $kolom): array
+    {
+        $data      = [];
+        $rows      = $this->barisLembar($buku, $lembar);
+        $mulai     = (int) ($kolom['__judul'] ?? 0) + 1;
+        $baris     = 0;
+        $diabaikan = 0;
+
+        for ($i = $mulai; $i < count($rows); $i++) {
+            $kode = self::teks($rows[$i][$kolom['Kode'] ?? 0] ?? '');
+
+            if ($kode === '' || ! is_numeric($kode)) {
+                if ($kode !== '') {
+                    $diabaikan++;
+                }
+
                 continue;
             }
 
@@ -148,262 +623,55 @@ class SparepartReader
             ];
 
             $g['baris']++;
-            $g['stok_awal'] += self::angka($s[3] ?? 0);
-            $g['masuk']     += self::angka($s[4] ?? 0);
-            $g['keluar']    += self::angka($s[5] ?? 0);
-            $g['sisa']      += self::angka($s[6] ?? 0);
+            $g['stok_awal'] += self::angka($rows[$i][$kolom['Stok Awal'] ?? 0] ?? 0);
 
             if ($g['nama_item'] === '') {
-                $g['nama_item'] = mb_substr(self::teks($s[2] ?? ''), 0, 255);
+                $g['nama_item'] = mb_substr(self::teks($rows[$i][$kolom['Nama Item'] ?? 0] ?? ''), 0, 255);
             }
 
-            $satuan = self::teks($s[7] ?? '');
-            if ($satuan !== '' && ! in_array($satuan, $g['satuan'], true)) {
-                $g['satuan'][] = $satuan;
-            }
+            $sloc   = self::teks($rows[$i][$kolom['S. Loc'] ?? 0] ?? '');
+            $satuan = self::teks($rows[$i][$kolom['UN'] ?? 0] ?? '');
 
-            $sloc = self::teks($s[0] ?? '');
             if ($sloc !== '' && ! in_array($sloc, $g['sloc'], true)) {
                 $g['sloc'][] = $sloc;
+            }
+
+            if ($satuan !== '' && ! in_array($satuan, $g['satuan'], true)) {
+                $g['satuan'][] = $satuan;
             }
 
             $data[$kode] = $g;
         }
 
-        return ['data' => $data, 'baris' => $baris];
+        return ['data' => $data, 'baris' => $baris, 'diabaikan' => $diabaikan];
     }
 
     /**
-     * Membaca EXPORT PR.XLSX (SAP ME5A).
+     * Mengambil satu sel berdasarkan peta kolom.
      *
-     * Baris dokumen dikenali dari sel A yang dimulai dengan
-     * "Purchase Requisition"; nomor PR diambil dari SISA teks sel itu dan
-     * berlaku sampai baris dokumen berikutnya. Baris item hanya diproses bila
-     * sel A berbentuk angka dan kolom Material terisi.
-     *
-     * @param  string $path Path berkas XLSX
-     * @return array{data: array<string, array<int, array<string, mixed>>>, baris: int, nomor: int}
+     * @param  array<int, mixed>       $baris Baris sumber
+     * @param  array<string, int|null> $kolom Peta judul => indeks
+     * @param  string                  $nama  Judul kolom
+     * @return mixed                          Nilai sel (null bila kolom tidak ada)
      */
-    public function bacaPr(string $path): array
+    private function sel(array $baris, array $kolom, string $nama): mixed
     {
-        $rows = $this->bacaSheet($path);
-        $kolom = $this->petaKolom($rows[0] ?? [], self::KOLOM_PR);
+        $i = $kolom[$nama] ?? null;
 
-        $data = [];
-        $nomor = [];
-        $baris = 0;
-        $prNo = '';
-
-        foreach ($rows as $i => $r) {
-            if ($i === 0) {
-                continue;
-            }
-
-            $selA = self::teks($r[0] ?? '');
-            if (stripos($selA, 'Purchase Requisition') === 0) {
-                $prNo = trim(substr($selA, strlen('Purchase Requisition')));
-                $nomor[$prNo] = true;
-                continue;
-            }
-
-            if ($selA === '' || ! is_numeric($selA)) {
-                continue;
-            }
-
-            $material = self::teks($this->sel($r, $kolom, 'Material'));
-            if ($material === '') {
-                continue;
-            }
-
-            $baris++;
-            $deletion = self::teks($this->sel($r, $kolom, 'Deletion Indicator'));
-
-            $data[$material][] = [
-                'kode_material'      => $material,
-                'no_pr'              => mb_substr($prNo, 0, 40),
-                'processing_status'  => mb_substr(strtoupper(self::teks($this->sel($r, $kolom, 'Processing status'))), 0, 10),
-                'deletion_indicator' => mb_substr($deletion, 0, 20),
-                'batal'              => preg_match('/true/i', $deletion) === 1,
-                'qty_requested'      => self::angka($this->sel($r, $kolom, 'Quantity requested')),
-                'tanggal_kirim'      => self::hari($this->sel($r, $kolom, 'Delivery Date')) ?: null,
-                'no_po'              => mb_substr(self::teks($this->sel($r, $kolom, 'Purchase order')), 0, 40),
-                'requisitioner'      => mb_substr(self::teks($this->sel($r, $kolom, 'Requisitioner')), 0, 100),
-                'purchasing_group'   => mb_substr(self::teks($this->sel($r, $kolom, 'Purchasing Group')), 0, 20),
-            ];
-        }
-
-        return ['data' => $data, 'baris' => $baris, 'nomor' => count($nomor)];
+        return $i === null ? null : ($baris[$i] ?? null);
     }
 
     /**
-     * Membaca EXPORT PO.XLSX (SAP ME2M).
-     *
-     * Kolom "Still to be delivered" dicari dari AWALAN judulnya karena nama
-     * lengkapnya memuat satuan dan bisa berbeda tiap ekspor. Baris tanpa nomor
-     * PO atau tanpa material diabaikan.
-     *
-     * @param  string $path Path berkas XLSX
-     * @return array{data: array<string, array<int, array<string, mixed>>>, baris: int, nomor: int}
-     */
-    public function bacaPo(string $path): array
-    {
-        $rows = $this->bacaSheet($path);
-        $judul = $rows[0] ?? [];
-        $kolom = $this->petaKolom($judul, self::KOLOM_PO);
-        $iSisa = $this->kolomAwalan($judul, 'still to be delivered');
-
-        $data = [];
-        $nomor = [];
-        $baris = 0;
-
-        foreach ($rows as $i => $r) {
-            if ($i === 0) {
-                continue;
-            }
-
-            $no = self::teks($this->sel($r, $kolom, 'Purchasing Document'));
-            $material = self::teks($this->sel($r, $kolom, 'Material'));
-            if ($no === '' || $material === '') {
-                continue;
-            }
-
-            $baris++;
-            $nomor[$no] = true;
-            $deletion = self::teks($this->sel($r, $kolom, 'Deletion Indicator'));
-            $sisa = $iSisa === null ? null : self::angka($r[$iSisa] ?? 0);
-
-            $data[$material][] = [
-                'kode_material'   => $material,
-                'no_po'           => mb_substr($no, 0, 40),
-                'tanggal_dokumen' => self::hari($this->sel($r, $kolom, 'Document Date')) ?: null,
-                'sisa_kirim'      => $sisa,
-                'status'          => $deletion !== '' ? 'DELETED' : (($sisa ?? 0) > 0 ? 'OPEN' : 'CLOSED'),
-                'vendor'          => mb_substr(self::teks($this->sel($r, $kolom, 'Supplier/Supplying Plant')), 0, 255),
-                'our_reference'   => mb_substr(self::teks($this->sel($r, $kolom, 'Our Reference')), 0, 100),
-                'plant'           => mb_substr(self::teks($this->sel($r, $kolom, 'Plant')), 0, 20),
-                'order_qty'       => self::angka($this->sel($r, $kolom, 'Order Quantity')),
-            ];
-        }
-
-        return ['data' => $data, 'baris' => $baris, 'nomor' => count($nomor)];
-    }
-
-    /**
-     * Membaca EXPORT MRP.XLSX (SAP MD07). Baris terakhir untuk satu material
-     * yang dipakai bila material muncul lebih dari sekali.
-     *
-     * @param  string $path Path berkas XLSX
-     * @return array{data: array<string, array<string, float>>, baris: int}
-     */
-    public function bacaMrp(string $path): array
-    {
-        $rows = $this->bacaSheet($path);
-        $kolom = $this->petaKolom($rows[0] ?? [], self::KOLOM_MRP);
-
-        $data = [];
-        $baris = 0;
-
-        foreach ($rows as $i => $r) {
-            if ($i === 0) {
-                continue;
-            }
-
-            $material = self::teks($this->sel($r, $kolom, 'Material'));
-            if ($material === '') {
-                continue;
-            }
-
-            $baris++;
-            $data[$material] = [
-                'kode_material' => $material,
-                'plant_stock'   => self::angka($this->sel($r, $kolom, 'Plnt stock')),
-                'safety_stock'  => self::angka($this->sel($r, $kolom, 'Safety Stk')),
-                'reorder_point' => self::angka($this->sel($r, $kolom, 'Reorder Pt')),
-            ];
-        }
-
-        return ['data' => $data, 'baris' => $baris];
-    }
-
-    /**
-     * Membaca seluruh baris satu sheet XLSX (tanpa formula).
-     *
-     * @param  string $path Path berkas XLSX
-     * @param  string $nama Nama sheet (kosong = sheet pertama)
-     * @return array<int, array<int, mixed>> Daftar baris berisi daftar sel
-     */
-    public function bacaSheet(string $path, string $nama = ''): array
-    {
-        $reader = new Xlsx();
-        $reader->setReadDataOnly(true);
-        if ($nama !== '') {
-            $reader->setLoadSheetsOnly([$nama]);
-        }
-
-        $spreadsheet = $reader->load($path);
-        $rows = $spreadsheet->getSheet(0)->toArray(null, false, false, false);
-        $spreadsheet->disconnectWorksheets();
-        unset($spreadsheet);
-
-        return $rows;
-    }
-
-    /**
-     * Membaca berkas CSV menjadi daftar baris.
-     *
-     * @param  string $path Path berkas CSV
-     * @return array<int, array<int, string|null>> Daftar baris hasil str_getcsv
-     */
-    public function bacaCsv(string $path): array
-    {
-        $isi = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        if ($isi === false) {
-            return [];
-        }
-
-        $hasil = [];
-        foreach ($isi as $baris) {
-            $hasil[] = str_getcsv($baris);
-        }
-
-        return $hasil;
-    }
-
-    /**
-     * Memetakan nama judul (dinormalkan) ke indeks kolom 0-based.
-     *
-     * @param  array<int, mixed>  $judul Baris judul
-     * @param  array<int, string> $cari  Nama judul yang dicari
-     * @return array<string, int|null>   Judul -> indeks kolom (null bila tidak ada)
-     */
-    public function petaKolom(array $judul, array $cari): array
-    {
-        $peta = [];
-        foreach ($judul as $i => $nama) {
-            $kunci = $this->normJudul($nama);
-            if ($kunci !== '' && ! isset($peta[$kunci])) {
-                $peta[$kunci] = $i;
-            }
-        }
-
-        $hasil = [];
-        foreach ($cari as $alias) {
-            $hasil[$alias] = $peta[$this->normJudul($alias)] ?? null;
-        }
-
-        return $hasil;
-    }
-
-    /**
-     * Mencari indeks kolom yang judulnya DIMULAI dengan awalan tertentu.
+     * Mencari indeks kolom yang judulnya DIMULAI awalan tertentu.
      *
      * @param  array<int, mixed> $judul  Baris judul
      * @param  string            $awalan Awalan judul yang dicari
      * @return int|null                  Indeks kolom (null bila tidak ada)
      */
-    public function kolomAwalan(array $judul, string $awalan): ?int
+    private function kolomAwalan(array $judul, string $awalan): ?int
     {
         $awalan = $this->normJudul($awalan);
+
         foreach ($judul as $i => $nama) {
             if (strpos($this->normJudul($nama), $awalan) === 0) {
                 return $i;
@@ -421,25 +689,7 @@ class SparepartReader
      */
     public function kodeSah(string $kode): bool
     {
-        return preg_match(self::POLA_KODE, $kode) === 1;
-    }
-
-    /**
-     * Mengambil satu sel berdasarkan peta kolom.
-     *
-     * @param  array<int, mixed>       $baris Baris sumber
-     * @param  array<string, int|null> $kolom Peta judul -> indeks
-     * @param  string                  $nama  Judul kolom
-     * @return mixed                          Nilai sel (null bila kolom tidak ada)
-     */
-    private function sel(array $baris, array $kolom, string $nama): mixed
-    {
-        $i = $kolom[$nama] ?? null;
-        if ($i === null) {
-            return null;
-        }
-
-        return $baris[$i] ?? null;
+        return preg_match(self::POLA_KODE, trim($kode)) === 1;
     }
 
     /**
@@ -488,6 +738,7 @@ class SparepartReader
         }
 
         $teks = self::teks($nilai);
+
         if ($teks === '') {
             return '';
         }
@@ -499,5 +750,184 @@ class SparepartReader
         $ts = strtotime($teks);
 
         return $ts === false ? '' : date('Y-m-d', $ts);
+    }
+
+    /**
+     * Membaca berkas CSV menjadi daftar baris.
+     *
+     * Tanda BOM UTF-8 pada sel pertama dibuang supaya judul kolom pertama
+     * tetap terbaca (berkas hasil ekspor spreadsheet sering memuatnya).
+     *
+     * @param  string $path Path berkas CSV
+     * @return array<int, array<int, string>> Baris CSV
+     *
+     * @throws RuntimeException Bila berkas tidak bisa dibuka
+     */
+    private function bacaCsv(string $path): array
+    {
+        $handle = @fopen($path, 'rb');
+
+        if ($handle === false) {
+            throw new RuntimeException('Berkas ' . basename($path) . ' tidak bisa dibuka.');
+        }
+
+        $rows = [];
+
+        try {
+            while (($kol = fgetcsv($handle, 0, ',')) !== false) {
+                if ($kol === [null]) {
+                    continue;
+                }
+
+                $sel = array_map(fn (mixed $v): string => trim((string) $v), $kol);
+
+                if ($rows === [] && isset($sel[0])) {
+                    $sel[0] = preg_replace('/^\x{FEFF}/u', '', $sel[0]) ?? $sel[0];
+                }
+
+                $rows[] = $sel;
+            }
+        } finally {
+            fclose($handle);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Menyusun daftar pantau dari baris lembar yang judulnya sudah ditemukan.
+     *
+     * Hanya kode material berbentuk angka minimal 6 digit yang disimpan; kode
+     * yang muncul lebih dari sekali dihitung sebagai baris ganda (nilai
+     * terakhir yang menang).
+     *
+     * @param  array<int, array<int, mixed>> $rows       Seluruh baris lembar
+     * @param  int                           $barisJudul Indeks baris judul
+     * @param  array<string, int>            $kolom      Peta judul kolom
+     * @param  array<int, string>            $lembar     Nama lembar yang dibaca
+     * @param  array<int, string>            $judul      Judul kolom yang ditemukan
+     * @return array<string, mixed>                      Data + rincian baca
+     */
+    private function susunPantau(array $rows, int $barisJudul, array $kolom, array $lembar, array $judul): array
+    {
+        $data     = [];
+        $baris    = 0;
+        $ganda    = 0;
+        $tidakSah = 0;
+
+        foreach ($rows as $i => $r) {
+            if ($i <= $barisJudul) {
+                continue;
+            }
+
+            $kode = self::teks($this->sel($r, $kolom, 'Kode Material'));
+
+            if ($kode === '') {
+                continue;
+            }
+
+            if (! $this->kodeSah($kode)) {
+                $tidakSah++;
+                continue;
+            }
+
+            $baris++;
+
+            if (isset($data[$kode])) {
+                $ganda++;
+            }
+
+            $data[$kode] = [
+                'kode_material' => $kode,
+                'deskripsi'     => mb_substr(self::teks($this->sel($r, $kolom, 'Deskripsi')), 0, 255),
+                'plant'         => mb_substr(self::teks($this->sel($r, $kolom, 'Plant')), 0, 100),
+                'model'         => mb_substr(self::teks($this->sel($r, $kolom, 'Model')), 0, 100),
+                'tag_no'        => mb_substr(self::teks($this->sel($r, $kolom, 'Tag No.')), 0, 100),
+                'uom'           => mb_substr(self::teks($this->sel($r, $kolom, 'UOM')), 0, 20),
+                'stok_min'      => isset($kolom['Jumlah']) ? self::angka($this->sel($r, $kolom, 'Jumlah')) : null,
+            ];
+        }
+
+        $catatan = [];
+
+        if ($tidakSah > 0) {
+            $catatan[] = $tidakSah . ' baris dilewati karena kode materialnya bukan angka (minimal 6 digit).';
+        }
+
+        if (! isset($kolom['Jumlah'])) {
+            $catatan[] = 'Kolom Jumlah (stok minimum) tidak ada pada berkas; isi stok minimum lewat halaman daftar pantau.';
+        }
+
+        return [
+            'data'      => $data,
+            'baris'     => $baris,
+            'diabaikan' => $tidakSah,
+            'ganda'     => $ganda,
+            'lembar'    => $lembar,
+            'judul'     => $judul,
+            'catatan'   => $catatan,
+        ];
+    }
+
+    /**
+     * Membaca daftar pantau dari berkas CSV (baris pertama = judul).
+     *
+     * @param  string $path Path berkas CSV
+     * @return array<string, mixed> Data + rincian baca
+     *
+     * @throws SparepartFormatException Bila kolom "Kode Material" tidak ada
+     */
+    private function bacaPantauCsv(string $path): array
+    {
+        $rows  = $this->bacaCsv($path);
+        $judul = [];
+
+        [$barisJudul, $kolom] = $this->cariJudul(
+            $rows,
+            self::JUDUL_PANTAU,
+            self::JUDUL_PANTAU_OPSIONAL,
+            basename($path),
+            $judul
+        );
+
+        return $this->susunPantau($rows, $barisJudul, $kolom, [basename($path)], $judul);
+    }
+
+    /**
+     * Daftar nama lembar sebuah berkas Excel.
+     *
+     * @param  string $path Path berkas
+     * @return array<int, string> Nama lembar berurutan
+     *
+     * @throws RuntimeException Bila berkas tidak bisa dibaca
+     */
+    private function daftarLembar(string $path): array
+    {
+        try {
+            $reader = IOFactory::createReaderForFile($path);
+            $reader->setReadDataOnly(true);
+
+            return $reader->listWorksheetNames($path);
+        } catch (Throwable $e) {
+            throw new RuntimeException('Berkas ' . basename($path) . ' tidak bisa dibaca: ' . $e->getMessage(), 0, $e);
+        }
+    }
+
+    /**
+     * Mencari nama lembar yang DIMULAI awalan tertentu (tanpa beda huruf besar).
+     *
+     * @param  array<int, string> $daftar Daftar nama lembar
+     * @param  string             $awalan Awalan nama lembar
+     * @return string|null                Nama lembar pertama yang cocok
+     */
+    private function cariLembar(array $daftar, string $awalan): ?string
+    {
+        foreach ($daftar as $nama) {
+            if (stripos($nama, $awalan) === 0) {
+                return $nama;
+            }
+        }
+
+        return null;
     }
 }
