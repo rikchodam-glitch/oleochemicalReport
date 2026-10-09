@@ -253,3 +253,89 @@ test('impor daftar pantau mode ganti membuang baris di luar berkas', function ()
         // Stok tersedia 30000003 = 7 dan stok minimum menjadi 4 -> masih aman.
         ->and((bool) SpMaterial::query()->where('kode_material', '30000003')->value('reorder'))->toBeFalse();
 });
+test('export mengisi Satuan dari kolom UN laporan stok saja dan menulis Stok Tersedia 0 untuk material di luar G001', function () {
+    // Satuan sengaja berbeda dari lokasi penyimpanan ("MTR" vs "B2.7") supaya
+    // kolom yang kembali tertukar (Satuan berisi S. Loc) langsung tertangkap,
+    // dan UOM daftar pantau sengaja berbeda dari UN (MTR vs PCS) supaya terbukti
+    // berkas ini TIDAK memakai UOM sebagai cadangan: Satuan material di luar G001
+    // dibiarkan kosong dan Stok Tersedianya ditulis 0 (sama dengan dashboard lama).
+    $stok = spUjiXlsx('stok-satuan.xlsx', [
+        'G001' => [
+            ['S. Loc', 'Kode', 'Nama Item', 'Stok Awal', 'Masuk', 'Keluar', 'Sisa Stok', 'UN'],
+            ['B2.7', '30000001', 'BEARING UJI', 5, 0, 0, 5, 'MTR'],
+        ],
+        // Lembar MASUK/KELUAR wajib ada (judulnya terkunci) walau isinya kosong.
+        'MASUK 1'  => [['Tanggal', 'Kode', 'Nama Item', 'Qty', 'Uom', 'No. PO', 'Request by']],
+        'KELUAR 1' => [['Tanggal', 'Kode', 'Nama Item', 'Jumlah', 'Uom', 'User', 'MvT']],
+    ]);
+
+    $pantau = spUjiXlsx('pantau-satuan.xlsx', [
+        'MASTER DATA' => [
+            ['No', 'Plant', 'Model', 'Tag No.', 'Kode Material', 'Deskripsi', 'Jumlah', 'UOM'],
+            [1, '', '', '', '30000001', 'BEARING UJI', 1, 'PCS'],
+            [2, '', '', '', '30000002', 'SEAL UJI', 1, 'PCS'],
+        ],
+    ]);
+
+    app(SparepartPantauService::class)->imporDariBerkas($pantau);
+    app(SparepartImportService::class)->import([SparepartImportService::SUMBER_STOK => $stok]);
+
+    $response = $this->actingAs($this->admin)->get(route('sparepart.export'));
+    $response->assertStatus(200);
+
+    $path = spUjiFolder() . DIRECTORY_SEPARATOR . 'export-satuan.xlsx';
+    file_put_contents($path, $response->streamedContent());
+
+    $buku  = IOFactory::load($path);
+    $sheet = $buku->getSheetByName('Keadaan Spare Part');
+
+    // Kolom G = Satuan, kolom I = Stok Tersedia, kolom AN = Lokasi G001 (urutan
+    // mengikuti HEADER_SP pada SparepartExportTrait: Satuan ke-7, Lokasi ke-40).
+    $keluar = [];
+
+    for ($r = 8; $r <= $sheet->getHighestDataRow(); $r++) {
+        $kode = (string) $sheet->getCell('B' . $r)->getValue();
+
+        if ($kode !== '') {
+            $keluar[$kode] = [
+                'satuan' => (string) $sheet->getCell('G' . $r)->getValue(),
+                'stok'   => (string) $sheet->getCell('I' . $r)->getValue(),
+                'lokasi' => (string) $sheet->getCell('AN' . $r)->getValue(),
+            ];
+        }
+    }
+
+    expect($keluar)->toHaveKey('30000001')
+        ->and($keluar)->toHaveKey('30000002')
+        ->and($keluar['30000001']['satuan'])->toBe('MTR')
+        ->and($keluar['30000001']['lokasi'])->toBe('B2.7')
+        ->and($keluar['30000001']['stok'])->toBe('5')
+        // Material di luar G001: Satuan dibiarkan kosong (legacy juga kosong) dan
+        // Stok Tersedia ditulis 0 supaya sama dengan dashboard lama.
+        ->and($keluar['30000002']['satuan'])->toBe('')
+        ->and($keluar['30000002']['stok'])->toBe('0');
+
+    // Tabel keadaan dan isi database TIDAK ikut berubah: stok_tersedia tetap
+    // NULL dan g_baris tetap 0, sehingga baris itu menampilkan tanda hubung
+    // pada kolom Stok Tersedia, bukan angka nol.
+    $halamanTabel = $this->actingAs($this->admin)->get(route('sparepart.index'));
+    $halamanTabel->assertStatus(200);
+
+    $html   = (string) $halamanTabel->getContent();
+    $posisi = strpos($html, 'data-kode-material="30000002"');
+
+    expect($posisi)->not->toBeFalse();
+
+    $barisHtml = substr($html, (int) $posisi, 1500);
+
+    expect($barisHtml)->toContain('font-medium text-slate-800">-</td>')
+        ->and(SpMaterial::query()->where('kode_material', '30000002')->value('stok_tersedia'))->toBeNull()
+        ->and((int) SpMaterial::query()->where('kode_material', '30000002')->value('g_baris'))->toBe(0);
+
+    foreach ($buku->getWorksheetIterator() as $lembar) {
+        $lembar->disconnectCells();
+    }
+
+    $buku->disconnectWorksheets();
+});
+

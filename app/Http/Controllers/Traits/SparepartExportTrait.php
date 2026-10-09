@@ -37,9 +37,9 @@ trait SparepartExportTrait
     private const HEADER_SP = [
         'No', 'Kode Material', 'Deskripsi', 'Plant', 'Model', 'Tag No.', 'Satuan',
         'Stok Min', 'Stok Tersedia', 'Status', 'Penanda', 'Aksi',
-        'No PR', 'Status PR', 'Status PR (aksi)', 'Qty PR', 'Jml Baris PR', 'PR Terbuka', 'Semua No PR',
-        'No PO', 'Sisa Kirim PO', 'Jml Baris PO', 'PO Terbuka', 'PO Tertutup', 'Sisa Semua PO', 'Tgl PO',
-        'Vendor PO', 'Purchaser', 'PO Sebelumnya', 'Vendor Sebelumnya',
+        'No PR', 'Status PR', 'Status PR (aksi)', 'Qty PR', 'Jml Baris PR', 'PR Terbuka', 'Semua No PR', 'Requisitioner',
+        'No PO', 'Sisa Kirim PO', 'Jml Baris PO', 'Jml PO', 'PO Terbuka', 'PO Tertutup', 'Sisa Semua PO', 'Tgl PO', 'Semua No PO',
+        'Vendor PO', 'Purchaser', 'Purchaser PO Terakhir', 'Vendor PO Terakhir', 'PO Sebelumnya', 'Vendor Sebelumnya',
         'Stok Awal G001', 'Masuk G001', 'Keluar G001', 'Sisa G001', 'Lokasi G001', 'Keterangan',
         'Stok Diperbarui', 'PR Diperbarui', 'PO Diperbarui',
     ];
@@ -47,9 +47,10 @@ trait SparepartExportTrait
     /**
      * Indeks kolom (0 = kolom A) yang WAJIB ditulis sebagai teks supaya angka
      * nol di depan kode material dan nomor dokumen tidak hilang: Kode Material
-     * (1), No PR (12), Semua No PR (18), No PO (19), PO Sebelumnya (28).
+     * (1), No PR (12), Semua No PR (18), Requisitioner (19), No PO (20),
+     * Semua No PO (28), PO Sebelumnya (33).
      */
-    private const KOLOM_TEKS_SP = [1, 12, 18, 19, 28];
+    private const KOLOM_TEKS_SP = [1, 12, 18, 19, 20, 28, 33];
 
     /**
      * Susun berkas Excel tabel keadaan lalu unduh.
@@ -86,7 +87,7 @@ trait SparepartExportTrait
             'Diekspor: ' . now()->format('d/m/Y H:i'),
             'Saringan: ' . $labelSaringan,
             'Jumlah baris: ' . number_format($jumlahBaris, 0, ',', '.'),
-            'Stok tersedia dari laporan stok gudang G001; stok minimum dari daftar pantau.',
+            'Stok tersedia dari laporan stok gudang G001 (material yang tidak ada di laporan stok ditulis 0 mengikuti dashboard lama); stok minimum dari daftar pantau.',
         ];
 
         foreach ($keterangan as $i => $teks) {
@@ -181,6 +182,27 @@ trait SparepartExportTrait
             default => 'Aman',
         };
 
+        // Satuan HANYA diambil dari kolom UN laporan stok gudang (G001) supaya
+        // berkas ini sama persis dengan dashboard lama (Integrasi_PR_PO_SparePart).
+        // Kolom UOM daftar pantau TIDAK lagi dipakai sebagai cadangan (keputusan
+        // user 09/10/2026): material yang tidak ada di laporan stok dibiarkan
+        // kosong, sama seperti sel legacy-nya. Bukti 09/10/2026: 449/449 material
+        // cocok dengan kolom Satuan (G001) berkas legacy; satu-satunya selisih
+        // lama hanya material 30004876 yang ber-UOM "Pcs" pada daftar pantau.
+        $satuan = trim((string) ($baris->m_g_satuan ?? ''));
+
+        // Material yang tidak punya baris G001 sama sekali: dashboard lama
+        // menampilkan 0 (rumusnya mengubah sel kosong menjadi angka nol),
+        // sedangkan tabel keadaan menyimpannya NULL supaya halaman web tetap
+        // bisa menandai "datanya belum ada". Sesuai keputusan user 09/10/2026,
+        // nilai pada BERKAS EXPORT disamakan dengan legacy tanpa mengubah isi
+        // database: stok_tersedia NULL dan g_baris 0 ditulis sebagai angka 0.
+        $stokTersedia = $this->angkaSel($baris->m_stok_tersedia);
+
+        if ($stokTersedia === null && (int) ($baris->m_g_baris ?? 0) === 0) {
+            $stokTersedia = 0.0;
+        }
+
         return [
             $no,
             (string) $baris->kode_material,
@@ -188,9 +210,9 @@ trait SparepartExportTrait
             (string) ($baris->plant ?? ''),
             (string) ($baris->model ?? ''),
             (string) ($baris->tag_no ?? ''),
-            (string) ($baris->uom ?? $baris->m_g_satuan ?? ''),
+            $satuan,
             $this->angkaSel($baris->m_stok_min),
-            $this->angkaSel($baris->m_stok_tersedia),
+            $stokTersedia,
             $status,
             (string) ($baris->m_penanda ?? ''),
             SpMaterial::labelAksi($baris->m_aksi ?? null),
@@ -201,15 +223,20 @@ trait SparepartExportTrait
             (int) ($baris->m_pr_line ?? 0),
             (int) ($baris->m_pr_terbuka ?? 0),
             (string) ($baris->m_pr_nums ?? ''),
+            (string) ($baris->m_req_list ?? ''),
             (string) ($baris->m_po_no ?? ''),
             $this->angkaSel($baris->m_po_sisa),
             (int) ($baris->m_po_line ?? 0),
+            (int) ($baris->m_po_uniq ?? 0),
             (int) ($baris->m_po_open ?? 0),
             (int) ($baris->m_po_closed ?? 0),
             $this->angkaSel($baris->m_po_sisa_total),
             (string) ($baris->m_po_tanggal_teks ?? ''),
+            (string) ($baris->m_po_nums ?? ''),
             (string) ($baris->m_vendor ?? ''),
             (string) ($baris->m_purch ?? ''),
+            (string) ($baris->m_purch_last ?? ''),
+            (string) ($baris->m_vendor_last ?? ''),
             (string) ($baris->m_po_prev ?? ''),
             (string) ($baris->m_vendor_prev ?? ''),
             $this->angkaSel($baris->m_g_awal),
@@ -312,12 +339,17 @@ trait SparepartExportTrait
         $isi = [
             'Saringan berkas ini' => $labelSaringan,
             'Aturan baris'        => 'Satu baris = satu kode material (keadaan terkini hasil import terakhir).',
-            'Stok Tersedia'       => 'Sisa stok gudang G001 pada laporan stok terakhir; kosong berarti material tidak ada di laporan stok.',
+            'Satuan'              => 'Kolom UN laporan stok gudang G001 (bukan lokasi penyimpanan, lokasi ada di kolom "Lokasi G001"); material yang tidak ada di laporan stok dibiarkan kosong, sama dengan dashboard lama (kolom UOM daftar pantau TIDAK dipakai di berkas ini).',
+            'Stok Tersedia'       => 'Sisa stok gudang G001 pada laporan stok terakhir; material yang tidak ada di laporan stok ditulis 0 mengikuti dashboard lama (di halaman web material seperti itu tetap ditandai "datanya belum ada").',
             'Stok Min'            => 'Stok minimum dari daftar pantau (biasanya kolom Jumlah pada sheet MASTER DATA).',
             'Status REORDER'      => 'Stok tersedia <= stok minimum. Material tanpa catatan stok dihitung sebagai stok nol.',
             'Aksi'                => 'Kejar PO: ada PO terbuka; Buat PO: ada PR terbuka; Cek/Buat PR: PR pernah/ada tetapi tidak terbuka; Buat PR: belum ada PR maupun PO.',
-            'No PR / No PO'       => 'Dokumen paling relevan untuk material itu; kolom "Semua No PR" memuat seluruh nomor PR yang pernah dibaca.',
+            'No PR / No PO'       => 'Dokumen paling relevan untuk material itu; kolom "Semua No PR" dan "Semua No PO" memuat seluruh nomor dokumen yang pernah dibaca.',
+            'Requisitioner'       => 'Nama peminta dari berkas EXPORT PR yang dibaca (semua peminta digabung dengan titik koma bila lebih dari satu).',
+            'Jml PO'              => 'Jumlah nomor PO unik material ini; satu nomor PO boleh memuat beberapa baris item (lihat "Jml Baris PO").',
+            'Purchaser / Vendor PO Terakhir' => 'Diambil dari nomor PO TERBARU material ini; kolom "Purchaser" dan "Vendor PO" (tanpa akhiran) mengikuti nomor pada kolom "No PO".',
             'Diperbarui'          => 'Waktu sumber datanya terakhir dipasok import (boleh berbeda antar kolom karena import boleh sebagian berkas).',
+            'Selaras dashboard lama' => 'Kolom "Requisitioner", "Jml PO", "Semua No PO", "Purchaser PO Terakhir", dan "Vendor PO Terakhir" ditambahkan supaya isi berkas ini setara sheet "Data Lengkap" dashboard lama. Kolom MRP (Stock by SAP, Safety Stock, Stok Min MRP, Max Stock, Min vs MRP) belum tersedia karena berkas EXPORT MRP belum pernah diimport ke modul.',
         ];
 
         $r = 3;
