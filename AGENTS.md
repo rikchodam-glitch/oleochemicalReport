@@ -3060,10 +3060,19 @@ baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
     Sebelumnya `$kolom['UN'] ?? 0` membuat pembacaan jatuh ke kolom 0
     (`S. Loc`) sehingga satuan berisi kode LOKASI (tertangkap lewat test, bukan
     dari peninjauan kode).
-  - Bukti paritas 09/10/2026 di DEV (berkas export dibandingkan berkas legacy):
-    `Stok Min` 449/449 cocok, `Stok Tersedia` 449/449 cocok, `Sisa G001`
-    449/449 cocok, `Satuan` 449/449 cocok (0 beda, 39 kosong di kedua berkas).
-    Skrip pembanding sementara sudah dihapus lagi setelah dipakai.
+  - Bukti paritas 09/10/2026 di DEV (berkas `/sparepart/export` yang baru
+    diunduh dibandingkan sheet `Data Lengkap` legacy yang sudah diekstrak
+    menjadi `%TEMP%\legacy-sparepart\Data-Lengkap.csv`; 449 baris vs 449 baris):
+    `Stok Min` 449 cocok / 0 beda; `Stok Tersedia` 449 cocok / 0 beda;
+    `Sisa G001` 410 cocok + 39 kosong di KEDUA berkas / 0 beda; `Satuan`
+    410 cocok + 39 kosong di KEDUA berkas / 0 beda (sebelum perbaikan kolom UN
+    ada sel bersatuan "Pcs" dari UOM daftar pantau). Skrip pembanding sementara
+    (`tmp-banding-sparepart.php`) sudah dihapus lagi setelah dipakai.
+  - Kolom tambahan yang bersandar pada PR/PO (Requisitioner, Jml PO, Purchaser
+    PO Terakhir, Vendor PO Terakhir) MASIH berbeda dengan legacy karena berkas
+    sumber yang diimport di DEV adalah CUPLIKAN Oktober 2026, bukan ekspor
+    sejarah penuh seperti dashboard lama (lihat "CATATAN CAKUPAN BERKAS" modul
+    ini). Jadi bedanya soal CAKUPAN BERKAS, bukan logika kolomnya.
 - **Uji**: `tests/Feature/SparepartImportTest.php` (9 test) dan
   `tests/Feature/SparepartPantauHalamanTest.php` (10 test, termasuk penjaga
   paritas Satuan/Stok Tersedia berkas export); fixture bersama di
