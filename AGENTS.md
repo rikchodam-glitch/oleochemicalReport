@@ -2753,6 +2753,43 @@ Batasan penting lingkungan ini:
     dialihkan ke folder stub di `%TEMP%` supaya service produksi tidak pernah
     tersentuh, dan tetap alihkan keluaran ke BERKAS -- jangan lewat pipe
     (Riwayat Insiden #31).**
+40. **Dua kendala ALAT (tool) yang membuat agent menyimpulkan hal yang salah
+    (09/10/2026).** Keduanya BUKAN bug aplikasi dan BUKAN tanda berkasnya
+    kosong/hilang, tetapi hasilnya tampak seperti "berkas tidak ada isinya"
+    sehingga sesi bisa berputar-putar tanpa kemajuan.
+    (a) **`read_files` dengan rentang baris (`start_line`/`end_line`) atas
+    berkas yang SUDAH pernah dibaca utuh di sesi yang sama dijawab
+    `[outdated - see the latest file content]` TANPA isi**, dan panggilannya
+    tetap dilaporkan `success: true` sehingga terlihat seperti berhasil. Ini
+    pernah dicatat di Keputusan Arsitektur poin 22, tetapi kejadian 09/10/2026
+    membuktikan dampaknya lebih luas: berkas yang isinya baru TERPOTONG
+    (bukan dibaca utuh) juga bisa kena, dan bila agent menganggap "hasil kosong
+    = isi tidak diketahui = berkas bermasalah", pekerjaan berhenti padahal
+    berkasnya utuh. Jalan keluar yang TERBUKTI berhasil, pakai yang pertama:
+    (1) baca ULANG berkasnya TANPA rentang (baca utuh) — isinya keluar normal;
+    (2) cetak rentangnya lewat PowerShell sebagai BACAAN SAJA
+    (`(Get-Content -LiteralPath <berkas>)[a..b]` + nomor baris). JANGAN menulis
+    berkas lewat PowerShell (Aturan Wajib Edit File poin 7 tetap berlaku).
+    (b) **Hasil `run_commands` kadang kembali sebagai
+    `[migration] Tool result missing in legacy conversation history.`** —
+    SELURUH keluaran perintah hilang, jadi tidak ada bukti apa pun (bukan
+    berarti perintahnya gagal, bukan berarti perintahnya tidak dijalankan).
+    Bila agent lalu berasumsi "perintahnya diam = berkas tidak ada / kode tidak
+    ada", kesimpulannya salah total. Aturan: (1) setiap panggilan
+    `run_commands` yang kesimpulannya dipakai WAJIB memuat penanda keluaran
+    yang disengaja (mis. `Write-Output 'UJI-SEDERHANA-OK'` atau `COUNT=...`)
+    supaya hasil yang hilang bisa dibedakan dari hasil yang benar-benar kosong;
+    (2) begitu hasilnya hilang, ULANGI perintahnya (boleh dipecah lebih kecil)
+    sebelum menyimpulkan apa pun; (3) jangan pernah menyimpulkan "berkas tidak
+    ada/kosong" dari keluaran yang HILANG — buktikan dengan panggilan kedua
+    yang memuat penanda.
+    **Pelajaran: hasil tool yang kosong/hilang adalah masalah PENGAMATAN, bukan
+    bukti tentang keadaan repo. Sebelum melaporkan "tidak ada kendala" atau
+    "berkasnya kosong", pastikan dulu hasilnya benar-benar terbaca (baca utuh
+    tanpa rentang + perintah dengan penanda).**
+
+
+
 
 
 
