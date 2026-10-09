@@ -99,6 +99,12 @@ return [
             'pola'  => ['panel.*'],
             'link'  => 'panel.index',
         ],
+        'sparepart' => [
+            'label' => 'Integrasi PR/PO Spare Part',
+            'grup'  => 'Reliability & Maintenance',
+            'pola'  => ['sparepart.*'],
+            'link'  => 'sparepart.index',
+        ],
         'ai_providers' => [
             'label' => 'AI Providers',
             'grup'  => 'Pengaturan',

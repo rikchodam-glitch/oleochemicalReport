@@ -350,6 +350,16 @@
                 <span class="sidebar-link-text">Monitoring Ruang Panel</span>
             </a>
 
+            <a href="{{ route('sparepart.index') }}"
+               class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
+                      {{ request()->routeIs('sparepart.*') ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white' }}">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                </svg>
+                <span class="sidebar-link-text">Integrasi PR/PO Spare Part</span>
+            </a>
+
+
             <p class="text-slate-500 text-xs uppercase tracking-wider px-2 pt-4 pb-1">Pengaturan</p>
 
             <a href="{{ route('ai-providers.index') }}"

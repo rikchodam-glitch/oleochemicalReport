@@ -333,3 +333,11 @@ test('GET /work-orders/{work_order} -> 200', function () {
 test('GET /work-orders/{work_order}/edit -> 200', function () {
     $this->actingAs($this->admin)->get("/work-orders/{$this->workOrder->id}/edit")->assertStatus(200);
 });
+
+// ============================================================
+// HALAMAN INTEGRASI PR/PO SPARE PART
+// ============================================================
+
+test('GET /sparepart -> 200', function () {
+    $this->actingAs($this->admin)->get('/sparepart')->assertStatus(200);
+});
