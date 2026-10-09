@@ -2964,3 +2964,80 @@ WAJIB ikuti pola ini untuk semua perintah `php artisan tinker --execute`:
    yang menyetel `DB_DATABASE` WAJIB diakhiri `Remove-Item Env:DB_DATABASE`
    pada perintah yang sama, dan periksa `$env:DB_DATABASE` lebih dulu kalau
    suite tiba-tiba merah semua.
+
+## MODUL SPARE PART (INTEGRASI PR/PO) — KEPUTUSAN 09/10/2026
+
+Semua perubahan di copy DEV `C:\laragon\www\oleochemicalReport` (commit
+`767f119`), **BELUM naik ke PROD** (tunggu `Deploy-Laporan.bat`; ada migrasi
+baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
+
+- **Halaman awal = TABEL KEADAAN**, satu baris per kode material (bukan lagi
+  daftar periode yang harus dibuka satu-satu; `sparepart.show` dan
+  `resources/views/sparepart/show.blade.php` DIHAPUS). Rute: `sparepart.index`,
+  `sparepart.export`, `sparepart.impor` (GET+POST `sparepart.impor.proses`),
+  `sparepart.riwayat`, `sparepart.pantau` (+ `store`/`update`/`destroy`/`impor`).
+- **Tiga tabel**: `sp_pantau` (daftar pantau = populasi/filter halaman, bisa
+  diimpor dari sheet MASTER DATA atau diedit manual), `sp_material` (keadaan
+  terkini per kode material, hasil UPSERT tiap import), `sp_impor` (riwayat
+  import + analisa JSON). Tujuh tabel rancangan lama dibuang (`sp_batch`,
+  `sp_monitoring`, `sp_g001`, `sp_pr`, `sp_po`, `sp_mrp`, `sp_integrasi`)
+  beserta model/trait lamanya (`SpBatch`, `SpMonitoring`, `SpG001`, `SpPr`,
+  `SpPo`, `SpMrp`, `SpIntegrasi`, `SparepartPenyimpananTrait`). Aman karena
+  modul ini belum pernah ada di database produksi (diperiksa 09/10/2026:
+  `show tables like 'sp%'` pada `oleochemical` kosong).
+- **Tiga berkas sumber** (NAMA berkas bebas, ISI yang dikunci): laporan stok
+  gudang (lembar `G001`/`MASUK`/`KELUAR`), EXPORT PR (ME5A), EXPORT PO (ME2M).
+  Judul kolom wajib ada di `SparepartReader::JUDUL_*`; berkas yang kehilangan
+  judul wajib DITOLAK (`App\Exceptions\SparepartFormatException`, memuat daftar
+  judul yang hilang) **sebelum ada baris database yang ditulis**. Judul dikenali
+  dari NAMA (urutan kolom boleh bergeser). Berkas PR user bernama `EXPORT Okt
+  2026.XLSX`, PO bernama `EXPORT PO Okt 2026.XLSX`.
+- **Sisa stok G001 DIHITUNG** = stok awal + barang MASUK - barang KELUAR per
+  kode material (bukan membaca sel formula), supaya material yang punya lebih
+  dari satu baris S.Loc tidak dihitung dobel. Dibuktikan 09/10/2026: cocok
+  dengan sel "Sisa Stok" berkas nyata (5 baris acak) dan setara sheet
+  `StokManual` pengguna (410 material cocok, 0 beda).
+- **Stok minimum = kolom `Jumlah` pada sheet MASTER DATA** (pilihan user
+  09/10/2026), disimpan di `sp_pantau.stok_min` dan dapat diedit manual.
+  **Status REORDER = stok tersedia <= stok minimum**; material yang tidak
+  tercantum di laporan stok dihitung sebagai stok nol (perilaku ini yang
+  mereproduksi angka dashboard lama).
+- **Aturan AKSI TIDAK berubah**: Kejar PO (ada PO terbuka) -> Buat PO (ada PR
+  terbuka) -> Cek/Buat PR (ada PR tetapi tidak ada yang terbuka) -> Buat PR.
+  Bukti 09/10/2026: aturan ini diterapkan pada kolom hasil dashboard lama
+  (`Integrasi_PR_PO_SparePart.xlsx`, sheet Daftar Aksi) **cocok 149/149 baris**
+  (sebaran 25/51/45/28). Kolom `sp_material.pr_terbuka` (jumlah PR terbuka per
+  material) yang menyimpan dasar aturan itu — jangan diganti menjadi status PR
+  terpilih, kombinasi itu pernah menghasilkan "Buat PO 0" yang salah.
+- **Bukti import berkas nyata 09/10/2026 (DEV)**: stok 3.328 baris/2.775
+  material, PR 397 baris/199 material/109 dokumen, PO 2.990 baris/791
+  material/1.548 dokumen, daftar pantau 449 kode -> **REORDER 149, AMAN 300**
+  (sama dengan dashboard lama) dan import kedua mencatat "tidak berubah 449"
+  (upsert idempoten).
+- **CATATAN CAKUPAN BERKAS (penting untuk pengguna)**: `EXPORT Okt 2026.XLSX`
+  dan `EXPORT PO Okt 2026.XLSX` di folder "File Import" adalah CUPLIKAN
+  Oktober 2026, sehingga hanya 26 material pantau yang punya PR dan 140 yang
+  punya PO; akibatnya kolom AKSI didominasi "BUAT PR" (398) dan "Buat PO" = 0.
+  Dashboard lama memakai ekspor HISTORI PENUH (2024 - 07 Okt 26) sehingga
+  menghasilkan 25/51/45/28. Bila angka AKSI ingin setara dashboard, unggah
+  ekspor rentang penuh, bukan cuplikan bulan berjalan.
+- **Import boleh SEBAGIAN** (pilihan user 09/10/2026): minimal satu berkas;
+  bagian yang tidak diunggah memakai nilai terakhir (`SparepartImportService`
+  menyalin `BLOK_STOK`/`BLOK_PR`/`BLOK_PO` dari baris lama). Cap waktu per
+  sumber (`stok_diupdate_at`, `pr_diupdate_at`, `po_diupdate_at`) menunjukkan
+  bagian mana yang terakhir dipasok.
+- **Analisa tiap import** tersimpan di `sp_impor.analisa` dan tampil di
+  `sparepart.riwayat`: rincian baris/lembar/judul kolom per berkas, material di
+  luar daftar pantau (+contoh kode), keadaan baru/diubah/tidak berubah,
+  sebaran status dan aksi, serta kode yang naik ke REORDER atau kembali aman.
+- **Hak akses**: modul memakai pola `sparepart.*` di `config/akses.php`; unggah
+  berkas dan pengelolaan daftar pantau adalah aksi TULIS sehingga hanya akun
+  `admin` (mode hanya baca middleware) yang bisa menjalankannya.
+- **Uji**: `tests/Feature/SparepartImportTest.php` (9 test) dan
+  `tests/Feature/SparepartPantauHalamanTest.php` (10 test); fixture bersama di
+  `tests/Pest.php` (`spUjiBerkas()`, `spUjiXlsx()`, `spUjiFolder()`). Seluruh
+  suite **526 test hijau (2.468 assertions)** dan `php artisan view:cache`
+  sukses. Verifikasi nyata DEV: `/sparepart`, `/sparepart/impor`,
+  `/sparepart/pantau`, `/sparepart/riwayat`, `/sparepart/export` semua 200;
+  `/sparepart?status=reorder` memuat 50 baris (seluruhnya berlabel REORDER).
+
