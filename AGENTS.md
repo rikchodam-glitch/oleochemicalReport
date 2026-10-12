@@ -3141,10 +3141,50 @@ baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
     lencana CAKUPAN SEMPIT sudah terpasang (terbukti dari riwayat import PROD
     id 3 bertanda CAKUPAN SEMPIT); yang BELUM di PROD hanya perubahan
     keterangan kartu ini.
-  - Berkas rentang penuh (`EXPORT PR.XLSX` 14.557 baris + `EXPORT PO.XLSX`
-    14.835 baris) TIDAK ADA lagi di komputer ini; yang tersisa
-    `C:\Users\sapusr\Downloads\EXPORT.XLSX` (12.782 baris, ME5A 02/09/2026)
-    BUKAN berkas yang dipakai dashboard lama. Untuk membandingkan ulang 149
-    baris, minta manusia menyediakan ekspor rentang penuh lalu impor lewat
-    `/sparepart/impor` (laporan stok tidak perlu).
+  - Berkas rentang penuh yang dipakai dashboard lama DITEMUKAN KEMBALI
+    12/10/2026 di `D:\RYAN\Dasboard\EPE\2024 - 07 Okt 26\` (`EXPORT PR.XLSX`
+    1,8 MB + `EXPORT PO.XLSX` 1,2 MB, bertanggal 07/10/2026; di folder yang sama
+    ada `EXPORT MRP.XLSX` dan `01. LAPORAN STOK GUDANG September 2026.xlsx`),
+    jadi catatan lama yang menyebut berkas itu "TIDAK ADA lagi" sudah tidak
+    berlaku. Untuk mengembalikan angka 25/51/45/28, cukup unggah `EXPORT PR.XLSX`
+    + `EXPORT PO.XLSX` itu lewat `/sparepart/impor` (laporan stok tidak perlu
+    karena stok/REORDER sudah setara); `EXPORT.XLSX` di folder Downloads
+    (12.782 baris, ME5A 02/09/2026) BUKAN berkas dashboard lama.
+- **Kartu Aksi difokuskan ke 149 item REORDER (diputuskan user 12/10/2026,
+  sudah ada kodenya; BELUM naik ke PROD; TIDAK ada migrasi baru)**: keluhan user
+  "Buat PO dashboard lama 51, di modul 0". Sebelumnya
+  `SparepartController::kartuAksi()` menghitung SELURUH baris pantau (449),
+  sehingga angka kartu Aksi tidak sebanding dengan sheet "Daftar Aksi" dashboard
+  lama yang hanya memuat 149 item REORDER (kejar 25 / buat PO 51 / cek 45 /
+  buat PR 28). Sejak perubahan ini syarat `->where('reorder', true)` ditambahkan
+  pada rekap aksi, jadi kartu Aksi = sebaran 149 item REORDER saja; kartu
+  ringkasan keadaan ("material dipantau / REORDER / aman / belum") TETAP
+  menghitung semua baris pantau.
+  - `resources/views/sparepart/index.blade.php`: di atas grid kartu ditambah
+    judul lingkup "Rincian tindakan <n> item REORDER (fokus tindakan)" +
+    keterangan "Sama seperti sheet \"Daftar Aksi\" dashboard lama; material yang
+    stoknya masih aman tidak dihitung", dan tautan tiap kartu kini memuat
+    `status=reorder` (`['aksi' => ..., 'status' => 'reorder']`) supaya jumlah
+    baris daftar yang terbuka SAMA dengan angka kartunya (dulu tautan hanya
+    menyaring kolom aksi sehingga daftar yang terbuka bisa lebih panjang daripada
+    angka kartu - salah satu sebab kartu dianggap "tidak cocok").
+  - Bukti data nyata DEV 12/10/2026 (data aktif masih cuplikan Oktober): kartu
+    Aksi SEBELUM = kejar 31 / buat PO 0 / cek 20 / buat PR 398 dari 449 baris;
+    SESUDAH = kejar 23 / buat PO 0 / cek 1 / buat PR 125 dari 149 item REORDER;
+    kartu ringkasan tetap total 449 / REORDER 149 / aman 300 (skrip sementara
+    `tmp-oleo\cek-kartu-aksi.php`, sudah dihapus). Angka 23/0/1/125 adalah
+    sebaran 149 REORDER pada DATA CUPLIKAN, jadi belum 25/51/45/28: karena
+    paritas aturan aksi sudah terbukti 149/149 dengan berkas rentang penuh
+    (butir sebelumnya), mengunggah `EXPORT PR.XLSX` + `EXPORT PO.XLSX` rentang
+    penuh akan langsung menghasilkan 25/51/45/28 pada kartu ini.
+  - Uji BARU `tests/Feature/SparepartKartuAksiReorderTest.php` (4 test) memakai
+    helper `spAngkaKartuAksi()` (membaca angka kartu dari HTML) dan
+    `spHalamanSparepart()` (import fixture + render halaman); yang diperiksa:
+    angka kartu hanya dari item REORDER, kartu ringkasan tetap 5/3/2 pada
+    fixture, tautan kartu memuat `status=reorder`, dan jumlah baris daftar saat
+    kartu dibuka = angka kartunya (buat PR 1 baris, cek 0 baris). Uji mutasi
+    12/10/2026: mencabut `->where('reorder', true)` membuat 2 test GAGAL
+    (cek 1 bukan 0; buat PR 2 bukan 1), lalu dikembalikan dan hijau lagi.
+    Seluruh suite **541 test hijau (2.567 assertions)** dan
+    `php artisan view:cache` sukses.
 

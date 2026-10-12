@@ -102,10 +102,20 @@
             </a>
         </div>
 
-        {{-- Kartu tindak lanjut per nilai kolom aksi --}}
+        {{-- Petunjuk lingkup kartu aksi: fokus item REORDER seperti dashboard lama --}}
+        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p class="text-sm font-semibold text-slate-700">
+                Rincian tindakan {{ number_format($ringkasan['reorder'], 0, ',', '.') }} item REORDER (fokus tindakan)
+            </p>
+            <p class="text-xs text-slate-400">
+                Sama seperti sheet "Daftar Aksi" dashboard lama; material yang stoknya masih aman tidak dihitung.
+            </p>
+        </div>
+
+        {{-- Kartu tindak lanjut per nilai kolom aksi (lingkup: item REORDER) --}}
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
             @foreach($kartuAksi as $kartu)
-                <a href="{{ route('sparepart.index', ['aksi' => $kartu['nilai']]) }}"
+                <a href="{{ route('sparepart.index', ['aksi' => $kartu['nilai'], 'status' => 'reorder']) }}"
                    class="bg-white rounded-xl border {{ $saringan['aksi'] === $kartu['nilai'] ? 'border-teal-400' : 'border-slate-200' }} p-4 hover:border-teal-400 transition-colors"
                    data-kartu-aksi="{{ $kartu['label'] }}">
                     <p class="text-xs text-slate-500">{{ $kartu['label'] }}</p>

@@ -370,13 +370,20 @@ class SparepartController extends Controller
     }
 
     /**
-     * Jumlah material per nilai kolom aksi.
+     * Jumlah material per nilai kolom aksi, dihitung hanya dari item REORDER.
+     *
+     * Lingkup ini disamakan dengan sheet "Daftar Aksi" dashboard lama: angka
+     * 25/51/45/28 di sana juga hanya mencakup 149 item REORDER (fokus tindakan),
+     * bukan seluruh daftar pantau. Material yang stoknya masih aman tidak ikut
+     * dihitung supaya angka kartu tidak didominasi pekerjaan yang belum perlu
+     * dilakukan (permintaan user 12/10/2026).
      *
      * @return array<int, array<string, mixed>> Kartu aksi (nilai, label, keterangan, jumlah)
      */
     private function kartuAksi(): array
     {
         $rekap = DB::table('sp_material')
+            ->where('reorder', true)
             ->groupBy('aksi')
             ->selectRaw('aksi, COUNT(*) AS jumlah')
             ->pluck('jumlah', 'aksi');
