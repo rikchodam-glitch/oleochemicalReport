@@ -377,18 +377,39 @@ class Report extends Model
     // =========================================================
 
     /**
+     * Penanda "akhir hari" untuk jam selesai (tengah malam berikutnya).
+     *
+     * Dipakai 18 laporan PROD yang tersimpan dengan end_time = 24:00
+     * (diperiksa 12/10/2026 pada oleochemical.reports), sehingga form edit
+     * harus bisa membuka dan menyimpan ulang nilai itu apa adanya. Nilai ini
+     * TIDAK berlaku untuk jam MULAI (lihat durasiDariJam()).
+     */
+    public const JAM_AKHIR_HARI = '24:00';
+
+    /**
+     * Jumlah menit dalam satu hari penuh (24 x 60). Dasar perhitungan rentang
+     * yang melewati tengah malam, dipakai juga oleh pemanggil di luar model.
+     */
+    public const MENIT_SEHARI = 1440;
+
+    /**
      * Hitung durasi pengerjaan (menit) dari rentang jam "HH:MM".
      *
-     * Aturan yang dipakai form edit laporan:
+     * Aturan TUNGGAL jam kerja laporan (dipakai form edit, wizard Telegram,
+     * parser AI, dan ManHourService — semua jalur lain mendelegasikan ke sini):
      *   - Jam selesai LEBIH KECIL dari jam mulai dianggap pekerjaan yang
      *     melewati tengah malam (mis. 22:00 - 06:00 = 8 jam = 480 menit),
      *     sehingga perhitungannya ditambah 24 jam.
-     *   - Jam selesai SAMA dengan jam mulai dianggap 0 menit.
+     *   - Jam selesai "24:00" diterima sebagai akhir hari (mis. 23:00 - 24:00
+     *     = 60 menit) karena data laporan lama memakai nilai itu.
+     *   - Jam selesai SAMA dengan jam mulai BUKAN rentang: hasilnya null
+     *     (ditolak) supaya salah ketik tidak tersimpan sebagai durasi 0 menit.
+     *   - Jam mulai "24:00" juga null karena tidak wajar sebagai awal kerja.
      *   - Salah satu kosong atau formatnya tidak dikenali -> null, supaya
      *     durasi yang sudah tersimpan tidak ikut terhapus.
      *
      * @param  string|null  $mulai    Jam mulai kerja format HH:MM
-     * @param  string|null  $selesai  Jam selesai kerja format HH:MM
+     * @param  string|null  $selesai  Jam selesai kerja format HH:MM (boleh 24:00)
      * @return int|null               Durasi dalam menit, null bila tidak bisa dihitung
      */
     public static function durasiDariJam(?string $mulai, ?string $selesai): ?int
@@ -400,8 +421,19 @@ class Report extends Model
             return null;
         }
 
+        // Jam mulai tidak boleh penanda akhir hari.
+        if ($menitMulai >= self::MENIT_SEHARI) {
+            return null;
+        }
+
+        // Jam sama bukan rentang: ditolak supaya salah ketik tidak menjadi
+        // 0 menit (man hour hilang) atau 24 jam (man hour meledak).
+        if ($menitMulai === $menitSelesai) {
+            return null;
+        }
+
         if ($menitSelesai < $menitMulai) {
-            $menitSelesai += 24 * 60;
+            $menitSelesai += self::MENIT_SEHARI;
         }
 
         return $menitSelesai - $menitMulai;
@@ -431,10 +463,19 @@ class Report extends Model
     /**
      * Ubah jam "HH:MM" menjadi jumlah menit sejak tengah malam.
      *
+     * Inilah SATU-SATUNYA pengubah jam menjadi menit di aplikasi: wizard
+     * Telegram (WizardUtilityTrait), parser AI (AiKeywordParserTrait), dan
+     * ManHourService mendelegasikan ke method ini supaya aturan jam tidak
+     * berbeda antar jalur.
+     *
+     * Nilai "24:00" dikenali sebagai 1440 menit karena data laporan lama
+     * memakai nilai itu untuk jam selesai; pemakaian yang lebih ketat dijaga
+     * durasiDariJam() (jam MULAI tidak boleh 24:00).
+     *
      * @param  string|null  $jam  Jam format HH:MM (boleh satu digit jam, mis. 8:05)
-     * @return int|null           Jumlah menit, null bila format tidak dikenali
+     * @return int|null           Menit sejak 00:00 (0-1440), null bila format tidak dikenali
      */
-    private static function menitDariJam(?string $jam): ?int
+    public static function menitDariJam(?string $jam): ?int
     {
         $teks = trim((string) $jam);
 
@@ -449,7 +490,16 @@ class Report extends Model
         $jamKe   = (int) $cocok[1];
         $menitKe = (int) $cocok[2];
 
-        if ($jamKe > 23 || $menitKe > 59) {
+        if ($menitKe > 59) {
+            return null;
+        }
+
+        // Akhir hari hanya boleh persis 24:00, bukan 24:30.
+        if ($jamKe === 24 && $menitKe !== 0) {
+            return null;
+        }
+
+        if ($jamKe > 24) {
             return null;
         }
 

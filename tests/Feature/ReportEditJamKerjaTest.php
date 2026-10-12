@@ -160,8 +160,10 @@ test('pembantu durasiDariJam dan lintasTengahMalam mengikuti aturan yang sama', 
     expect(Report::durasiDariJam('08:00', '09:30'))->toBe(90)
         // Lintas tengah malam.
         ->and(Report::durasiDariJam('22:00', '06:00'))->toBe(480)
-        // Jam sama = 0 menit.
-        ->and(Report::durasiDariJam('08:00', '08:00'))->toBe(0)
+        // Jam sama BUKAN rentang: ditolak (dulu keliru dibaca 0 menit).
+        ->and(Report::durasiDariJam('08:00', '08:00'))->toBeNull()
+        // Jam selesai 24:00 = akhir hari (dipakai data laporan lama).
+        ->and(Report::durasiDariJam('23:00', '24:00'))->toBe(60)
         // Tidak lengkap / format ngawur = tidak dihitung.
         ->and(Report::durasiDariJam('08:00', null))->toBeNull()
         ->and(Report::durasiDariJam(null, '08:00'))->toBeNull()
@@ -214,4 +216,59 @@ test('jam dikosongkan tanpa kolom durasi: durasi lama dipertahankan', function (
         ->assertRedirect();
 
     expect($this->laporan->fresh()->work_duration_minutes)->toBe(120);
+});
+
+test('update menyimpan ulang laporan berjam selesai 24:00 tanpa kehilangan nilainya', function () {
+    // 18 laporan lama memakai end_time = 24:00 (akhir hari). Nilai itu harus
+    // bisa dibuka dan disimpan ulang apa adanya, dengan durasi dihitung dari
+    // rentang jam (23:00 - 24:00 = 60 menit), bukan ditolak validasi.
+    $this->laporan->update(['start_time' => '23:00', 'end_time' => '24:00']);
+
+    $this->actingAs($this->admin)
+        ->put('/reports/' . $this->laporan->id, [
+            'work_description' => 'Pekerjaan sampai tengah malam',
+            'report_date'      => now()->toDateString(),
+            'start_time'       => '23:00',
+            'end_time'         => '24:00',
+        ])
+        ->assertRedirect();
+
+    $tersimpan = $this->laporan->fresh();
+
+    expect($tersimpan->end_time)->toBe('24:00')
+        ->and($tersimpan->work_duration_minutes)->toBe(60)
+        ->and($tersimpan->time_range)->toBe('23:00 - 24:00');
+});
+
+test('halaman detail menampilkan jam selesai 24:00 apa adanya', function () {
+    $this->laporan->update(['start_time' => '23:00', 'end_time' => '24:00', 'work_duration_minutes' => 60]);
+
+    $this->actingAs($this->admin)
+        ->get('/reports/' . $this->laporan->id)
+        ->assertStatus(200)
+        // <input type="time"> tidak bisa menampung 24:00 (batasnya 23:59),
+        // sehingga isian jam selesai dirender sebagai teks supaya nilai dari
+        // database tidak hilang saat halaman dibuka.
+        ->assertSee('value="24:00"', false)
+        ->assertSee('id="peringatan_jam_sama"', false)
+        ->assertSee('if (menitMulai === menitSelesai) {', false);
+});
+
+test('jam mulai sama dengan jam selesai ditolak dan data lama tidak berubah', function () {
+    $this->actingAs($this->admin)
+        ->from('/reports/' . $this->laporan->id)
+        ->put('/reports/' . $this->laporan->id, [
+            'work_description' => 'Pemeriksaan pompa uji jam kerja',
+            'report_date'      => now()->toDateString(),
+            'start_time'       => '08:00',
+            'end_time'         => '08:00',
+        ])
+        ->assertSessionHasErrors('end_time');
+
+    $laporan = $this->laporan->fresh();
+
+    expect($laporan->start_time)->toBeNull()
+        ->and($laporan->end_time)->toBeNull()
+        // Durasi man hour lama (120) tidak ikut menjadi 0.
+        ->and($laporan->work_duration_minutes)->toBe(120);
 });

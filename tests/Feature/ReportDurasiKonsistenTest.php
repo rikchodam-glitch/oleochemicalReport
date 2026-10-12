@@ -85,6 +85,11 @@ test('skrip tampilan memakai aturan lintas tengah malam yang sama dengan server'
         ->assertSee('function labelDurasi(menit)', false)
         ->assertSee('if (lewatTengahMalam) {', false)
         ->assertSee('total += 24 * 60;', false)
+        // Jam sama bukan rentang: skrip tampilan memakai aturan server
+        // (Report::durasiDariJam()) sehingga durasi tidak dihitung dan admin
+        // diberi peringatan, bukan ditampilkan 0 menit.
+        ->assertSee('if (menitMulai === menitSelesai) {', false)
+        ->assertSee('id="peringatan_jam_sama"', false)
         ->assertSee("bagian.push(jam + ' Jam')", false)
         ->assertSee("bagian.push(sisa + ' Menit')", false);
 });

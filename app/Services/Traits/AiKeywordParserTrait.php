@@ -5,6 +5,7 @@ namespace App\Services\Traits;
 use App\Models\AiAlias;
 use App\Models\Area;
 use App\Models\Asset;
+use App\Models\Report;
 
 /**
  * Trait AiKeywordParserTrait
@@ -439,15 +440,15 @@ trait AiKeywordParserTrait
         // Format rentang waktu — dicek lebih dulu karena mengandung pola jam:menit
         // yang bisa salah tertangkap oleh pola "jam:menit numerik" di bawah
         if (preg_match('/(\d{1,2})[:.](\d{2})\s*(?:sampai|s\/d|sd|hingga|\-)\s*(\d{1,2})[:.](\d{2})/', $textLower, $m)) {
-            $startMinutes = ((int) $m[1]) * 60 + (int) $m[2];
-            $endMinutes   = ((int) $m[3]) * 60 + (int) $m[4];
-            $diff         = $endMinutes - $startMinutes;
+            // Satu sumber aturan: Report::durasiDariJam() (rentang melewati
+            // tengah malam ditambah 1440 menit, jam selesai 24:00 = akhir hari,
+            // jam mulai sama dengan jam selesai = tidak sah).
+            $durasi = Report::durasiDariJam(
+                sprintf('%02d:%02d', (int) $m[1], (int) $m[2]),
+                sprintf('%02d:%02d', (int) $m[3], (int) $m[4])
+            );
 
-            if ($diff <= 0) {
-                $diff += 1440; // Rentang melewati tengah malam
-            }
-
-            return $this->validateWorkDurationMinutes($diff);
+            return $this->validateWorkDurationMinutes($durasi);
         }
 
         $totalMinutes = 0;

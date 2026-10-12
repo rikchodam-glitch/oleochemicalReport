@@ -364,13 +364,16 @@ class ManHourService
     /**
      * Ubah jam "HH:MM" (atau "24:00") menjadi menit sejak tengah malam.
      *
+     * Mendelegasikan ke Report::menitDariJam() supaya aturan jam hanya ada di
+     * satu tempat: sebelumnya memakai explode() sendiri sehingga nilai aneh
+     * seperti "25:00" dihitung 1500 menit alih-alih ditolak. Format yang tidak
+     * dikenali dianggap 0 menit supaya perhitungan anomali jadwal tetap jalan.
+     *
      * @param  string $jam Jam format HH:MM
-     * @return int         Menit sejak 00:00
+     * @return int         Menit sejak 00:00 (0 bila format tidak dikenali)
      */
     private function menitDariJam(string $jam): int
     {
-        $potongan = explode(':', $jam);
-
-        return ((int) ($potongan[0] ?? 0)) * 60 + ((int) ($potongan[1] ?? 0));
+        return Report::menitDariJam($jam) ?? 0;
     }
 }

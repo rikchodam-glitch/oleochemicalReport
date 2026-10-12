@@ -581,9 +581,12 @@ class ReportController extends Controller
             // durasinya dihitung otomatis dari rentang jam (lihat di bawah).
             'work_duration_minutes'  => 'nullable|integer|min:0',
             // Jam kerja format HH:MM. Memakai regex (bukan date_format) supaya
-            // nilainya benar-benar jam 00:00-23:59 dan pesan galatnya jelas.
+            // nilainya benar-benar jam dan pesan galatnya jelas. Jam SELESAI
+            // boleh "24:00" (akhir hari) karena 18 laporan lama memakai nilai
+            // itu dan harus bisa disimpan ulang apa adanya
+            // (Report::JAM_AKHIR_HARI); jam MULAI tetap 00:00-23:59.
             'start_time'             => ['nullable', 'regex:/^([01]?\d|2[0-3]):[0-5]\d$/'],
-            'end_time'               => ['nullable', 'regex:/^([01]?\d|2[0-3]):[0-5]\d$/'],
+            'end_time'               => ['nullable', 'regex:/^(([01]?\d|2[0-3]):[0-5]\d|24:00)$/'],
             'root_cause'              => 'nullable|string',
             // Temuan (finding) — dicatat teknisi setelah root cause, opsional.
             'finding'                 => 'nullable|string',
@@ -605,15 +608,28 @@ class ReportController extends Controller
             'status'                  => 'nullable|in:completed,continue,needs_review',
         ], [
             'start_time.regex' => 'Jam mulai harus format HH:MM (contoh 08:00).',
-            'end_time.regex'   => 'Jam selesai harus format HH:MM (contoh 09:00).',
+            'end_time.regex'   => 'Jam selesai harus format HH:MM (contoh 09:00) atau 24:00 untuk akhir hari.',
         ]);
 
+        // Jam mulai = jam selesai BUKAN rentang, jadi ditolak dengan pesan yang
+        // jelas. Tanpa penjaga ini durasi bisa tersimpan 0 menit (man hour
+        // hilang) atau 24 jam hanya karena salah ketik pada satu sisi.
+        $menitMulai   = Report::menitDariJam($validated['start_time'] ?? null);
+        $menitSelesai = Report::menitDariJam($validated['end_time'] ?? null);
+
+        if ($menitMulai !== null && $menitSelesai !== null && $menitMulai === $menitSelesai) {
+            return back()
+                ->withErrors(['end_time' => 'Jam selesai tidak boleh sama dengan jam mulai.'])
+                ->withInput();
+        }
+
         // Durasi dikosongkan + jam mulai/selesai terisi -> hitung dari rentang
-        // jam. Jam selesai lebih kecil dari jam mulai diartikan pekerjaan yang
-        // melewati tengah malam (ditambah 24 jam, lihat Report::durasiDariJam()).
-        // Bila durasi kosong DAN jam juga kosong, nilai lama DIPERTAHANKAN
-        // (kolom dihapus dari data update) supaya angka man hour tidak hilang
-        // karena kolom terlewat; isi 0 bila memang ingin dinolkan.
+        // jam lewat SATU sumber aturan (Report::durasiDariJam()): jam selesai
+        // lebih kecil dari jam mulai = melewati tengah malam (ditambah 24 jam),
+        // jam selesai 24:00 = akhir hari. Bila durasi kosong DAN jam juga
+        // kosong, nilai lama DIPERTAHANKAN (kolom dihapus dari data update)
+        // supaya angka man hour tidak hilang karena kolom terlewat; isi 0 bila
+        // memang ingin dinolkan.
         $durasiDikirim = $validated['work_duration_minutes'] ?? null;
 
         if ($durasiDikirim === null || $durasiDikirim === '') {

@@ -5,6 +5,7 @@ namespace App\Services\Telegram\Traits;
 use App\Enums\WorkClassification;
 use App\Models\Asset;
 use App\Models\FunctionalLocation;
+use App\Models\Report;
 use App\Services\LocationResolver;
 use Illuminate\Support\Carbon;
 
@@ -89,9 +90,12 @@ trait WizardUtilityTrait
      *     "9.30 sampai 10",      "9 sampai 10.30"
      *
      * Rentang yang melewati tengah malam (mis. 23:00-01:00) diterima dan
-     * dihitung sebagai rentang positif dengan menambahkan 1440 menit.
-     * Hasil divalidasi: tidak boleh 0/negatif dan tidak boleh lebih dari
-     * 24 jam (1440 menit).
+     * dihitung sebagai rentang positif dengan menambahkan 1440 menit, dan
+     * jam selesai 24:00 diterima sebagai akhir hari (mis. 23:00-24:00).
+     * Hasil divalidasi memakai SATU sumber aturan, Report::durasiDariJam():
+     *   - jam selesai SAMA dengan jam mulai BUKAN rentang -> null sehingga
+     *     teknisi diminta mengetik ulang (dulu keliru dihitung 24 jam),
+     *   - tidak boleh 0/negatif dan tidak boleh lebih dari 24 jam (1440 menit).
      *
      * @param  string $text Input teks dari teknisi
      * @return array{start: string, end: string, minutes: int}|null
@@ -212,6 +216,9 @@ trait WizardUtilityTrait
     /**
      * Validasi hasil parsing durasi.
      * Durasi tidak boleh 0/negatif dan tidak boleh lebih dari 24 jam (1440 menit).
+     * Nilai null (rentang tidak sah menurut Report::durasiDariJam(), mis. jam
+     * mulai sama dengan jam selesai) tetap null sehingga wizard meminta teknisi
+     * mengetik ulang rentangnya.
      *
      * @param  int|null $minutes Durasi mentah hasil parsing
      * @return int|null          Durasi jika valid, null jika di luar rentang
@@ -227,22 +234,25 @@ trait WizardUtilityTrait
 
     /**
      * Hitung selisih menit antara waktu mulai dan waktu selesai.
-     * Jika selisih nol atau negatif, diasumsikan rentang melewati tengah malam
-     * sehingga ditambahkan 1440 menit (24 jam).
+     *
+     * Mendelegasikan ke Report::durasiDariJam() supaya aturan jam di wizard
+     * Telegram sama dengan form web dan ManHourService:
+     *   - jam selesai lebih kecil dari jam mulai = melewati tengah malam
+     *     (ditambah 1440 menit),
+     *   - jam selesai 24:00 = akhir hari,
+     *   - jam selesai SAMA dengan jam mulai BUKAN rentang -> null (ditolak),
+     *     sebelumnya nilai itu dianggap 24 jam (salah).
      *
      * @param  int $startMinutes Waktu mulai dalam menit sejak pukul 00:00
      * @param  int $endMinutes   Waktu selesai dalam menit sejak pukul 00:00
-     * @return int               Selisih dalam menit (selalu positif)
+     * @return int|null          Selisih dalam menit, null bila rentang tidak sah
      */
-    private function calcRangeDiff(int $startMinutes, int $endMinutes): int
+    private function calcRangeDiff(int $startMinutes, int $endMinutes): ?int
     {
-        $diff = $endMinutes - $startMinutes;
-
-        if ($diff <= 0) {
-            $diff += 1440;
-        }
-
-        return $diff;
+        return Report::durasiDariJam(
+            $this->formatMinutesToHhMm($startMinutes),
+            $this->formatMinutesToHhMm($endMinutes)
+        );
     }
 
     // =========================================================
