@@ -3187,4 +3187,41 @@ baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
     (cek 1 bukan 0; buat PR 2 bukan 1), lalu dikembalikan dan hijau lagi.
     Seluruh suite **541 test hijau (2.567 assertions)** dan
     `php artisan view:cache` sukses.
+- **Uji coba import LEWAT SISTEM + angka Buat PO 51 di DEV (12/10/2026, atas
+  permintaan user "coba anda import dari system apakah bisa?")**: jalurnya ADA
+  dan bekerja. Perintah (jalur service yang SAMA dengan halaman unggah
+  `/sparepart/impor`, hanya berbeda pintu masuk):
+  `php artisan sparepart:import --pr="D:\RYAN\Dasboard\EPE\2024 - 07 Okt 26\EXPORT PR.XLSX"
+  --po="D:\RYAN\Dasboard\EPE\2024 - 07 Okt 26\EXPORT PO.XLSX"
+  --label="Ekspor rentang penuh s.d. 07 Okt 2026 (uji coba agent di DEV)" --oleh=1`.
+  Hasil di DEV `oleochemical_dev`:
+  - **Impor #14 sukses**: PR 14.557 baris dibaca (889 diabaikan, 1.664 material
+    di berkas; 1.312 di antaranya di luar daftar pantau), PO 14.835 baris (1.109
+    diabaikan, 1.521 material; 1.209 di luar pantau), `--stok` TIDAK diunggah ->
+    blok stok disalin dari baris lama. Keadaan: baru 0 / diperbarui 353 / tetap
+    96; status stok tetap REORDER 149 + aman 300 (stok toh tidak berubah).
+  - **Kartu Aksi `/sparepart` SESUDAH import = Kejar PO 25 / Buat PO 51 /
+    Cek-Buat PR 45 / Buat PR 28** dari 149 item REORDER — PERSIS sebaran sheet
+    "Daftar Aksi" `Integrasi_PR_PO_SparePart.xlsx` (25/51/45/28). Keluhan user
+    "Buat PO 51 vs 0" tuntas di DEV: kartu kini berbunyi 51.
+  - Cakupan berkas menjadi 78% (PR: 352/449) dan 69% (PO: 312/449) sehingga
+    kotak PERINGATAN CAKUPAN SEMPIT hilang dari halaman Sparepart.
+  - JEBAKAN yang wajib diingat: keluaran perintah `sparepart:import` mencetak
+    sebaran aksi untuk SELURUH 449 baris pantau (BUAT PO 58 / BUAT PR 97 /
+    CEK 261 / KEJAR 33), BUKAN 149 item REORDER seperti kartu halaman. Jangan
+    membandingkan angka keluaran perintah itu langsung dengan Ringkasan dashboard
+    lama; yang setara adalah kartu halaman. Penyempurnaan berikutnya (belum
+    dikerjakan): perintah mencetak sebaran aksi dua kali (semua baris dan khusus
+    item REORDER) supaya tidak salah baca.
+  - Rollback: backup tabel `sp_material` + `sp_impor` DEV SEBELUM import ada di
+    `C:\laragon\backup-oleochemical\dev\sp-dev-sebelum-import-rentang-penuh-20261012-103602.sql`
+    (218 KB); memulihkan: `mysql -u root oleochemical_dev < berkas.sql`.
+    Alternatif tanpa backup: unggah ulang `EXPORT Okt 2026.XLSX` +
+    `EXPORT PO Okt 2026.XLSX` dari folder `07 Okt 26`. Keadaan DEV sesudah sesi
+    ini = data rentang penuh (impor #14), jadi angka kartu DEV kini sama dengan
+    dashboard lama. Skrip pemeriksa sementara `tmp-oleo\cek-kartu-aksi.php`
+    sudah dihapus.
+  - PROD BELUM disentuh: angkanya masih 31/0/20/398 sampai (a) perubahan kode
+    ini di-deploy dan (b) dua berkas rentang penuh itu diunggah pada halaman
+    `/sparepart/impor` PROD.
 
