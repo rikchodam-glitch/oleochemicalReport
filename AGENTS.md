@@ -2794,6 +2794,35 @@ Batasan penting lingkungan ini:
 
 
 
+41. **19 berkas/folder sampah menumpuk di copy DEV (ditambah 184 view
+    terkompilasi yang sudah yatim) karena tidak ada aturan kebersihan repo
+    (12/10/2026).** Ditemukan saat user meminta pembersihan: skrip uji
+    sementara (`_cek_popup_jadwal.php`, `tmp-cek-aset.php`,
+    `compare-it-assets.php`), cadangan
+    `resources/views/cm/overview.blade.php.bak`, partial yatim
+    `resources/views/cm/_top-vibrasi-table.blade.php`, dua keluaran
+    `Project_BOT20260908_13*.txt`, dua CSV hasil export sekali pakai di
+    `storage/app/`, 8 berkas `sensor-suhu-esp32/_tmp_*.txt`, 2 folder
+    `__pycache__`, dan 184 view yatim di `storage/framework/views` (sisa blade
+    yang lebih dulu dihapus). Semuanya dihapus 12/10/2026 di copy DEV
+    `C:\laragon\www\oleochemicalReport` (commit `755c8c0`), lalu
+    `php artisan view:clear` + `view:cache` dijalankan ulang (164 berkas
+    terkompilasi, 0 yatim) dan suite tetap hijau (541 test, 2567 assertions).
+    Sisa pekerjaan sesi lain yang SENGAJA tidak dihapus karena masih dipakai:
+    modul CM/Google Drive yang belum di-commit,
+    `storage/app/private/shift-schedules` (74 xlsx, dirujuk
+    `ShiftScheduleController`), `database.sqlite`, `export.ps1`, dan `.kilo/`.
+    **Pelajaran: (1) sampah berkas tidak pernah ketahuan dari test — hanya dari
+    `git status --short` dan pemeriksaan view terkompilasi; (2) setiap kali
+    berkas blade dihapus, `php artisan view:clear` WAJIB dijalankan karena view
+    lama tetap tersimpan dan tetap bisa melayani rutenya; (3) sebelum menghapus
+    apa pun, pastikan dulu berkas itu memang yatim/sekali pakai
+    (`search_codebase` untuk blade, pemeriksaan rujukan kode untuk berkas data) —
+    `storage/app/private/shift-schedules` terlihat seperti tumpukan berkas
+    sampai terbukti dirujuk `ShiftScheduleController`. Aturan lengkapnya ada di
+    bagian "ATURAN WAJIB: JANGAN TINGGALKAN SAMPAH BERKAS".**
+
+
 ## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN
 
 Nama resmi sistem per **30/09/2026** adalah **Oleochemical Maintenance**
@@ -2864,9 +2893,11 @@ dibiarkan apa adanya, sengaja, karena itu nama perusahaan bukan nama aplikasi.
       menyebut apa yang berubah dan kenapa.
    b. Hanya berkas yang terkait perubahan itu yang di-`git add` (tulis
       path-nya satu per satu). JANGAN `git add -A` / `git add .` — berkas
-      yang sudah kotor dari sesi lain (mis. `app/Jobs/ProcessCmFindingsImport.php`,
-      `.env.example`, `.gitignore`, `tmp-cek-aset.php`) tidak boleh ikut
-      ter-commit.
+      yang sudah kotor dari sesi lain tidak boleh ikut ter-commit (contoh nyata
+      12/10/2026: `app/Jobs/ProcessCmFindingsImport.php`, `.env.example`,
+      `.gitignore`, `app/Console/Commands/CmDriveCheck.php`). Daftar kotor itu
+      SELALU diperiksa lebih dulu dengan `git status --short`, jangan memakai
+      contoh di sini sebagai daftar tetap.
    c. Setelah commit, langsung `git push hub main`. Pekerjaan dianggap
       "selesai" hanya setelah hash commit-nya dilaporkan ke user.
    d. Yang BELUM lulus uji JANGAN di-commit (jangan pernah commit kode setengah
@@ -2882,6 +2913,59 @@ dibiarkan apa adanya, sengaja, karena itu nama perusahaan bukan nama aplikasi.
    f. Alasan aturan ini: kalau nanti file corrupt dan perlu `git checkout`,
       kerugian yang hilang hanya sebatas perubahan sejak commit terakhir,
       bukan seluruh sesi kerja.
+
+## ATURAN WAJIB: JANGAN TINGGALKAN SAMPAH BERKAS (kebersihan repo)
+
+Diminta user 12/10/2026 sesudah ditemukan 19 berkas/folder sampah tertinggal di
+copy DEV (skrip uji sementara, cadangan `.bak`, partial yatim, berkas hasil
+export sekali pakai, `__pycache__`, dan 184 view terkompilasi yang sudah yatim).
+Aturan ini berlaku untuk SEMUA sesi berikutnya.
+
+1. **Skrip/pengujian sementara** (`tmp-cek-*.php`, `tmp-*.php`, `_cek_*.php`,
+   `compare-*.php`) hanya boleh hidup selama dipakai. Selesai dipakai = HAPUS
+   pada giliran itu juga, jangan menunggu "nanti". Kalau masih diperlukan untuk
+   melanjutkan pekerjaan, taruh di folder `tmp-oleo\` (folder itu boleh ada,
+   isinya TIDAK boleh di-commit).
+2. **Berkas cadangan** (`.bak`, `.old`, `.orig`, `*~`, `*_lama.*`) JANGAN
+   dibiarkan di dalam repo. Untuk berkas terlacak, salinan amannya sudah ada di
+   commit terakhir; untuk berkas tak terlacak, salinannya ditaruh di luar repo
+   (`C:\laragon\backup-oleochemical\`).
+3. **Berkas hasil sekali pakai** (CSV/TXT hasil export atau laporan uji di
+   `storage/app/`) dihapus sesudah angkanya dilaporkan. Bila perlu disimpan
+   untuk rujukan laporan, pindahkan ke `C:\laragon\backup-oleochemical\`
+   (di luar repo), bukan dibiarkan di dalam repo.
+4. **Partial/view yatim** (sudah tidak dirujuk `@include`/`view()` mana pun)
+   WAJIB dihapus, bukan dibiarkan "barangkali nanti dipakai". Buktikan yatim
+   dulu dengan `search_codebase`, jangan menebak.
+5. **Setelah menghapus berkas blade, WAJIB jalankan `php artisan view:clear`**
+   (bukan hanya `view:cache`): view lama di `storage/framework/views` tetap
+   tersimpan dan tetap bisa melayani rute walau sumbernya sudah dihapus
+   (kejadian 12/10/2026: 184 view yatim). Sesudah `view:cache`, bandingkan
+   jumlah berkas terkompilasi dengan jumlah blade sumber; selisihnya dilaporkan.
+6. **Sebelum menutup sesi**, jalankan pemeriksaan sampah berikut (hanya
+   membaca; perintahnya sudah diuji 12/10/2026 atas 16.553 berkas di repo dan
+   mengembalikan nol temuan pada repo yang sudah bersih):
+   a. `git status --short` -- perhatikan berkas baru (`??`) yang bukan bagian
+      fitur yang sedang dikerjakan.
+   b. `Get-ChildItem -Recurse -Force -File | Where-Object { $_.Name -like '*.bak'
+      -or $_.Name -like '*.old' -or $_.Name -like '*~' -or $_.Name -like '_tmp_*'
+      -or $_.Name -like 'tmp-*' }` -- bila lambat, saring dulu folder
+      `vendor` dan `node_modules`.
+   c. `Get-ChildItem -Recurse -Force -Directory | Where-Object { $_.Name -eq
+      '__pycache__' }`
+   d. `(Get-ChildItem -LiteralPath storage\framework\views -File).Count`
+   Hasilnya dilaporkan ke user, dan sampahnya dihapus pada sesi itu.
+7. **Copy PROD**: JANGAN menghapus atau menyunting apa pun di
+   `C:\laragon\www\oleochemicalReport-prod`. Berkas sampah yang tampak di sana
+   adalah temuan untuk dilaporkan (dibersihkan lewat commit di DEV lalu deploy),
+   bukan untuk dibersihkan langsung.
+8. **Pola sampah yang sudah dikecualikan git**: DEV memakai
+   `C:\laragon\www\oleochemicalReport\.git\info\exclude` (bagian "Sampah kerja
+   agent"), diisi 12/10/2026. Berkas itu ada DI DALAM `.git` sehingga tidak ikut
+   ter-commit dan hanya berlaku di DEV. Pola yang sama masih perlu ditambahkan
+   ke `.gitignore` (kolom "Debug artifacts") saat berkas itu boleh disentuh
+   lagi; pemisahan ini sengaja supaya penyuntingan `.gitignore` tidak mencampur
+   pekerjaan sesi lain yang belum di-commit.
 
 ## ATURAN WAJIB: VERIFIKASI DULU, BARU KODING
 
