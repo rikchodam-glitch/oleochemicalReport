@@ -75,6 +75,8 @@
                 untuk mengunggah laporan stok gudang, EXPORT PR, dan EXPORT PO.
             </div>
         @endif
+        @include('sparepart.partials._peringatan-cakupan', ['impor' => $terakhir])
+
 
         {{-- Kartu ringkasan keadaan --}}
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">

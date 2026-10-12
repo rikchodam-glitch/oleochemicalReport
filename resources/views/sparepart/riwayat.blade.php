@@ -74,7 +74,7 @@
                                     {{ $impor->selesai_at?->format('d/m/Y H:i') ?? $impor->created_at?->format('d/m/Y H:i') ?? '-' }}
                                 </td>
                                 <td class="px-3 py-2 text-slate-500">{{ $impor->pengguna?->name ?? 'Sistem' }}</td>
-                                <td class="px-3 py-2 text-slate-600">{{ $impor->label ?? '-' }}</td>
+                                <td class="px-3 py-2 text-slate-600">{{ $impor->label ?? '-' }}@if($impor->peringatanCakupan() !== [])<span class="ml-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">CAKUPAN SEMPIT</span>@endif</td>
                                 <td class="px-3 py-2 text-slate-600">{{ $dipakai === [] ? '-' : implode(', ', $dipakai) }}</td>
                                 <td class="px-3 py-2 text-right text-slate-600">
                                     {{ number_format($impor->jumlah_stok, 0, ',', '.') }} /

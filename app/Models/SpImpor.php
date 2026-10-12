@@ -88,4 +88,23 @@ class SpImpor extends Model
             default              => 'Diproses',
         };
     }
+
+    /**
+     * Catatan analisa yang berupa peringatan cakupan berkas sumber.
+     *
+     * Dipakai halaman Sparepart dan Riwayat Import supaya import yang memakai
+     * berkas cuplikan (mis. ekspor PR/PO sebagian bulan) langsung kelihatan
+     * tanpa harus membuka analisanya lebih dulu.
+     *
+     * @return array<int, string> Catatan analisa yang diawali PERINGATAN
+     */
+    public function peringatanCakupan(): array
+    {
+        $catatan = (array) ($this->analisa['catatan'] ?? []);
+
+        return array_values(array_filter(
+            $catatan,
+            static fn (mixed $satu): bool => is_string($satu) && str_starts_with($satu, 'PERINGATAN')
+        ));
+    }
 }

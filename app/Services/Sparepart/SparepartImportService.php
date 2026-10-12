@@ -39,6 +39,19 @@ class SparepartImportService
     /** Kunci berkas sumber EXPORT PO (SAP ME2M). */
     public const SUMBER_PO = 'po';
 
+    /** Nama berkas tiap sumber untuk kalimat catatan analisa. */
+    private const LABEL_BERKAS = [
+        self::SUMBER_STOK => 'laporan stok gudang',
+        self::SUMBER_PR   => 'EXPORT PR',
+        self::SUMBER_PO   => 'EXPORT PO',
+    ];
+
+    /**
+     * Cakupan berkas sumber di bawah angka ini (persen dari daftar pantau)
+     * dianggap cuplikan sebagian bulan, bukan ekspor riwayat penuh.
+     */
+    private const AMBANG_CAKUPAN_SEMPIT = 50;
+
     /**
      * Kolom tabel sp_material yang disalin dari baris lama bila berkas
      * sumbernya TIDAK ikut diunggah pada import ini.
@@ -171,14 +184,22 @@ class SparepartImportService
 
         $kodePantau = $pantau->keys()->all();
 
+        // Cakupan setiap berkas terhadap daftar pantau dipakai untuk mengenali
+        // berkas cuplikan (mis. ekspor PR/PO bulan berjalan) yang membuat kolom
+        // Aksi tampak seperti seluruh material meminta pengadaan baru.
+        $cakupan = [
+            self::SUMBER_STOK => $this->cakupanSumber($adaStok, $stok, $kodePantau),
+            self::SUMBER_PR   => $this->cakupanSumber($adaPr, $pr, $kodePantau),
+            self::SUMBER_PO   => $this->cakupanSumber($adaPo, $po, $kodePantau),
+        ];
+
         $analisa = [
             'sumber'      => $this->analisaSumber($baca),
             'pantau'      => [
                 'total'              => $pantau->count(),
-                'bercatatan_stok'    => $adaStok ? count(array_intersect(array_keys($stok), $kodePantau)) : null,
-                'tanpa_catatan_stok' => $adaStok
-                    ? $pantau->count() - count(array_intersect(array_keys($stok), $kodePantau))
-                    : null,
+                'sumber'             => $cakupan,
+                'bercatatan_stok'    => $cakupan[self::SUMBER_STOK]['punya'] ?? null,
+                'tanpa_catatan_stok' => $cakupan[self::SUMBER_STOK]['tanpa'] ?? null,
             ],
             'luar_pantau' => [],
             'keadaan'     => ['baru' => 0, 'diperbarui' => 0, 'tetap' => 0],
@@ -210,6 +231,14 @@ class SparepartImportService
                 'jumlah' => count($luar),
                 'contoh' => array_slice($luar, 0, 20),
             ];
+        }
+
+        foreach ($cakupan as $sumber => $barisCakupan) {
+            if ($barisCakupan === null || $barisCakupan['tanpa'] === 0) {
+                continue;
+            }
+
+            $analisa['catatan'][] = $this->catatanCakupan((string) $sumber, $barisCakupan, $pantau->count());
         }
 
         $tulis = [];
@@ -436,5 +465,56 @@ class SparepartImportService
         }
 
         return $hasil;
+    }
+
+    /**
+     * Menghitung cakupan satu berkas sumber terhadap daftar pantau.
+     *
+     * @param  bool                 $ada    Apakah berkas sumber ikut diunggah pada import ini
+     * @param  array<string, mixed> $data   Data berkas sumber (berkunci kode material)
+     * @param  array<int, string>   $pantau Seluruh kode material daftar pantau
+     * @return array<string, mixed>|null    Cakupan berkas, null bila berkas tidak diunggah
+     */
+    private function cakupanSumber(bool $ada, array $data, array $pantau): ?array
+    {
+        if (! $ada) {
+            return null;
+        }
+
+        $total = count($pantau);
+        $punya = count(array_intersect(array_keys($data), $pantau));
+
+        return [
+            'punya'  => $punya,
+            'tanpa'  => $total - $punya,
+            'persen' => $total === 0 ? 0 : (int) round($punya / $total * 100),
+        ];
+    }
+
+    /**
+     * Menyusun kalimat catatan analisa tentang cakupan satu berkas sumber.
+     *
+     * Berkas cuplikan (mis. ekspor PR/PO bulan berjalan) membuat kolom Aksi
+     * banyak berbunyi permintaan baru; kejadian itu nyata pada 09/10/2026 dan
+     * karena itu diberi peringatan tersendiri.
+     *
+     * @param  string               $sumber  Kunci berkas sumber
+     * @param  array<string, mixed> $cakupan Cakupan berkas (punya, tanpa, persen)
+     * @param  int                  $total   Jumlah kode pada daftar pantau
+     * @return string                        Kalimat catatan untuk analisa
+     */
+    private function catatanCakupan(string $sumber, array $cakupan, int $total): string
+    {
+        $dasar = 'Cakupan berkas ' . (self::LABEL_BERKAS[$sumber] ?? $sumber) . ': '
+            . $cakupan['punya'] . ' dari ' . $total . ' material pantau (' . $cakupan['persen'] . '%)';
+
+        if ((int) $cakupan['persen'] < self::AMBANG_CAKUPAN_SEMPIT) {
+            return 'PERINGATAN: ' . $dasar . '. Berkas ini kemungkinan cuplikan sebagian bulan, bukan '
+                . 'ekspor riwayat penuh, sehingga kolom Aksi banyak berbunyi permintaan baru; unggah '
+                . 'ekspor rentang penuh bila angka aksi ingin setara dashboard lama.';
+        }
+
+        return $dasar . '; material yang tidak ada di berkas itu dinilai dari sumber lain '
+            . 'sehingga kolom Aksi-nya bisa berbunyi permintaan baru.';
     }
 }
