@@ -3020,7 +3020,11 @@ baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
   punya PO; akibatnya kolom AKSI didominasi "BUAT PR" (398) dan "Buat PO" = 0.
   Dashboard lama memakai ekspor HISTORI PENUH (2024 - 07 Okt 26) sehingga
   menghasilkan 25/51/45/28. Bila angka AKSI ingin setara dashboard, unggah
-  ekspor rentang penuh, bukan cuplikan bulan berjalan.
+  ekspor rentang penuh, bukan cuplikan bulan berjalan. Sejak 09/10/2026 keadaan
+  itu TERDETEKSI otomatis: cakupan tiap berkas terhadap daftar pantau dicatat di
+  analisa import dan cakupan di bawah 50% memunculkan peringatan di halaman
+  Sparepart + lencana `CAKUPAN SEMPIT` di riwayat import (lihat butir "Peringatan
+  cakupan berkas sumber").
 - **Import boleh SEBAGIAN** (pilihan user 09/10/2026): minimal satu berkas;
   bagian yang tidak diunggah memakai nilai terakhir (`SparepartImportService`
   menyalin `BLOK_STOK`/`BLOK_PR`/`BLOK_PO` dari baris lama). Cap waktu per
@@ -3073,6 +3077,28 @@ baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
     sumber yang diimport di DEV adalah CUPLIKAN Oktober 2026, bukan ekspor
     sejarah penuh seperti dashboard lama (lihat "CATATAN CAKUPAN BERKAS" modul
     ini). Jadi bedanya soal CAKUPAN BERKAS, bukan logika kolomnya.
+- **Peringatan cakupan berkas sumber (09/10/2026, commit `ecedb50`, sudah ada
+  kodenya; BELUM naik ke PROD)** — supaya angka kolom Aksi dari berkas cuplikan
+  tidak dibaca sebagai keadaan sebenarnya.
+  - Analisa tiap import mencatat cakupan tiap berkas sumber terhadap daftar
+    pantau di `analisa.pantau.sumber.{stok,pr,po}` (`punya`, `tanpa`, `persen`);
+    berkas yang TIDAK diunggah bernilai `null` dan TIDAK dinilai nol.
+  - Cakupan di bawah `SparepartImportService::AMBANG_CAKUPAN_SEMPIT` (50%)
+    menghasilkan catatan berawalan `PERINGATAN` yang menyebut berkas itu
+    kemungkinan cuplikan sebagian bulan (bukan ekspor rentang penuh). Nama
+    berkas pada kalimat itu diambil dari `LABEL_BERKAS`
+    ("laporan stok gudang" / "EXPORT PR" / "EXPORT PO").
+  - `SpImpor::peringatanCakupan()` menyaring catatan berawalan `PERINGATAN` dan
+    dipakai DUA tempat: kotak peringatan di halaman Sparepart
+    (`resources/views/sparepart/partials/_peringatan-cakupan.blade.php`,
+    di-include dari `index.blade.php`) dan lencana `CAKUPAN SEMPIT` pada kolom
+    Label di `resources/views/sparepart/riwayat.blade.php`. Keduanya hanya
+    tampilan; datanya tetap dari analisa import.
+  - Uji: `tests/Feature/SparepartCakupanImportTest.php` (6 test). Uji mutasi
+    09/10/2026: mengubah awalan penyaring di `peringatanCakupan()` menjadi
+    `PERINGATANX` membuat 2 test GAGAL (lencana riwayat + kotak halaman
+    Sparepart), lalu dikembalikan dan hijau lagi (26 test sparepart, 174
+    assertions).
 - **Uji**: `tests/Feature/SparepartImportTest.php` (9 test) dan
   `tests/Feature/SparepartPantauHalamanTest.php` (10 test, termasuk penjaga
   paritas Satuan/Stok Tersedia berkas export); fixture bersama di
