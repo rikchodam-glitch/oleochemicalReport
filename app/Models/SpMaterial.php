@@ -164,4 +164,27 @@ class SpMaterial extends Model
     {
         return self::labelAksi($this->aksi);
     }
+
+    /**
+     * Penjelasan singkat arti satu nilai kolom aksi untuk kartu ringkasan.
+     *
+     * Dipakai supaya angka kartu tidak salah dibaca: dashboard lama menyebut
+     * "Belum PO" untuk material yang permintaan pembeliannya masih terbuka
+     * tetapi PO-nya belum terbit (di sini AKSI_BUAT_PO), sedangkan jumlah
+     * material yang SUDAH punya nomor PO adalah angka yang berbeda.
+     *
+     * @param  string|null $aksi Nilai kolom aksi
+     * @return string            Penjelasan singkat
+     */
+    public static function keteranganAksi(?string $aksi): string
+    {
+        return match ($aksi) {
+            self::AKSI_KEJAR   => 'PO sudah terbit dan masih terbuka (barang belum diterima lengkap).',
+            self::AKSI_BUAT_PO => 'PR sudah terbit dan masih terbuka, tetapi PO-nya belum dibuat (inilah yang disebut Belum PO pada dashboard lama).',
+            self::AKSI_CEK     => 'PR pernah dibuat tetapi tidak ada yang masih terbuka; periksa apakah PO-nya sudah terbit atau PR perlu dibuat ulang.',
+            self::AKSI_BUAT_PR => 'Belum ada PR maupun PO untuk material ini.',
+            default            => 'Belum ada keterangan untuk nilai aksi ini.',
+        };
+    }
+
 }

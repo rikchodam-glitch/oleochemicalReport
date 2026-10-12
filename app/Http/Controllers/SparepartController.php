@@ -372,7 +372,7 @@ class SparepartController extends Controller
     /**
      * Jumlah material per nilai kolom aksi.
      *
-     * @return array<int, array<string, mixed>> Kartu aksi (nilai, label, jumlah)
+     * @return array<int, array<string, mixed>> Kartu aksi (nilai, label, keterangan, jumlah)
      */
     private function kartuAksi(): array
     {
@@ -385,9 +385,10 @@ class SparepartController extends Controller
 
         foreach (SpMaterial::AKSI as $nilai) {
             $kartu[] = [
-                'nilai'  => $nilai,
-                'label'  => SpMaterial::labelAksi($nilai),
-                'jumlah' => (int) ($rekap[$nilai] ?? 0),
+                'nilai'      => $nilai,
+                'label'      => SpMaterial::labelAksi($nilai),
+                'keterangan' => SpMaterial::keteranganAksi($nilai),
+                'jumlah'     => (int) ($rekap[$nilai] ?? 0),
             ];
         }
 

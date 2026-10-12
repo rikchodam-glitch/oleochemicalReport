@@ -10,6 +10,9 @@
         <p class="mt-2 text-xs">
             Kolom Aksi pada tabel di bawah mengikuti berkas itu, jadi belum tentu menggambarkan
             keadaan sebenarnya.
+            Bila berkas PR/PO yang diunggah hanya cuplikan bulan berjalan, material yang sudah
+            punya PR terbuka tidak terbaca sebagai Buat PO melainkan jatuh ke Buat PR, sehingga
+            angka Buat PO bisa tampak nol walaupun sebenarnya ada PR yang menunggu dibuat PO.
             <a href="{{ route('sparepart.riwayat', ['impor' => $impor->id]) }}" class="font-semibold underline">
                 Lihat analisa import #{{ $impor->id }}
             </a>

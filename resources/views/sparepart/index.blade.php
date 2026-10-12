@@ -110,6 +110,7 @@
                    data-kartu-aksi="{{ $kartu['label'] }}">
                     <p class="text-xs text-slate-500">{{ $kartu['label'] }}</p>
                     <p class="text-xl font-semibold text-slate-900 mt-1">{{ number_format($kartu['jumlah'], 0, ',', '.') }}</p>
+                    <p class="text-xs text-slate-400 mt-1">{{ $kartu['keterangan'] }}</p>
                 </a>
             @endforeach
         </div>

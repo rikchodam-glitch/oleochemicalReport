@@ -3108,3 +3108,43 @@ baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
   `/sparepart/pantau`, `/sparepart/riwayat`, `/sparepart/export` semua 200;
   `/sparepart?status=reorder` memuat 50 baris (seluruhnya berlabel REORDER).
 
+- **Keterangan kartu Aksi + penjelasan cuplikan berkas (diputuskan 12/10/2026,
+  sudah ada kodenya; BELUM naik ke PROD; TIDAK ada migrasi baru)**: latar
+  keluhan user "angka Belum PO = 51 pada dashboard lama tidak cocok".
+  Hasil verifikasi 12/10/2026: LOGIKA modul BENAR — dengan berkas rentang penuh,
+  uji import (DEV import id 12) menghasilkan 149 REORDER -> KEJAR 25,
+  BUAT PO 51, CEK 45, BUAT PR 28, identik sheet "Daftar Aksi"; tetapi DATA AKTIF
+  di DEV `oleochemical_dev` DAN PROD `oleochemical` sama-sama hanya berisi
+  berkas cuplikan Oktober 2026 sehingga `pr_terbuka > 0` = 0 (dibuktikan skrip
+  sementara `tmp-cek-sparepart.php`, sudah dihapus) dan kolom aksi berbunyi
+  KEJAR 31 / BUAT PO 0 / CEK 20 / BUAT PR 398 dari 449 baris pantau (kedua
+  database IDENTIK, termasuk `po_uniq > 0` = 140 dan `pr_no` terisi 26).
+  Jebakan tafsir yang ditemukan: pada data aktif itu **51 JUSTRU = jumlah
+  material yang SUDAH punya nomor PO** (`sp_material.po_no` terisi 51 baris) —
+  KEBALIKAN arti "Belum PO" pada dashboard lama yang juga bernilai 51.
+  - `SpMaterial::keteranganAksi()` (method statis BARU) memberi satu kalimat
+    penjelas per nilai aksi; `SparepartController::kartuAksi()` meneruskannya
+    sebagai kunci `keterangan`, dan kartu di
+    `resources/views/sparepart/index.blade.php` menampilkannya di bawah angka.
+    Keterangan AKSI_BUAT_PO SENGAJA memuat kata "Belum PO" supaya pengguna
+    menghubungkannya dengan istilah dashboard lama.
+  - `resources/views/sparepart/partials/_peringatan-cakupan.blade.php`
+    menambah penjelasan: bila berkas PR/PO hanya cuplikan bulan berjalan,
+    material ber-PR-terbuka JATUH ke "Buat PR" (bukan "Buat PO") sehingga angka
+    Buat PO tampak nol walaupun ada PR yang menunggu dibuat PO.
+  - Uji: `tests/Feature/SparepartLabelAksiTest.php` (4 test). Uji mutasi
+    12/10/2026: mengosongkan `keterangan` pada controller DAN mengubah kalimat
+    peringatan membuat 2 test GAGAL (2 failed, 2 passed); dikembalikan lalu
+    hijau lagi. Seluruh suite **537 test hijau (2.546 assertions)** dan
+    `php artisan view:cache` sukses (165 berkas view ter-cache).
+  - Catatan deploy: PROD SUDAH di commit `171ddb4`, jadi peringatan cakupan +
+    lencana CAKUPAN SEMPIT sudah terpasang (terbukti dari riwayat import PROD
+    id 3 bertanda CAKUPAN SEMPIT); yang BELUM di PROD hanya perubahan
+    keterangan kartu ini.
+  - Berkas rentang penuh (`EXPORT PR.XLSX` 14.557 baris + `EXPORT PO.XLSX`
+    14.835 baris) TIDAK ADA lagi di komputer ini; yang tersisa
+    `C:\Users\sapusr\Downloads\EXPORT.XLSX` (12.782 baris, ME5A 02/09/2026)
+    BUKAN berkas yang dipakai dashboard lama. Untuk membandingkan ulang 149
+    baris, minta manusia menyediakan ekspor rentang penuh lalu impor lewat
+    `/sparepart/impor` (laporan stok tidak perlu).
+
