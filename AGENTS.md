@@ -66,8 +66,13 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   bot mati total (HTTP 409, insiden #21). Di DEV tidak perlu service apa pun —
   Apache sudah menyajikan DEV di `http://oleochemicalReport.test`.
 - Service PROD dijaga otomatis oleh `tools\jaga-service-prod.ps1`, dipasang
-  sebagai tugas Windows **`oleo-jaga-service-prod`** (berjalan tiap 5 menit,
-  dibuat oleh `tools\pasang-jadwal-jaga-service.ps1`). Skrip itu menyalakan
+  sebagai tugas Windows **`oleo-jaga-service-prod`** (berjalan tiap 5 menit).
+  Tugasnya SUDAH ADA di komputer ini (kini berstatus Disabled) sehingga tidak
+  ada yang perlu dipasang lagi. Skrip pemasang lamanya
+  (`tools\pasang-jadwal-jaga-service.ps1`) DIHAPUS 13/10/2026 karena isinya
+  menunjuk watchdog copy DEV dan memakai `powershell.exe` langsung, melanggar
+  aturan wscript di bawah — JANGAN dibuat ulang dalam bentuk itu. Watchdog
+  menyalakan
   ulang keempat proses (queue:work, schedule:work, telegram:poll, serve:8000)
   yang mati dan membuang proses duplikat; catatannya ada di
   `PROD\storage\logs\jaga-service.log`. Kalau ada service yang tidak jalan,
@@ -75,6 +80,13 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   **Tugas ini memanggil `wscript.exe` + `tools\jalankan-tersembunyi.vbs`**
   (bukan `powershell.exe` langsung) supaya tidak ada jendela PowerShell yang
   muncul-tutup setiap 5 menit — jangan diubah kembali ke `powershell.exe`.
+  Diperiksa 13/10/2026: tindakan tugas itu memang berbunyi
+  `wscript.exe "C:\laragon\www\oleochemicalReport\tools\jalankan-tersembunyi.vbs"`.
+  CATATAN terbuka: VBS itu (DEV maupun PROD) masih menunjuk berkas skrip di
+  COPY DEV (`...\oleochemicalReport\tools\jaga-service-prod.ps1`); skripnya
+  sendiri bekerja pada copy PROD (`$ProdPath`), jadi perilakunya benar, tetapi
+  bila copy DEV dipindah/dihapus tugas ini akan gagal — arahkan `jalurSkrip`
+  ke copy PROD bila penjagaan otomatis dihidupkan lagi.
   Watchdog juga memverifikasi port 8000 benar-benar menyajikan copy PROD
   (via `GET /debug-login`: 404 = PROD, 302 = DEV) dan menggantinya bila salah.
 - Dua tugas lama dari sesi sebelumnya — **`Oleo Serve`** dan **`Tele Poll`** —
@@ -101,10 +113,13 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
     `stop-report.bat` atau `tools\hentikan-service-prod.ps1`
     (opsi `-BiarkanJadwal` bila jadwal tidak ingin diubah).
   - Mengaktifkan kembali penjagaan otomatis:
-    `Enable-ScheduledTask -TaskName oleo-jaga-service-prod` atau
-    `tools\pasang-jadwal-jaga-service.ps1`.
+    `Enable-ScheduledTask -TaskName oleo-jaga-service-prod` (tugasnya sudah ada
+    di komputer ini). Skrip pemasang lamanya sudah DIHAPUS 13/10/2026, jadi
+    bila suatu saat tugas itu hilang, buat ulang dengan `schtasks /create`
+    beraksi `wscript.exe` + VBS copy PROD (lihat aturan wscript di atas),
+    JANGAN memakai `powershell.exe` langsung.
   - Pintasan Desktop untuk pengguna awam (di luar repo, jadi tidak dilacak
-    git). Keadaan per 13/10/2026: SEMBILAN peluncur, semuanya hanya MEMANGGIL
+    git). Keadaan per 13/10/2026: TUJUH peluncur, semuanya hanya MEMANGGIL
     file resmi copy PROD supaya tidak ada dua versi logika; kalau file di copy
     PROD tidak ditemukan, pintasan berhenti dengan pesan jelas.
     1. `Deploy-Laporan.bat` -> `PROD\tools\deploy-laporan-prod.ps1` (deploy 1 klik).
@@ -118,10 +133,8 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
        menanyakan domain lalu memanggilnya dengan/tanpa `-Paksa`; domain kosong
        dibatalkan tanpa menyentuh PROD).
     7. `Siapkan-Tunnel-Laporan.bat` -> `PROD\tools\siapkan-tunnel-prod.ps1` (BARU 13/10/2026).
-    8. `Pasang-Jadwal-Jaga-Laporan.bat` -> `PROD\tools\pasang-jadwal-jaga-service.ps1`
-       (BARU 13/10/2026).
     Ditambah dua SALINAN APA ADANYA (bukan peluncur) `start-report.bat` dan
-    `stop-report.bat` — lihat butir berikutnya. Empat peluncur BARU itu punya
+    `stop-report.bat` — lihat butir berikutnya. TIGA peluncur BARU itu punya
     mode `uji` (`<berkas>.bat uji`): hanya mencetak perintah PowerShell yang
     akan dijalankan, tidak menyentuh PROD — itulah cara aman mengujinya.
   - **Pintasan DUPLIKAT/PENGGANGGU yang DIBUANG 13/10/2026** (arsip lengkap:
@@ -136,6 +149,10 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
     `C:\laragon\www\oleochemicalReport\update-project.bat` yang masih ada);
     `diagnose-server-v2.bat` + `capture-traffic-v2.bat` hanya DIPINDAHKAN ke
     Desktop (tidak dihapus) supaya semua perkakas ada di satu tempat.
+    Pada 13/10/2026 (instruksi user "yang melanggar hapus saja") turut DIBUANG:
+    peluncur BARU `Pasang-Jadwal-Jaga-Laporan.bat` beserta skrip pemasang yang
+    dipanggilnya, `tools\pasang-jadwal-jaga-service.ps1` (dihapus dari repo,
+    jadi hilang juga di copy PROD pada deploy berikutnya).
   - **Salinan LANGSUNG di Desktop (diminta user, 08/10/2026):** selain peluncur
     di atas, ada dua SALINAN APA ADANYA dari berkas copy DEV, yaitu
     `C:\Users\sapusr\Desktop\start-report.bat` dan

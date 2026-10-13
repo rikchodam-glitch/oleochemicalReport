@@ -7,7 +7,7 @@
       - telegram:poll (bot Telegram; HANYA boleh satu proses, insiden #21)
 
     Aman dijalankan berulang kali. Dijalankan otomatis tiap 5 menit lewat
-    Windows Task Scheduler (lihat tools\pasang-jadwal-jaga-service.ps1).
+    Windows Task Scheduler (tugas Windows oleo-jaga-service-prod).
 #>
 $ErrorActionPreference = 'Stop'
 
