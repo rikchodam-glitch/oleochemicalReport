@@ -2032,6 +2032,59 @@ Batasan penting lingkungan ini:
 
 
 
+31. **Durasi laporan (man hour) memotong jam istirahat pekerja NON-SHIFT
+    (diputuskan 13/10/2026 atas instruksi user, sudah ada kodenya).** Semua
+    perubahan ada di copy DEV `C:\laragon\www\oleochemicalReport`.
+    - Keluhan asal: admin mengisi 10:00-16:00 pada halaman detail laporan,
+      tetapi durasi tersimpan 360 menit padahal 12:00-13:00 seharusnya tidak
+      dihitung. Sebelum ini pemotongan istirahat HANYA ada pada TARGET harian
+      (`JamKerjaService::targetMenit()`), tidak pada durasi laporan.
+    - Satu sumber aturan BARU di `app\Services\Shift\JamKerjaService.php`:
+      `durasiKerja()` (= `Report::durasiDariJam()` dikurangi `menitIstirahat()`),
+      `menitIstirahat()` (irisan rentang dengan jendela istirahat, sadar lintas
+      tengah malam), dan `istirahatHari()` (mengembalikan `[]` untuk pekerja
+      shift / hari libur). Jendela istirahat dibaca dari
+      `config('cm.man_hour.jam_kerja')` (Senin-Kamis & Sabtu 12:00-13:00; Jumat
+      11:00-13:00 = 2 jam), jadi mengubah jam istirahat cukup lewat config.
+    - Cakupan (KEPUTUSAN USER, jangan diubah tanpa instruksi eksplisit): HANYA
+      group `Technician::GRUP_NON_SHIFT` (`reguler`, `reguler_staff`) yang
+      dipotong. Pekerja shift grub A-D tetap 8 jam penuh (keputusan 26/09/2026),
+      dan hari libur group (Minggu reguler, Sabtu reguler) tidak punya jendela
+      istirahat sehingga tidak dipotong. Teknisi/group kosong juga tidak dipotong
+      (tidak bisa dinilai).
+    - Dipakai di `ReportController::update()` (mode edit halaman detail) dan
+      `WizardStepHandlerTrait::handleDurationInput()` (Step 4 wizard Telegram),
+      supaya angka dari kedua jalur itu identik. Halaman "Buat Laporan" TIDAK
+      terpengaruh karena hanya meminta durasi manual (tanpa jam mulai/selesai).
+    - Tampilan: `resources\views\reports\partials\_waktu-kerja.blade.php`
+      menambah keterangan "Istirahat dikurangi: 12:00-13:00" (atau "Tanpa
+      potongan istirahat (pekerja shift atau hari libur)") dan baris "Potongan
+      istirahat" yang dihitung JavaScript dengan aturan sama
+      (`menitIstirahat()`, jendela istirahat dikirim lewat `@json($jendelaIstirahat)`).
+    - Laporan LAMA disamakan lewat perintah BARU
+      `php artisan reports:pangkas-istirahat` (simulasi default; `--execute`
+      menulis, `--laporan=<csv>` menulis daftar SELURUH baris yang diperiksa,
+      `--limit=<n>` untuk uji coba). Hanya kolom `work_duration_minutes` yang
+      diubah (mass update tanpa menyentuh `updated_at`), laporan tanpa jam
+      mulai/selesai tidak pernah disentuh, dan ada penjaga keseimbangan kategori.
+      JANGAN menyamakan nilai laporan lama dengan `UPDATE` manual; pakai perintah
+      ini supaya aturannya tetap satu sumber.
+    - Bukti SIMULASI 13/10/2026 (belum ada satu baris pun yang ditulis): DEV
+      `oleochemical_dev` 568 laporan berjam -> 52 durasi berubah (total 80.250 ->
+      76.095 menit); PROD `oleochemical` 1.931 laporan berjam -> 237 durasi
+      berubah (317.373 -> 301.398 menit), seluruhnya group reguler (185) dan
+      reguler staff (52), pekerja shift NIHIL, 0 gagal. Daftar lengkap per baris:
+      `C:\laragon\backup-oleochemical\pangkas-istirahat-dev-simulasi.csv` dan
+      `...-prod-simulasi.csv`.
+    - TEMUAN yang masih menunggu keputusan user: 2 laporan (DEV dan PROD) yang
+      rentangnya SELURUHNYA jatuh di jam istirahat (mis. reguler staff Jumat
+      11:00-13:00 dan 11:00-12:15) menjadi 0 menit. Aturan saat ini membiarkan
+      0 menit apa adanya (tidak ada batas minimum).
+    - Uji: `tests/Feature/ReportIstirahatTest.php` (10 test: service, form edit,
+      halaman detail, wizard Telegram, dan perintah simulasi/--execute). Seluruh
+      suite **559 test hijau (2659 assertions)** dan `php artisan view:cache`
+      sukses (13/10/2026).
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file

@@ -1,14 +1,18 @@
 {{-- Field jam kerja laporan: JAM MULAI, JAM SELESAI, dan DURASI.
 
      Durasi BUKAN isian: angkanya dihitung server dari rentang jam ini saat
-     laporan disimpan (Report::durasiDariJam() dipakai ReportController::update()),
-     jadi yang bisa diedit tetap jamnya. Di layar, durasi ditampilkan segera
-     (read-only) memakai aturan yang sama dengan server supaya admin tahu hasil
-     hitungannya sebelum menyimpan:
+     laporan disimpan (JamKerjaService::durasiKerja() dipakai
+     ReportController::update()), jadi yang bisa diedit tetap jamnya. Di layar,
+     durasi ditampilkan segera (read-only) memakai aturan yang sama dengan
+     server supaya admin tahu hasil hitungannya sebelum menyimpan:
        - jam selesai lebih kecil dari jam mulai = melewati tengah malam (+24 jam)
        - jam selesai 24:00 = akhir hari (mis. 23:00 - 24:00 = 60 menit)
        - jam selesai SAMA dengan jam mulai = bukan rentang, ditolak server
        - kedua jam dikosongkan = durasi lama laporan dipertahankan server
+       - ISTIRAHAT hari itu DIKURANGI untuk pekerja non-shift (reguler &
+         reguler staff): Senin-Sabtu 12:00-13:00, Jumat 11:00-13:00 menurut
+         config('cm.man_hour.jam_kerja'). Pekerja shift (grub A-D) dan hari
+         libur tidak dipotong.
      Format label durasi disamakan dengan accessor Report::duration_label
      ("X Jam Y Menit") supaya tampilan mode lihat dan mode edit tidak berbeda.
 
@@ -25,6 +29,22 @@
     $nilaiJamMulai    = old('start_time', $report->start_time);
     $nilaiJamSelesai  = old('end_time', $report->end_time);
     $selesaiAkhirHari = $nilaiJamSelesai === \App\Models\Report::JAM_AKHIR_HARI;
+
+    // Jendela istirahat hari itu (daftar kosong untuk pekerja shift atau hari
+    // libur). Dipakai untuk keterangan di layar dan oleh skrip penghitung
+    // durasi di bawah supaya hasil di layar sama dengan hasil server.
+    $layananJamKerja  = app(\App\Services\Shift\JamKerjaService::class);
+    $tanggalLaporan   = $report->report_date ?? \Illuminate\Support\Carbon::now();
+    $jendelaIstirahat = $layananJamKerja->istirahatHari($report->technician?->group, $tanggalLaporan);
+    $labelIstirahat   = collect($jendelaIstirahat)
+        ->map(function (array $jendela): string {
+            $mulai   = (string) ($jendela[0] ?? '');
+            $selesai = (string) ($jendela[1] ?? '');
+
+            return $mulai === '' || $selesai === '' ? '' : $mulai . '-' . $selesai;
+        })
+        ->filter()
+        ->implode(', ');
 @endphp
 
 <div class="border-t border-slate-100 pt-4">
@@ -58,7 +78,14 @@
             <input type="text" id="durasi_kerja" readonly tabindex="-1"
                    value="{{ $report->duration_label ?? '-' }}"
                    class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600">
-            <p class="text-xs text-slate-400 mt-1">Dihitung otomatis dari jam di samping.</p>
+            <p class="text-xs text-slate-400 mt-1">
+                Dihitung otomatis dari jam di samping.
+                @if ($labelIstirahat !== '')
+                    Istirahat dikurangi: <span class="font-medium">{{ $labelIstirahat }}</span>.
+                @else
+                    Tanpa potongan istirahat (pekerja shift atau hari libur).
+                @endif
+            </p>
         </div>
     </div>
 
@@ -69,9 +96,13 @@
         </button>
         <p class="text-xs text-slate-400">
             Rentang terpilih: <span id="rentang_kerja" class="font-medium text-slate-600">-</span>
-            &middot; mengosongkan kedua jam membuat durasi laporan yang sudah tersimpan dipakai kembali.
+            &middot; Potongan istirahat: <span id="potongan_istirahat" class="font-medium text-slate-600">-</span>
         </p>
     </div>
+
+    <p class="text-xs text-slate-400 mt-1">
+        Mengosongkan kedua jam membuat durasi laporan yang sudah tersimpan dipakai kembali.
+    </p>
 
     <p id="peringatan_lintas_malam" class="hidden text-xs text-amber-600 mt-2">
         Jam selesai lebih kecil dari jam mulai: pekerjaan dihitung melewati tengah malam (ditambah 24 jam).
@@ -87,19 +118,25 @@
     // Keterangan jam kerja pada form edit.
     //
     // Halaman detail TIDAK punya isian durasi: durasi man hour dihitung server
-    // dari rentang jam (Report::durasiDariJam()). Skrip di sini menyiapkan
-    // tampilan durasi read-only + peringatan lintas tengah malam supaya admin
-    // tahu hasil hitungannya lebih dulu, memakai aturan yang sama dengan server.
+    // dari rentang jam dikurangi istirahat hari itu
+    // (JamKerjaService::durasiKerja()). Skrip di sini menyiapkan tampilan
+    // durasi read-only, peringatan lintas tengah malam, dan besarnya potongan
+    // istirahat memakai aturan yang sama dengan server.
     (function () {
         var mulai          = document.getElementById('start_time');
         var selesai        = document.getElementById('end_time');
         var durasi         = document.getElementById('durasi_kerja');
         var rentang        = document.getElementById('rentang_kerja');
+        var potongan       = document.getElementById('potongan_istirahat');
         var peringatan     = document.getElementById('peringatan_lintas_malam');
         var peringatanSama = document.getElementById('peringatan_jam_sama');
         var kosongkan      = document.getElementById('kosongkan_jam');
 
-        if (!mulai || !selesai || !durasi || !rentang || !peringatan || !peringatanSama) {
+        // Jendela istirahat hari itu dari server. Daftar kosong berarti tidak
+        // ada potongan (pekerja shift grub A-D atau hari libur).
+        var jendelaIstirahat = @json($jendelaIstirahat);
+
+        if (!mulai || !selesai || !durasi || !rentang || !potongan || !peringatan || !peringatanSama) {
             return;
         }
 
@@ -123,6 +160,32 @@
             return (jam * 60) + menit;
         }
 
+        // Menit istirahat yang masuk ke dalam rentang kerja, mengikuti
+        // JamKerjaService::menitIstirahat(): irisan tiap jendela istirahat
+        // dengan rentang, dihitung pada satu garis waktu (rentang yang melewati
+        // tengah malam memakai akhir +24 jam).
+        function menitIstirahat(mulaiMenit, selesaiMenit) {
+            if (mulaiMenit === null || selesaiMenit === null || mulaiMenit === selesaiMenit) {
+                return 0;
+            }
+
+            var akhir = selesaiMenit < mulaiMenit ? selesaiMenit + (24 * 60) : selesaiMenit;
+            var total = 0;
+
+            for (var i = 0; i < jendelaIstirahat.length; i++) {
+                var awalJendela  = menitDariJam(jendelaIstirahat[i][0]);
+                var akhirJendela = menitDariJam(jendelaIstirahat[i][1]);
+
+                if (awalJendela === null || akhirJendela === null) {
+                    continue;
+                }
+
+                total += Math.max(0, Math.min(akhir, akhirJendela) - Math.max(mulaiMenit, awalJendela));
+            }
+
+            return total;
+        }
+
         // Label durasi dengan format yang sama seperti accessor duration_label.
         function labelDurasi(menit) {
             if (menit === null) {
@@ -144,7 +207,7 @@
             return bagian.length ? bagian.join(' ') : '0 Menit';
         }
 
-        // Segarkan tampilan durasi, rentang, dan peringatan jam.
+        // Segarkan tampilan durasi, rentang, potongan istirahat, dan peringatan.
         function segarkan() {
             var menitMulai   = menitDariJam(mulai.value);
             var menitSelesai = menitDariJam(selesai.value);
@@ -152,7 +215,8 @@
             peringatanSama.classList.add('hidden');
 
             if (menitMulai === null || menitSelesai === null) {
-                rentang.textContent = '-';
+                rentang.textContent  = '-';
+                potongan.textContent = '-';
                 peringatan.classList.add('hidden');
 
                 return;
@@ -162,8 +226,9 @@
             // (Report::durasiDariJam() mengembalikan null), jadi di layar pun
             // durasi tidak dihitung dan admin diberi peringatan.
             if (menitMulai === menitSelesai) {
-                rentang.textContent = '-';
-                durasi.value        = '-';
+                rentang.textContent  = '-';
+                durasi.value         = '-';
+                potongan.textContent = '-';
                 peringatan.classList.add('hidden');
                 peringatanSama.classList.remove('hidden');
 
@@ -180,8 +245,12 @@
                 peringatan.classList.add('hidden');
             }
 
-            rentang.textContent = mulai.value + ' - ' + selesai.value;
-            durasi.value        = labelDurasi(total);
+            // Potongan istirahat tidak pernah melebihi panjang rentang.
+            var istirahat = Math.min(menitIstirahat(menitMulai, menitSelesai), total);
+
+            rentang.textContent  = mulai.value + ' - ' + selesai.value;
+            potongan.textContent = labelDurasi(istirahat);
+            durasi.value         = labelDurasi(total - istirahat);
         }
 
         mulai.addEventListener('change', segarkan);
