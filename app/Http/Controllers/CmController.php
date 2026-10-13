@@ -29,8 +29,18 @@ class CmController extends Controller
     {
         $filterPt    = $request->input('pt');
         $filterTahun = $request->input('tahun', now()->year);
-        $filterBulan = $request->input('bulan');
         $filterStatus = $request->get('status', '');
+
+        // Overview menampilkan data yang paling update: bila parameter ?bulan
+        // tidak dikirim / kosong (kunjungan pertama, tombol Reset, link lama),
+        // otomatis dipakai bulan terakhir yang punya data pada tahun & PT yang
+        // sedang difilter. Pilihan "Semua Bulan" tetap bisa dipakai karena
+        // dikirim sebagai ?bulan=all.
+        $bulanTerakhir = $this->bulanTerakhirDenganData($filterPt, $filterTahun);
+        $filterBulan   = $this->bulanFilter($request->input('bulan'));
+        if (!$request->filled('bulan')) {
+            $filterBulan = $bulanTerakhir;
+        }
 
         // Query dasar dengan filter
         // Hanya baris dengan minimal satu nilai pengukuran aktual (> 0) yang
@@ -150,7 +160,7 @@ class CmController extends Controller
             'totalRecords', 'goodCount', 'alarmCount', 'dangerCount', 'visualBadCount',
             'goodPct', 'alarmPct', 'dangerPct', 'visualBadPct',
             'statusPerPt', 'trendData', 'topVibrasi',
-            'ptList', 'tahunList',
+            'ptList', 'tahunList', 'bulanTerakhir',
             'filterPt', 'filterTahun', 'filterBulan', 'filterStatus'
         ));
     }
@@ -1267,7 +1277,7 @@ class CmController extends Controller
     {
         $filterPt    = $request->input('pt');
         $filterTahun = $request->get('tahun', '');
-        $filterBulan = $request->input('bulan');
+        $filterBulan = $this->bulanFilter($request->input('bulan'));
         $filterStatus = $request->get('status', '');
 
         $query = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total');
@@ -1315,7 +1325,7 @@ class CmController extends Controller
     {
         $filterPt    = $request->input('pt');
         $filterTahun = $request->get('tahun', '');
-        $filterBulan = $request->input('bulan');
+        $filterBulan = $this->bulanFilter($request->input('bulan'));
         $filterStatus = $request->get('status', '');
 
         $query = CmReading::selectRaw('cm_equipment.pt_location, cm_readings.kondisi, COUNT(*) as total')
@@ -1358,7 +1368,7 @@ class CmController extends Controller
     {
         $filterPt    = $request->input('pt');
         $filterTahun = $request->get('tahun', '');
-        $filterBulan = $request->input('bulan');
+        $filterBulan = $this->bulanFilter($request->input('bulan'));
         $filterStatus = $request->get('status', '');
 
         $query = CmReading::query()
@@ -1536,6 +1546,45 @@ class CmController extends Controller
         ];
 
         return '(' . implode(' OR ', array_map(fn($c) => "`{$c}` > 0", $columns)) . ')';
+    }
+
+    /**
+     * Bulan terakhir (1-12) yang punya minimal satu baris pengukuran pada
+     * tahun & PT yang sedang difilter. Dipakai sebagai default halaman
+     * Overview supaya yang tampil adalah kondisi paling update (bulan
+     * terakhir), bukan akumulasi seluruh tahun.
+     *
+     * @return int|null Null bila tidak ada data sama sekali.
+     */
+    private function bulanTerakhirDenganData(?string $pt, $tahun): ?int
+    {
+        $query = CmReading::query()->whereRaw($this->measureSql());
+
+        if ($pt) {
+            $query->whereHas('equipment', fn($q) => $q->where('pt_location', $pt));
+        }
+        if ($tahun) {
+            $query->whereYear('tanggal', $tahun);
+        }
+
+        $tanggalTerakhir = $query->max('tanggal');
+
+        return $tanggalTerakhir ? (int) date('n', strtotime($tanggalTerakhir)) : null;
+    }
+
+    /**
+     * Normalisasi parameter ?bulan= menjadi nomor bulan 1-12, atau null bila
+     * berarti "semua bulan" (kosong / 'all' / nilai tidak valid).
+     */
+    private function bulanFilter($bulan): ?int
+    {
+        if ($bulan === null || $bulan === '' || $bulan === 'all') {
+            return null;
+        }
+
+        $bulan = (int) $bulan;
+
+        return ($bulan >= 1 && $bulan <= 12) ? $bulan : null;
     }
 
     // ====================================================================

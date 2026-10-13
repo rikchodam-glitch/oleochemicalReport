@@ -13,6 +13,17 @@
     {{-- Tab Navigasi --}}
     @include('cm._tabs')
 
+    {{-- Info periode aktif (default: bulan terakhir yang ada datanya) --}}
+    <p class="text-xs text-slate-500 mb-2">
+        Periode:
+        <span class="font-medium text-slate-700">
+            {{ $filterBulan ? \DateTime::createFromFormat('!m', $filterBulan)->format('F') . ' ' . $filterTahun : 'Semua Bulan ' . $filterTahun }}
+        </span>
+        @if($filterBulan && $filterBulan === $bulanTerakhir)
+            <span class="text-slate-400">(bulan terakhir yang ada datanya)</span>
+        @endif
+    </p>
+
     {{-- Summary Cards --}}
     <div id="summaryCards" class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         @include('cm._overview-cards', [
@@ -47,7 +58,7 @@
             <div class="space-y-1">
                 <label class="text-xs font-medium text-slate-500">Bulan</label>
                 <select name="bulan" class="filter-select border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">Semua Bulan</option>
+                    <option value="all" {{ $filterBulan === null ? 'selected' : '' }}>Semua Bulan</option>
                     @foreach(range(1, 12) as $b)
                         <option value="{{ $b }}" {{ $filterBulan == $b ? 'selected' : '' }}>{{ DateTime::createFromFormat('!m', $b)->format('F') }}</option>
                     @endforeach
