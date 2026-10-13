@@ -25,7 +25,10 @@ use Illuminate\Support\Facades\Log;
  *   - pekerja shift (grub A-D) dan hari libur tidak dipotong,
  *   - laporan tanpa jam mulai/selesai (durasi diketik manual) TIDAK disentuh.
  *
- * Kolom yang diubah HANYA work_duration_minutes. Tanpa --execute perintah ini
+ * Kolom yang diubah HANYA work_duration_minutes (durasi NORMAL). LEMBUR tidak
+ * disimpan di kolom mana pun: dihitung ulang dari jam laporan (lihat
+ * JamKerjaService::ringkasJamKerja()) sehingga selalu ikut kalau jam dikoreksi,
+ * dan dilaporkan pada kolom `lembur` berkas CSV. Tanpa --execute perintah ini
  * hanya menampilkan simulasi.
  *
  * Contoh:
@@ -46,7 +49,7 @@ class ReportPangkasIstirahatCommand extends Command
     /**
      * @var string
      */
-    protected $description = 'Hitung ulang durasi man hour laporan lama dari jam mulai/selesai dikurangi istirahat (pekerja non-shift)';
+    protected $description = 'Hitung ulang durasi man hour NORMAL laporan lama (jam kerja dikurangi istirahat) dan laporkan lembur (jam di luar jam kerja/hari OFF)';
 
     /**
      * Jalankan perintah: periksa laporan yang punya jam mulai & selesai,
