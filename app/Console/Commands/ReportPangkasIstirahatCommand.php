@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Report;
 use App\Services\Shift\JamKerjaService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -73,6 +74,7 @@ class ReportPangkasIstirahatCommand extends Command
             'gagal'         => 0,
             'menit_lama'    => 0,
             'menit_baru'    => 0,
+            'lembur_total'  => 0,
         ];
 
         $contoh  = [];
@@ -89,7 +91,7 @@ class ReportPangkasIstirahatCommand extends Command
 
             fputcsv($tangani, [
                 'id', 'kode_laporan', 'tanggal', 'teknisi', 'group', 'jam_mulai', 'jam_selesai',
-                'durasi_lama', 'durasi_baru', 'potongan_istirahat', 'status',
+                'durasi_lama', 'durasi_baru', 'potongan_istirahat', 'lembur', 'status',
             ]);
         }
 
@@ -103,20 +105,49 @@ class ReportPangkasIstirahatCommand extends Command
             $query->limit($batas);
         }
 
-        $query->chunk(200, function ($daftarLaporan) use ($jamKerja, $jalankan, $tangani, &$ringkas, &$contoh) {
+        // Rentang tanggal laporan berjam: jadwal (shift) tiap teknisi dibangun
+        // SEKALI untuk rentang ini, bukan per laporan, supaya tetap cepat pada
+        // database PROD yang memuat ribuan laporan.
+        $rentang = Report::query()
+            ->whereNotNull('start_time')
+            ->whereNotNull('end_time')
+            ->selectRaw('MIN(report_date) AS awal, MAX(report_date) AS akhir')
+            ->first();
+
+        $awalSemua        = $rentang?->awal ?? now()->toDateString();
+        $akhirSemua       = $rentang?->akhir ?? now()->toDateString();
+        $jadwalPerTeknisi = [];
+
+        $query->chunk(200, function ($daftarLaporan) use ($jamKerja, $jalankan, $tangani, $awalSemua, $akhirSemua, &$jadwalPerTeknisi, &$ringkas, &$contoh) {
             foreach ($daftarLaporan as $laporan) {
                 $ringkas['diperiksa']++;
 
                 $lama = (int) ($laporan->work_duration_minutes ?? 0);
 
-                $baru = $laporan->report_date === null
+                if ($laporan->technician !== null) {
+                    $jadwalPerTeknisi[$laporan->technician->id] ??= $jamKerja->jadwalRentang(
+                        $laporan->technician,
+                        Carbon::parse((string) $awalSemua),
+                        Carbon::parse((string) $akhirSemua)
+                    );
+                }
+
+                // Durasi NORMAL (jam kerja) dan LEMBUR dihitung satu sumber:
+                // JamKerjaService::ringkasJamKerja().
+                $ringkasLaporan = $laporan->report_date === null
                     ? null
-                    : $jamKerja->durasiKerja(
+                    : $jamKerja->ringkasJamKerja(
+                        $jadwalPerTeknisi[$laporan->technician?->id][$laporan->report_date->toDateString()] ?? null,
                         $laporan->technician?->group,
                         $laporan->report_date,
                         $laporan->start_time,
                         $laporan->end_time
                     );
+
+                $baru        = $ringkasLaporan['normal'] ?? null;
+                $lemburBaris = $ringkasLaporan['lembur'] ?? 0;
+
+                $ringkas['lembur_total'] += $lemburBaris;
 
                 $status = 'tidak_berubah';
 
@@ -182,6 +213,7 @@ class ReportPangkasIstirahatCommand extends Command
                         $lama,
                         $baru ?? $lama,
                         max(0, $lama - ($baru ?? $lama)),
+                        $lemburBaris,
                         $status,
                     ]);
                 }
@@ -212,6 +244,7 @@ class ReportPangkasIstirahatCommand extends Command
                 ['Gagal', $ringkas['gagal']],
                 ['Total menit sebelum', $ringkas['menit_lama']],
                 ['Total menit sesudah', $ringkas['menit_baru']],
+                ['Total menit lembur', $ringkas['lembur_total']],
             ]
         );
 

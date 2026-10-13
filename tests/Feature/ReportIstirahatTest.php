@@ -2,6 +2,7 @@
 
 use App\Models\Report;
 use App\Models\Technician;
+use App\Models\TechnicianShift;
 use App\Models\User;
 use App\Services\Shift\JamKerjaService;
 use App\Services\Telegram\ReportWizardService;
@@ -88,44 +89,62 @@ test('durasi non-shift dipotong istirahat Senin-Kamis 12:00-13:00', function () 
 
     // Contoh yang dilaporkan pemilik sistem: 10:00-16:00 = 6 jam, dikurangi
     // istirahat 1 jam = 5 jam = 300 menit (bukan 360).
-    expect($jam->durasiKerja('reguler', Carbon::parse('2026-09-28'), '10:00', '16:00'))->toBe(300)
-        ->and($jam->durasiKerja('reguler_staff', Carbon::parse('2026-09-29'), '08:00', '17:00'))->toBe(480)
+    expect($jam->durasiKerja($this->reguler, Carbon::parse('2026-09-28'), '10:00', '16:00'))->toBe(300)
+        ->and($jam->durasiKerja($this->staf, Carbon::parse('2026-09-29'), '08:00', '17:00'))->toBe(480)
         // Rentang yang mengapit istirahat sebagian: 12:30-13:30 = 60 - 30.
-        ->and($jam->durasiKerja('reguler', Carbon::parse('2026-09-30'), '12:30', '13:30'))->toBe(30)
+        ->and($jam->durasiKerja($this->reguler, Carbon::parse('2026-09-30'), '12:30', '13:30'))->toBe(30)
         ->and($jam->menitIstirahat('reguler', Carbon::parse('2026-09-28'), '10:00', '16:00'))->toBe(60);
 });
 
 test('Jumat istirahat dua jam 11:00-13:00', function () {
     $jam = app(JamKerjaService::class);
 
-    expect($jam->durasiKerja('reguler', Carbon::parse('2026-10-02'), '08:00', '16:00'))->toBe(360)
-        ->and($jam->durasiKerja('reguler_staff', Carbon::parse('2026-10-02'), '08:00', '17:00'))->toBe(420)
+    expect($jam->durasiKerja($this->reguler, Carbon::parse('2026-10-02'), '08:00', '16:00'))->toBe(360)
+        ->and($jam->durasiKerja($this->staf, Carbon::parse('2026-10-02'), '08:00', '17:00'))->toBe(420)
         ->and($jam->menitIstirahat('reguler', Carbon::parse('2026-10-02'), '08:00', '16:00'))->toBe(120);
 });
 
-test('Sabtu reguler dipotong, reguler staff Sabtu libur tidak dipotong', function () {
+test('Sabtu reguler dipotong istirahat, hari libur reguler staff seluruhnya lembur', function () {
     $jam = app(JamKerjaService::class);
 
     // Sabtu reguler 08:00-14:00 dikurangi istirahat 12:00-13:00 = 300 menit.
-    expect($jam->durasiKerja('reguler', Carbon::parse('2026-09-26'), '08:00', '14:00'))->toBe(300)
-        // Sabtu adalah hari libur reguler staff: tidak ada jendela istirahat,
-        // jadi rentangnya dipakai apa adanya.
-        ->and($jam->durasiKerja('reguler_staff', Carbon::parse('2026-09-26'), '08:00', '17:00'))->toBe(540)
+    expect($jam->durasiKerja($this->reguler, Carbon::parse('2026-09-26'), '08:00', '14:00'))->toBe(300)
+        ->and($jam->istirahatHari('reguler', Carbon::parse('2026-09-26')))->toBe([['12:00', '13:00']]);
+
+    // Sabtu adalah hari libur reguler staff: jendela kerjanya kosong sehingga
+    // seluruh jamnya dihitung LEMBUR (jam kerja normal 0).
+    $libur = $jam->ringkasJamKerja(null, 'reguler_staff', Carbon::parse('2026-09-26'), '08:00', '17:00');
+
+    expect($libur['normal'])->toBe(0)
+        ->and($libur['lembur'])->toBe(540)
+        ->and($libur['libur'])->toBeTrue()
         ->and($jam->istirahatHari('reguler_staff', Carbon::parse('2026-09-26')))->toBe([]);
 });
 
-test('pekerja shift dan rentang di luar jendela istirahat tidak dipotong', function () {
-    $jam = app(JamKerjaService::class);
+test('pekerja shift dihitung penuh di dalam jendela dan lembur di luarnya', function () {
+    // Jadwal eksplisit supaya hasil uji tidak bergantung pola rotasi:
+    // Shift 1 (08:00-16:00) pada 2026-09-28.
+    TechnicianShift::create([
+        'technician_id' => $this->shift->id,
+        'nik'           => 'IST003',
+        'nama'          => $this->shift->name,
+        'shift_date'    => '2026-09-28',
+        'shift_code'    => '1',
+    ]);
 
-    // Pekerja shift grub A: 8 jam penuh (keputusan 26/09/2026).
-    expect($jam->durasiKerja('grub_a', Carbon::parse('2026-09-28'), '08:00', '16:00'))->toBe(480)
-        ->and($jam->durasiKerja('grub_d', Carbon::parse('2026-10-02'), '16:00', '24:00'))->toBe(480)
+    $jam   = app(JamKerjaService::class);
+    $shift = $this->shift->fresh();
+
+    // Pekerja shift tetap 8 jam penuh tanpa potong istirahat (26/09/2026).
+    expect($jam->durasiKerja($shift, Carbon::parse('2026-09-28'), '08:00', '16:00'))->toBe(480)
         ->and($jam->istirahatHari('grub_a', Carbon::parse('2026-09-28')))->toBe([])
+        // Jam di luar jendela shift (17:00-19:00) seluruhnya lembur.
+        ->and($jam->durasiKerja($shift, Carbon::parse('2026-09-28'), '17:00', '19:00'))->toBe(0)
         // Rentang yang tidak bersinggungan dengan jendela istirahat.
-        ->and($jam->durasiKerja('reguler', Carbon::parse('2026-09-28'), '08:00', '11:30'))->toBe(210)
-        // Lintas tengah malam tidak menyentuh istirahat siang.
-        ->and($jam->durasiKerja('reguler', Carbon::parse('2026-09-28'), '22:00', '06:00'))->toBe(480)
-        // Group kosong / teknisi tanpa group: tidak dipotong (tidak bisa dinilai).
+        ->and($jam->durasiKerja($this->reguler, Carbon::parse('2026-09-28'), '08:00', '11:30'))->toBe(210)
+        // Di luar jam kerja (22:00-06:00) seluruhnya lembur.
+        ->and($jam->durasiKerja($this->reguler, Carbon::parse('2026-09-28'), '22:00', '06:00'))->toBe(0)
+        // Group kosong / teknisi tanpa group: tidak ada aturan -> jam kerja biasa.
         ->and($jam->durasiKerja(null, Carbon::parse('2026-09-28'), '10:00', '16:00'))->toBe(360);
 });
 
@@ -146,6 +165,15 @@ test('form edit menyimpan durasi yang sudah dipotong istirahat', function () {
 });
 
 test('form edit tidak memotong istirahat pekerja shift', function () {
+    // Jadwal shift eksplisit: Shift 1 (08:00-16:00) pada 2026-09-28.
+    TechnicianShift::create([
+        'technician_id' => $this->shift->id,
+        'nik'           => 'IST003',
+        'nama'          => $this->shift->name,
+        'shift_date'    => '2026-09-28',
+        'shift_code'    => '1',
+    ]);
+
     $laporan = laporanIstirahat($this->shift, '2026-09-28', null, null, 120);
 
     $this->actingAs($this->admin)
@@ -219,8 +247,18 @@ test('perintah pangkas istirahat tanpa --execute tidak mengubah data', function 
 });
 
 test('perintah pangkas istirahat --execute menyamakan durasi laporan lama', function () {
+    // Jadwal shift eksplisit supaya laporan shift dihitung di dalam jendelanya.
+    TechnicianShift::create([
+        'technician_id' => $this->shift->id,
+        'nik'           => 'IST003',
+        'nama'          => $this->shift->name,
+        'shift_date'    => '2026-09-28',
+        'shift_code'    => '1',
+    ]);
+
     $reguler  = laporanIstirahat($this->reguler, '2026-09-28', '10:00', '16:00', 360);
     $shift    = laporanIstirahat($this->shift, '2026-09-28', '10:00', '16:00', 360);
+    $lembur   = laporanIstirahat($this->reguler, '2026-09-28', '16:00', '18:00', 120);
     $tanpaJam = laporanIstirahat($this->reguler, '2026-09-28', null, null, 120);
 
     $berkas = tempnam(sys_get_temp_dir(), 'pangkas-istirahat') . '.csv';
@@ -235,6 +273,8 @@ test('perintah pangkas istirahat --execute menyamakan durasi laporan lama', func
     expect($reguler->fresh()->work_duration_minutes)->toBe(300)
         // Pekerja shift tetap dihitung penuh (360 menit).
         ->and($shift->fresh()->work_duration_minutes)->toBe(360)
+        // Jam di luar jendela kerja (16:00-18:00) tidak menambah man hour normal.
+        ->and($lembur->fresh()->work_duration_minutes)->toBe(0)
         // Laporan tanpa jam mulai/selesai tidak pernah dihitung ulang.
         ->and($tanpaJam->fresh()->work_duration_minutes)->toBe(120)
         ->and(file_exists($berkas))->toBeTrue();
@@ -242,6 +282,7 @@ test('perintah pangkas istirahat --execute menyamakan durasi laporan lama', func
     $isi = file_get_contents($berkas);
 
     expect($isi)->toContain('potongan_istirahat')
+        ->and($isi)->toContain('lembur')
         ->and($isi)->toContain($reguler->report_code)
         ->and($isi)->toContain('berubah');
 

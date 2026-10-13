@@ -236,11 +236,23 @@
                         hari OFF tidak dihitung. Baris salinan pekerjaan multi alat dikecualikan agar tidak dobel.
                     </p>
                 </div>
-                @if($shiftHariIni)
-                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold {{ $shiftHariIni->isOff() ? 'bg-slate-100 text-slate-600' : 'bg-teal-50 text-teal-700 border border-teal-100' }}">
-                        Hari ini: {{ $shiftHariIni->label() }}
+                <div class="flex flex-wrap items-center gap-2">
+                    @if($shiftHariIni)
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold {{ $shiftHariIni->isOff() ? 'bg-slate-100 text-slate-600' : 'bg-teal-50 text-teal-700 border border-teal-100' }}">
+                            Hari ini: {{ $shiftHariIni->label() }}
+                        </span>
+                    @endif
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                        Lembur: {{ number_format(($manHourRingkasan['total_lembur_menit'] ?? 0) / 60, 1, ',', '.') }} j
                     </span>
-                @endif
+                    <button type="button" onclick="bukaModalLembur()"
+                            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Cek Overtime
+                    </button>
+                </div>
             </div>
 
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3 px-5 pt-4">
@@ -331,6 +343,7 @@
                             <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Realisasi</th>
                             <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Pencapaian</th>
                             <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Pekerjaan</th>
+                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Lembur</th>
                             <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Catatan</th>
                         </tr>
                     </thead>
@@ -390,6 +403,13 @@
                                             <div class="h-full rounded-full {{ $warnaBar }}"
                                                  style="width: {{ max(0, min(100, $hari['persen'])) }}%"></div>
                                         </div>
+                                        @if(($hari['lembur'] ?? 0) > 0)
+                                            {{-- Segmen Oranye: porsi lembur (jam di luar jam kerja). --}}
+                                            <div class="mt-0.5 w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                                <div class="h-full rounded-full bg-amber-500"
+                                                     style="width: {{ $hari['target_menit'] > 0 ? max(0, min(100, (int) round($hari['lembur'] / $hari['target_menit'] * 100))) : 100 }}%"></div>
+                                            </div>
+                                        @endif
                                     @else
                                         <span class="text-xs text-slate-400">
                                             {{ $hari['status'] === 'libur' ? 'Libur' : 'Tanpa target' }}
@@ -406,6 +426,16 @@
                                         <span class="text-slate-300">-</span>
                                     @endif
                                 </td>
+                                <td class="px-4 py-3 align-top whitespace-nowrap">
+                                    @if(($hari['lembur'] ?? 0) > 0)
+                                        <span class="text-xs font-semibold text-amber-600">
+                                            {{ number_format($hari['lembur'] / 60, 1, ',', '.') }} j
+                                        </span>
+                                        <p class="text-xs text-slate-400">di luar jam kerja</p>
+                                    @else
+                                        <span class="text-xs text-slate-300">-</span>
+                                    @endif
+                                </td>
                                 <td class="px-4 py-3 align-top">
                                     @forelse($hari['catatan'] as $catatan)
                                         <p class="text-xs text-rose-600">{{ $catatan }}</p>
@@ -416,13 +446,16 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="px-5 py-8 text-center text-sm text-slate-400">Belum ada data man hour.</td>
+                                <td colspan="8" class="px-5 py-8 text-center text-sm text-slate-400">Belum ada data man hour.</td>
                             </tr>
                         @endforelse
                     </tbody>
                 </table>
             </div>
         </div>
+
+        {{-- Popup rincian lembur (tombol "Cek Overtime" pada kartu Man Hour). --}}
+        @include('technicians.partials._modal-lembur')
 
         <!-- Pekerjaan Harian -->
         <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -695,6 +728,7 @@ function broadcastMessage() {
         return [
             'tanggal' => \Illuminate\Support\Carbon::parse($hari['tanggal'])->format('d/m'),
             'menit'   => (int) $hari['menit'],
+            'lembur'  => (int) ($hari['lembur'] ?? 0),
             'target'  => (int) $hari['target_menit'],
             'shift'   => (string) $hari['label_shift'],
         ];
@@ -720,11 +754,22 @@ function broadcastMessage() {
             labels: dataHarian.map(function (baris) { return baris.tanggal; }),
             datasets: [
                 {
-                    label: 'Realisasi (jam)',
+                    label: 'Jam kerja (jam)',
                     data: dataHarian.map(function (baris) { return Math.round(baris.menit / 6) / 10; }),
                     backgroundColor: '#0E9E8E',
                     borderRadius: 4,
-                    maxBarThickness: 26
+                    maxBarThickness: 26,
+                    stack: 'realisasi'
+                },
+                {
+                    // Segmen oranye: lembur (jam di luar jam kerja + hari OFF),
+                    // ditumpuk di atas jam kerja sehingga satu batang = total jam.
+                    label: 'Lembur (jam)',
+                    data: dataHarian.map(function (baris) { return Math.round(baris.lembur / 6) / 10; }),
+                    backgroundColor: '#F59E0B',
+                    borderRadius: 4,
+                    maxBarThickness: 26,
+                    stack: 'realisasi'
                 },
                 {
                     label: 'Target (jam)',

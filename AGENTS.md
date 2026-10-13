@@ -2069,21 +2069,61 @@ Batasan penting lingkungan ini:
       mulai/selesai tidak pernah disentuh, dan ada penjaga keseimbangan kategori.
       JANGAN menyamakan nilai laporan lama dengan `UPDATE` manual; pakai perintah
       ini supaya aturannya tetap satu sumber.
-    - Bukti SIMULASI 13/10/2026 (belum ada satu baris pun yang ditulis): DEV
-      `oleochemical_dev` 568 laporan berjam -> 52 durasi berubah (total 80.250 ->
-      76.095 menit); PROD `oleochemical` 1.931 laporan berjam -> 237 durasi
-      berubah (317.373 -> 301.398 menit), seluruhnya group reguler (185) dan
-      reguler staff (52), pekerja shift NIHIL, 0 gagal. Daftar lengkap per baris:
-      `C:\laragon\backup-oleochemical\pangkas-istirahat-dev-simulasi.csv` dan
-      `...-prod-simulasi.csv`.
-    - TEMUAN yang masih menunggu keputusan user: 2 laporan (DEV dan PROD) yang
-      rentangnya SELURUHNYA jatuh di jam istirahat (mis. reguler staff Jumat
-      11:00-13:00 dan 11:00-12:15) menjadi 0 menit. Aturan saat ini membiarkan
-      0 menit apa adanya (tidak ada batas minimum).
+    - Bukti SIMULASI 13/10/2026 dengan aturan AKHIR (istirahat + lembur dipisah;
+      belum ada satu baris pun yang ditulis): DEV `oleochemical_dev` 568 laporan
+      berjam -> 101 durasi berubah, man hour normal 80.250 -> 69.830 menit
+      sedangkan LEMBUR 10.420 menit (69.830 + 10.420 = 80.250, jadi tidak ada
+      menit yang hilang); PROD `oleochemical` 1.935 laporan berjam -> 389 durasi
+      berubah, normal 316.953 -> 270.298 menit sedangkan lembur 46.655 menit
+      (jumlahnya sama). Tahap antara (istirahat saja, sebelum lembur dipisah)
+      tercatat di `...pangkas-istirahat-dev-simulasi.csv` /
+      `...-prod-simulasi.csv`; hasil akhir per baris ada di
+      `C:\laragon\backup-oleochemical\pangkas-istirahat-{dev,prod}-20261013.csv`
+      (kolom `lembur` ikut ditulis).
+    - TEMUAN awal yang memicu keputusan lembur (13/10/2026): 2 laporan (DEV dan
+      PROD) yang rentangnya SELURUHNYA jatuh di jam istirahat (mis. reguler
+      staff Jumat 11:00-13:00 dan 11:00-12:15) menjadi 0 menit man hour normal.
+      Dengan lembur dipisah, menit itu TIDAK hilang: seluruhnya tercatat sebagai
+      lembur.
+    - **LEMBUR (overtime) dipisahkan dari man hour (keputusan lanjutan user
+      13/10/2026, sudah ada kodenya).** Aturannya: LEMBUR = seluruh menit di
+      luar jendela kerja bruto hari itu (sebelum jam masuk, sesudah jam pulang,
+      JAM ISTIRAHAT) DITAMBAH seluruh jam pada hari libur/OFF, sehingga
+      `total = normal + lembur`. Jendela kerja diambil
+      `JamKerjaService::jendelaKerja()` (jadwal shift import/proyeksi pola ->
+      jam kerja harian non-shift; null = libur/OFF), dan
+      `JamKerjaService::jadwalRentang()` menjadi satu-satunya tempat resolusi
+      jadwal (dipakai juga `ManHourService::harian()`). Bentuk kode:
+      `menitDalamJendela()`, `ringkasJamKerja(?TechnicianShift, ?grup, tanggal,
+      mulai, selesai)` (mengembalikan `total/normal/lembur/istirahat/jendela/
+      libur`), dan `durasiKerja(?Technician, ...)` yang kini menerima MODEL
+      Technician (bukan kode group saja) supaya jadwal shift ikut dinilai.
+      Group teknisi yang tidak dikenal tetap dihitung jam kerja biasa (tidak
+      dipotong dan tidak dijadikan lembur) supaya angka lama tidak berubah.
+    - Tampilan lembur: chip "Lembur: X j" + tombol **Cek Overtime** pada kartu
+      Man Hour `resources\views\technicians\show.blade.php`, kolom "Lembur" +
+      segmen batang ORANYE (`bg-amber-500`) pada tabel Rincian Man Hour Harian,
+      dataset batang oranye bertumpuk ("Lembur (jam)") pada grafik harian, dan
+      popup BARU `resources\views\technicians\partials\_modal-lembur.blade.php`
+      berisi rincian per tanggal (tanggal, hari, label shift, total lembur) dan
+      daftar laporan penyebabnya lengkap dengan jam kerja, menit lembur, serta
+      tautan ke detail laporan. Datanya dari
+      `ManHourService::lemburPerTanggal()` (dipakai
+      `TechnicianController::show()` sebagai `$lemburRincian`). Halaman edit
+      laporan (`_waktu-kerja.blade.php`) juga menampilkan "Lembur: X" pada baris
+      keterangan jam, sedangkan kolom durasi read-only tetap angka NORMAL.
+    - Akibat yang DISADARI dan dipilih user: laporan pada hari libur/OFF serta
+      laporan di luar jam kerja memiliki man hour NORMAL 0 karena seluruhnya
+      menjadi lembur (mis. reguler 22:00-06:00, reguler staff Sabtu 08:00-17:00).
+      Uji lama `ReportEditJamKerjaTest` dan `ReportDurasiKonsistenTest`
+      disesuaikan: keduanya dulu mengharapkan man hour normal 480/60 menit dan
+      sekarang memeriksa `total` + `lembur` lewat `ringkasJamKerja()`.
     - Uji: `tests/Feature/ReportIstirahatTest.php` (10 test: service, form edit,
-      halaman detail, wizard Telegram, dan perintah simulasi/--execute). Seluruh
-      suite **559 test hijau (2659 assertions)** dan `php artisan view:cache`
-      sukses (13/10/2026).
+      halaman detail, wizard Telegram, perintah simulasi/--execute) dan
+      `tests/Feature/TechnicianLemburTest.php` (5 test: pemisahan lembur,
+      pengelompokan per tanggal, penanda + tombol + segmen oranye, isi popup,
+      hari OFF). Seluruh suite **564 test hijau (2696 assertions)** dan
+      `php artisan view:cache` sukses (13/10/2026).
 
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 

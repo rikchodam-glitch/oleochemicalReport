@@ -284,6 +284,9 @@ class TechnicianController extends Controller
 
         $manHourHarian    = $manHour->harian($technician, $mulaiManHour, $selesaiManHour);
         $manHourRingkasan = $manHour->ringkasan($manHourHarian);
+        // Rincian lembur per tanggal untuk tombol "Cek Overtime" (popup): memuat
+        // laporan penyebab lembur beserta jamnya.
+        $lemburRincian    = $manHour->lemburPerTanggal($technician, $mulaiManHour, $selesaiManHour);
         $shiftHariIni = $technician->shifts()->untukTanggal(now()->toDateString())->first();
 
         // Bila belum ada baris jadwal (mis. periode berjalan belum diupload),
@@ -309,6 +312,7 @@ class TechnicianController extends Controller
             'laporanTerbaru',
             'manHourHarian',
             'manHourRingkasan',
+            'lemburRincian',
             'labelPeriodeManHour',
             'shiftHariIni'
         ));

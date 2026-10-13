@@ -643,7 +643,7 @@ class ReportController extends Controller
 
             $durasi = $jamMulai !== null && $jamSelesai !== null
                 ? app(JamKerjaService::class)->durasiKerja(
-                    $report->technician?->group,
+                    $report->technician,
                     Carbon::parse($validated['report_date']),
                     $jamMulai,
                     $jamSelesai

@@ -3,6 +3,7 @@
 use App\Models\Report;
 use App\Models\Technician;
 use App\Models\User;
+use App\Services\Shift\JamKerjaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -104,9 +105,22 @@ test('menyimpan jam saja menghitung ulang durasi melewati tengah malam', functio
         ])
         ->assertRedirect();
 
-    $laporan = $this->laporan->fresh();
+    $laporan  = $this->laporan->fresh();
+    $jamKerja = app(JamKerjaService::class);
+    $ringkas  = $jamKerja->ringkasJamKerja(
+        $jamKerja->jadwalHari($laporan->technician, $laporan->report_date),
+        $laporan->technician?->group,
+        $laporan->report_date,
+        $laporan->start_time,
+        $laporan->end_time
+    );
 
-    expect($laporan->work_duration_minutes)->toBe(480)
+    // 22:00 - 06:00 = 8 jam = 480 menit (melewati tengah malam), tetapi seluruh
+    // rentang itu di LUAR jam kerja reguler sehingga menjadi LEMBUR: man hour
+    // normal laporan 0 (lembur ditampilkan terpisah di profil teknisi).
+    expect($ringkas['total'])->toBe(480)
+        ->and($ringkas['lembur'])->toBe(480)
+        ->and($laporan->work_duration_minutes)->toBe(0)
         ->and($laporan->start_time)->toBe('22:00')
         ->and($laporan->end_time)->toBe('06:00');
 });

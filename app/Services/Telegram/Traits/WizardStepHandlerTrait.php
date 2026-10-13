@@ -308,7 +308,7 @@ trait WizardStepHandlerTrait
         // dihitung penuh.
         $pelapor = Technician::where('telegram_id', $chatId)->first();
         $tanggal = Carbon::parse($state['report_date'] ?? now()->toDateString());
-        $menit   = app(JamKerjaService::class)->durasiKerja($pelapor?->group, $tanggal, $range['start'], $range['end']);
+        $menit   = app(JamKerjaService::class)->durasiKerja($pelapor, $tanggal, $range['start'], $range['end']);
 
         $state                          = $this->pushStepHistory($state, self::STEP_WORK_DURATION);
         $state['work_duration_minutes'] = $menit ?? $range['minutes'];

@@ -3,6 +3,7 @@
 use App\Models\Report;
 use App\Models\Technician;
 use App\Models\User;
+use App\Services\Shift\JamKerjaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -106,7 +107,23 @@ test('jam lintas tengah malam dihitung ditambah 24 jam', function () {
         ])
         ->assertRedirect();
 
-    expect($this->laporan->fresh()->work_duration_minutes)->toBe(480);
+    // Rentang 22:00 - 06:00 = 8 jam (480 menit) karena jam selesai lebih kecil
+    // dari jam mulai dihitung melewati tengah malam (+24 jam). Jam itu berada di
+    // luar jam kerja reguler, sehingga seluruhnya menjadi LEMBUR (man hour
+    // normal 0) dan dihitung terpisah di profil teknisi.
+    $laporan  = $this->laporan->fresh();
+    $jamKerja = app(JamKerjaService::class);
+    $ringkas  = $jamKerja->ringkasJamKerja(
+        $jamKerja->jadwalHari($laporan->technician, $laporan->report_date),
+        $laporan->technician?->group,
+        $laporan->report_date,
+        $laporan->start_time,
+        $laporan->end_time
+    );
+
+    expect($ringkas['total'])->toBe(480)
+        ->and($ringkas['lembur'])->toBe(480)
+        ->and($laporan->work_duration_minutes)->toBe(0);
 });
 
 test('durasi tersimpan tidak berubah bila jam dikosongkan', function () {
@@ -201,8 +218,11 @@ test('update menghitung durasi dari jam walau form tidak mengirim kolom durasi',
         ])
         ->assertRedirect();
 
-    // Rentang 22:00 - 06:00 melewati tengah malam: 8 jam = 480 menit.
-    expect($this->laporan->fresh()->work_duration_minutes)->toBe(480);
+    // Rentang 22:00 - 06:00 jatuh SELURUHNYA di luar jam kerja reguler
+    // (08.00-16.00), sehingga seluruhnya dihitung LEMBUR: man hour normal 0.
+    // Aturan lintas tengah malamnya sendiri dijaga lewat
+    // Report::durasiDariJam() di ReportJamKerjaSatuSumberTest.
+    expect($this->laporan->fresh()->work_duration_minutes)->toBe(0);
 });
 
 test('jam dikosongkan tanpa kolom durasi: durasi lama dipertahankan', function () {
@@ -236,7 +256,9 @@ test('update menyimpan ulang laporan berjam selesai 24:00 tanpa kehilangan nilai
     $tersimpan = $this->laporan->fresh();
 
     expect($tersimpan->end_time)->toBe('24:00')
-        ->and($tersimpan->work_duration_minutes)->toBe(60)
+        // 23:00 - 24:00 juga di luar jam kerja reguler -> man hour normal 0
+        // (jamnya tetap tersimpan apa adanya dan terhitung lembur).
+        ->and($tersimpan->work_duration_minutes)->toBe(0)
         ->and($tersimpan->time_range)->toBe('23:00 - 24:00');
 });
 

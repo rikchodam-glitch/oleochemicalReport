@@ -53,28 +53,13 @@ class ManHourService
             $perHari[$tanggal][] = $baris;
         }
 
-        $jadwal = TechnicianShift::query()
-            ->where('technician_id', $technician->id)
-            ->antara($awal->toDateString(), $akhir->toDateString())
-            ->get()
-            ->keyBy(fn (TechnicianShift $shift): string => $shift->shift_date->toDateString());
+        // Jadwal hari itu: hasil import menang, tanggal yang belum ada diisi
+        // proyeksi pola rotasi 20 hari. Aturan ini SATU sumber di JamKerjaService
+        // (dipakai juga untuk menghitung jam kerja normal dan lembur).
+        $jamKerja = app(JamKerjaService::class);
+        $jadwal   = $jamKerja->jadwalRentang($technician, $awal, $akhir);
 
         $grup = (string) ($technician->group ?? 'reguler');
-
-        // Tanggal yang belum ada di jadwal import diisi dari pola rotasi 20 hari
-        // supaya jadwal bulan berikutnya tidak perlu diupload lagi. Jadwal import
-        // selalu menang bila ada (bisa dipakai untuk koreksi manual).
-        foreach (app(ShiftPatternService::class)->proyeksi($grup, $awal, $akhir) as $tanggalPola => $kodePola) {
-            if (isset($jadwal[$tanggalPola])) {
-                continue;
-            }
-
-            $jadwal[$tanggalPola] = new TechnicianShift([
-                'technician_id' => $technician->id,
-                'shift_date'    => $tanggalPola,
-                'shift_code'    => $kodePola,
-            ]);
-        }
 
         $rincian = [];
 
@@ -83,10 +68,22 @@ class ManHourService
             $shift       = $jadwal[$kunci] ?? null;
             $laporanHari = $perHari[$kunci] ?? [];
             $menit       = 0;
+            $lembur      = 0;
             $catatan     = [];
 
             foreach ($laporanHari as $baris) {
                 $menit += (int) ($baris->work_duration_minutes ?? 0);
+
+                // Lembur = menit di luar jendela kerja hari itu (termasuk jam
+                // istirahat dan seluruh jam pada hari libur/OFF). Lembur TIDAK
+                // menambah man hour normal, hanya dilaporkan terpisah.
+                $lembur += $jamKerja->ringkasJamKerja(
+                    $shift,
+                    $grup,
+                    $tanggal,
+                    $baris->start_time,
+                    $baris->end_time
+                )['lembur'];
             }
 
             $target      = $this->targetHari($shift, $tanggal, $grup);
@@ -111,6 +108,7 @@ class ManHourService
                 'label_shift'      => $shift?->label($grup) ?? app(JamKerjaService::class)->label($grup, $tanggal),
                 'target_menit'     => $target,
                 'menit'            => $menit,
+                'lembur'           => $lembur,
                 'persen'           => $target > 0 ? (int) round($menit / $target * 100) : null,
                 'jumlah_pekerjaan' => $jumlahKerja,
                 'status'           => $this->statusHari($target, $menit),
@@ -120,6 +118,86 @@ class ManHourService
         }
 
         return $rincian;
+    }
+
+    /**
+     * Rincian LEMBUR per tanggal pada satu rentang periode, dipakai tombol
+     * "Cek Overtime" di halaman profil teknisi.
+     *
+     * Hanya tanggal yang punya lembur yang dikembalikan (urut tanggal). Setiap
+     * tanggal memuat total menit lembur dan daftar laporan penyebabnya lengkap
+     * dengan jam kerja serta menit lemburnya, sehingga bisa ditelusuri dari satu
+     * popup tanpa membuka halaman laporan satu per satu.
+     *
+     * Perhitungan lembur memakai JamKerjaService::ringkasJamKerja() — sama dengan
+     * yang dipakai harian() — supaya tidak ada aturan kedua.
+     *
+     * @param  Technician      $technician Teknisi yang diperiksa
+     * @param  CarbonInterface $mulai      Tanggal awal (inklusif)
+     * @param  CarbonInterface $selesai    Tanggal akhir (inklusif)
+     * @return array<string, array{menit: int, label_shift: string, laporan: array<int, array<string, mixed>>}> Rincian lembur per tanggal
+     */
+    public function lemburPerTanggal(Technician $technician, CarbonInterface $mulai, CarbonInterface $selesai): array
+    {
+        $awal  = $mulai->copy()->startOfDay();
+        $akhir = $selesai->copy()->startOfDay();
+
+        $jamKerja = app(JamKerjaService::class);
+        $jadwal   = $jamKerja->jadwalRentang($technician, $awal, $akhir);
+        $grup     = (string) ($technician->group ?? 'reguler');
+
+        $laporan = Report::query()
+            ->where('technician_id', $technician->id)
+            ->whereNull('multi_of')
+            ->whereBetween('report_date', [$awal->toDateString() . ' 00:00:00', $akhir->toDateString() . ' 23:59:59'])
+            ->orderBy('report_date')
+            ->orderBy('start_time')
+            ->get(['id', 'report_code', 'report_date', 'work_description', 'work_duration_minutes', 'start_time', 'end_time', 'status']);
+
+        $hasil = [];
+
+        foreach ($laporan as $baris) {
+            $tanggal = $baris->report_date?->toDateString();
+
+            if ($tanggal === null) {
+                continue;
+            }
+
+            $ringkas = $jamKerja->ringkasJamKerja(
+                $jadwal[$tanggal] ?? null,
+                $grup,
+                $baris->report_date,
+                $baris->start_time,
+                $baris->end_time
+            );
+
+            if ($ringkas['lembur'] <= 0) {
+                continue;
+            }
+
+            if (! isset($hasil[$tanggal])) {
+                $hasil[$tanggal] = [
+                    'menit'       => 0,
+                    'label_shift' => ($jadwal[$tanggal] ?? null)?->label($grup) ?? $jamKerja->label($grup, $baris->report_date),
+                    'laporan'     => [],
+                ];
+            }
+
+            $hasil[$tanggal]['menit'] += $ringkas['lembur'];
+            $hasil[$tanggal]['laporan'][] = [
+                'id'        => $baris->id,
+                'kode'      => $baris->report_code,
+                'deskripsi' => $baris->work_description,
+                'mulai'     => $baris->start_time,
+                'selesai'   => $baris->end_time,
+                'menit'     => (int) ($baris->work_duration_minutes ?? 0),
+                'lembur'    => $ringkas['lembur'],
+            ];
+        }
+
+        ksort($hasil);
+
+        return $hasil;
     }
 
     /**
@@ -134,6 +212,7 @@ class ManHourService
     public function ringkasan(array $harian): array
     {
         $totalMenit  = 0;
+        $totalLembur = 0;
         $totalTarget = 0;
         $hariKerja   = 0;
         $hariLibur   = 0;
@@ -145,6 +224,7 @@ class ManHourService
 
         foreach ($harian as $baris) {
             $totalMenit += $baris['menit'];
+            $totalLembur += (int) ($baris['lembur'] ?? 0);
 
             if ($baris['target_menit'] > 0) {
                 $hariKerja++;
@@ -183,6 +263,7 @@ class ManHourService
             'hari_libur'                => $hariLibur,
             'jumlah_hari'               => $jumlahHari,
             'total_menit'               => $totalMenit,
+            'total_lembur_menit'        => $totalLembur,
             'total_target_menit'        => $totalTarget,
             'persen'                    => $totalTarget > 0 ? (int) round($totalMenit / $totalTarget * 100) : null,
             'hari_terpenuhi'            => $terpenuhi,
