@@ -75,6 +75,17 @@ return [
     | link can view" agar bisa di-download tanpa Google Cloud API.
     |
     */
+    'google_sheets' => [
+
+        // Link spreadsheet sumber "Data CM".
+        // Sheet yang wajib ada di dalam file: Data AppSheet, Status CM.
+        'data_cm_url'    => env('GOOGLE_SHEETS_DATA_CM_URL'),
+
+        // Link spreadsheet sumber "Finding CM".
+        // Sheet yang wajib ada di dalam file: Finding CM.
+        'finding_cm_url' => env('GOOGLE_SHEETS_FINDING_CM_URL'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Man Hour & Shift Teknisi
