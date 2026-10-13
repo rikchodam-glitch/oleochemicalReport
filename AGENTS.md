@@ -72,8 +72,8 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   (`tools\pasang-jadwal-jaga-service.ps1`) DIHAPUS 13/10/2026 karena isinya
   menunjuk watchdog copy DEV dan memakai `powershell.exe` langsung, melanggar
   aturan wscript di bawah — JANGAN dibuat ulang dalam bentuk itu. Watchdog
-  menyalakan
-  ulang keempat proses (queue:work, schedule:work, telegram:poll, serve:8000)
+  menyalakan ulang keempat proses (queue:work, schedule:work, telegram:poll,
+  serve:8000)
   yang mati dan membuang proses duplikat; catatannya ada di
   `PROD\storage\logs\jaga-service.log`. Kalau ada service yang tidak jalan,
   jalankan `tools\jaga-service-prod.ps1` lebih dulu sebelum menyimpulkan bug.
