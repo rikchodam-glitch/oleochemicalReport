@@ -1,0 +1,30 @@
+#!/bin/sh
+# Hook pre-push — penegak alur "edit -> uji -> baru unggah".
+#
+# Dipasang otomatis oleh tools/siapkan-clone.ps1 lewat
+#   git config core.hooksPath .githooks
+# (folder .githooks ikut repository, sedangkan .git/hooks TIDAK ikut ter-clone,
+#  itulah sebabnya hook ini disimpan di sini).
+#
+# Fungsi: push DIBLOKIR bila (a) uji otomatis `php artisan test` merah, atau
+# (b) masih ada berkas TER-TRACK yang belum di-commit sehingga yang diuji bukan
+# yang diunggah. Aturan lengkap: AGENTS.md bagian "ALUR KERJA BANYAK TEKNISI".
+#
+# Melewati pemeriksaan secara darurat (HANYA bila memang terpaksa, lalu segera
+# diperbaiki): git push --no-verify
+#
+# Sengaja hanya MEMANGGIL tools/cek-sebelum-push.ps1 supaya aturannya hidup di
+# SATU tempat saja (skrip PowerShell itu juga dipakai tools/unggah-tugas.ps1).
+
+echo "[pre-push] Memeriksa sebelum mengunggah (uji otomatis php artisan test)..."
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "tools/cek-sebelum-push.ps1"
+status=$?
+
+if [ "$status" -ne 0 ]; then
+    echo ""
+    echo "[pre-push] DIBLOKIR: pemeriksaan GAGAL (kode $status). Push dibatalkan."
+    echo "[pre-push] Perbaiki dulu. Cara darurat saja: git push --no-verify"
+    echo ""
+fi
+
+exit $status

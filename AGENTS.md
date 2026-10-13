@@ -23,13 +23,15 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   menarik dari sana sebagai cadangan bila GitHub tidak bisa dihubungi.
 - Vhost produksi: `C:\laragon\etc\apache2\sites-enabled\oleo-prod.conf`
   (DocumentRoot ke copy PROD, `ServerName oleo-prod.lvh.me` + `ServerAlias localhost`).
-- Alur perubahan yang WAJIB diikuti: edit & uji di DEV -> **commit di DEV
-  SEGERA setelah uji lulus** (lihat "ALUR KERJA SETIAP SESI BARU" poin 7,
-  jangan menumpuk perubahan tanpa commit) -> `git push origin main` (GitHub)
-  lalu `git push hub main` (cadangan) -> klik **`Deploy-Laporan.bat`** (backup
-  database PROD, pull dari GitHub di PROD, dependensi, migrasi, cache, restart
-  service). `tools\deploy-prod.ps1` dari DEV mengerjakan hal yang sama tanpa
-  konfirmasi. JANGAN mengedit atau menjalankan migrasi manual di PROD.
+- Alur perubahan yang WAJIB diikuti (aturan lengkap: bagian "ALUR KERJA BANYAK
+  TEKNISI" di atas): edit & uji di DEV **di cabang tugas sendiri** -> **commit di
+  DEV SEGERA setelah uji lulus** (lihat "ALUR KERJA SETIAP SESI BARU" poin 7,
+  jangan menumpuk perubahan tanpa commit) -> unggah cabang tugas dengan
+  `tools\unggah-tugas.ps1` lalu buka **Pull Request** -> integrator menekan
+  Merge di GitHub -> klik **`Deploy-Laporan.bat`** di komputer integrator
+  (backup database PROD, pull dari GitHub di PROD, dependensi, migrasi, cache,
+  restart service). JANGAN mengunggah langsung ke `main`, dan JANGAN mengedit
+  atau menjalankan migrasi manual di PROD.
 - **Deploy satu klik (sejak 01/10/2026, keputusan user):** pintasan Desktop
   `Deploy-Laporan.bat` dan `Backup-Database-Laporan.bat` hanya MEMANGGIL
   `PROD\tools\deploy-laporan-prod.ps1` supaya tidak ada dua versi logika.
@@ -39,10 +41,11 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   ke `C:\laragon\backup-oleochemical\db\oleochemical-<stamp>.sql`, 10 berkas
   terbaru disimpan, catatan di `C:\laragon\backup-oleochemical\backup-db.log`;
   **backup gagal = deploy dibatalkan** (jangan pernah melewati ini saat ada
-  perubahan database) -> (2) `git push origin main` (GitHub) + `git push hub main` dari DEV TANPA membuat commit
-  baru, jadi berkas DEV yang belum di-commit tidak ikut terkirim — karena itu
-  WAJIB commit dulu di DEV (aturan poin 7), kalau tidak yang terpasang ke PROD
-  hanya commit terakhir yang ADA di GitHub -> (3)
+  perubahan database) -> (2) penjaga alur kerja banyak teknisi
+  (`tools\penjaga-main-dev.ps1`): copy DEV WAJIB berada pada commit cabang `main`
+  di GitHub — hanya tertinggal = dimajukan otomatis (fast-forward), sedangkan
+  berbeda/bercabang = deploy DIBATALKAN. Langkah ini TIDAK mengunggah apa pun,
+  karena `main` hanya boleh diisi lewat Pull Request -> (3)
   ringkasan: commit PROD sekarang, commit yang ADA di GitHub, migrasi
   tertunda (`php artisan migrate:status --pending`), dan berkas DEV yang belum
   di-commit -> (4) konfirmasi manusia -> (5) `tools\deploy-prod.ps1 -LewatiDev
@@ -205,6 +208,195 @@ Setiap kali menyebutkan kondisi suatu file ("file X sudah ada", "kolom Y
 begini"), WAJIB sertakan path lengkap absolut yang benar-benar dibaca saat
 itu juga, dan sebutkan apakah yang dibaca itu copy DEV atau PROD. Jangan
 mengandalkan laporan dari sesi sebelumnya tanpa verifikasi ulang.
+
+## ALUR KERJA BANYAK TEKNISI (WAJIB — SEMUA AGENT AI)
+
+Sejak 13/10/2026 project ini dikerjakan **beberapa teknisi sekaligus, masing-masing
+memakai asisten AI di komputernya sendiri**, dan setiap teknisi meng-clone repo
+dari GitHub. Karena `Deploy-Laporan.bat` memasang ke PROD apa pun yang ada di
+cabang `main` GitHub, tanpa aturan ketat pekerjaan satu orang bisa terpasang ke
+produksi tanpa di-review, atau saling menimpa. Aturan di bawah ini WAJIB dipatuhi
+tanpa perlu ditanya lagi.
+
+**Aturan pokoknya satu kalimat: JANGAN pernah bekerja atau mengunggah di cabang
+`main`; kerjakan di cabang `tugas/<nama>/<ringkas>`, uji dulu, unggah lewat
+`tools\unggah-tugas.ps1`, lalu tunggu integrator meng-merge Pull Request.**
+
+### 1. Peran
+
+| Peran | Tugas |
+|---|---|
+| **Teknisi** | Mengerjakan perubahan di cabang tugas sendiri, uji, lalu membuka Pull Request. Termasuk USER sendiri: cara kerjanya SAMA, tidak ada pengecualian. |
+| **Integrator** (`rikchodam-glitch`, pemilik repo) | Memeriksa Pull Request lalu menekan Merge. HANYA komputer integrator yang menjalankan `Deploy-Laporan.bat`. |
+
+### 2. Cabang yang dipakai
+
+| Cabang | Fungsi | Boleh diisi lewat |
+|---|---|---|
+| `main` | Produksi; sumber commit yang dipasang `Deploy-Laporan.bat` | HANYA Merge Pull Request |
+| `tugas/<nama>/<ringkas>` | Pekerjaan satu orang (mis. `tugas/vicky/pompa-vibrasi`) | pemiliknya sendiri |
+
+**DILARANG** (semuanya akan diblokir penjaga/hook kalau dicoba):
+
+- `git push origin main` (push langsung ke produksi) — `tools\unggah-tugas.ps1`
+  menolak jalan bila cabang aktifnya `main`.
+- commit di cabang `main` di komputer mana pun.
+- commit di cabang milik orang lain.
+- `git add -A` / `git add .` — commit hanya berkas yang relevan (aturan lama
+  "ALUR KERJA SETIAP SESI BARU" poin 7b tetap berlaku).
+
+### 3. Alur wajib: mulai -> edit -> uji -> baru unggah
+
+1. **SEKALI per clone**: `powershell -ExecutionPolicy Bypass -File tools\siapkan-clone.ps1`
+   - menunjuk `core.hooksPath` ke `.githooks` (tanpa ini hook tidak aktif, karena
+     folder `.git/hooks` tidak ikut ter-clone),
+   - memeriksa php/composer/node (ketiganya TIDAK selalu ada di PATH),
+   - membuat `.env` dari `.env.example` bila belum ada.
+2. **Mulai tugas**:
+   `powershell -ExecutionPolicy Bypass -File tools\mulai-tugas.ps1 -Nama vicky -Tugas "perbaiki man hour kolaborasi"`
+   - `git fetch` lalu `main` dimajukan (fast-forward),
+   - cabang `tugas/vicky/...` dibuat/dibuka,
+   - papan klaim `tugas/vicky.md` diperbarui,
+   - **menampilkan pekerjaan teknisi lain yang sedang berjalan**.
+3. **Isi papan klaim** (`tugas/<nama>.md`) bagian `Modul/berkas yang disentuh`
+   dengan daftar berkas/modul yang akan diubah. Ini pemberitahuan resmi ke
+   rekan lain; tanpa ini orang lain tidak tahu bagian mana yang sedang dipakai.
+4. **Kerjakan perubahan** mengikuti seluruh aturan yang sudah ada di berkas ini
+   (Aturan Wajib Edit File, Verifikasi Dulu Baru Koding, dst).
+5. **Uji dulu**: `php artisan test` WAJIB hijau. Bila menyentuh blade:
+   `php artisan view:cache` juga harus sukses.
+6. **Commit** segera setelah uji lulus: satu perubahan = satu commit, pesan Bahasa
+   Indonesia, hanya berkas terkait yang di-`git add`.
+7. **Unggah**: `powershell -ExecutionPolicy Bypass -File tools\unggah-tugas.ps1`
+   - menolak jalan bila berada di `main` atau ada berkas ter-track belum commit,
+   - `git fetch origin main` lalu `git rebase origin/main` (konflik -> rebase
+     dibatalkan otomatis dan diberi petunjuk),
+   - menjalankan `tools\cek-sebelum-push.ps1` (php artisan test),
+   - push cabang tugas lalu mencetak tautan **Buat Pull Request**.
+8. **Buka Pull Request** lewat tautan itu di peramban, isi template yang tersedia
+   (`\.github\pull_request_template.md`), lalu kirim.
+9. **Integrator** me-review, menekan **Merge**, lalu barulah
+   **`Deploy-Laporan.bat`** dijalankan di komputer integrator.
+
+**Penegakan otomatis (bukan sekadar imbauan).** Hook `.githooks/pre-push`
+memanggil `tools\cek-sebelum-push.ps1`, sehingga **push DIBLOKIR** bila
+`php artisan test` merah atau masih ada berkas ter-track yang belum di-commit
+(yang diuji harus sama dengan yang diunggah). Melewatinya hanya untuk keadaan
+darurat dan wajib dilaporkan ke integrator: `git push --no-verify`.
+
+**Catatan keadaan copy DEV yang kotor.** Komputer integrator hampir selalu
+menyimpan pekerjaan sesi lain yang belum di-commit. Karena itu `mulai-tugas.ps1`
+dan `unggah-tugas.ps1` akan MENOLAK jalan dalam keadaan itu (itu memang
+disengaja). Pilihan yang benar: `-PindahkanPerubahan` (perubahan disimpan ke
+`git stash` lalu dipulihkan dengan `git stash pop`) atau `-AbaikanKotor`
+(dilanjutkan sambil diperingatkan). JANGAN memakai `git add -A` untuk
+"membersihkan" keadaan — itu melanggar aturan poin 7b dan bisa menyapu berkas
+sesi lain ke dalam commit.
+
+### 4. Cara mencegah konflik (mekanismenya, bukan sekadar harapan)
+
+1. **Cabang per orang.** Selama tidak ada dua orang menulis di cabang yang sama,
+   `main` tidak pernah "bertabrakan"; yang perlu diselesaikan hanya perbedaan
+   antara cabang tugas dan `main`.
+2. **Rebase otomatis sebelum unggah.** `tools\unggah-tugas.ps1` SELALU
+   `git fetch` lalu `git rebase origin/main`. Jadi perbedaan ketahuan di komputer
+   PENULIS saat perubahannya masih kecil dan masih diingat, bukan di GitHub
+   berjam-jam kemudian.
+3. **Papan klaim** `tugas/<nama>.md`. Kasus paling mahal adalah dua orang
+   menyunting berkas yang sama tanpa saling tahu. Karena itu SETIAP tugas wajib
+   menulis daftar berkas/modulnya di papan klaim, dan `tools\mulai-tugas.ps1`
+   selalu menampilkan isi papan klaim orang lain sebelum bekerja.
+   Karena satu orang = satu berkas, **papan klaim itu sendiri tidak pernah
+   konflik** (berbeda dengan satu berkas "daftar tugas" bersama).
+4. **Perubahan kecil, commit cepat.** Sesuai "ALUR KERJA SETIAP SESI BARU" poin 7:
+   satu perubahan = satu commit, segera setelah uji lulus. Rebase atas commit
+   kecil hampir selalu selesai sendiri.
+5. **Berkas yang paling sering bertabrakan di project ini** (perlakukan dengan
+   hati-hati, beri tahu lewat papan klaim lebih dulu): `AGENTS.md`,
+   `routes/web.php`, `config/akses.php`, `resources/views/layouts/app.blade.php`,
+   `app/Http/Controllers/ReportController.php`, `resources/views/reports/*`,
+   dan nama berkas migrasi `database/migrations/YYYY_MM_DD_HHMMSS_*`.
+6. **Dilarang**: `git merge origin/main` ke dalam cabang tugas (pakai rebase,
+   supaya riwayat lurus), `git push --force` ke `main`, dan `git rebase` pada
+   cabang milik orang lain.
+
+### 5. Kalau ternyata masih terjadi konflik
+
+`tools\unggah-tugas.ps1` akan membatalkan rebase otomatis dan berhenti. Langkah
+penyelesaiannya:
+
+1. `git status` untuk melihat berkas yang bertanda konflik (`both modified`).
+2. Perbaiki berkasnya DI KOMPUTER SENDIRI (jangan pernah menyelesaikan konflik di
+   `main` atau memaksa push).
+3. `git add <berkas>` lalu `git rebase --continue`. Bila ruwet: `git rebase --abort`
+   mengembalikan keadaan seperti sebelum rebase.
+4. Jalankan lagi `php artisan test`, lalu `git push origin <cabang-tugas>` dan
+   lanjutkan Pull Request.
+
+Aturan khusus per jenis berkas (mengikuti Aturan Wajib Edit File di berkas ini):
+
+| Berkas | Cara menyelesaikan konflik |
+|---|---|
+| `AGENTS.md` | **Ambil KEDUA sisi** (blok lama dan blok baru) — berkas ini bersifat *append-only* di ujung, jadi tidak ada bagian yang boleh dibuang. Nomor "Riwayat Insiden" diurutkan ulang agar tidak ada nomor kembar. |
+| `database/migrations/*` | JANGAN menyatukan dua migrasi berbeda. Nama berkas memakai stempel waktu `php artisan make:migration`; bila dua nama bentrok, salah satu dibuat ulang dengan waktu baru. |
+| `routes/web.php`, `config/akses.php`, `layouts/app.blade.php` | Ambil KEDUA sisipan (biasanya satu baris masing-masing). JANGAN menulis ulang berkas besar ini saat menyelesaikan konflik. |
+| `.bat` / `.cmd` | Setelah konflik selesai, PASTIKAN akhiran barisnya tetap CRLF (Riwayat Insiden #39) dengan menghitung byte berkasnya. |
+| Berkas lain | Selesaikan dengan membaca kedua versi; kalau ragu, tanyakan ke integrator daripada memilih secara asal. |
+
+Bila konfliknya menyangkut berkas yang juga sedang disentuh orang lain, hubungi
+orang itu dan sepakati urutan pengerjaan lebih dulu.
+
+### 6. Penjaga deploy: `Deploy-Laporan.bat` TIDAK lagi mengunggah apa pun
+
+Sejak 13/10/2026, `tools\deploy-laporan-prod.ps1` menjalankan
+`tools\penjaga-main-dev.ps1` lebih dulu. Penjaga itu membandingkan commit `main`
+di copy DEV dengan commit `main` di GitHub:
+
+| Keadaan copy DEV | Akibatnya |
+|---|---|
+| Sama dengan GitHub | Deploy lanjut seperti biasa. |
+| Hanya tertinggal (tidak punya commit sendiri) | Copy DEV dimajukan otomatis dengan *fast-forward* (aman, tidak ada commit yang hilang), lalu deploy lanjut. Repo hub lokal (cadangan) ikut disamakan dengan commit GitHub. |
+| Bercabang / punya commit sendiri, atau sedang berada di cabang tugas | **Deploy DIBATALKAN** dengan pesan jelas. Pekerjaan yang belum di-merge TIDAK PERNAH sampai ke produksi. |
+| GitHub tidak terbaca (internet mati) | Penjaga dilewati dengan peringatan, deploy tetap boleh lanjut memakai commit yang sudah ada. |
+
+`tools\deploy-prod.ps1` juga tidak lagi mengunggah apa pun; pada jalur tanpa
+`-LewatiDev` ia memakai penjaga yang sama dalam bentuk pemeriksaan commit.
+
+Konsekuensi penting: **hanya komputer integrator yang berada di cabang `main`
+yang bisa men-deploy.** Komputer teknisi yang sedang ada di cabang tugas akan
+ditolak penjaga — ini memang disengaja.
+
+### 7. Setelan GitHub yang harus dipasang integrator (sekali, manual di web)
+
+Repo ini PUBLIK (dibuktikan `git ls-remote` tanpa kredensial, 13/10/2026), jadi
+penguncian cabang **gratis** pada GitHub Free. Di
+`https://github.com/rikchodam-glitch/oleochemicalReport`:
+
+1. **Settings -> Branches -> Add branch protection rule**, pola nama `main`.
+2. Centang **Require a pull request before merging** (`Require approvals` = 1).
+3. Centang **Require branches to be up to date before merging** (memaksa cabang
+   tugas sudah di-rebase ke `main` terbaru sebelum boleh di-merge).
+4. Centang **Do not allow bypassing the above settings** dan **Block force pushes**.
+5. Simpan.
+
+Dengan setelan itu, walau seseorang memaksa `git push origin main`, GitHub akan
+menolaknya. Jadi penegakan aturan ini punya DUA lapis: hook lokal (cepat, memberi
+tahu lebih awal) dan penguncian GitHub (tidak bisa dilewati).
+
+Catatan: bila repo ini nanti dijadikan PRIVAT, penguncian cabang menjadi fitur
+berbayar, DAN copy PROD wajib menyimpan kredensial GitHub karena deploy tidak
+pernah meminta masukan manusia.
+
+### 8. Ringkasan perintah (hafalkan yang ini saja)
+
+| Keperluan | Perintah (dari folder repo) |
+|---|---|
+| Sekali per clone | `powershell -ExecutionPolicy Bypass -File tools\siapkan-clone.ps1` |
+| Mulai tugas baru | `powershell -ExecutionPolicy Bypass -File tools\mulai-tugas.ps1 -Nama <nama> -Tugas "<ringkas>"` |
+| Cek sebelum mengunggah | `powershell -ExecutionPolicy Bypass -File tools\cek-sebelum-push.ps1` |
+| Unggah cabang tugas + tautan PR | `powershell -ExecutionPolicy Bypass -File tools\unggah-tugas.ps1` |
+| Cek kesesuaian copy DEV dengan GitHub | `powershell -ExecutionPolicy Bypass -File tools\penjaga-main-dev.ps1` |
+| Deploy ke PROD (HANYA integrator, setelah Merge) | klik `Deploy-Laporan.bat` |
 
 ## DOMAIN PUBLIK (CLOUDFLARE TUNNEL) — STATUS PERSIAPAN
 
@@ -2918,6 +3110,35 @@ Batasan penting lingkungan ini:
     `?? .kilo/`, dan `?? app/Console/Commands/CmDriveCheck.php`) yang SENGAJA
     tidak ikut di-commit.
 
+43. **`Deploy-Laporan.bat` meng-unggah cabang `main` dari komputer yang
+    menekannya (ditemukan dan ditutup 13/10/2026).** Pemeriksaan nyata atas
+    berkas di copy DEV `C:\laragon\www\oleochemicalReport`:
+    `tools\deploy-laporan-prod.ps1` baris 353-370 versi lama memanggil
+    `git push origin main` DARI copy DEV, dan kegagalannya hanya dicatat sebagai
+    PERINGATAN (baris 357-360) sehingga deploy TETAP LANJUT memasang apa pun yang
+    sudah ada di GitHub; `tools\deploy-prod.ps1` baris 194-208 mengerjakan hal
+    yang sama walaupun jalur `-LewatiDev` (yang dipakai pintasan) memang
+    melewatinya. Akibatnya dua hal yang sama-sama tidak terlihat pengguna:
+    (a) siapa pun yang menekan pintasan di komputer yang `main`-nya masih memuat
+    commit belum di-merge akan memasang pekerjaan itu ke production tanpa review;
+    (b) bila push-nya ditolak (non-fast-forward), yang terpasang malah commit
+    orang lain tanpa pemberitahuan yang jelas. Penutupnya: (i) langkah push
+    diganti penjaga baru `tools\penjaga-main-dev.ps1` — copy DEV wajib berada pada
+    commit `main` GitHub, hanya tertinggal = dimajukan fast-forward, sedangkan
+    berbeda/bercabang = deploy DIBATALKAN; (ii) alur kerja bercabang diperkenalkan
+    (`tugas/<nama>/<ringkas>` + Pull Request + papan klaim `tugas/<nama>.md` +
+    hook `.githooks/pre-push` + skrip `siapkan-clone`/`mulai-tugas`/`unggah-tugas`/
+    `cek-sebelum-push`); (iii) aturan lengkapnya ada di bagian "ALUR KERJA BANYAK
+    TEKNISI" di atas.
+    **Pelajaran: (1) perintah yang mengubah keadaan bersama (push/deploy) WAJIB
+    DIBATALKAN saat keadaan tidak seperti yang diharapkan — mencatat "PERINGATAN"
+    lalu lanjut adalah cara paling halus untuk memasang versi yang salah;
+    (2) skrip deploy harus membuktikan sumber commit-nya lewat `ls-remote` (bukan
+    ref remote-tracking lokal yang bisa basi) dan memperlakukan perbedaan sebagai
+    KESALAHAN; (3) hook git TIDAK pernah ikut ter-clone karena `core.hooksPath`
+    bawaan menunjuk `.git/hooks` di komputer masing-masing, jadi aturan berbasis
+    hook WAJIB disertai langkah pemasangan sekali per clone (`core.hooksPath` ke
+    folder `.githooks` yang ikut repository).**
 
 ## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN
 
@@ -2994,9 +3215,12 @@ dibiarkan apa adanya, sengaja, karena itu nama perusahaan bukan nama aplikasi.
       `.gitignore`, `app/Console/Commands/CmDriveCheck.php`). Daftar kotor itu
       SELALU diperiksa lebih dulu dengan `git status --short`, jangan memakai
       contoh di sini sebagai daftar tetap.
-   c. Setelah commit, langsung `git push origin main` (GitHub, kanal utama) lalu
-      `git push hub main` (cadangan lokal). Pekerjaan dianggap "selesai" hanya
-      setelah hash commit-nya dilaporkan ke user.
+   c. Setelah commit: unggah lewat `tools\unggah-tugas.ps1` (push ke cabang tugas
+      `tugas/<nama>/<ringkas>`, BUKAN ke `main`) lalu buka **Pull Request**.
+      `main` hanya terisi lewat Merge Pull Request, dan repo hub lokal (cadangan)
+      disamakan otomatis oleh `tools\penjaga-main-dev.ps1` saat deploy. Pekerjaan
+      dianggap "selesai" hanya setelah hash commit-nya dilaporkan ke user.
+      Aturan lengkap: bagian "ALUR KERJA BANYAK TEKNISI" di atas.
    d. Yang BELUM lulus uji JANGAN di-commit (jangan pernah commit kode setengah
       jalan/rusak). Kalau memang harus menyimpan pekerjaan darurat, buat
       commit terpisah berawalan `WIP:` dan sebutkan di laporan bahwa commit itu
