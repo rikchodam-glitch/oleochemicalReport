@@ -6,9 +6,11 @@
       1. Validasi path (DEV, PROD, php.exe, mysqldump).
       2. Backup database PROD (mysqldump) ke C:\laragon\backup-oleochemical\db
          dan menyisakan sejumlah backup terbaru saja.
-      3. Kirim commit DEV yang SUDAH ada ke repo hub (tidak membuat commit baru).
-      4. Ringkasan: commit PROD sekarang, commit yang akan dipasang, migrasi
-         tertunda, dan berkas DEV yang belum di-commit (hanya keterangan).
+      3. Kirim commit DEV yang SUDAH ada ke GitHub (kanal utama) lalu ke repo
+         hub lokal (cadangan) - tanpa membuat commit baru.
+      4. Ringkasan: commit PROD sekarang, commit yang akan dipasang (dibaca
+         langsung dari GitHub), migrasi tertunda, dan berkas DEV yang belum
+         di-commit (hanya keterangan).
       5. Konfirmasi manusia sebelum melanjutkan.
       6. Deploy lewat tools\deploy-prod.ps1 (-LewatiDev -LewatiComposer
          -BangunAset -LewatiService): pull, migrate --force, config:cache,
@@ -43,6 +45,11 @@ $DevPath      = 'C:\laragon\www\oleochemicalReport'
 $ProdPath     = 'C:\laragon\www\oleochemicalReport-prod'
 $PhpExe       = 'C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe'
 $MySqlDump    = 'C:\laragon\bin\mysql\mysql-8.4.3-winx64\bin\mysqldump.exe'
+# Kanal deploy (diputuskan user 13/10/2026): GitHub = sumber resmi, DEV push ke
+# sana dan copy PROD menarik dari sana. Repo hub lokal DIPERTAHANKAN sebagai
+# cadangan/offline saja (kegagalannya tidak pernah membatalkan deploy).
+$RepoUrl      = 'https://github.com/rikchodam-glitch/oleochemicalReport.git'
+$RemoteUtama  = 'origin'
 $HubRemote    = 'hub'
 $Branch       = 'main'
 $FolderBackup = 'C:\laragon\backup-oleochemical'
@@ -290,6 +297,18 @@ function KomitTerakhir([string]$Repo) {
     return (([string]($hasil.Keluaran | Select-Object -First 1)) + '').Trim()
 }
 
+<#
+    Ambil HASH commit terakhir sebuah repo git (hash penuh, tanpa pesan) supaya
+    bisa dibandingkan dengan hash yang dilaporkan GitHub lewat ls-remote.
+
+    Parameter: $Repo = path repo.
+    Return  : hash commit (string kosong bila gagal).
+#>
+function KomitHash([string]$Repo) {
+    $hasil = Panggil 'git' @('-C', $Repo, 'rev-parse', 'HEAD')
+    return (([string]($hasil.Keluaran | Select-Object -First 1)) + '').Trim()
+}
+
 # ==== 1. Validasi path wajib ====
 foreach ($path in @($DevPath, $ProdPath, $PhpExe, $SkripDeploy, $SkripStop, $SkripJaga)) {
     if (-not (Test-Path $path)) { throw ('Path tidak ditemukan: ' + $path) }
@@ -325,27 +344,51 @@ if ($HanyaBackup) {
     return
 }
 
-# ==== 3. Kirim commit DEV yang SUDAH ada ke repo hub ====
+# ==== 3. Kirim commit DEV yang SUDAH ada ke GitHub (lalu repo hub cadangan) ====
 # Sengaja TIDAK membuat commit baru: berkas DEV yang belum di-commit (mis.
 # pekerjaan sesi lain) tidak boleh ikut tersapu ke produksi.
 $komitDev  = KomitTerakhir $DevPath
 $komitProd = KomitTerakhir $ProdPath
 
 if (Test-Path (Join-Path $DevPath '.git')) {
-    Tulis 'Mengirim commit DEV ke repo hub...'
-    $push = Panggil 'git' @('-C', $DevPath, 'push', $HubRemote, $Branch)
+    Tulis 'Mengirim commit DEV ke GitHub (kanal utama)...'
+    $push = Panggil 'git' @('-C', $DevPath, 'push', $RemoteUtama, $Branch)
 
     if ($push.Kode -ne 0) {
-        Tulis 'PERINGATAN: push DEV ke repo hub gagal; PROD akan menarik commit terakhir yang ADA di hub.'
+        Tulis 'PERINGATAN: push DEV ke GitHub gagal; PROD akan menarik commit terakhir yang ADA di kanal cadangan (repo hub lokal).'
         foreach ($baris in @($push.Keluaran | Select-Object -Last 3)) { Write-Host ('          ' + $baris) }
+    }
+
+    # Cadangan lokal: kegagalannya tidak membatalkan deploy.
+    $pushCadangan = Panggil 'git' @('-C', $DevPath, 'push', $HubRemote, $Branch)
+
+    if ($pushCadangan.Kode -ne 0) {
+        Tulis 'PERINGATAN: push DEV ke repo hub lokal (cadangan) gagal.'
     }
 } else {
     Tulis 'PERINGATAN: copy DEV tidak punya repo git, langkah push dilewati.'
 }
 
-# Yang benar-benar akan dipasang adalah isi repo hub, bukan commit DEV lokal.
-$hasilHub = Panggil 'git' @('-C', $DevPath, 'log', '--oneline', '-1', ($HubRemote + '/' + $Branch))
-$komitHub = (([string]($hasilHub.Keluaran | Select-Object -First 1)) + '').Trim()
+# Yang benar-benar akan dipasang adalah commit di GitHub (kanal utama), bukan
+# commit DEV lokal. Dibaca langsung dari GitHub supaya ringkasan ini sekaligus
+# membuktikan push di atas benar-benar sampai.
+$komitDevHash  = KomitHash $DevPath
+$komitProdHash = KomitHash $ProdPath
+$komitGithub   = ''
+
+$hasilGithub = Panggil 'git' @('ls-remote', $RepoUrl, ('refs/heads/' + $Branch))
+
+if ($hasilGithub.Kode -eq 0) {
+    $barisGithub = (([string]($hasilGithub.Keluaran | Select-Object -First 1)) + '').Trim()
+
+    if ($barisGithub -ne '') { $komitGithub = $barisGithub.Split()[0] }
+}
+
+if ($komitGithub -eq '') {
+    Tulis 'PERINGATAN: commit GitHub tidak terbaca; pembanding memakai repo hub lokal.'
+    $hasilHub    = Panggil 'git' @('-C', $DevPath, 'log', '--oneline', '-1', ($HubRemote + '/' + $Branch))
+    $komitGithub = (([string]($hasilHub.Keluaran | Select-Object -First 1)) + '').Trim()
+}
 
 # ==== 4. Ringkasan sebelum deploy ====
 $daftarPending = @(DaftarMigrasiPending)
@@ -359,22 +402,27 @@ foreach ($baris in @((Panggil 'git' @('-C', $DevPath, 'status', '--porcelain')).
 
 Write-Host ''
 Write-Host '=== Ringkasan yang akan dipasang ==='
-Write-Host ('commit PROD sekarang   : ' + $komitProd)
+Write-Host ('commit PROD sekarang    : ' + $komitProd)
+Write-Host ('sumber commit           : GitHub (' + $RepoUrl + ')')
 
-if ($komitHub -eq '') {
-    Write-Host 'commit repo hub         : (tidak terbaca)'
+if ($komitGithub -eq '') {
+    Write-Host 'commit GitHub           : (tidak terbaca)'
 } else {
-    Write-Host ('commit repo hub         : ' + $komitHub)
+    Write-Host ('commit GitHub           : ' + $komitGithub)
 }
 
 Write-Host ('commit DEV (lokal)      : ' + $komitDev)
 
-if ($komitHub -ne '' -and $komitHub -eq $komitProd) {
-    Write-Host 'catatan                 : PROD sudah memuat commit itu; yang diperbarui hanya cache dan service.'
+if ($komitGithub -ne '' -and $komitDevHash -ne '' -and $komitDevHash -eq $komitGithub) {
+    Write-Host 'catatan                 : GitHub sudah memuat commit DEV lokal; versi terbaru memang ini.'
 }
 
-if ($komitHub -ne '' -and $komitDev -ne $komitHub) {
-    Write-Host 'peringatan              : commit repo hub BERBEDA dengan commit DEV lokal.'
+if ($komitGithub -ne '' -and $komitDevHash -ne '' -and $komitDevHash -ne $komitGithub) {
+    Write-Host 'peringatan              : commit GitHub BERBEDA dengan commit DEV lokal (commit DEV belum ter-push?).'
+}
+
+if ($komitGithub -ne '' -and $komitProdHash -ne '' -and $komitGithub -eq $komitProdHash) {
+    Write-Host 'catatan                 : PROD sudah memuat commit itu; yang diperbarui hanya cache dan service.'
 }
 
 if ($daftarPending.Count -eq 0) {

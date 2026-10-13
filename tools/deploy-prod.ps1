@@ -5,8 +5,10 @@
         powershell -ExecutionPolicy Bypass -File C:\laragon\www\oleochemicalReport\tools\deploy-prod.ps1
         powershell -ExecutionPolicy Bypass -File ...\tools\deploy-prod.ps1 -PesanCommit "feat(x): pesan" -BangunAset
 
-    Urutan kerja: commit DEV (opsional) -> push ke repo hub lokal -> pull
-    --ff-only di PROD -> mode pemeliharaan -> composer install --no-dev ->
+    Urutan kerja: commit DEV (opsional) -> push ke GitHub (kanal utama) lalu ke
+    repo hub lokal (cadangan) -> arahkan remote origin copy PROD ke GitHub ->
+    fetch + merge --ff-only di PROD (cadangan repo hub lokal bila GitHub tidak
+    bisa dihubungi) -> mode pemeliharaan -> composer install --no-dev ->
     migrate --force -> config:cache + view:cache (BUKAN "artisan optimize",
     karena ada closure route di routes/web.php) -> storage:link bila belum ada
     -> build aset (opsional) -> restart queue/schedule/telegram poll ->
@@ -35,8 +37,15 @@ $ComposerPhar = 'C:\laragon\bin\composer\composer.phar'
 $NodeDir      = 'C:\laragon\bin\nodejs\node-v22'
 $NodeExe      = Join-Path $NodeDir 'node.exe'
 $NpmCmd       = Join-Path $NodeDir 'npm.cmd'
-$HubRemote    = 'hub'
-$Branch       = 'main'
+# Kanal deploy (diputuskan user 13/10/2026): GitHub = sumber resmi, DEV push
+# ke sana dan copy PROD menarik dari sana. Repo hub lokal (bare) DIPERTAHANKAN
+# hanya sebagai cadangan supaya deploy tetap bisa jalan saat GitHub tidak bisa
+# dihubungi; kegagalan cadangan tidak pernah membatalkan deploy.
+$RepoUrl        = 'https://github.com/rikchodam-glitch/oleochemicalReport.git'
+$RemoteUtama    = 'origin'
+$RemoteCadangan = 'hub'
+$HubPath        = 'C:\laragon\repo\oleochemicalReport.git'
+$Branch         = 'main'
 
 # Folder wajib yang harus ada SEBELUM config:cache (lihat AGENTS.md insiden #26).
 $FolderWajib = @(
@@ -55,6 +64,68 @@ $PolaProses = @('*artisan queue:work*', '*artisan schedule:work*', '*artisan tel
 #>
 function Tulis([string]$Pesan) {
     Write-Host ("[deploy] " + $Pesan)
+}
+
+<#
+    Jalankan perintah git sambil menurunkan ErrorActionPreference sementara.
+    Git menulis progres (mis. "From https://github.com/...") ke stderr, dan
+    dengan preferensi 'Stop' tulisan itu berubah menjadi galat yang
+    menghentikan skrip (lihat AGENTS.md insiden #31).
+
+    Parameter: $Argumen = daftar argumen git.
+    Return  : hashtable dengan kunci Keluaran (teks) dan Kode (exit code).
+#>
+function PanggilGit([string[]]$Argumen) {
+    $lama = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+
+    try {
+        $keluaran = & git @Argumen 2>&1 | ForEach-Object { [string]$_ }
+        $kode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $lama
+    }
+
+    return @{ Keluaran = $keluaran; Kode = $kode }
+}
+
+<#
+    Tolak pull bila copy PROD punya perubahan yang belum di-commit PADA BERKAS
+    YANG AKAN IKUT BERUBAH. Perubahan lain hanya diberi peringatan. Copy PROD
+    memang tidak boleh diedit manual, tetapi penjagaan ini memastikan berkas
+    yang terlanjur disentuh di PROD tidak pernah tertimpa diam-diam oleh pull.
+
+    Parameter: tidak ada (memakai $ProdPath).
+    Return  : tidak ada (melempar galat bila ada berkas yang akan tertimpa).
+#>
+function TolakPullBilaProdKotor {
+    $kotor = @()
+
+    foreach ($baris in @((PanggilGit @('-C', $ProdPath, 'status', '--porcelain', '--untracked-files=no')).Keluaran)) {
+        $teks = ([string]$baris).Trim()
+
+        if ($teks -ne '') { $kotor += $teks }
+    }
+
+    if ($kotor.Count -eq 0) { return }
+
+    Tulis 'PERINGATAN: copy PROD punya perubahan belum di-commit (PROD seharusnya tidak diedit manual):'
+    foreach ($baris in ($kotor | Select-Object -First 8)) { Write-Host ('          ' + $baris) }
+
+    $namaKotor = @($kotor | ForEach-Object { ([string]$_).Substring(2).Trim() })
+    $akanUbah  = @()
+
+    foreach ($baris in @((PanggilGit @('-C', $ProdPath, 'diff', '--name-only', 'HEAD', 'FETCH_HEAD')).Keluaran)) {
+        $teks = ([string]$baris).Trim()
+
+        if ($teks -ne '') { $akanUbah += $teks }
+    }
+
+    $bentrok = @($namaKotor | Where-Object { $akanUbah -contains $_ })
+
+    if ($bentrok.Count -eq 0) { return }
+
+    throw ('Pull dibatalkan: berkas berikut akan berubah tetapi masih ada perubahan manual di PROD -> ' + ($bentrok -join ', ') + '. Kembalikan dulu dengan: git -C "' + $ProdPath + '" checkout -- <berkas>')
 }
 
 <#
@@ -98,9 +169,9 @@ Tulis ("PROD : " + $ProdPath)
 # ==== 2. Commit DEV (opsional) ====
 # Dengan -LewatiDev, bagian DEV dilewati seluruhnya (tidak commit, tidak
 # periksa kebersihan, tidak push). Berguna bila copy DEV sedang dipakai sesi
-# lain: PROD tetap menarik commit terakhir yang SUDAH ada di repo hub.
+# lain: PROD tetap menarik commit terakhir yang SUDAH ada di GitHub.
 if ($LewatiDev) {
-    Tulis 'LewatiDev: pemeriksaan & push DEV dilewati (PROD menarik commit terakhir dari repo hub).'
+    Tulis 'LewatiDev: pemeriksaan & push DEV dilewati (PROD menarik commit terakhir dari GitHub).'
 } else {
     if ($PesanCommit) {
         git -C $DevPath add -A
@@ -120,15 +191,56 @@ if ($LewatiDev) {
         $fileBaru | ForEach-Object { Write-Host ("         " + $_) }
     }
 
-    # ==== 3. Push DEV -> hub ====
-    git -C $DevPath push $HubRemote $Branch
-    if ($LASTEXITCODE -ne 0) { throw 'Push ke repo hub gagal.' }
+    # ==== 3. Push DEV -> GitHub (kanal utama) -> repo hub (cadangan) ====
+    Tulis ('Push commit DEV ke GitHub (' + $RepoUrl + ')...')
+    $pushUtama = PanggilGit @('-C', $DevPath, 'push', $RemoteUtama, $Branch)
+
+    if ($pushUtama.Kode -ne 0) {
+        foreach ($baris in @($pushUtama.Keluaran | Select-Object -Last 4)) { Write-Host ('          ' + $baris) }
+        throw 'Push ke GitHub gagal: periksa koneksi internet dan kredensial GitHub.'
+    }
+
+    # Cadangan lokal: kegagalannya TIDAK membatalkan deploy.
+    $pushCadangan = PanggilGit @('-C', $DevPath, 'push', $RemoteCadangan, $Branch)
+
+    if ($pushCadangan.Kode -ne 0) {
+        Tulis 'PERINGATAN: push ke repo hub lokal (cadangan) gagal; deploy tetap lanjut lewat GitHub.'
+    }
 }
 
-# ==== 3b. Pull hub -> PROD (selalu dijalankan) ====
-git -C $ProdPath pull --ff-only origin $Branch
-if ($LASTEXITCODE -ne 0) { throw 'Pull di PROD gagal (cek konflik atau branch).' }
+# ==== 3b. Pull GitHub -> PROD (selalu dijalankan) ====
+# Remote origin copy PROD disamakan dengan kanal utama supaya Deploy-Laporan.bat
+# selalu mengambil commit dari GitHub, bukan dari repo hub lokal.
+$urlProd = (([string]((PanggilGit @('-C', $ProdPath, 'remote', 'get-url', 'origin')).Keluaran | Select-Object -First 1)) + '').Trim()
 
+if ($urlProd -ne $RepoUrl) {
+    PanggilGit @('-C', $ProdPath, 'remote', 'set-url', 'origin', $RepoUrl) | Out-Null
+    Tulis ('Remote origin PROD diarahkan ke GitHub (sebelumnya: ' + $urlProd + ').')
+}
+
+# Ambil commit terbaru dari GitHub. Bila GitHub tidak bisa dihubungi, repo hub
+# lokal dipakai sebagai sumber cadangan supaya deploy tidak macet total.
+$sumber = 'GitHub'
+$ambil  = PanggilGit @('-C', $ProdPath, 'fetch', 'origin', $Branch)
+
+if ($ambil.Kode -ne 0) {
+    Tulis 'Fetch dari GitHub gagal, memakai repo hub lokal sebagai sumber cadangan...'
+    $sumber = 'repo hub lokal (cadangan)'
+    $ambil  = PanggilGit @('-C', $ProdPath, 'fetch', $HubPath, $Branch)
+
+    if ($ambil.Kode -ne 0) { throw 'Commit tidak bisa diambil: GitHub maupun repo hub lokal sama-sama gagal.' }
+}
+
+TolakPullBilaProdKotor
+
+$pull = PanggilGit @('-C', $ProdPath, 'merge', '--ff-only', 'FETCH_HEAD')
+
+if ($pull.Kode -ne 0) {
+    foreach ($baris in @($pull.Keluaran | Select-Object -Last 4)) { Write-Host ('          ' + $baris) }
+    throw 'Deploy PROD gagal: commit tidak bisa dipasang dengan fast-forward (cek konflik atau branch).'
+}
+
+Tulis ('PROD menarik commit dari: ' + $sumber)
 Tulis ("PROD sekarang di commit: " + (git -C $ProdPath log --oneline -1))
 
 # ==== 4. Pastikan folder wajib ada sebelum config:cache ====

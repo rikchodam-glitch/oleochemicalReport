@@ -10,16 +10,26 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
 | **DEV** (tempat kerja agent) | `C:\laragon\www\oleochemicalReport` | SEMUA perubahan kode dikerjakan di sini. Database `oleochemical_dev`. Diuji lokal di `http://oleochemicalReport.test` (Apache, vhost lama). |
 | **PROD** (yang disajikan) | `C:\laragon\www\oleochemicalReport-prod` | Hasil deploy. Disajikan Apache di `http://oleo-prod.lvh.me` + `http://localhost/`, dan `artisan serve` di **`http://192.168.41.74:8000`** (alamat yang dipakai orang di jaringan kantor); nanti domain publik. Database `oleochemical` (data asli) dan pemegang `storage/app` data asli (foto/laporan). **JANGAN pernah mengedit file di sini.** |
 
-- Repo hub lokal (perantara deploy): `C:\laragon\repo\oleochemicalReport.git`
-  (bare). DEV punya remote **`hub`** ke sana; PROD punya remote **`origin`**
-  ke sana. Remote `origin` di DEV = GitHub (cadangan, sering tertinggal).
+- **Kanal deploy (diputuskan user 13/10/2026): GitHub = sumber resmi.**
+  Repo: `https://github.com/rikchodam-glitch/oleochemicalReport.git` (PUBLIK;
+  kalau nanti dijadikan PRIVAT, copy PROD WAJIB punya kredensial tersimpan
+  karena deploy tidak pernah meminta masukan manusia). DEV punya remote
+  **`origin`** ke GitHub, dan copy PROD diarahkan ke `origin` = GitHub oleh
+  `tools\deploy-prod.ps1` sendiri, jadi `Deploy-Laporan.bat` selalu menarik
+  commit dari GitHub.
+- Repo hub lokal `C:\laragon\repo\oleochemicalReport.git` (bare, remote
+  **`hub`** di DEV) DIPERTAHANKAN hanya sebagai **cadangan/offline**: DEV tetap
+  push ke sana SESUDAH push GitHub (kegagalannya cuma peringatan), dan PROD
+  menarik dari sana sebagai cadangan bila GitHub tidak bisa dihubungi.
 - Vhost produksi: `C:\laragon\etc\apache2\sites-enabled\oleo-prod.conf`
   (DocumentRoot ke copy PROD, `ServerName oleo-prod.lvh.me` + `ServerAlias localhost`).
 - Alur perubahan yang WAJIB diikuti: edit & uji di DEV -> **commit di DEV
   SEGERA setelah uji lulus** (lihat "ALUR KERJA SETIAP SESI BARU" poin 7,
-  jangan menumpuk perubahan tanpa commit) -> `git push hub main` -> jalankan
-  `tools\deploy-prod.ps1` (pull di PROD + dependensi + migrasi + cache +
-  restart service). JANGAN mengedit atau menjalankan migrasi manual di PROD.
+  jangan menumpuk perubahan tanpa commit) -> `git push origin main` (GitHub)
+  lalu `git push hub main` (cadangan) -> klik **`Deploy-Laporan.bat`** (backup
+  database PROD, pull dari GitHub di PROD, dependensi, migrasi, cache, restart
+  service). `tools\deploy-prod.ps1` dari DEV mengerjakan hal yang sama tanpa
+  konfirmasi. JANGAN mengedit atau menjalankan migrasi manual di PROD.
 - **Deploy satu klik (sejak 01/10/2026, keputusan user):** pintasan Desktop
   `Deploy-Laporan.bat` dan `Backup-Database-Laporan.bat` hanya MEMANGGIL
   `PROD\tools\deploy-laporan-prod.ps1` supaya tidak ada dua versi logika.
@@ -29,11 +39,11 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   ke `C:\laragon\backup-oleochemical\db\oleochemical-<stamp>.sql`, 10 berkas
   terbaru disimpan, catatan di `C:\laragon\backup-oleochemical\backup-db.log`;
   **backup gagal = deploy dibatalkan** (jangan pernah melewati ini saat ada
-  perubahan database) -> (2) `git push hub main` dari DEV TANPA membuat commit
+  perubahan database) -> (2) `git push origin main` (GitHub) + `git push hub main` dari DEV TANPA membuat commit
   baru, jadi berkas DEV yang belum di-commit tidak ikut terkirim — karena itu
   WAJIB commit dulu di DEV (aturan poin 7), kalau tidak yang terpasang ke PROD
-  hanya commit terakhir yang ADA di repo hub -> (3)
-  ringkasan: commit PROD sekarang, commit yang ADA di repo hub, migrasi
+  hanya commit terakhir yang ADA di GitHub -> (3)
+  ringkasan: commit PROD sekarang, commit yang ADA di GitHub, migrasi
   tertunda (`php artisan migrate:status --pending`), dan berkas DEV yang belum
   di-commit -> (4) konfirmasi manusia -> (5) `tools\deploy-prod.ps1 -LewatiDev
   -LewatiComposer -LewatiService -BangunAset` (pull, `migrate --force`,
@@ -2822,6 +2832,53 @@ Batasan penting lingkungan ini:
     sampai terbukti dirujuk `ShiftScheduleController`. Aturan lengkapnya ada di
     bagian "ATURAN WAJIB: JANGAN TINGGALKAN SAMPAH BERKAS".**
 
+42. **Riwayat GitHub dan DEV BERCABANG karena commit dikerjakan di copy lain,
+    sementara alur deploy masih memakai repo hub lokal (13/10/2026).** Latar:
+    alur yang dikehendaki user adalah DEV -> GitHub -> PROD, tetapi
+    `tools\deploy-laporan-prod.ps1` dan `tools\deploy-prod.ps1` masih
+    `git push hub main` ke repo bare lokal lalu PROD menarik dari repo itu.
+    Pemeriksaan 13/10/2026 09:57 menemukan hal yang lebih berbahaya: ref
+    `origin/main` di DEV BASI (menunjuk `89b9b15`, berkas ref ditulis
+    12/10/2026 14:09) sementara GitHub sebenarnya sudah di `98e7001` - tiga
+    commit baru (`c5b663b` blok `config/cm.php` google_sheets, `b565766` default
+    Overview CM bulan terakhir, `98e7001` nama `package-lock.json`) dibuat
+    `erikadam <erikbutak@gmail.com>` pukul 09:48 dari copy lain (PC lain),
+    sehingga `git rev-list --left-right --count origin/main...main` = `3 113`.
+    Pelajaran: (a) `git branch -vv` yang berbunyi "ahead 113" TIDAK membuktikan
+    push akan fast-forward -- ref remote-tracking lokal bisa basi, jadi WAJIB
+    `git fetch` (atau `git ls-remote`) dulu sebelum menyimpulkan aman;
+    (b) `git ls-remote` dengan `-c credential.helper=` membuktikan repo GitHub
+    ini PUBLIK (bisa dibaca siapa saja), jadi copy PROD boleh menarik tanpa
+    kredensial.
+    Tindakan 13/10/2026 (copy DEV `C:\laragon\www\oleochemicalReport`):
+    (a) `git merge origin/main` -> konflik HANYA di `config/cm.php` (blok
+    `google_sheets` ditambahkan di dua sisi; versi DEV dipakai karena
+    komentarnya lebih rapi; `package-lock.json`, `CmController.php`, dan
+    `overview.blade.php` ter-merge otomatis) -> commit `5e3ad5b`, seluruh suite
+    **549 test hijau (2620 assertions)** + `php artisan view:cache` sukses;
+    (b) kedua skrip deploy dialihkan ke GitHub: `deploy-prod.ps1` push ke
+    `origin` (fatal bila gagal) lalu `hub` (peringatan saja), mengarahkan remote
+    `origin` copy PROD ke GitHub, `fetch` + `merge --ff-only FETCH_HEAD` dengan
+    CADANGAN path repo hub lokal bila GitHub tidak bisa dihubungi, plus penjaga
+    baru `TolakPullBilaProdKotor()` yang membatalkan pull bila ada berkas PROD
+    yang belum di-commit PADA BERKAS YANG IKUT BERUBAH (hanya peringatan bila
+    tidak bentrok); `deploy-laporan-prod.ps1` push ke GitHub + hub dan membaca
+    commit yang akan dipasang LANGSUNG dari GitHub (`git ls-remote`) sehingga
+    ringkasannya sekaligus membuktikan push sampai;
+    (c) helper baru `PanggilGit` (menurunkan `ErrorActionPreference` sementara
+    supaya tulisan stderr git tidak menghentikan skrip, bandingkan insiden #31)
+    dipakai untuk semua perintah git yang menulis ke stderr, dan `KomitHash`
+    (`rev-parse`) untuk membandingkan hash GitHub dengan hash DEV/PROD.
+    Jebakan yang harus diingat: copy PROD memuat berkas yang DISENTUH MANUAL
+    (`resources/views/reports/partials/_temuan-kartu.blade.php`, label
+    "Temuan (Opsional)" diubah menjadi "Temuan") sehingga penjaga berkas kotor
+    itu memang diperlukan; copy DEV juga memuat perubahan belum-commit dari sesi
+    lain (`resources/views/reports/partials/_temuan.blade.php` dengan perubahan
+    label yang SAMA, `.env.example`, `.gitignore`, dua berkas
+    `RENCANA_MODUL_*.md` yang terhapus, `app/Jobs/ProcessCmFindingsImport.php`,
+    `?? .kilo/`, dan `?? app/Console/Commands/CmDriveCheck.php`) yang SENGAJA
+    tidak ikut di-commit.
+
 
 ## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN
 
@@ -2898,8 +2955,9 @@ dibiarkan apa adanya, sengaja, karena itu nama perusahaan bukan nama aplikasi.
       `.gitignore`, `app/Console/Commands/CmDriveCheck.php`). Daftar kotor itu
       SELALU diperiksa lebih dulu dengan `git status --short`, jangan memakai
       contoh di sini sebagai daftar tetap.
-   c. Setelah commit, langsung `git push hub main`. Pekerjaan dianggap
-      "selesai" hanya setelah hash commit-nya dilaporkan ke user.
+   c. Setelah commit, langsung `git push origin main` (GitHub, kanal utama) lalu
+      `git push hub main` (cadangan lokal). Pekerjaan dianggap "selesai" hanya
+      setelah hash commit-nya dilaporkan ke user.
    d. Yang BELUM lulus uji JANGAN di-commit (jangan pernah commit kode setengah
       jalan/rusak). Kalau memang harus menyimpan pekerjaan darurat, buat
       commit terpisah berawalan `WIP:` dan sebutkan di laporan bahwa commit itu
@@ -2908,8 +2966,8 @@ dibiarkan apa adanya, sengaja, karena itu nama perusahaan bukan nama aplikasi.
       (dijalankan manusia, ada konfirmasi `y`) — commit/push TIDAK mengubah
       PROD sedikit pun. Setelah push, bandingkan commit PROD
       (`git -C 'C:\laragon\www\oleochemicalReport-prod' log --oneline -1`)
-      dengan commit hub (`git rev-parse hub/main`) untuk tahu PROD masih
-      tertinggal atau tidak, lalu laporkan.
+      dengan commit GitHub (`git ls-remote origin refs/heads/main`) untuk tahu
+      PROD masih tertinggal atau tidak, lalu laporkan.
    f. Alasan aturan ini: kalau nanti file corrupt dan perlu `git checkout`,
       kerugian yang hilang hanya sebatas perubahan sejak commit terakhir,
       bukan seluruh sesi kerja.
