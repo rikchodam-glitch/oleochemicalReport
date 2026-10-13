@@ -352,24 +352,90 @@ class Report extends Model
     }
 
     /**
-     * Hapus semua file foto dari Storage saat laporan dihapus supaya tidak
-     * ada file orphan tertinggal di disk.
+     * Perawatan saat laporan dihapus:
+     *   1. baris salinan milik laporan ini (kolaborasi & multi alat) ikut
+     *      dihapus supaya tidak ada baris yatim,
+     *   2. berkas foto di Storage baru dihapus bila TIDAK dipakai laporan lain.
+     *
+     * Baris salinan kolaborasi dan salinan multi alat memakai PATH FOTO YANG
+     * SAMA dengan laporan induk. Tanpa pemeriksaan pemakaian, menghapus satu
+     * baris salinan ikut menghapus berkas foto milik induk (data hilang).
+     * Sebaliknya kolom multi_of memakai aturan nullOnDelete di database sehingga
+     * menghapus laporan INDUK meninggalkan baris salinannya sebagai laporan
+     * biasa — jamnya lalu terhitung dua kali di man hour — karena itu salinan
+     * dihapus lebih dulu di sini.
      */
     protected static function boot()
     {
         parent::boot();
 
         static::deleting(function (Report $report) {
-            $paths = array_merge(
+            // 1. Baris salinan (kolaborasi & multi alat) milik laporan ini.
+            foreach ([$report->collaboratorReports(), $report->multiItems()] as $relasi) {
+                foreach ($relasi->get() as $salinan) {
+                    $salinan->delete();
+                }
+            }
+
+            // 2. Berkas foto: hanya yang tidak dipakai laporan lain.
+            $paths = array_values(array_filter(array_merge(
                 $report->photo_documentation ?? [],
                 $report->photo_hygiene_clearance ?? []
-            );
-            $paths = array_filter($paths);
+            )));
 
-            if (!empty($paths)) {
-                Storage::disk(config('telegram.photo_disk', 'public'))->delete($paths);
+            if ($paths === []) {
+                return;
+            }
+
+            $dipakaiLain = self::pathFotoLaporanLain((int) $report->getKey());
+            $hapus       = array_values(array_filter(
+                $paths,
+                fn (string $path): bool => ! isset($dipakaiLain[$path])
+            ));
+
+            if ($hapus !== []) {
+                Storage::disk(config('telegram.photo_disk', 'public'))->delete($hapus);
             }
         });
+    }
+
+    /**
+     * Kumpulan path foto yang masih dipakai laporan LAIN (selain laporan yang
+     * sedang dihapus).
+     *
+     * Dibaca dalam SATU query lintas seluruh laporan supaya penghapusan tidak
+     * memicu banyak pencarian, dan sengaja TIDAK memakai fungsi JSON khusus
+     * MySQL/SQLite agar perilakunya sama di kedua database.
+     *
+     * @param  int $idDikecualikan ID laporan yang sedang dihapus
+     * @return array<string, bool> Peta path => true
+     */
+    public static function pathFotoLaporanLain(int $idDikecualikan): array
+    {
+        $dipakai = [];
+
+        $barisLain = self::query()
+            ->whereKeyNot($idDikecualikan)
+            ->where(function ($query): void {
+                $query->whereNotNull('photo_documentation')
+                    ->orWhereNotNull('photo_hygiene_clearance');
+            })
+            ->get(['id', 'photo_documentation', 'photo_hygiene_clearance']);
+
+        foreach ($barisLain as $baris) {
+            $paths = array_merge(
+                $baris->photo_documentation ?? [],
+                $baris->photo_hygiene_clearance ?? []
+            );
+
+            foreach ($paths as $path) {
+                if (is_string($path) && $path !== '') {
+                    $dipakai[$path] = true;
+                }
+            }
+        }
+
+        return $dipakai;
     }
 
     // =========================================================
