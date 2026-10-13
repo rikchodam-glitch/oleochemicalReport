@@ -5,8 +5,10 @@
         powershell -ExecutionPolicy Bypass -File C:\laragon\www\oleochemicalReport\tools\deploy-prod.ps1
         powershell -ExecutionPolicy Bypass -File ...\tools\deploy-prod.ps1 -PesanCommit "feat(x): pesan" -BangunAset
 
-    Urutan kerja: commit DEV (opsional) -> push ke GitHub (kanal utama) lalu ke
-    repo hub lokal (cadangan) -> arahkan remote origin copy PROD ke GitHub ->
+    Urutan kerja: commit DEV (opsional) -> penjaga alur kerja banyak teknisi
+    (copy DEV WAJIB sama dengan cabang main GitHub; skrip ini TIDAK mengunggah
+    apa pun, karena main hanya boleh diisi lewat Pull Request) -> arahkan remote
+    origin copy PROD ke GitHub ->
     fetch + merge --ff-only di PROD (cadangan repo hub lokal bila GitHub tidak
     bisa dihubungi) -> mode pemeliharaan -> composer install --no-dev ->
     migrate --force -> config:cache + view:cache (BUKAN "artisan optimize",
@@ -37,13 +39,13 @@ $ComposerPhar = 'C:\laragon\bin\composer\composer.phar'
 $NodeDir      = 'C:\laragon\bin\nodejs\node-v22'
 $NodeExe      = Join-Path $NodeDir 'node.exe'
 $NpmCmd       = Join-Path $NodeDir 'npm.cmd'
-# Kanal deploy (diputuskan user 13/10/2026): GitHub = sumber resmi, DEV push
-# ke sana dan copy PROD menarik dari sana. Repo hub lokal (bare) DIPERTAHANKAN
-# hanya sebagai cadangan supaya deploy tetap bisa jalan saat GitHub tidak bisa
-# dihubungi; kegagalan cadangan tidak pernah membatalkan deploy.
+# Kanal deploy (diputuskan user 13/10/2026, diperbarui 13/10/2026): GitHub =
+# sumber resmi. Cabang main di GitHub hanya boleh diisi lewat Pull Request,
+# karena itu skrip ini TIDAK mengunggah apa pun: ia hanya memastikan copy DEV
+# sama dengan main GitHub, lalu menarik commit itu ke PROD. Repo hub lokal
+# (bare) DIPERTAHANKAN hanya sebagai cadangan supaya deploy tetap bisa jalan
+# saat GitHub tidak bisa dihubungi; kegagalan cadangan tidak membatalkan deploy.
 $RepoUrl        = 'https://github.com/rikchodam-glitch/oleochemicalReport.git'
-$RemoteUtama    = 'origin'
-$RemoteCadangan = 'hub'
 $HubPath        = 'C:\laragon\repo\oleochemicalReport.git'
 $Branch         = 'main'
 
@@ -185,26 +187,32 @@ if ($LewatiDev) {
         throw 'Masih ada perubahan pada file ter-track di DEV. Commit dulu, lalu jalankan ulang deploy.'
     }
 
-    $fileBaru = git -C $DevPath status --porcelain --untracked-files=all | Where-Object { $_ -like '??*' }
+    $fileBaru = git -C $DevPath status --porcelain --untracked-files=all | Where-Object { $_.Trim().StartsWith('??') }
     if ($fileBaru) {
         Tulis 'PERINGATAN: file baru berikut belum di-commit sehingga tidak ikut ter-deploy:'
         $fileBaru | ForEach-Object { Write-Host ("         " + $_) }
     }
 
-    # ==== 3. Push DEV -> GitHub (kanal utama) -> repo hub (cadangan) ====
-    Tulis ('Push commit DEV ke GitHub (' + $RepoUrl + ')...')
-    $pushUtama = PanggilGit @('-C', $DevPath, 'push', $RemoteUtama, $Branch)
+    # ==== 3. Penjaga alur kerja banyak teknisi ====
+    # Sejak 13/10/2026 skrip ini TIDAK mengunggah apa pun: cabang main di GitHub
+    # hanya boleh diisi lewat Pull Request yang sudah di-merge (AGENTS.md "ALUR
+    # KERJA BANYAK TEKNISI"). Yang dikerjakan di sini hanya MEMASTIKAN copy DEV
+    # berada tepat pada commit main GitHub, supaya PROD tidak memasang versi lama
+    # maupun versi yang belum di-review.
+    $komitLokal  = (([string]((PanggilGit @('-C', $DevPath, 'rev-parse', 'HEAD')).Keluaran | Select-Object -First 1)) + '').Trim()
+    $barisGithub = (([string]((PanggilGit @('ls-remote', $RepoUrl, ('refs/heads/' + $Branch))).Keluaran | Select-Object -First 1)) + '').Trim()
+    $komitGithub = ''
 
-    if ($pushUtama.Kode -ne 0) {
-        foreach ($baris in @($pushUtama.Keluaran | Select-Object -Last 4)) { Write-Host ('          ' + $baris) }
-        throw 'Push ke GitHub gagal: periksa koneksi internet dan kredensial GitHub.'
-    }
+    if ($barisGithub -ne '') { $komitGithub = $barisGithub.Split()[0] }
 
-    # Cadangan lokal: kegagalannya TIDAK membatalkan deploy.
-    $pushCadangan = PanggilGit @('-C', $DevPath, 'push', $RemoteCadangan, $Branch)
-
-    if ($pushCadangan.Kode -ne 0) {
-        Tulis 'PERINGATAN: push ke repo hub lokal (cadangan) gagal; deploy tetap lanjut lewat GitHub.'
+    if ($komitGithub -eq '') {
+        Tulis 'PERINGATAN: commit main GitHub tidak terbaca; penjaga "main DEV = GitHub" dilewati.'
+    } elseif ($komitLokal -ne $komitGithub) {
+        Write-Host ('          commit DEV    : ' + $komitLokal)
+        Write-Host ('          commit GitHub : ' + $komitGithub)
+        throw 'Deploy dibatalkan: copy DEV tidak sama dengan cabang main GitHub. Selesaikan pekerjaan lewat Pull Request lebih dulu, lalu di copy DEV jalankan tools\penjaga-main-dev.ps1 -PerbaikiTertinggal.'
+    } else {
+        Tulis 'Penjaga alur kerja: copy DEV sama dengan cabang main GitHub.'
     }
 }
 

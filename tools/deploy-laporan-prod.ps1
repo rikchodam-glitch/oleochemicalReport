@@ -6,8 +6,13 @@
       1. Validasi path (DEV, PROD, php.exe, mysqldump).
       2. Backup database PROD (mysqldump) ke C:\laragon\backup-oleochemical\db
          dan menyisakan sejumlah backup terbaru saja.
-      3. Kirim commit DEV yang SUDAH ada ke GitHub (kanal utama) lalu ke repo
-         hub lokal (cadangan) - tanpa membuat commit baru.
+      3. Penjaga alur kerja banyak teknisi (tools\penjaga-main-dev.ps1): copy DEV
+         yang menjalankan pintasan ini WAJIB berada tepat pada commit cabang main
+         di GitHub. Bila hanya tertinggal, copy DEV dimajukan otomatis
+         (fast-forward); bila berbeda/bercabang, deploy DIBATALKAN. Sejak
+         13/10/2026 langkah ini TIDAK lagi mengunggah apa pun ke GitHub karena
+         main hanya boleh diisi lewat Pull Request (lihat AGENTS.md bagian
+         "ALUR KERJA BANYAK TEKNISI").
       4. Ringkasan: commit PROD sekarang, commit yang akan dipasang (dibaca
          langsung dari GitHub), migrasi tertunda, dan berkas DEV yang belum
          di-commit (hanya keterangan).
@@ -45,11 +50,11 @@ $DevPath      = 'C:\laragon\www\oleochemicalReport'
 $ProdPath     = 'C:\laragon\www\oleochemicalReport-prod'
 $PhpExe       = 'C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe'
 $MySqlDump    = 'C:\laragon\bin\mysql\mysql-8.4.3-winx64\bin\mysqldump.exe'
-# Kanal deploy (diputuskan user 13/10/2026): GitHub = sumber resmi, DEV push ke
-# sana dan copy PROD menarik dari sana. Repo hub lokal DIPERTAHANKAN sebagai
-# cadangan/offline saja (kegagalannya tidak pernah membatalkan deploy).
+# Kanal deploy (diputuskan user 13/10/2026, diperbarui 13/10/2026): GitHub =
+# sumber resmi; cabang main di GitHub hanya boleh diisi lewat Pull Request,
+# sehingga skrip ini TIDAK lagi mengunggah apa pun (lihat tools\penjaga-main-dev.ps1).
+# Repo hub lokal DIPERTAHANKAN sebagai cadangan/offline saja.
 $RepoUrl      = 'https://github.com/rikchodam-glitch/oleochemicalReport.git'
-$RemoteUtama  = 'origin'
 $HubRemote    = 'hub'
 $Branch       = 'main'
 $FolderBackup = 'C:\laragon\backup-oleochemical'
@@ -344,30 +349,28 @@ if ($HanyaBackup) {
     return
 }
 
-# ==== 3. Kirim commit DEV yang SUDAH ada ke GitHub (lalu repo hub cadangan) ====
-# Sengaja TIDAK membuat commit baru: berkas DEV yang belum di-commit (mis.
-# pekerjaan sesi lain) tidak boleh ikut tersapu ke produksi.
+# ==== 3. Penjaga alur kerja banyak teknisi ====
+# Cabang main di GitHub hanya boleh diisi lewat Pull Request yang sudah di-merge
+# (AGENTS.md "ALUR KERJA BANYAK TEKNISI"), sedangkan production menarik kode
+# langsung dari GitHub. Karena itu copy DEV yang menjalankan pintasan ini WAJIB
+# berada TEPAT pada commit main GitHub:
+#   - sejajar            -> lanjut.
+#   - hanya tertinggal   -> copy DEV dimajukan otomatis (fast-forward, aman).
+#   - bercabang/berbeda  -> deploy DIBATALKAN supaya pekerjaan yang belum
+#                           di-review TIDAK PERNAH sampai ke produksi.
+# Penjaga ini juga menyamakan repo hub lokal (cadangan) dengan commit GitHub.
+$skripPenjaga = Join-Path $PSScriptRoot 'penjaga-main-dev.ps1'
+
+Tulis 'Memeriksa kesesuaian copy DEV dengan cabang main GitHub...'
+$kodePenjaga = SkripTerpisah $skripPenjaga @('-DevPath', $DevPath, '-PerbaikiTertinggal')
+
+if ($kodePenjaga -ne 0) {
+    Catat ('deploy dibatalkan penjaga main-dev, exit code ' + $kodePenjaga)
+    throw 'Deploy dibatalkan: copy DEV tidak berada pada commit cabang main GitHub (lihat pesan [penjaga] di atas). Pastikan pekerjaan sudah masuk lewat Pull Request, lalu di copy DEV jalankan: git checkout main dan git pull --ff-only origin main.'
+}
+
 $komitDev  = KomitTerakhir $DevPath
 $komitProd = KomitTerakhir $ProdPath
-
-if (Test-Path (Join-Path $DevPath '.git')) {
-    Tulis 'Mengirim commit DEV ke GitHub (kanal utama)...'
-    $push = Panggil 'git' @('-C', $DevPath, 'push', $RemoteUtama, $Branch)
-
-    if ($push.Kode -ne 0) {
-        Tulis 'PERINGATAN: push DEV ke GitHub gagal; PROD akan menarik commit terakhir yang ADA di kanal cadangan (repo hub lokal).'
-        foreach ($baris in @($push.Keluaran | Select-Object -Last 3)) { Write-Host ('          ' + $baris) }
-    }
-
-    # Cadangan lokal: kegagalannya tidak membatalkan deploy.
-    $pushCadangan = Panggil 'git' @('-C', $DevPath, 'push', $HubRemote, $Branch)
-
-    if ($pushCadangan.Kode -ne 0) {
-        Tulis 'PERINGATAN: push DEV ke repo hub lokal (cadangan) gagal.'
-    }
-} else {
-    Tulis 'PERINGATAN: copy DEV tidak punya repo git, langkah push dilewati.'
-}
 
 # Yang benar-benar akan dipasang adalah commit di GitHub (kanal utama), bukan
 # commit DEV lokal. Dibaca langsung dari GitHub supaya ringkasan ini sekaligus
