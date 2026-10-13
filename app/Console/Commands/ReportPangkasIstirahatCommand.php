@@ -28,8 +28,10 @@ use Illuminate\Support\Facades\Log;
  * Kolom yang diubah HANYA work_duration_minutes (durasi NORMAL). LEMBUR tidak
  * disimpan di kolom mana pun: dihitung ulang dari jam laporan (lihat
  * JamKerjaService::ringkasJamKerja()) sehingga selalu ikut kalau jam dikoreksi,
- * dan dilaporkan pada kolom `lembur` berkas CSV. Tanpa --execute perintah ini
- * hanya menampilkan simulasi.
+ * dan dilaporkan pada kolom `lembur` berkas CSV. Sejak 13/10/2026 jam ISTIRAHAT
+ * tidak dihitung lembur (menitnya hanya terpotong dari durasi), jadi angka
+ * lembur pada berkas CSV lebih kecil daripada sebelum perubahan itu.
+ * Tanpa --execute perintah ini hanya menampilkan simulasi.
  *
  * Contoh:
  *   php artisan reports:pangkas-istirahat
@@ -49,7 +51,7 @@ class ReportPangkasIstirahatCommand extends Command
     /**
      * @var string
      */
-    protected $description = 'Hitung ulang durasi man hour NORMAL laporan lama (jam kerja dikurangi istirahat) dan laporkan lembur (jam di luar jam kerja/hari OFF)';
+    protected $description = 'Hitung ulang durasi man hour NORMAL laporan lama (jam kerja dikurangi istirahat) dan laporkan lembur (jam di luar jam kerja/hari OFF; jam istirahat bukan lembur)';
 
     /**
      * Jalankan perintah: periksa laporan yang punya jam mulai & selesai,

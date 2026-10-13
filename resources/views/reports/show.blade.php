@@ -125,28 +125,10 @@
                     @enderror
                 </div>
 
-                {{-- Durasi: VIEW --}}
-                <div x-show="!editMode" class="flex items-center gap-1.5 text-slate-600">
-                    <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    {{-- Rentang jam kerja ditampilkan bersama durasi supaya mode
-                         lihat dan mode edit memakai keterangan yang sama
-                         (lihat partial _waktu-kerja pada mode edit). --}}
-                    @if($report->time_range)
-                        <span class="font-medium text-slate-700">{{ $report->time_range }}</span>
-                        <span class="text-slate-300">&middot;</span>
-                    @endif
-
-
-                    <span class="font-medium text-slate-700">
-                        @if($report->work_duration_minutes)
-                            {{ $report->duration_label ?? '-' }}
-                        @else
-                            -
-                        @endif
-                    </span>
-                </div>
+                {{-- Durasi: VIEW -- angka dihitung dari jam laporan (lihat
+                     partial _waktu-kerja-lihat) supaya durasi dan lembur tidak
+                     pernah dihitung dua kali. --}}
+                @include('reports.partials._waktu-kerja-lihat', ['report' => $report])
 
                 {{-- Jam kerja (mulai/selesai) diisi di kartu "Waktu Pengerjaan"
                      pada kolom kiri, memakai partial _waktu-kerja. --}}

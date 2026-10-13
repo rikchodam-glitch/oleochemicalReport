@@ -12,9 +12,12 @@ uses(RefreshDatabase::class);
 /**
  * LEMBUR (overtime) pada profil teknisi (13/10/2026).
  *
- * Aturan yang diputuskan user:
- *   - lembur = seluruh menit di luar jendela kerja bruto (sebelum jam masuk,
- *     sesudah jam pulang, JAM ISTIRAHAT) plus seluruh jam pada hari libur/OFF,
+ * Aturan yang diputuskan user (disempurnakan 13/10/2026):
+ *   - lembur = seluruh menit di luar jendela kerja bruto (sebelum jam masuk dan
+ *     sesudah jam pulang) plus seluruh jam pada hari libur/OFF,
+ *   - JAM ISTIRAHAT BUKAN lembur: menitnya hanya terpotong dari durasi man hour
+ *     sehingga tidak ada menit yang dihitung dua kali (aturan ini berlaku untuk
+ *     pekerja shift juga),
  *   - lembur DIKELUARKAN dari man hour normal (angkanya turun) dan ditampilkan
  *     sebagai penanda + segmen batang oranye,
  *   - ada tombol "Cek Overtime" berisi rincian per tanggal beserta laporannya
@@ -75,7 +78,8 @@ function laporanLembur(Technician $teknisi, string $tanggal, ?string $mulai, ?st
 }
 
 test('man hour memisahkan lembur dari jam kerja normal', function () {
-    // 10:00-16:00 = 360 menit: 300 menit jam kerja + 60 menit lembur (istirahat).
+    // 10:00-16:00 = 360 menit: 300 menit jam kerja + 60 menit istirahat.
+    // Istirahat terpotong dari durasi dan BUKAN lembur (aturan 13/10/2026).
     laporanLembur($this->teknisi, $this->tanggal->toDateString(), '10:00', '16:00', 300);
     // 17:00-19:00 di luar jam kerja: 120 menit lembur, jam kerja 0.
     laporanLembur($this->teknisi, $this->tanggal->toDateString(), '17:00', '19:00', 0);
@@ -87,12 +91,12 @@ test('man hour memisahkan lembur dari jam kerja normal', function () {
 
     expect($harian)->toHaveCount(1)
         ->and($harian[0]['menit'])->toBe(480)
-        ->and($harian[0]['lembur'])->toBe(180);
+        ->and($harian[0]['lembur'])->toBe(120);
 
     $ringkasan = $manHour->ringkasan($harian);
 
     expect($ringkasan['total_menit'])->toBe(480)
-        ->and($ringkasan['total_lembur_menit'])->toBe(180);
+        ->and($ringkasan['total_lembur_menit'])->toBe(120);
 });
 
 test('lemburPerTanggal mengelompokkan lembur per tanggal dan laporan', function () {
@@ -105,12 +109,12 @@ test('lemburPerTanggal mengelompokkan lembur per tanggal dan laporan', function 
     $rincian = app(ManHourService::class)->lemburPerTanggal($this->teknisi, $this->tanggal, $this->tanggal);
 
     expect($rincian)->toHaveKey($tanggal)
-        ->and($rincian[$tanggal]['menit'])->toBe(180)
-        // Hanya laporan yang menyentuh lembur yang didaftarkan.
-        ->and($rincian[$tanggal]['laporan'])->toHaveCount(2)
-        ->and($rincian[$tanggal]['laporan'][0]['lembur'])->toBe(60)
-        ->and($rincian[$tanggal]['laporan'][1]['lembur'])->toBe(120)
-        ->and($rincian[$tanggal]['laporan'][1]['kode'])->toBe($kedua->report_code);
+        ->and($rincian[$tanggal]['menit'])->toBe(120)
+        // Hanya laporan yang jamnya di luar jendela kerja yang didaftarkan:
+        // laporan 10:00-16:00 tidak lagi muncul karena istirahat bukan lembur.
+        ->and($rincian[$tanggal]['laporan'])->toHaveCount(1)
+        ->and($rincian[$tanggal]['laporan'][0]['lembur'])->toBe(120)
+        ->and($rincian[$tanggal]['laporan'][0]['kode'])->toBe($kedua->report_code);
 });
 
 test('profil teknisi menampilkan penanda lembur dan tombol cek overtime', function () {
@@ -126,8 +130,8 @@ test('profil teknisi menampilkan penanda lembur dan tombol cek overtime', functi
         ->assertSee('Cek Overtime', false)
         ->assertSee('bukaModalLembur()', false)
         ->assertSee('id="modal_lembur"', false)
-        // 60 + 120 menit lembur = 3,0 jam.
-        ->assertSee('Lembur: 3,0 j', false)
+        // 120 menit lembur = 2,0 jam (jam istirahat tidak dihitung lembur).
+        ->assertSee('Lembur: 2,0 j', false)
         // Segmen batang oranye + kolom lembur pada rincian harian.
         ->assertSee('bg-amber-500', false)
         // Wadah segmen oranye (teks penanda Blade tidak ikut ter-render, jadi

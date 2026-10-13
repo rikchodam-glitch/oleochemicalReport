@@ -322,12 +322,15 @@ class JamKerjaService
     /**
      * Ringkasan jam kerja satu rentang laporan.
      *
-     * Aturan (diputuskan user 13/10/2026):
+     * Aturan (diputuskan user 13/10/2026, disempurnakan pada hari yang sama):
      *   - jam kerja NORMAL = menit di dalam jendela kerja bruto hari itu
      *     DIKURANGI istirahat (istirahat hanya berlaku pekerja non-shift),
-     *   - LEMBUR = seluruh menit di luar jendela kerja bruto (sebelum jam masuk,
-     *     sesudah jam pulang, jam istirahat) DITAMBAH seluruh jam pada hari
-     *     libur/OFF. Jadi total rentang = normal + lembur.
+     *   - LEMBUR = seluruh menit di LUAR jendela kerja bruto (sebelum jam masuk
+     *     dan sesudah jam pulang) DITAMBAH seluruh jam pada hari libur/OFF.
+     *     Jam ISTIRAHAT bukan lembur (diputuskan user 13/10/2026): menit itu
+     *     terpotong dari durasi sehingga tidak dihitung di mana pun. Akibatnya
+     *     total rentang = normal + lembur + istirahat, dan aturan ini berlaku
+     *     untuk pekerja shift juga (jam di luar jendela shift = lembur).
      *   - Group teknisi yang tidak dikenal (mis. belum diisi) tidak dinilai:
      *     seluruh menit dianggap jam kerja normal supaya angka tidak berubah.
      *
@@ -371,14 +374,22 @@ class JamKerjaService
             ];
         }
 
-        $jendela   = $this->jendelaDariJadwal($shift, $grup, $tanggal);
-        $istirahat = $this->menitIstirahat($grup, $tanggal, $mulai, $selesai);
-        $normal    = max(0, $this->menitDalamJendela($jendela, $mulai, $selesai) - $istirahat);
+        $jendela      = $this->jendelaDariJadwal($shift, $grup, $tanggal);
+        $dalamJendela = $this->menitDalamJendela($jendela, $mulai, $selesai);
+
+        // Istirahat yang BENAR-BENAR dipotong = irisan jendela istirahat dengan
+        // jendela kerja hari itu. Istirahat di luar jendela kerja (mis. rentang
+        // yang hanya menyentuh jam istirahat pada hari libur) tidak pernah
+        // mengurangi apa pun dan tidak pernah menjadi lembur.
+        $istirahat = min($this->menitIstirahat($grup, $tanggal, $mulai, $selesai), $dalamJendela);
 
         return [
             'total'     => $total,
-            'normal'    => $normal,
-            'lembur'    => max(0, $total - $normal),
+            'normal'    => max(0, $dalamJendela - $istirahat),
+            // Lembur = menit di luar jendela kerja saja. Jam istirahat TIDAK
+            // dihitung lembur (keputusan user 13/10/2026) sehingga durasi
+            // otomatis terpotong dan tidak ada menit yang dihitung dua kali.
+            'lembur'    => max(0, $total - $dalamJendela),
             'istirahat' => $istirahat,
             'jendela'   => $jendela,
             'libur'     => $jendela === null,
