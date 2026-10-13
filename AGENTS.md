@@ -103,17 +103,39 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   - Mengaktifkan kembali penjagaan otomatis:
     `Enable-ScheduledTask -TaskName oleo-jaga-service-prod` atau
     `tools\pasang-jadwal-jaga-service.ps1`.
-  - Pintasan Desktop untuk pengguna awam (dibuat 30/09/2026, di luar repo
-    jadi tidak dilacak git): `C:\Users\sapusr\Desktop\Jalankan-Service-Laporan.bat`,
-    `C:\Users\sapusr\Desktop\Hentikan-Service-Laporan.bat`,
-    `C:\Users\sapusr\Desktop\Cek-Status-Laporan.bat`, dan
-    `C:\Users\sapusr\Desktop\Pasang-Token-Tunnel.bat`. Semuanya hanya MEMANGGIL
-    file resmi copy PROD (`start-report.bat`, `stop-report.bat`,
-    `tools\cek-status-prod.ps1`, `tools\pasang-token-tunnel-prod.ps1`) supaya
-    tidak ada dua versi logika; kalau file
-    di copy PROD tidak ditemukan, pintasan berhenti dengan pesan jelas.
-    `Pasang-Token-Tunnel.bat` bersifat INTERAKTIF (Read-Host untuk menempel
-    token tunnel baru), jadi JANGAN dijalankan lewat pipe/tanpa manusia.
+  - Pintasan Desktop untuk pengguna awam (di luar repo, jadi tidak dilacak
+    git). Keadaan per 13/10/2026: SEMBILAN peluncur, semuanya hanya MEMANGGIL
+    file resmi copy PROD supaya tidak ada dua versi logika; kalau file di copy
+    PROD tidak ditemukan, pintasan berhenti dengan pesan jelas.
+    1. `Deploy-Laporan.bat` -> `PROD\tools\deploy-laporan-prod.ps1` (deploy 1 klik).
+    2. `Backup-Database-Laporan.bat` -> backup database PROD.
+    3. `Cek-Status-Laporan.bat` -> `PROD\tools\cek-status-prod.ps1`.
+    4. `Pasang-Token-Tunnel.bat` -> `PROD\tools\pasang-token-tunnel-prod.ps1`
+       (INTERAKTIF: Read-Host untuk menempel token baru — JANGAN dijalankan
+       lewat pipe/tanpa manusia).
+    5. `Cek-Tunnel-Laporan.bat` -> `PROD\tools\cek-tunnel-prod.ps1` (BARU 13/10/2026).
+    6. `Set-Domain-Laporan.bat` -> `PROD\tools\set-domain-prod.ps1` (BARU 13/10/2026;
+       menanyakan domain lalu memanggilnya dengan/tanpa `-Paksa`; domain kosong
+       dibatalkan tanpa menyentuh PROD).
+    7. `Siapkan-Tunnel-Laporan.bat` -> `PROD\tools\siapkan-tunnel-prod.ps1` (BARU 13/10/2026).
+    8. `Pasang-Jadwal-Jaga-Laporan.bat` -> `PROD\tools\pasang-jadwal-jaga-service.ps1`
+       (BARU 13/10/2026).
+    Ditambah dua SALINAN APA ADANYA (bukan peluncur) `start-report.bat` dan
+    `stop-report.bat` — lihat butir berikutnya. Empat peluncur BARU itu punya
+    mode `uji` (`<berkas>.bat uji`): hanya mencetak perintah PowerShell yang
+    akan dijalankan, tidak menyentuh PROD — itulah cara aman mengujinya.
+  - **Pintasan DUPLIKAT/PENGGANGGU yang DIBUANG 13/10/2026** (arsip lengkap:
+    `C:\laragon\backup-oleochemical\desktop-tools-lama-20261013-101528` +
+    `CATATAN.txt` di dalamnya): `Jalankan-Service-Laporan.bat` dan
+    `Hentikan-Service-Laporan.bat` (hanya memanggil
+    `PROD\start-report.bat`/`stop-report.bat`, jadi duplikat murni), dan
+    `terminal.bat` (menyalakan `telegram:poll` dari copy DEV — DILARANG, dua
+    poller = bot mati total 409, Riwayat Insiden #21). JANGAN dihidupkan lagi.
+    Di folder `Downloads` dibuang `diagnose-server.bat` + `capture-traffic.bat`
+    (versi lama, sudah digantikan `-v2`) dan `update-project.bat` (duplikat dari
+    `C:\laragon\www\oleochemicalReport\update-project.bat` yang masih ada);
+    `diagnose-server-v2.bat` + `capture-traffic-v2.bat` hanya DIPINDAHKAN ke
+    Desktop (tidak dihapus) supaya semua perkakas ada di satu tempat.
   - **Salinan LANGSUNG di Desktop (diminta user, 08/10/2026):** selain peluncur
     di atas, ada dua SALINAN APA ADANYA dari berkas copy DEV, yaitu
     `C:\Users\sapusr\Desktop\start-report.bat` dan
