@@ -9,8 +9,10 @@ use App\Models\Asset;
 use App\Models\FunctionalLocation;
 use App\Models\Report;
 use App\Models\Technician;
+use App\Services\Shift\JamKerjaService;
 use App\Services\TechnicianKinerjaService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 class ReportController extends Controller
@@ -624,16 +626,29 @@ class ReportController extends Controller
         }
 
         // Durasi dikosongkan + jam mulai/selesai terisi -> hitung dari rentang
-        // jam lewat SATU sumber aturan (Report::durasiDariJam()): jam selesai
-        // lebih kecil dari jam mulai = melewati tengah malam (ditambah 24 jam),
-        // jam selesai 24:00 = akhir hari. Bila durasi kosong DAN jam juga
-        // kosong, nilai lama DIPERTAHANKAN (kolom dihapus dari data update)
-        // supaya angka man hour tidak hilang karena kolom terlewat; isi 0 bila
-        // memang ingin dinolkan.
+        // jam lewat SATU sumber aturan (JamKerjaService::durasiKerja()):
+        // selisih jam menurut Report::durasiDariJam() (jam selesai lebih kecil
+        // dari jam mulai = melewati tengah malam ditambah 24 jam, jam selesai
+        // 24:00 = akhir hari) DIKURANGI istirahat hari itu untuk pekerja
+        // non-shift. Contoh: reguler Selasa 10:00-16:00 = 360 - 60 (istirahat
+        // 12:00-13:00) = 300 menit; pekerja shift tetap 8 jam penuh. Bila durasi
+        // kosong DAN jam juga kosong, nilai lama DIPERTAHANKAN (kolom dihapus
+        // dari data update) supaya angka man hour tidak hilang karena kolom
+        // terlewat; isi 0 bila memang ingin dinolkan.
         $durasiDikirim = $validated['work_duration_minutes'] ?? null;
 
         if ($durasiDikirim === null || $durasiDikirim === '') {
-            $durasi = Report::durasiDariJam($validated['start_time'] ?? null, $validated['end_time'] ?? null);
+            $jamMulai   = $validated['start_time'] ?? null;
+            $jamSelesai = $validated['end_time'] ?? null;
+
+            $durasi = $jamMulai !== null && $jamSelesai !== null
+                ? app(JamKerjaService::class)->durasiKerja(
+                    $report->technician,
+                    Carbon::parse($validated['report_date']),
+                    $jamMulai,
+                    $jamSelesai
+                )
+                : null;
 
             if ($durasi !== null) {
                 $validated['work_duration_minutes'] = $durasi;

@@ -6,6 +6,8 @@ use App\Models\Asset;
 use App\Models\FunctionalLocation;
 use App\Models\Technician;
 use App\Services\CollaborationService;
+use App\Services\Shift\JamKerjaService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -277,6 +279,11 @@ trait WizardStepHandlerTrait
     /**
      * Proses teks durasi yang diketik teknisi di Step 4.
      *
+     * Rentang jam dari teknisi dihitung memakai aturan yang sama dengan form web
+     * (JamKerjaService::durasiKerja()): pekerja NON-SHIFT (reguler & reguler
+     * staff) dipotong istirahat hari itu (Senin-Sabtu 12:00-13:00, Jumat
+     * 11:00-13:00), sedangkan pekerja shift (grub A-D) dihitung penuh.
+     *
      * @param  string $chatId Chat ID Telegram
      * @param  string $text   Input teks dari teknisi
      * @param  array  $state  State wizard saat ini
@@ -295,8 +302,16 @@ trait WizardStepHandlerTrait
             ];
         }
 
+        // Istirahat dipotong untuk teknisi NON-SHIFT (reguler & reguler staff)
+        // memakai tanggal laporan di state, sehingga angkanya sama dengan form
+        // web (JamKerjaService::durasiKerja()). Pekerja shift (grub A-D) tetap
+        // dihitung penuh.
+        $pelapor = Technician::where('telegram_id', $chatId)->first();
+        $tanggal = Carbon::parse($state['report_date'] ?? now()->toDateString());
+        $menit   = app(JamKerjaService::class)->durasiKerja($pelapor, $tanggal, $range['start'], $range['end']);
+
         $state                          = $this->pushStepHistory($state, self::STEP_WORK_DURATION);
-        $state['work_duration_minutes'] = $range['minutes'];
+        $state['work_duration_minutes'] = $menit ?? $range['minutes'];
         $state['start_time']            = $range['start'];
         $state['end_time']              = $range['end'];
         $state['step']                  = self::STEP_FINDING;
