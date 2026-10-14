@@ -552,6 +552,102 @@
         <div class="px-5 py-3 border-t border-slate-100">{{ $readings->appends(["range" => $range])->links() }}</div>
     @endif
 </div>
+{{-- Hasil laporan teknisi (daftar perbaikan) untuk equipment ini: SATU BARIS =
+     SATU LAPORAN yang BERTAG equipment ini. Sumber & aturan pencocokan ada di
+     CmController::equipmentShow() ($laporanTeknisi) — laporan equipment lain
+     TIDAK pernah tampil di sini walau kodenya hanya mirip. --}}
+<div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
+    <div class="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div>
+            <h3 class="text-sm font-semibold text-slate-900">Laporan Teknisi (Daftar Perbaikan)</h3>
+            <p class="text-xs text-slate-400 mt-0.5">
+                Hasil laporan teknisi yang bertag equipment <span class="font-mono">{{ $equipment->equipment_tag }}</span>.
+                Tekan Detail untuk membuka isi laporannya.
+                @if($equipment->asset)
+                    <a href="{{ route('assets.show', $equipment->asset) }}"
+                       class="text-teal-600 hover:text-teal-800 hover:underline font-medium">Buka di Asset Management</a>.
+                @endif
+            </p>
+        </div>
+        <p class="text-xs text-slate-500 shrink-0">
+            {{ number_format($laporanTeknisi->total()) }} laporan
+        </p>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="bg-slate-50 border-b border-slate-100">
+                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">No</th>
+                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Tanggal</th>
+                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Deskripsi Pekerjaan</th>
+                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Teknisi</th>
+                    <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Durasi</th>
+                    <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Status</th>
+                    <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Aksi</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-50">
+                @forelse($laporanTeknisi as $indeks => $laporan)
+                    @php
+                        $durasiMenit = (int) ($laporan->work_duration_minutes ?? 0);
+                        $durasiLabel = $durasiMenit <= 0
+                            ? '&mdash;'
+                            : ($durasiMenit >= 60
+                                ? intdiv($durasiMenit, 60) . 'j ' . ($durasiMenit % 60) . 'm'
+                                : $durasiMenit . 'm');
+                        $jumlahKolaborator = $laporan->collaboratorReports->count();
+                    @endphp
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="px-4 py-3 text-xs text-slate-400">{{ $laporanTeknisi->firstItem() + $indeks }}</td>
+                        <td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
+                            {{ $laporan->report_date?->format('d M Y') ?? '—' }}
+                            @if($laporan->tanggal_kejadian)
+                                <span class="block text-[11px] text-slate-400">Kejadian {{ $laporan->tanggal_kejadian->format('d M Y') }}</span>
+                            @endif
+                        </td>
+                        <td class="px-4 py-3 text-xs text-slate-700 max-w-[420px]">
+                            <span class="block truncate" title="{{ $laporan->work_description }}">{{ $laporan->work_description ?: '—' }}</span>
+                            @if($laporan->root_cause)
+                                <span class="block text-[11px] text-slate-400 truncate" title="{{ $laporan->root_cause }}">Penyebab: {{ $laporan->root_cause }}</span>
+                            @endif
+                        </td>
+                        <td class="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">
+                            <span class="block">{{ $laporan->technician?->name ?? 'Tanpa Nama' }}</span>
+                            @if($jumlahKolaborator > 0)
+                                <span class="mt-1 inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-100"
+                                      title="Laporan kolaborator pada pekerjaan ini">
+                                    {{ $jumlahKolaborator }} kolaborator
+                                </span>
+                            @endif
+                        </td>
+                        <td class="px-4 py-3 text-center text-xs text-slate-600 whitespace-nowrap">{!! $durasiLabel !!}</td>
+                        <td class="px-4 py-3 text-center"><x-status-badge :status="$laporan->status" /></td>
+                        <td class="px-4 py-3 text-center whitespace-nowrap">
+                            <a href="{{ route('reports.show', $laporan) }}"
+                               class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-teal-300 text-teal-700 hover:bg-teal-50 text-xs font-medium rounded-lg transition-colors">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                </svg>
+                                Detail
+                            </a>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="7" class="px-5 py-8 text-center text-slate-400 text-sm">
+                            Belum ada laporan teknisi yang bertag equipment ini.
+                        </td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+    @if($laporanTeknisi->hasPages())
+        <div class="px-5 py-3 border-t border-slate-100">{{ $laporanTeknisi->links() }}</div>
+    @endif
+</div>
+
 <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
     <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-slate-900">Temuan (Findings)</h3>

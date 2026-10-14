@@ -534,6 +534,36 @@ class CmController extends Controller
         }
 
         // ------------------------------------------------------------------
+        // Laporan Teknisi (hasil laporan / daftar perbaikan) untuk equipment ini
+        // ------------------------------------------------------------------
+        // Sumber: tabel reports. HANYA laporan yang benar-benar BERTAG equipment
+        // ini yang diambil, dan dicocokkan PERSIS (bukan pencarian teks):
+        //   (1) reports.equipment_tag == cm_equipment.equipment_tag, atau
+        //   (2) reports.asset_id menunjuk asset yang tech_ident_no-nya sama
+        //       persis dengan equipment_tag (relasi CmEquipment::asset()).
+        // Pencocokan lewat deskripsi pekerjaan (LIKE) SENGAJA TIDAK dipakai di
+        // sini: laporan equipment lain yang kodenya hanya MIRIP (mis. laporan
+        // "2-6163P8" untuk equipment "6163P8") tidak boleh ikut tampil —
+        // permintaan user 14/10/2026: "jangan sampai salah equipment".
+        // Salinan laporan kolaborator (collaborator_of terisi) disembunyikan
+        // supaya satu pekerjaan tampil sekali, sama seperti halaman detail asset.
+        $laporanTeknisi = Report::query()
+            ->with(['technician', 'collaboratorReports.technician'])
+            ->whereNull('collaborator_of')
+            ->where(function ($q) use ($equipment) {
+                $q->where('equipment_tag', $equipment->equipment_tag)
+                    ->orWhereIn('asset_id', function ($sub) use ($equipment) {
+                        $sub->select('id')
+                            ->from('assets')
+                            ->where('tech_ident_no', $equipment->equipment_tag);
+                    });
+            })
+            ->orderByDesc('report_date')
+            ->orderByDesc('id')
+            ->paginate(10, ['*'], 'pageLaporan')
+            ->appends(['range' => $range]);
+
+        // ------------------------------------------------------------------
         // Insight Trend Vibrasi Motor — deteksi slope/kenaikan signifikan
         // ------------------------------------------------------------------
         $vibrationInsight = $this->detectVibrationTrend($chartData);
@@ -574,6 +604,7 @@ class CmController extends Controller
             'totalFindingsOpen',
             'totalFindingsClosed',
             'mtbfData',
+            'laporanTeknisi',
             'vibrationInsight',
             'parameterTrend',
             'availableYears',
