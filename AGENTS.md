@@ -425,12 +425,61 @@ Repo ini PUBLIK (dibuktikan `git ls-remote` tanpa kredensial, 13/10/2026), jadi
 penguncian cabang **gratis** pada GitHub Free. Di
 `https://github.com/rikchodam-glitch/oleochemicalReport`:
 
+Aturan yang DIPUTUSKAN USER 13/10/2026: repo tetap **PUBLIK** dan penguncian
+memakai **Required approvals = 1**. Publik hanya berarti *terbaca* (siapa pun
+boleh clone/fork/mengirim PR), BUKAN boleh menulis: hak menulis ditentukan peran
+collaborator, dan selama penguncian aktif tidak ada seorang pun yang bisa push
+langsung ke `main`.
+
 1. **Settings -> Branches -> Add branch protection rule**, pola nama `main`.
-2. Centang **Require a pull request before merging** (`Require approvals` = 1).
-3. Centang **Require branches to be up to date before merging** (memaksa cabang
-   tugas sudah di-rebase ke `main` terbaru sebelum boleh di-merge).
-4. Centang **Do not allow bypassing the above settings** dan **Block force pushes**.
-5. Simpan.
+2. Biarkan **Restrict deletions** tercentang (`main` tidak bisa dihapus).
+   **JANGAN** mencentang **Restrict updates** -- itu memblokir SELURUH pembaruan
+   ref `main`, termasuk Merge Pull Request, sehingga alurnya beku. **Restrict
+   creations** tidak perlu (pola `main` tidak dipakai untuk cabang tugas).
+3. Centang **Require a pull request before merging**, lalu isi
+   **Required approvals = 1**. Dengan 0, setiap akun berhak tulis bisa meng-Merge
+   PR-nya sendiri tanpa review sehingga aturan "integrator me-review dulu"
+   kehilangan artinya.
+   - KONSEKUENSI yang harus disadari: GitHub melarang penulis PR menyetujui
+     PR-nya sendiri, jadi PR yang dibuat integrator sendiri perlu persetujuan
+     teknisi lain. Karena itu pilihan di langkah 6 menentukan: penegakan
+     maksimal (butuh teknisi lain) atau kemudahan integrator (admin masih bisa
+     menembus).
+4. **Require branches to be up to date before merging** TIDAK berada di bagian
+   Pull Request: ia sub-opsi **di dalam** **Require status checks to pass**
+   (centang "Require status checks to pass" lebih dulu, barulah opsi itu muncul;
+   boleh tanpa memilih check apa pun). Repo ini belum punya CI, jadi ini
+   pengerasan tambahan -- kesegaran cabang sudah dijaga `tools\unggah-tugas.ps1`
+   yang selalu `git rebase origin/main` sebelum mengunggah.
+5. Centang **Block force pushes** (tanpa itu penulisan ulang riwayat `main` masih
+   boleh, padahal penjaga deploy membandingkan commit `main` DEV dengan `main`
+   GitHub).
+6. Bila ingin penegakan maksimal, centang juga **Do not allow bypassing the above
+   settings** (letaknya di bagian bawah halaman, di bawah pilihan-pilihan lain).
+   Bila TIDAK dicentang, aturan tetap berlaku bagi akun berhak tulis tetapi
+   admin/integrator masih bisa menembus -- dipilih hanya bila integrator perlu
+   bisa meng-Merge PR buatannya sendiri tanpa bantuan teknisi.
+7. Klik **Create** / **Save changes**.
+
+Cara membuktikan aturannya SUDAH aktif (tanpa login, hanya membaca):
+`curl.exe -s https://api.github.com/repos/rikchodam-glitch/oleochemicalReport/branches/main`
+lalu cari `"protected"`. Diperiksa 13/10/2026 setelah formulir dibuka: nilainya
+masih `false` (belum disimpan), sedangkan `private: false` /
+`visibility: public` / `default_branch: main` sudah sesuai rencana.
+
+Cara memberi akses ke teknisi: **Settings -> Collaborators and teams**, peran
+**Write** saja (bukan Maintain/Admin) supaya mereka bisa mendorong cabang tugas
+tetapi tidak bisa mengubah setelan repo maupun penguncian cabang.
+
+Pemeriksaan isi repo saat masih publik (13/10/2026, 556 berkas terlacak di copy
+DEV `C:\laragon\www\oleochemicalReport`): `.env` TIDAK terlacak (dilindungi
+`.gitignore` baris 9), nol berkas `.sql`/`.xlsx`/`.sqlite`/`pem`/`key` terlacak,
+nol temuan pola rahasia (Groq `gsk_`, OpenAI `sk-`, Google `AIza`, token bot
+Telegram). Yang tetap terbaca publik hanya kode + informasi internal (IP
+`192.168.41.x`, domain, dokumen rancangan) -- tanpa kredensial, sehingga tidak
+memberi akses ke sistem. Bila ingin lebih tertutup: matikan **Allow forking**
+dan **Issues** di Settings (mengurangi, bukan menghapus kemampuan orang menyalin
+kode publik).
 
 Dengan setelan itu, walau seseorang memaksa `git push origin main`, GitHub akan
 menolaknya. Jadi penegakan aturan ini punya DUA lapis: hook lokal (cepat, memberi
