@@ -20,7 +20,8 @@
                 <h3 class="font-medium text-slate-900">Cek Overtime — {{ $technician->name }}</h3>
                 <p class="text-xs text-slate-400 mt-0.5">
                     Periode {{ $labelPeriodeManHour }}. Lembur adalah jam kerja di luar jam kerja terjadwal
-                    (sebelum jam masuk, sesudah jam pulang, jam istirahat) dan seluruh jam pada hari libur/OFF.
+                    (sebelum jam masuk dan sesudah jam pulang) serta seluruh jam pada hari libur/OFF.
+                    Jam istirahat tidak dihitung lembur: menitnya sudah dipotong dari durasi man hour.
                     Total {{ number_format($totalLembur / 60, 1, ',', '.') }} jam dari {{ count($lemburRincian) }} tanggal.
                 </p>
             </div>

@@ -2,9 +2,13 @@
 
      Durasi BUKAN isian: angkanya dihitung server dari rentang jam ini saat
      laporan disimpan (JamKerjaService::durasiKerja() dipakai
-     ReportController::update()), jadi yang bisa diedit tetap jamnya. Di layar,
-     durasi ditampilkan segera (read-only) memakai aturan yang sama dengan
-     server supaya admin tahu hasil hitungannya sebelum menyimpan:
+     ReportController::update()), jadi yang bisa diedit tetap jamnya. Angka yang
+     DITAMPILKAN di sini dihitung ulang dari jam laporan memakai
+     JamKerjaService::ringkasJamKerja() -- bukan dibaca dari kolom durasi
+     tersimpan -- supaya laporan lama yang durasinya masih memuat jam istirahat
+     atau jam di luar jam kerja tidak tampak dobel bersama lembur.
+
+     Aturan yang dipakai (sama persis dengan server):
        - jam selesai lebih kecil dari jam mulai = melewati tengah malam (+24 jam)
        - jam selesai 24:00 = akhir hari (mis. 23:00 - 24:00 = 60 menit)
        - jam selesai SAMA dengan jam mulai = bukan rentang, ditolak server
@@ -13,6 +17,11 @@
          reguler staff): Senin-Sabtu 12:00-13:00, Jumat 11:00-13:00 menurut
          config('cm.man_hour.jam_kerja'). Pekerja shift (grub A-D) dan hari
          libur tidak dipotong.
+       - LEMBUR = jam di LUAR jendela kerja hari itu (sebelum jam masuk dan
+         sesudah jam pulang) serta SELURUH jam pada hari libur/OFF. Jam
+         istirahat BUKAN lembur (keputusan user 13/10/2026): menit itu
+         terpotong dari durasi sehingga tidak dihitung di mana pun. Aturan ini
+         berlaku untuk pekerja shift juga.
      Format label durasi disamakan dengan accessor Report::duration_label
      ("X Jam Y Menit") supaya tampilan mode lihat dan mode edit tidak berbeda.
 
@@ -47,7 +56,48 @@
         })
         ->filter()
         ->implode(', ');
+
+    // Angka tampilan dihitung dari jam laporan memakai aturan server
+    // (JamKerjaService::ringkasJamKerja()) supaya laporan lama yang durasinya
+    // masih memuat istirahat / jam di luar jam kerja tidak tampak dobel.
+    $ringkasLaporan = $layananJamKerja->ringkasJamKerja(
+        $layananJamKerja->jadwalHari($report->technician, $tanggalLaporan),
+        $report->technician?->group,
+        $tanggalLaporan,
+        $nilaiJamMulai,
+        $nilaiJamSelesai
+    );
+
+    // Label menit dengan format yang sama seperti Report::duration_label.
+    $labelMenit = function (int $menit): string {
+        $jam   = intdiv($menit, 60);
+        $sisa  = $menit % 60;
+        $label = [];
+
+        if ($jam > 0) {
+            $label[] = $jam . ' Jam';
+        }
+
+        if ($sisa > 0) {
+            $label[] = $sisa . ' Menit';
+        }
+
+        return implode(' ', $label) ?: '0 Menit';
+    };
+
+    // Durasi man hour dari jam laporan bila rentangnya sah; cadangan nilai lama
+    // laporan bila jam mulai/selesai tidak ada.
+    $durasiTampil   = $ringkasLaporan['normal'] !== null
+        ? $labelMenit((int) $ringkasLaporan['normal'])
+        : ($report->duration_label ?? '-');
+    $potonganTampil = $ringkasLaporan['normal'] !== null
+        ? $labelMenit((int) $ringkasLaporan['istirahat'])
+        : '-';
+    $lemburTampil   = $ringkasLaporan['normal'] !== null
+        ? $labelMenit((int) $ringkasLaporan['lembur'])
+        : '-';
 @endphp
+
 
 <div class="border-t border-slate-100 pt-4">
     <h3 class="text-sm font-medium text-slate-900 mb-3">Waktu Pengerjaan</h3>
@@ -78,7 +128,7 @@
         <div>
             <label for="durasi_kerja" class="block text-sm font-medium text-slate-700 mb-1">Durasi Man Hour</label>
             <input type="text" id="durasi_kerja" readonly tabindex="-1"
-                   value="{{ $report->duration_label ?? '-' }}"
+                   value="{{ $durasiTampil }}"
                    class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600">
             <p class="text-xs text-slate-400 mt-1">
                 Dihitung otomatis dari jam di samping.
@@ -89,7 +139,7 @@
                 @endif
                 @if ($jendelaKerja !== null)
                     Jam kerja: <span class="font-medium">{{ $jendelaKerja['mulai'] }}-{{ $jendelaKerja['selesai'] }}</span>;
-                    jam di luar itu dihitung lembur.
+                    jam di luar itu dihitung lembur (tidak menambah man hour).
                 @else
                     Hari ini libur/OFF: seluruh jam kerja dihitung lembur.
                 @endif
@@ -103,9 +153,9 @@
             Kosongkan Jam
         </button>
         <p class="text-xs text-slate-400">
-            Rentang terpilih: <span id="rentang_kerja" class="font-medium text-slate-600">-</span>
-            &middot; Potongan istirahat: <span id="potongan_istirahat" class="font-medium text-slate-600">-</span>
-            &middot; Lembur: <span id="lembur_kerja" class="font-medium text-amber-600">-</span>
+            Rentang terpilih: <span id="rentang_kerja" class="font-medium text-slate-600">{{ $report->time_range ?? '-' }}</span>
+            &middot; Potongan istirahat: <span id="potongan_istirahat" class="font-medium text-slate-600">{{ $potonganTampil }}</span>
+            &middot; Lembur di luar jam kerja: <span id="lembur_kerja" class="font-medium text-amber-600">{{ $lemburTampil }}</span>
         </p>
     </div>
 
@@ -122,6 +172,7 @@
     </p>
 </div>
 
+
 @push('scripts')
 <script>
     // Keterangan jam kerja pada form edit.
@@ -129,8 +180,14 @@
     // Halaman detail TIDAK punya isian durasi: durasi man hour dihitung server
     // dari rentang jam dikurangi istirahat hari itu
     // (JamKerjaService::durasiKerja()). Skrip di sini menyiapkan tampilan
-    // durasi read-only, peringatan lintas tengah malam, dan besarnya potongan
-    // istirahat memakai aturan yang sama dengan server.
+    // durasi read-only, peringatan lintas tengah malam, besarnya potongan
+    // istirahat, dan LEMBUR memakai aturan yang sama dengan server:
+    //   - durasi normal = menit di dalam jendela kerja dikurangi istirahat,
+    //   - lembur = menit di LUAR jendela kerja (sebelum jam masuk / sesudah jam
+    //     pulang) dan seluruh jam pada hari libur/OFF,
+    //   - jam ISTIRAHAT bukan lembur: menitnya terpotong dari durasi
+    //     (keputusan user 13/10/2026), jadi tidak ada menit yang dihitung dua
+    //     kali antara durasi dan lembur.
     (function () {
         var mulai          = document.getElementById('start_time');
         var selesai        = document.getElementById('end_time');
@@ -241,7 +298,10 @@
             return bagian.length ? bagian.join(' ') : '0 Menit';
         }
 
-        // Segarkan tampilan durasi, rentang, potongan istirahat, dan peringatan.
+
+        // Segarkan tampilan durasi, rentang, potongan istirahat, lembur, dan
+        // peringatan. Angka yang ditampilkan harus sama dengan hasil server
+        // (JamKerjaService::ringkasJamKerja()).
         function segarkan() {
             var menitMulai   = menitDariJam(mulai.value);
             var menitSelesai = menitDariJam(selesai.value);
@@ -282,18 +342,19 @@
             }
 
             // Jam kerja NORMAL = menit di dalam jendela kerja hari itu dikurangi
-            // istirahat. Sisanya LEMBUR (jam istirahat + jam di luar jendela),
-            // jadi man hour laporan memakai angka NORMAL saja.
-            var istirahat = Math.min(menitIstirahat(menitMulai, menitSelesai), total);
-            var normal    = Math.max(0, menitDalamJendela(menitMulai, menitSelesai) - istirahat);
-
-            if (normal > total) {
-                normal = total;
-            }
+            // istirahat (istirahat yang benar-benar dipotong = irisan istirahat
+            // dengan jendela kerja, mengikuti Math.min() di server).
+            var dalamJendela = menitDalamJendela(menitMulai, menitSelesai);
+            var istirahat    = Math.min(menitIstirahat(menitMulai, menitSelesai), dalamJendela);
+            var normal       = Math.max(0, dalamJendela - istirahat);
+            // LEMBUR hanya menit di LUAR jendela kerja: jam istirahat TIDAK
+            // dihitung lembur (keputusan user 13/10/2026) sehingga durasi tidak
+            // pernah terhitung dua kali bersama lembur.
+            var lemburMenit  = Math.max(0, total - dalamJendela);
 
             rentang.textContent  = mulai.value + ' - ' + selesai.value;
             potongan.textContent = labelDurasi(istirahat);
-            lembur.textContent   = labelDurasi(total - normal);
+            lembur.textContent   = labelDurasi(lemburMenit);
             durasi.value         = labelDurasi(normal);
         }
 
@@ -314,3 +375,4 @@
     })();
 </script>
 @endpush
+

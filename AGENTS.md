@@ -122,9 +122,11 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
     beraksi `wscript.exe` + VBS copy PROD (lihat aturan wscript di atas),
     JANGAN memakai `powershell.exe` langsung.
   - Pintasan Desktop untuk pengguna awam (di luar repo, jadi tidak dilacak
-    git). Keadaan per 13/10/2026: TUJUH peluncur, semuanya hanya MEMANGGIL
-    file resmi copy PROD supaya tidak ada dua versi logika; kalau file di copy
-    PROD tidak ditemukan, pintasan berhenti dengan pesan jelas.
+    git). Keadaan per 14/10/2026: SEMBILAN peluncur. Tujuh di antaranya hanya
+    MEMANGGIL file resmi copy PROD supaya tidak ada dua versi logika; kalau file
+    di copy PROD tidak ditemukan, pintasan berhenti dengan pesan jelas. Dua
+    peluncur BARU (nomor 8-9) SENGAJA menunjuk copy DEV karena urusan cabang
+    tugas dan Pull Request hanya ada di copy DEV.
     1. `Deploy-Laporan.bat` -> `PROD\tools\deploy-laporan-prod.ps1` (deploy 1 klik).
     2. `Backup-Database-Laporan.bat` -> backup database PROD.
     3. `Cek-Status-Laporan.bat` -> `PROD\tools\cek-status-prod.ps1`.
@@ -136,10 +138,25 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
        menanyakan domain lalu memanggilnya dengan/tanpa `-Paksa`; domain kosong
        dibatalkan tanpa menyentuh PROD).
     7. `Siapkan-Tunnel-Laporan.bat` -> `PROD\tools\siapkan-tunnel-prod.ps1` (BARU 13/10/2026).
+    8. `Buat-PR-Laporan.bat` -> `DEV\tools\buat-pr-tugas.ps1` (BARU 14/10/2026).
+       Menyiapkan Pull Request cabang tugas: membuktikan commit cabang sudah
+       sampai ke GitHub (dibaca lewat `git ls-remote`), menyusun isi PR dari
+       berkas `tugas\pr-<ringkas cabang>.md` ditambah daftar commit/berkas dari
+       git, menyalin isi itu ke papan klip, lalu membuka peramban pada halaman
+       "Compare & pull request" (`quick_pull=1&title=...`). Ingat: GitHub TIDAK
+       PERNAH membuat PR sendiri — tombol Merge baru muncul sesudah MANUSIA
+       menekan "Create pull request".
+    9. `Kembali-Ke-Main-Laporan.bat` -> `DEV\tools\kembalikan-ke-main.ps1`
+       (BARU 14/10/2026). Menjalankan `git checkout main` + `git pull --ff-only`
+       di copy DEV, memberi tahu apakah commit cabang tugas sudah masuk `main`,
+       lalu menjalankan `tools\penjaga-main-dev.ps1` sebagai verifikasi dan
+       MENAWARKAN deploy sesudahnya. Inilah langkah wajib sesudah Pull Request
+       di-merge; tanpa itu penjaga membatalkan deploy karena copy DEV masih
+       berdiri di cabang tugas.
     Ditambah dua SALINAN APA ADANYA (bukan peluncur) `start-report.bat` dan
-    `stop-report.bat` — lihat butir berikutnya. TIGA peluncur BARU itu punya
-    mode `uji` (`<berkas>.bat uji`): hanya mencetak perintah PowerShell yang
-    akan dijalankan, tidak menyentuh PROD — itulah cara aman mengujinya.
+    `stop-report.bat` — lihat butir berikutnya. Kelima peluncur BARU (nomor 5-9)
+    punya mode `uji` (`<berkas>.bat uji`): hanya mencetak perintah PowerShell
+    yang akan dijalankan, tidak menyentuh PROD — itulah cara aman mengujinya.
   - **Pintasan DUPLIKAT/PENGGANGGU yang DIBUANG 13/10/2026** (arsip lengkap:
     `C:\laragon\backup-oleochemical\desktop-tools-lama-20261013-101528` +
     `CATATAN.txt` di dalamnya): `Jalankan-Service-Laporan.bat` dan
@@ -2125,6 +2142,69 @@ Batasan penting lingkungan ini:
       hari OFF). Seluruh suite **564 test hijau (2696 assertions)** dan
       `php artisan view:cache` sukses (13/10/2026).
 
+32. **Jam istirahat BUKAN lembur + man hour dihitung dari JAM laporan, bukan
+    dari kolom durasi tersimpan (diputuskan user 13/10/2026, penyempurnaan
+    aturan butir 31 pada hari yang sama).**
+    Semua perubahan ada di copy DEV `C:\laragon\www\oleochemicalReport`.
+    - Keluhan asal user: "jam lembur di jam istirahat tidak perlu dihitung saja,
+      jadi auto terpotong durasinya; kecuali jam setelah jam kerja, ini berlaku
+      untuk shift juga" DITAMBAH temuan "laporan di luar jam kerja atau hari
+      libur malah jadi dobel, mis. kerja 6 jam di hari Minggu bagi reguler jadi
+      12 jam kerja".
+    - Aturan BARU di `JamKerjaService::ringkasJamKerja()`: `istirahat` =
+      `min(menitIstirahat, menitDalamJendela)`; `normal = dalamJendela -
+      istirahat`; **`lembur = total - dalamJendela`** (DULU `total - normal`
+      sehingga jam istirahat ikut menjadi lembur). Jadi
+      `total = normal + lembur + istirahat` dan tidak ada menit yang dihitung
+      dua kali. Jam di luar jendela kerja (sebelum jam masuk / sesudah jam
+      pulang) dan seluruh jam pada hari libur/OFF TETAP lembur — berlaku juga
+      untuk pekerja shift (grub A-D memang tidak punya jendela istirahat).
+    - Sebab angka DOBEL: kolom `reports.work_duration_minutes` laporan LAMA
+      masih memuat durasi PENUH (belum pernah dipangkas), sedangkan lembur
+      dihitung dari jam, sehingga menit yang sama muncul di kedua angka.
+      Perbaikan: `ManHourService` memakai method BARU `menitNormalLaporan()`
+      di `harian()` DAN `menitPerTeknisi()`, artinya **angka man hour SELALU
+      dihitung ulang dari jam laporan** dan kolom `work_duration_minutes` hanya
+      CADANGAN untuk laporan tanpa jam mulai/selesai (mis. laporan yang dibuat
+      dari form web dengan durasi manual). Perintah
+      `reports:pangkas-istirahat` tetap ada untuk menyamakan data lama, tetapi
+      KINI OPSIONAL karena pembacanya sudah benar tanpa penyamaan itu.
+    - Tampilan: partial BARU
+      `resources\views\reports\partials\_waktu-kerja-lihat.blade.php` (mode
+      lihat: durasi + "lembur X Jam (di luar jam kerja)"), di-include SATU baris
+      dari `show.blade.php` setelah blok lama (28 baris) dihapus;
+      `_waktu-kerja.blade.php` (mode edit) kini mengisi angka awalnya dari
+      `ringkasJamKerja()` dan skripnya memakai rumus baru yang sama; kalimat
+      "jam istirahat" pada definisi lembur di
+      `resources\views\technicians\partials\_modal-lembur.blade.php` dihapus.
+    - Sekaligus membereskan dua bug PENGHAPUSAN: (1) berkas foto yang DIPAKAI
+      BERSAMA laporan induk tidak lagi terhapus saat baris salinan dihapus
+      (`Report::pathFotoLaporanLain()`, dibaca sekali per penghapusan tanpa
+      fungsi JSON khusus supaya jalan di MySQL maupun SQLite); (2) menghapus
+      laporan INDUK kini ikut menghapus baris salinannya — sebelumnya
+      `multi_of` memakai `nullOnDelete` sehingga salinan alat tambahan berubah
+      menjadi laporan biasa dan jamnya terhitung dua kali (salinan kolaborasi
+      memang sudah cascade di database).
+    - Uji: `tests/Feature/ReportLemburTanpaIstirahatTest.php` (7 test: rumus
+      istirahat, jam sesudah jam kerja, pekerja shift, TIDAK dobel pada hari
+      libur, angka dari jam untuk laporan lama, halaman detail, laporan tanpa
+      jam) dan `tests/Feature/ReportHapusSalinanAmanTest.php` (5 test:
+      salinan dihapus tidak menghapus foto induk, foto khusus salinan tetap
+      dibersihkan, hapus induk menghapus salinan + fotonya, lewat rute hapus,
+      laporan tanpa salinan). `TechnicianLemburTest` disesuaikan (lembur
+      10:00-16:00 sekarang 0 menit). Uji mutasi 13/10/2026: (a) mengembalikan
+      `lembur = total - normal` membuat 6 test GAGAL; (b) menonaktifkan
+      `menitNormalLaporan()` (selalu memakai kolom durasi) membuat 3 test
+      GAGAL; (c) membuat `pathFotoLaporanLain()` selalu kosong dan (d)
+      mematikan penghapusan baris salinan masing-masing membuat 3 test GAGAL.
+      Seluruh suite **576 test hijau (2741 assertions)** dan
+      `php artisan view:cache` sukses (13/10/2026).
+    - Bukti data NYATA PROD `oleochemical` (13/10/2026, skrip sementara
+      `tmp-oleo\cek-manhour-prod.php`, TIDAK menulis apa pun): 1.942 laporan
+      berjam -> total rentang 319.418 menit = normal 271.373 + lembur 32.010 +
+      istirahat 16.035 (SEIMBANG, tidak ada menit hilang); 172 laporan yang
+      sebelumnya tampil dobel, 33.190 menit tampilan berlebih hilang.
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file
@@ -3232,6 +3312,35 @@ Batasan penting lingkungan ini:
     bawaan menunjuk `.git/hooks` di komputer masing-masing, jadi aturan berbasis
     hook WAJIB disertai langkah pemasangan sekali per clone (`core.hooksPath` ke
     folder `.githooks` yang ikut repository).**
+
+44. **Man hour terhitung DOBEL karena satu angka dibaca dari kolom durasi
+    tersimpan sementara angka lain dihitung dari jam laporan (13/10/2026).**
+    Keluhan user: "laporan di luar jam kerja atau hari libur malah jadi dobel,
+    mis. kerja 6 jam di hari Minggu bagi reguler jadi 12 jam kerja".
+    Penyelidikan: `ManHourService::harian()` menjumlahkan kolom
+    `reports.work_duration_minutes` sebagai jam kerja NORMAL, PADAHAL kolom itu
+    pada laporan lama masih memuat durasi PENUH (angka dari sebelum aturan
+    istirahat/lembur dipasang), dan pada saat yang sama method itu menghitung
+    LEMBUR dari jam laporan — menit yang sama muncul di kedua angka (contoh
+    nyata PROD `id=251`: rentang 30 menit tampil 30 menit normal + 30 menit
+    lembur). Pemeriksaan data membuktikan 391 laporan PROD terpengaruh (172 di
+    antaranya benar-benar tampil berlebih = 33.190 menit), sedangkan DEV
+    `oleochemical_dev` bersih (0 baris) karena durasinya sudah pernah dipangkas.
+    Perbaikan: satu sumber angka — man hour SELALU dihitung dari jam laporan
+    (`JamKerjaService::ringkasJamKerja()`), kolom durasi hanya cadangan bila
+    laporan tidak punya jam mulai/selesai; sekaligus jam istirahat tidak lagi
+    dihitung lembur (`lembur = total - dalamJendela`).
+    **Pelajaran: (1) JANGAN mencampur satu angka yang dibaca dari kolom
+    tersimpan dengan angka lain yang dihitung dari data mentah — keduanya
+    berbeda begitu aturannya berubah, dan selisihnya muncul sebagai angka dobel
+    TANPA error apa pun; hitung keduanya dari sumber yang sama; (2) periksa data
+    NYATA di setiap database sebelum menyimpulkan luasnya dampak: "DEV bersih"
+    bukan bukti bug tidak ada (di sini DEV 0 baris, PROD 391 baris); (3) kolom
+    hasil hitungan yang boleh basi WAJIB punya perintah penyama
+    (`reports:pangkas-istirahat`) DAN pembacanya harus tetap benar walau kolom
+    itu belum disamakan, supaya perbaikan tidak bergantung pada langkah manual
+    di produksi.**
+
 
 ## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN
 

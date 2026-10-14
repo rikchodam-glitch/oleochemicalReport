@@ -1,29 +1,34 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-13 11:34 WIB
+Diperbarui: 2026-10-14 WIB
 
-- Cabang aktif: `tugas/erik/potong-istirahat-laporan-non-shift`
-- Mulai: 2026-10-13 11:34
-- Status: SEDANG DIKERJAKAN
+- Cabang aktif: `tugas/erik/lembur-tanpa-jam-istirahat-man-hour-tidak-dobel`
+- Mulai: 2026-10-13 15:33
+- Status: SELESAI - MENUNGGU PULL REQUEST DIBUAT LALU DI-MERGE
 - Modul/berkas yang disentuh:
-  - app/Services/Shift/JamKerjaService.php (istirahat + jendela kerja + normal/lembur)
-  - app/Services/Shift/ManHourService.php (lembur harian + lemburPerTanggal)
-  - app/Http/Controllers/ReportController.php (durasi normal potong istirahat)
-  - app/Http/Controllers/TechnicianController.php (data rincian lembur ke profil)
-  - app/Services/Telegram/Traits/WizardStepHandlerTrait.php (Step 4 durasi)
-  - app/Console/Commands/ReportPangkasIstirahatCommand.php (baru: reports:pangkas-istirahat)
-  - resources/views/reports/partials/_waktu-kerja.blade.php (normal + lembur)
-  - resources/views/technicians/show.blade.php (chip lembur + segmen oranye + tombol)
-  - resources/views/technicians/partials/_modal-lembur.blade.php (baru: popup Cek Overtime)
-  - tests/Feature/{ReportIstirahatTest,TechnicianLemburTest}.php (baru)
-  - tests/Feature/{ReportEditJamKerjaTest,ReportDurasiKonsistenTest}.php (disesuaikan)
-  - AGENTS.md (keputusan arsitektur poin 31)
-- Catatan: pemotongan istirahat HANYA untuk group non-shift (reguler & reguler
-  staff); pekerja shift grub A-D tetap 8 jam penuh. LEMBUR dipisahkan dari man
-  hour (normal = jam kerja, lembur = jam di luar jendela kerja + hari OFF) dan
-  ditampilkan sebagai segmen batang oranye + popup "Cek Overtime" di profil
-  teknisi. Laporan lama disamakan lewat `php artisan reports:pangkas-istirahat`
-  (simulasi default, `--execute` menulis).
+  - `app/Services/Shift/JamKerjaService.php` (rumus: istirahat bukan lembur)
+  - `app/Services/Shift/ManHourService.php` (man hour dihitung dari jam laporan; `menitPerTeknisi`, `lemburPerTanggal`)
+  - `app/Models/Report.php` (penghapusan laporan: foto bersama + baris salinan)
+  - `app/Console/Commands/ReportPangkasIstirahatCommand.php` (keterangan perintah)
+  - `resources/views/reports/partials/_waktu-kerja.blade.php` (angka tampilan + skrip rumus baru)
+  - `resources/views/reports/partials/_waktu-kerja-lihat.blade.php` (BARU: mode lihat)
+  - `resources/views/reports/show.blade.php` (blok durasi mode lihat jadi 1 baris @include)
+  - `resources/views/technicians/partials/_modal-lembur.blade.php` (kalimat definisi lembur)
+  - `tests/Feature/ReportLemburTanpaIstirahatTest.php` (BARU, 7 test)
+  - `tests/Feature/ReportHapusSalinanAmanTest.php` (BARU, 5 test)
+  - `tests/Feature/TechnicianLemburTest.php` (disesuaikan dengan aturan baru)
+  - `tools/buat-pr-tugas.ps1` (BARU 14/10: menyiapkan Pull Request satu klik)
+  - `tools/kembalikan-ke-main.ps1` (BARU 14/10: `git checkout main` + verifikasi penjaga)
+  - `tugas/pr-lembur-tanpa-jam-istirahat-man-hour-tidak-dobel.md` (BARU: isi PR)
+  - peluncur Desktop `Buat-PR-Laporan.bat` + `Kembali-Ke-Main-Laporan.bat` (di luar repo)
+  - `AGENTS.md` (butir 32 + Riwayat Insiden 44 + daftar peluncur Desktop)
+- Catatan: TIDAK ada migrasi baru. Perubahan menyentuh perhitungan man hour (definisi lembur/istirahat) dan keamanan penghapusan laporan; halaman yang tampil berubah: detail laporan (durasi + lembur) dan profil teknisi (penanda lembur).
+- Cara menyelesaikan, urutannya jangan dibalik:
+  1. klik `Buat-PR-Laporan.bat` di Desktop, lalu tekan "Create pull request" di GitHub.
+  2. integrator menekan "Merge pull request".
+  3. klik `Kembali-Ke-Main-Laporan.bat`; kalau layarnya berbunyi SIAP, deploy boleh lanjut.
 
 ## Riwayat
-- tugas/erik/alur-kerja-banyak-teknisi (mulai 2026-10-13 10:44) -> dilanjutkan 2026-10-13 11:34
+- tugas/erik/potong-istirahat-laporan-non-shift (mulai 2026-10-13 11:34) -> di-merge lewat PR #1 (commit cf43b2a)
+- tugas/erik/lembur-tanpa-jam-istirahat-man-hour-tidak-dobel (mulai 2026-10-13 15:33)
+

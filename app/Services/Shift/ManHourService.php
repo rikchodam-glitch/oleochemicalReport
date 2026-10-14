@@ -72,18 +72,27 @@ class ManHourService
             $catatan     = [];
 
             foreach ($laporanHari as $baris) {
-                $menit += (int) ($baris->work_duration_minutes ?? 0);
-
-                // Lembur = menit di luar jendela kerja hari itu (termasuk jam
-                // istirahat dan seluruh jam pada hari libur/OFF). Lembur TIDAK
-                // menambah man hour normal, hanya dilaporkan terpisah.
-                $lembur += $jamKerja->ringkasJamKerja(
+                // Satu sumber aturan jam kerja untuk laporan ini.
+                $ringkasBaris = $jamKerja->ringkasJamKerja(
                     $shift,
                     $grup,
                     $tanggal,
                     $baris->start_time,
                     $baris->end_time
-                )['lembur'];
+                );
+
+                // Menit man hour NORMAL dihitung ULANG dari jam laporan, bukan
+                // dibaca apa adanya dari kolom work_duration_minutes. Laporan lama
+                // masih menyimpan durasi penuh (termasuk jam istirahat dan jam di
+                // luar jendela) sehingga bila kolom itu dipakai bersama LEMBUR,
+                // menit yang sama terhitung DUA KALI (mis. laporan 6 jam pada hari
+                // Minggu dulu tampak 12 jam: 6 jam normal + 6 jam lembur).
+                $menit += $this->menitNormalLaporan($baris, $ringkasBaris);
+
+                // Lembur = menit di luar jendela kerja hari itu (seluruh jam pada
+                // hari libur/OFF). Jam istirahat BUKAN lembur (keputusan user
+                // 13/10/2026), jadi tidak ada menit yang dihitung dua kali.
+                $lembur += $ringkasBaris['lembur'];
             }
 
             $target      = $this->targetHari($shift, $tanggal, $grup);
@@ -190,7 +199,7 @@ class ManHourService
                 'deskripsi' => $baris->work_description,
                 'mulai'     => $baris->start_time,
                 'selesai'   => $baris->end_time,
-                'menit'     => (int) ($baris->work_duration_minutes ?? 0),
+                'menit'     => $this->menitNormalLaporan($baris, $ringkas),
                 'lembur'    => $ringkas['lembur'],
             ];
         }
@@ -282,6 +291,11 @@ class ManHourService
      * Total menit laporan (tanpa baris salinan multi alat) per teknisi pada
      * rentang tanggal — dipakai untuk kolom ringkas di daftar teknisi.
      *
+     * Menit NORMAL tiap laporan dihitung dari jam laporan (lihat
+     * menitNormalLaporan()) supaya angka di daftar ini sama dengan halaman
+     * profil teknisi, termasuk untuk laporan lama yang kolom durasinya masih
+     * memuat jam istirahat / jam di luar jendela kerja.
+     *
      * @param  array<int, int> $teknisiIds Daftar ID teknisi
      * @param  CarbonInterface $mulai      Tanggal awal (inklusif)
      * @param  CarbonInterface $selesai    Tanggal akhir (inklusif)
@@ -293,15 +307,69 @@ class ManHourService
             return [];
         }
 
-        return Report::query()
+        $jamKerja = app(JamKerjaService::class);
+
+        $teknisis = Technician::query()
+            ->whereIn('id', $teknisiIds)
+            ->get(['id', 'group'])
+            ->keyBy('id');
+
+        $laporan = Report::query()
             ->whereIn('technician_id', $teknisiIds)
             ->whereNull('multi_of')
             ->whereBetween('report_date', [$mulai->toDateString() . ' 00:00:00', $selesai->toDateString() . ' 23:59:59'])
-            ->groupBy('technician_id')
-            ->selectRaw('technician_id, SUM(COALESCE(work_duration_minutes, 0)) as total_menit')
-            ->pluck('total_menit', 'technician_id')
-            ->map(fn ($nilai): int => (int) $nilai)
-            ->all();
+            ->get(['id', 'technician_id', 'report_date', 'start_time', 'end_time', 'work_duration_minutes']);
+
+        $jadwalPerTeknisi = [];
+        $hasil            = [];
+
+        foreach ($laporan as $baris) {
+            $id      = (int) $baris->technician_id;
+            $teknisi = $teknisis[$id] ?? null;
+            $tanggal = $baris->report_date;
+
+            if ($tanggal === null) {
+                continue;
+            }
+
+            // Jadwal satu teknisi dibangun SEKALI per rentang (bukan per
+            // laporan) supaya tetap ringan walau laporannya banyak.
+            $jadwalPerTeknisi[$id] ??= $jamKerja->jadwalRentang($teknisi, $mulai, $selesai);
+
+            $ringkas = $jamKerja->ringkasJamKerja(
+                $jadwalPerTeknisi[$id][$tanggal->toDateString()] ?? null,
+                $teknisi?->group,
+                $tanggal,
+                $baris->start_time,
+                $baris->end_time
+            );
+
+            $hasil[$id] = ($hasil[$id] ?? 0) + $this->menitNormalLaporan($baris, $ringkas);
+        }
+
+        return $hasil;
+    }
+
+    /**
+     * Menit man hour NORMAL satu laporan.
+     *
+     * Rentang jam laporan (bila ada dan sah) selalu dihitung ulang lewat
+     * JamKerjaService::ringkasJamKerja() sehingga istirahat dan jam di luar
+     * jendela kerja TIDAK ikut menambah man hour normal. Kolom
+     * work_duration_minutes hanya dipakai sebagai CADANGAN untuk laporan lama
+     * yang tidak punya jam mulai/selesai (durasi diketik manual di form web).
+     *
+     * @param  Report                  $baris   Baris laporan
+     * @param  array<string, mixed>    $ringkas Hasil JamKerjaService::ringkasJamKerja()
+     * @return int                              Menit man hour normal
+     */
+    private function menitNormalLaporan(Report $baris, array $ringkas): int
+    {
+        if (($ringkas['aturan'] ?? false) && ($ringkas['total'] ?? null) !== null) {
+            return max(0, (int) $ringkas['normal']);
+        }
+
+        return max(0, (int) ($baris->work_duration_minutes ?? 0));
     }
 
     /**
