@@ -51,6 +51,17 @@
     // diatur ulang oleh tautannya sendiri, jadi dikeluarkan dari daftar dasar.
     $dasarTautan = request()->except(['page', 'tanggal', 'tampilan', 'grub', 'date_from', 'date_to']);
 
+    // Kunci tanggal yang sedang aktif DIPERTAHANKAN saat berpindah tampilan
+    // (Reguler <-> Shift) atau memilih grub: tanggal yang sudah dipilih
+    // pengguna tidak boleh dikembalikan ke hari ini hanya karena berpindah tab.
+    // Diambil dari query apa adanya supaya rentang (date_from/date_to) ikut
+    // terbawa, bukan hanya pemilihan satu hari.
+    $kunciTanggal = array_filter([
+        'tanggal'   => request('tanggal'),
+        'date_from' => request('date_from'),
+        'date_to'   => request('date_to'),
+    ], fn ($nilai) => $nilai !== null && $nilai !== '');
+
     $tautanTanggal = function (?string $tanggal) use ($dasarTautan, $tampilan, $grubAktif) {
         return route('reports.index', array_filter(array_merge($dasarTautan, [
             'tampilan' => $tampilan,
@@ -59,11 +70,11 @@
         ]), fn ($nilai) => $nilai !== null && $nilai !== ''));
     };
 
-    $tautanTampilan = function (string $mode, ?string $grub = null) use ($dasarTautan) {
+    $tautanTampilan = function (string $mode, ?string $grub = null) use ($dasarTautan, $kunciTanggal) {
         return route('reports.index', array_filter(array_merge($dasarTautan, [
             'tampilan' => $mode,
             'grub'     => $grub,
-        ]), fn ($nilai) => $nilai !== null && $nilai !== ''));
+        ], $kunciTanggal), fn ($nilai) => $nilai !== null && $nilai !== ''));
     };
 
     // Tautan filter cepat (kartu jenis pekerjaan & kartu status): SELURUH filter
@@ -166,7 +177,12 @@
                             @endif
                         @endforeach
                         <input type="hidden" name="tampilan" value="shift">
-                        <input type="hidden" name="tanggal" value="{{ $tanggalAktifStr }}">
+                        {{-- Tanggal aktif ATAU rentang tanggal yang sedang
+                             dipakai dipertahankan supaya memilih grub tidak
+                             melompat kembali ke hari ini. --}}
+                        @foreach($kunciTanggal as $nama => $nilai)
+                            <input type="hidden" name="{{ $nama }}" value="{{ $nilai }}">
+                        @endforeach
 
                         <label for="pilih-grub" class="text-xs text-slate-500">Grub</label>
                         <select name="grub" id="pilih-grub"
@@ -184,8 +200,17 @@
                 @endif
             </div>
 
-            {{-- Kartu status pekerjaan: klik = filter cepat, klik ulang = semua status --}}
-            <div class="flex items-center gap-2">
+            {{-- Kartu total pekerjaan + kartu status pekerjaan: kartu status
+                 bisa diklik sebagai filter cepat (klik ulang = semua status),
+                 sedangkan "Total Pekerjaan" hanya menampilkan jumlah baris
+                 tabel. Total diletakkan di sini (di samping Done/Continue)
+                 karena ia merangkum SELURUH tabel, bukan bagian dari sebaran
+                 jenis pekerjaan pada baris kartu jenis di bawahnya. --}}
+            <div class="flex flex-wrap items-center gap-2">
+                <div class="flex items-baseline gap-2 px-3.5 py-2 rounded-lg border-2 border-teal-200 bg-white">
+                    <span class="text-lg font-bold text-teal-600" data-kartu="total">{{ number_format($totalLaporan) }}</span>
+                    <span class="text-xs font-medium text-slate-600">Total Pekerjaan</span>
+                </div>
                 <a href="{{ $tautanStatus('continue') }}"
                    title="Tampilkan pekerjaan yang belum selesai"
                    class="flex items-baseline gap-2 px-3.5 py-2 rounded-lg border-2 transition-colors
@@ -312,10 +337,6 @@
             <p class="text-xs text-slate-500 mt-0.5">{{ $kartu['jenis'] }}</p>
         </a>
     @endforeach
-    <div class="bg-white rounded-xl border-2 border-teal-200 px-4 py-3">
-        <p class="text-xl font-bold text-teal-600" data-kartu="total">{{ number_format($totalLaporan) }}</p>
-        <p class="text-xs text-slate-500 mt-0.5">Total Pekerjaan</p>
-    </div>
 </div>
 
 {{-- ============================================================
