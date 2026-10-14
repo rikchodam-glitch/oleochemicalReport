@@ -62,9 +62,9 @@ test('Analisa AI dan Timeline dibuka lewat tombol popup, bukan tampil langsung d
         ->assertSee("x-show=\"popup === 'analisa'\"", false)
         ->assertSee("x-show=\"popup === 'timeline'\"", false);
 
-    // Tiga popup memakai x-teleport: Analisa AI, Timeline, dan galeri foto
-    // (galeri ditambahkan 08/10/2026 dari partial reports.partials._galeri-foto).
-    expect(substr_count($response->getContent(), 'x-teleport="body"'))->toBe(3);
+    // Empat popup memakai x-teleport: Analisa AI, Timeline, galeri foto,
+    // dan penolakan baris salinan (partial _penolakan-salinan, 14/10/2026).
+    expect(substr_count($response->getContent(), 'x-teleport="body"'))->toBe(4);
 });
 
 test('popup Analisa AI memberi tahu bila laporan belum pernah dianalisa AI', function () {
