@@ -366,7 +366,7 @@ $kodePenjaga = SkripTerpisah $skripPenjaga @('-DevPath', $DevPath, '-PerbaikiTer
 
 if ($kodePenjaga -ne 0) {
     Catat ('deploy dibatalkan penjaga main-dev, exit code ' + $kodePenjaga)
-    throw 'Deploy dibatalkan: copy DEV tidak berada pada commit cabang main GitHub (lihat pesan [penjaga] di atas). Pastikan pekerjaan sudah masuk lewat Pull Request, lalu di copy DEV jalankan: git checkout main dan git pull --ff-only origin main.'
+    throw 'Deploy dibatalkan: copy DEV tidak berada pada commit cabang main GitHub (lihat pesan [penjaga] di atas). Bila penjaga menyebut daftar berkas belum di-commit, jalankan di copy DEV: tools\siapkan-deploy.ps1 (berkas itu dicadangkan lalu DIKEMBALIKAN, tidak ada pekerjaan yang hilang). Bila penyebabnya cabang tugas atau commit yang belum di-merge, selesaikan lewat Pull Request (tools\unggah-tugas.ps1) lalu tools\kembalikan-ke-main.ps1.'
 }
 
 $komitDev  = KomitTerakhir $DevPath

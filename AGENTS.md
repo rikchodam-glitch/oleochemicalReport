@@ -387,6 +387,38 @@ Konsekuensi penting: **hanya komputer integrator yang berada di cabang `main`
 yang bisa men-deploy.** Komputer teknisi yang sedang ada di cabang tugas akan
 ditolak penjaga — ini memang disengaja.
 
+### 6b. Bila fast-forward terhalang berkas yang belum di-commit (14/10/2026)
+
+Kejadian nyata 14/10/2026: PR #3 di-merge, tetapi `main` copy DEV masih di commit
+lama DAN ada **pekerjaan sesi lain yang belum di-commit** (`.env.example`) pada
+berkas yang IKUT diubah PR itu. Git menolak menimpa berkas itu
+(`Please commit your changes or stash them before you merge`), sehingga penjaga
+membatalkan deploy walau isi kodenya tidak salah. Yang salah hanyalah
+petunjuknya: pesan lama menyuruh `git checkout main` + `git pull --ff-only origin
+main`, padahal KEDUA perintah itu gagal dengan sebab yang SAMA.
+
+Sejak 14/10/2026 alatnya ada di `tools\siapkan-deploy.ps1`:
+
+- Mencari sendiri berkas yang menghalangi: `git diff --name-only` antara `HEAD`
+  dan commit tujuan, dipotong dengan daftar `git status --porcelain`.
+- Berhenti bila copy DEV berada di cabang tugas atau cabang utama lokal punya
+  commit sendiri (itu urusan Pull Request, bukan penyeragaman commit).
+- Mencadangkan berkas penghalang ke
+  `C:\laragon\backup-oleochemical\siapkan-deploy\dev-<cap waktu>\` (beserta
+  `CATATAN.txt`), memindahkannya sementara ke `git stash`, memajukan copy DEV
+  dengan fast-forward, lalu **mengembalikan perubahan itu sebagai perubahan yang
+  tetap belum di-commit** (tidak dibuatkan commit atas nama orang lain).
+- Bila pengembaliannya bentrok (dua sisi menambah di tempat berdekatan), KEDUA
+  isi digabung otomatis dan baris penanda bentrok dibuang. Opsi `-JanganGabung`
+  mematikan penggabungan itu; `-Kering` hanya melaporkan tanpa mengubah apa pun.
+
+`tools\penjaga-main-dev.ps1` dan `tools\kembalikan-ke-main.ps1` sekarang
+menyebut nama berkas penghalang (`PENGHALANG=...`) dan menunjuk skrip itu,
+sehingga deploy berikutnya tidak perlu ditolong agent. Urutan kerjanya tetap:
+Merge Pull Request -> `Kembali-Ke-Main-Laporan.bat` (bila copy DEV masih di
+cabang tugas) -> `tools\siapkan-deploy.ps1` (bila penjaga menolak karena berkas
+belum di-commit) -> `Deploy-Laporan.bat`.
+
 ### 7. Setelan GitHub yang harus dipasang integrator (sekali, manual di web)
 
 Repo ini PUBLIK (dibuktikan `git ls-remote` tanpa kredensial, 13/10/2026), jadi
@@ -417,6 +449,8 @@ pernah meminta masukan manusia.
 | Cek sebelum mengunggah | `powershell -ExecutionPolicy Bypass -File tools\cek-sebelum-push.ps1` |
 | Unggah cabang tugas + tautan PR | `powershell -ExecutionPolicy Bypass -File tools\unggah-tugas.ps1` |
 | Cek kesesuaian copy DEV dengan GitHub | `powershell -ExecutionPolicy Bypass -File tools\penjaga-main-dev.ps1` |
+| Siapkan copy DEV agar deploy lolos (bila penjaga menyebut berkas belum di-commit) | `powershell -ExecutionPolicy Bypass -File tools\siapkan-deploy.ps1` |
+| Mencoba dulu tanpa mengubah apa pun | tambahkan `-Kering` (laporan saja) atau `-JanganGabung` (bentrok dibiarkan) |
 | Deploy ke PROD (HANYA integrator, setelah Merge) | klik `Deploy-Laporan.bat` |
 
 ## DOMAIN PUBLIK (CLOUDFLARE TUNNEL) — STATUS PERSIAPAN
@@ -3874,4 +3908,39 @@ baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
   - PROD BELUM disentuh: angkanya masih 31/0/20/398 sampai (a) perubahan kode
     ini di-deploy dan (b) dua berkas rentang penuh itu diunggah pada halaman
     `/sparepart/impor` PROD.
+
+46. **Fast-forward ditolak karena berkas belum di-commit, dan pesan lamanya
+    menyalahkan hal yang salah (14/10/2026).** Deploy pagi itu DIBATALKAN penjaga
+    walau copy DEV hanya tertinggal satu commit: `main` GitHub sudah `ec1154d`
+    (PR #3), `main` DEV masih `f9b65c9`, dan `.env.example` yang diubah sesi lain
+    di copy DEV juga diubah PR itu sehingga `git merge --ff-only` menolak
+    ("Your local changes to the following files would be overwritten by merge" /
+    "Please commit your changes or stash them before you merge"). Pesan penjaga
+    saat itu hanya berbunyi "copy DEV tidak bisa dimajukan dengan fast-forward"
+    lalu menyuruh `git checkout main` + `git pull --ff-only origin main` - DUA
+    perintah yang gagal dengan sebab yang SAMA, jadi tidak menolong. Perbaikan
+    14/10/2026 (copy DEV): alat BARU `tools\siapkan-deploy.ps1` (cadangkan ke
+    `C:\laragon\backup-oleochemical\siapkan-deploy\dev-<cap waktu>\` -> `git stash`
+    hanya berkas penghalang -> fast-forward -> kembalikan perubahannya sebagai
+    perubahan yang TETAP belum di-commit, tanpa commit baru; bentrok dua sisi
+    digabung otomatis, `-JanganGabung`/`-Kering` untuk mode hati-hati); penjaga
+    dan `kembalikan-ke-main.ps1` kini menyebut nama berkas penghalang
+    (`PENGHALANG=`) dan menunjuk skrip itu; `deploy-laporan-prod.ps1` tidak lagi
+    menyarankan `git checkout main`/`pull --ff-only` yang menyesatkan.
+    Uji: `tests/Feature/SiapkanDeployTest.php` (10 test, 60 assertions; repo git
+    tiruan di folder sementara, copy DEV/PROD tidak disentuh). Uji mutasi
+    14/10/2026: membiarkan `$penghalang` kosong DAN mematikan penggabungan
+    bentrok membuat 3 test GAGAL (10 test hijau sesudah dikembalikan).
+    **Pelajaran: (1) bila fast-forward ditolak, BEDAKAN dua sebabnya - berkas
+    belum di-commit yang juga berubah di commit tujuan (git menolak menimpa)
+    versus cabang/commit yang berbeda; petunjuk yang salah membuat pengguna
+    mengulang perintah yang sama-sama gagal; (2) `git status --porcelain` yang
+    sudah di-Trim kehilangan spasi pertamanya, sehingga pemotongan path WAJIB
+    memakai `Substring(2)` - `Substring(3)` memotong huruf pertama nama berkas
+    sehingga berkas penghalang TIDAK PERNAH ditemukan (bug ini nyata terjadi dan
+    ketahuan dari uji nyata ke repo tiruan, BUKAN dari peninjauan kode);
+    (3) pekerjaan sesi lain yang belum di-commit tidak boleh hilang maupun ikut
+    ter-commit saat deploy: ubah hanya berkas yang menghalangi, cadangkan dulu,
+    kembalikan sebagai perubahan belum di-commit (jangan pernah membuat commit
+    atas nama orang lain, dan jangan memakai `git reset --hard`/`git checkout -- .`).**
 

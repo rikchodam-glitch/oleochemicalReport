@@ -90,6 +90,57 @@ function BarisPertama([string[]]$Argumen) {
 }
 
 <#
+    Ubah satu baris `git status --porcelain` menjadi path relatif.
+    Penamaan ulang ("lama -> baru") diambil bagian barunya.
+
+    Parameter: $Baris = satu baris porcelain.
+    Return  : path relatif (string kosong bila baris tidak berbentuk itu).
+#>
+function PathDariPorcelain([string]$Baris) {
+    # Baris porcelain berbentuk dua huruf status lalu path (" M catatan.txt"),
+    # tetapi keluaran sudah di-Trim sehingga spasi pertama bisa HILANG. Karena
+    # itu hanya DUA huruf pertama yang dibuang; Substring(3) membuat huruf
+    # pertama path ikut terpotong sehingga berkas penghalang tak pernah ketemu.
+    if ($Baris.Length -lt 3) { return '' }
+
+    $path = $Baris.Substring(2).Trim().Trim('"')
+
+    if ($path.Contains(' -> ')) { $path = $path.Split(' -> ')[-1].Trim().Trim('"') }
+
+    return $path
+}
+
+<#
+    Berkas TER-TRACK belum di-commit yang juga berubah di commit cabang utama
+    remote. Berkas itulah yang membuat fast-forward ditolak git ("Your local
+    changes ... would be overwritten"), karena git tidak menimpa pekerjaan yang
+    belum tersimpan di commit mana pun.
+
+    Parameter: tidak ada (memakai $AkarRepo, $RemoteUtama, $BranchUtama).
+    Return  : larik path relatif (boleh kosong).
+#>
+function BerkasPenghalang() {
+    $berubah = @()
+    $hasil   = @()
+
+    foreach ($baris in @((Panggil 'git' @('-C', $AkarRepo, 'diff', '--name-only', 'HEAD', ($RemoteUtama + '/' + $BranchUtama))).Keluaran)) {
+        $teks = ([string]$baris).Trim()
+
+        if ($teks -ne '') { $berubah += $teks }
+    }
+
+    foreach ($baris in @((Panggil 'git' @('-C', $AkarRepo, 'status', '--porcelain', '--untracked-files=no')).Keluaran)) {
+        $path = PathDariPorcelain ([string]$baris).Trim()
+
+        if (($path -ne '') -and ($berubah -contains $path) -and ($hasil -notcontains $path)) {
+            $hasil += $path
+        }
+    }
+
+    return $hasil
+}
+
+<#
     Jalankan skrip PowerShell lain sebagai PROSES TERPISAH memakai .NET Process
     (bukan Start-Process, yang terbukti mengembalikan ExitCode kosong di
     komputer ini — Riwayat Insiden #31) dan TANPA memipe keluarannya.
@@ -207,6 +258,27 @@ if ($fetch.Kode -ne 0) {
 $maju = Panggil 'git' @('-C', $AkarRepo, 'merge', '--ff-only', ($RemoteUtama + '/' + $BranchUtama))
 
 if ($maju.Kode -ne 0) {
+    $berkasTerhalang = @(BerkasPenghalang)
+
+    # Dua sebab yang BERBEDA dan obatnya juga berbeda: (a) ada berkas belum
+    # di-commit yang juga berubah di commit GitHub sehingga git menolak
+    # menimpanya (kejadian nyata 14/10/2026), atau (b) cabang utama lokal memang
+    # punya commit sendiri (bercabang).
+    if ($berkasTerhalang.Count -gt 0) {
+        Tulis 'BERHENTI: cabang utama lokal hanya TERTINGGAL, tetapi fast-forward terhalang'
+        Tulis 'berkas yang BELUM di-commit (berkas itu juga berubah di commit GitHub):'
+
+        foreach ($berkas in $berkasTerhalang) { Write-Host ('  berkas : ' + $berkas) }
+
+        Write-Host ''
+        Tulis 'Pindahkan sementara dengan aman (berkas DICADANGKAN lalu DIKEMBALIKAN):'
+        Write-Host ('   powershell -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $AkarRepo 'tools\siapkan-deploy.ps1') + '"')
+        Write-Host ''
+        Write-Host ('PENGHALANG=' + ($berkasTerhalang -join '; '))
+        Write-Host 'KEMBALI_MAIN=BELUM'
+        exit 1
+    }
+
     Tulis 'BERHENTI: cabang utama lokal TIDAK bisa dimajukan dengan fast-forward.'
     Tulis 'Artinya cabang utama lokal punya commit sendiri (pernah ditulis langsung), bukan sekadar tertinggal.'
 
