@@ -122,9 +122,11 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
     beraksi `wscript.exe` + VBS copy PROD (lihat aturan wscript di atas),
     JANGAN memakai `powershell.exe` langsung.
   - Pintasan Desktop untuk pengguna awam (di luar repo, jadi tidak dilacak
-    git). Keadaan per 13/10/2026: TUJUH peluncur, semuanya hanya MEMANGGIL
-    file resmi copy PROD supaya tidak ada dua versi logika; kalau file di copy
-    PROD tidak ditemukan, pintasan berhenti dengan pesan jelas.
+    git). Keadaan per 14/10/2026: SEMBILAN peluncur. Tujuh di antaranya hanya
+    MEMANGGIL file resmi copy PROD supaya tidak ada dua versi logika; kalau file
+    di copy PROD tidak ditemukan, pintasan berhenti dengan pesan jelas. Dua
+    peluncur BARU (nomor 8-9) SENGAJA menunjuk copy DEV karena urusan cabang
+    tugas dan Pull Request hanya ada di copy DEV.
     1. `Deploy-Laporan.bat` -> `PROD\tools\deploy-laporan-prod.ps1` (deploy 1 klik).
     2. `Backup-Database-Laporan.bat` -> backup database PROD.
     3. `Cek-Status-Laporan.bat` -> `PROD\tools\cek-status-prod.ps1`.
@@ -136,10 +138,25 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
        menanyakan domain lalu memanggilnya dengan/tanpa `-Paksa`; domain kosong
        dibatalkan tanpa menyentuh PROD).
     7. `Siapkan-Tunnel-Laporan.bat` -> `PROD\tools\siapkan-tunnel-prod.ps1` (BARU 13/10/2026).
+    8. `Buat-PR-Laporan.bat` -> `DEV\tools\buat-pr-tugas.ps1` (BARU 14/10/2026).
+       Menyiapkan Pull Request cabang tugas: membuktikan commit cabang sudah
+       sampai ke GitHub (dibaca lewat `git ls-remote`), menyusun isi PR dari
+       berkas `tugas\pr-<ringkas cabang>.md` ditambah daftar commit/berkas dari
+       git, menyalin isi itu ke papan klip, lalu membuka peramban pada halaman
+       "Compare & pull request" (`quick_pull=1&title=...`). Ingat: GitHub TIDAK
+       PERNAH membuat PR sendiri — tombol Merge baru muncul sesudah MANUSIA
+       menekan "Create pull request".
+    9. `Kembali-Ke-Main-Laporan.bat` -> `DEV\tools\kembalikan-ke-main.ps1`
+       (BARU 14/10/2026). Menjalankan `git checkout main` + `git pull --ff-only`
+       di copy DEV, memberi tahu apakah commit cabang tugas sudah masuk `main`,
+       lalu menjalankan `tools\penjaga-main-dev.ps1` sebagai verifikasi dan
+       MENAWARKAN deploy sesudahnya. Inilah langkah wajib sesudah Pull Request
+       di-merge; tanpa itu penjaga membatalkan deploy karena copy DEV masih
+       berdiri di cabang tugas.
     Ditambah dua SALINAN APA ADANYA (bukan peluncur) `start-report.bat` dan
-    `stop-report.bat` — lihat butir berikutnya. TIGA peluncur BARU itu punya
-    mode `uji` (`<berkas>.bat uji`): hanya mencetak perintah PowerShell yang
-    akan dijalankan, tidak menyentuh PROD — itulah cara aman mengujinya.
+    `stop-report.bat` — lihat butir berikutnya. Kelima peluncur BARU (nomor 5-9)
+    punya mode `uji` (`<berkas>.bat uji`): hanya mencetak perintah PowerShell
+    yang akan dijalankan, tidak menyentuh PROD — itulah cara aman mengujinya.
   - **Pintasan DUPLIKAT/PENGGANGGU yang DIBUANG 13/10/2026** (arsip lengkap:
     `C:\laragon\backup-oleochemical\desktop-tools-lama-20261013-101528` +
     `CATATAN.txt` di dalamnya): `Jalankan-Service-Laporan.bat` dan
