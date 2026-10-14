@@ -2292,6 +2292,58 @@ Batasan penting lingkungan ini:
       istirahat 16.035 (SEIMBANG, tidak ada menit hilang); 172 laporan yang
       sebelumnya tampil dobel, 33.190 menit tampilan berlebih hilang.
 
+33. **Grafik jam kerja pada hari libur/OFF tidak lagi menampilkan batang "jam
+    kerja" (diputuskan 14/10/2026 atas laporan user, sudah ada kodenya).**
+    Semua perubahan ada di copy DEV `C:\laragon\www\oleochemicalReport`; BELUM
+    naik ke PROD (tunggu `Deploy-Laporan.bat`; TIDAK ada migrasi baru).
+    - Keluhan asal user: "grafik jam kerja di hari off muncul grafik hijau,
+      padahal seharusnya grafik lembur jika ada laporan di hari Minggu".
+    - Akar masalah: laporan yang TIDAK punya jam mulai/selesai (durasi diketik
+      manual lewat form web) dihitung lewat CADANGAN
+      `reports.work_duration_minutes` sebagai man hour NORMAL **tanpa melihat
+      hari itu libur atau bukan**. Bukti data DEV `oleochemical_dev`: laporan id
+      1 (Erik Khoirul Adam, 19/07/2026 Minggu, tanpa jam, durasi 480) menghasilkan
+      `menit=480, lembur=0` sehingga batangnya hijau; sesudah perbaikan menjadi
+      `menit=0, lembur=480` dengan catatan "Ada 1 pekerjaan pada hari OFF".
+    - Perbaikan di `App\Services\Shift\JamKerjaService::ringkasJamKerja()`:
+      jendela kerja hari itu dihitung LEBIH DULU (sebelum rentang jam diperiksa),
+      sehingga penanda `libur` (`$jendela === null`) ikut benar untuk laporan
+      tanpa jam. `ManHourService` menambah `menitLaporan()` yang mengembalikan
+      `normal` + `lembur` sekaligus: laporan tanpa jam pada hari libur/OFF ->
+      seluruh durasi cadangan menjadi LEMBUR, sedangkan pada hari kerja tetap
+      seperti semula (durasi cadangan = man hour normal). `menitNormalLaporan()`
+      kini hanya pembungkus tipis dari `menitLaporan()` supaya angka daftar
+      teknisi dan profil teknisi tidak pernah berbeda.
+    - Ikutan yang disengaja: hari tanpa target (kode shift 'x' MAUPUN hari libur
+      jadwal non-shift seperti Minggu reguler / Sabtu-Minggu reguler staff) kini
+      selalu diberi catatan "Ada N pekerjaan pada hari OFF" (dulu hanya hari
+      dengan baris jadwal kode 'x'), dan `statusHari()` ikut menghitung lembur
+      sehingga hari kerja di hari libur berstatus 'lebih', bukan 'libur'.
+    - Tampilan: blok grafik halaman detail teknisi dipindah ke partial BARU
+      `resources\views\technicians\partials\_grafik-manhour.blade.php`
+      (`@include` satu baris dari `technicians\show.blade.php`) lalu
+      dioptimalkan: **Target digambar sebagai GARIS putus-putus** (batang target
+      membuat Chart.js menaruh kelompok batang kedua di sebelah kanan sehingga
+      grafik menyesatkan), satu batang bertumpuk per hari (jam kerja + lembur),
+      tooltip memuat total/target/jadwal/jumlah laporan + catatan hari itu,
+      sumbu X mewarnai tanggal hari libur yang ada pekerjaannya dengan merah
+      (`#E11D48`), kanvas memakai `maintainAspectRatio: false` di wadah `h-64`,
+      dan ada keterangan warna di bawah grafik.
+    - Uji: `tests\Feature\TechnicianGrafikHariOffTest.php` (6 test, 24
+      assertions: hari libur tanpa jam = lembur, hari kerja tanpa jam tetap
+      memakai durasi tersimpan, pekerja shift hari OFF, popup Cek Overtime, data
+      grafik pada halaman detail, dan markup partial). Dua test
+      `TechnicianShiftManHourTest` disesuaikan karena memang mengunci perilaku
+      lama: `total_menit` 1.260 -> 960 (+ lembur 300) dan laju mingguan 49,0 ->
+      36,2 j. Seluruh suite **615 test hijau (2.953 assertions)** dan
+      `php artisan view:cache` sukses (14/10/2026).
+    - Bukti render nyata DEV (HTTP + cookie `/debug-login`, `/technicians/39`):
+      halaman 200 dan memuat `"libur":true`, `"lembur":480`, `type: 'line'`,
+      `stepped: 'middle'`, `maintainAspectRatio: false`, `'#E11D48'`, serta
+      keterangan "Batang teal = jam kerja normal"; blok `<script>` grafik yang
+      benar-benar disajikan (8.982 karakter) lolos `node --check`, dan popup
+      "Cek Overtime" memuat tanggal 27 September 2026 dengan "lembur 8,0 j".
+
 ## ATURAN WAJIB EDIT FILE (supaya tidak gagal apply / macet)
 
 1. File BARU atau perubahan >30% isi file: overwrite penuh (create_file

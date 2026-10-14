@@ -321,7 +321,13 @@
             </div>
 
             <div class="px-5 py-4">
-                <canvas id="grafikManHour" height="110"></canvas>
+                <div class="relative h-64">
+                    <canvas id="grafikManHour"></canvas>
+                </div>
+                <p class="text-xs text-slate-400 mt-3">
+                    Batang teal = jam kerja normal, batang oranye = lembur (termasuk seluruh jam pada hari libur/OFF),
+                    garis putus-putus = target harian. Tanggal berwarna merah menandakan ada laporan pada hari libur/OFF.
+                </p>
             </div>
         </div>
 
@@ -720,94 +726,7 @@ function broadcastMessage() {
 </script>
 @endpush
 
-{{-- Grafik man hour harian: realisasi vs target 8 jam --}}
-@push('scripts')
-@php
-    // Data grafik disiapkan di server agar tidak bergantung pada parsing directive.
-    $dataGrafik = array_map(function (array $hari): array {
-        return [
-            'tanggal' => \Illuminate\Support\Carbon::parse($hari['tanggal'])->format('d/m'),
-            'menit'   => (int) $hari['menit'],
-            'lembur'  => (int) ($hari['lembur'] ?? 0),
-            'target'  => (int) $hari['target_menit'],
-            'shift'   => (string) $hari['label_shift'],
-        ];
-    }, $manHourHarian);
-
-    $dataGrafikJson = json_encode($dataGrafik, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-@endphp
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script>
-(function () {
-    var kanvas = document.getElementById('grafikManHour');
-
-    if (!kanvas || typeof Chart === 'undefined') {
-        return;
-    }
-
-    // Data harian berasal dari perhitungan man hour di server.
-    var dataHarian = {!! $dataGrafikJson !!};
-
-    new Chart(kanvas, {
-        type: 'bar',
-        data: {
-            labels: dataHarian.map(function (baris) { return baris.tanggal; }),
-            datasets: [
-                {
-                    label: 'Jam kerja (jam)',
-                    data: dataHarian.map(function (baris) { return Math.round(baris.menit / 6) / 10; }),
-                    backgroundColor: '#0E9E8E',
-                    borderRadius: 4,
-                    maxBarThickness: 26,
-                    stack: 'realisasi'
-                },
-                {
-                    // Segmen oranye: lembur (jam di luar jam kerja + hari OFF),
-                    // ditumpuk di atas jam kerja sehingga satu batang = total jam.
-                    label: 'Lembur (jam)',
-                    data: dataHarian.map(function (baris) { return Math.round(baris.lembur / 6) / 10; }),
-                    backgroundColor: '#F59E0B',
-                    borderRadius: 4,
-                    maxBarThickness: 26,
-                    stack: 'realisasi'
-                },
-                {
-                    label: 'Target (jam)',
-                    data: dataHarian.map(function (baris) { return Math.round(baris.target / 6) / 10; }),
-                    backgroundColor: '#CBD5E1',
-                    borderRadius: 4,
-                    maxBarThickness: 26
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: { boxWidth: 12, font: { size: 11 } }
-                },
-                tooltip: {
-                    callbacks: {
-                        afterLabel: function (konteks) {
-                            var baris = dataHarian[konteks.dataIndex];
-
-                            return baris ? 'Shift: ' + baris.shift : '';
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: function (nilai) { return nilai + ' j'; }
-                    }
-                },
-                x: { grid: { display: false } }
-            }
-        }
-    });
-})();
-</script>
-@endpush
+{{-- Grafik man hour harian (batang jam kerja + lembur, garis target) dirender
+     dari partial `technicians.partials._grafik-manhour` supaya berkas ini tidak
+     perlu ditulis ulang setiap kali grafik disesuaikan. --}}
+@include('technicians.partials._grafik-manhour', ['manHourHarian' => $manHourHarian])

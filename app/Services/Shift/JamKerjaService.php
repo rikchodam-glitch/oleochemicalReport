@@ -333,6 +333,10 @@ class JamKerjaService
      *     untuk pekerja shift juga (jam di luar jendela shift = lembur).
      *   - Group teknisi yang tidak dikenal (mis. belum diisi) tidak dinilai:
      *     seluruh menit dianggap jam kerja normal supaya angka tidak berubah.
+     *   - Laporan tanpa jam mulai/selesai (durasi diketik manual) tetap
+     *     dilaporkan hari itu libur atau bukan lewat penanda 'libur', supaya
+     *     pemanggil dapat menghitung seluruh durasi tersimpan sebagai LEMBUR
+     *     ketika laporan jatuh pada hari libur/OFF (keputusan user 14/10/2026).
      *
      * @param  TechnicianShift|null $shift   Baris jadwal hari itu (boleh null)
      * @param  string|null          $grup    Group teknisi
@@ -348,7 +352,13 @@ class JamKerjaService
         ?string $mulai,
         ?string $selesai
     ): array {
-        $total = Report::durasiDariJam($mulai, $selesai);
+        // Jendela kerja hari itu dihitung LEBIH DULU supaya penanda hari
+        // libur/OFF tetap benar walau laporan tidak punya jam mulai/selesai
+        // (durasi diketik manual di form web). Tanpa ini laporan hari Minggu
+        // yang jamnya kosong dianggap jam kerja biasa sehingga grafik man hour
+        // menampilkan batang "jam kerja" padahal seharusnya lembur.
+        $jendela = $this->jendelaDariJadwal($shift, $grup, $tanggal);
+        $total   = Report::durasiDariJam($mulai, $selesai);
 
         if ($total === null) {
             return [
@@ -356,8 +366,8 @@ class JamKerjaService
                 'normal'    => null,
                 'lembur'    => 0,
                 'istirahat' => 0,
-                'jendela'   => null,
-                'libur'     => false,
+                'jendela'   => $jendela,
+                'libur'     => $jendela === null,
                 'aturan'    => false,
             ];
         }
@@ -368,13 +378,12 @@ class JamKerjaService
                 'normal'    => $total,
                 'lembur'    => 0,
                 'istirahat' => 0,
-                'jendela'   => null,
-                'libur'     => false,
+                'jendela'   => $jendela,
+                'libur'     => $jendela === null,
                 'aturan'    => false,
             ];
         }
 
-        $jendela      = $this->jendelaDariJadwal($shift, $grup, $tanggal);
         $dalamJendela = $this->menitDalamJendela($jendela, $mulai, $selesai);
 
         // Istirahat yang BENAR-BENAR dipotong = irisan jendela istirahat dengan
