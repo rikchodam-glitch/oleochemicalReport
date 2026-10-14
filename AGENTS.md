@@ -67,7 +67,11 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
 - Service latar (`queue:work`, `schedule:work`, `telegram:poll`) dan web
   `artisan serve` port 8000 HANYA jalan di PROD; dua poller Telegram sekaligus =
   bot mati total (HTTP 409, insiden #21). Di DEV tidak perlu service apa pun —
-  Apache sudah menyajikan DEV di `http://oleochemicalReport.test`.
+  Apache sudah menyajikan DEV di `http://oleochemicalReport.test`. Karena itu
+  import hasil sync Google Sheets di DEV dijalankan LANGSUNG di proses sync
+  (mode 'inline', lihat `cm.google_sheets.import_mode` / insiden #45), bukan
+  lewat queue: job yang menumpuk di tabel `jobs` tidak akan pernah diambil.
+  Untuk memaksa mode itu di mesin mana pun: `php artisan cm:sync-sheets --langsung`.
 - Service PROD dijaga otomatis oleh `tools\jaga-service-prod.ps1`, dipasang
   sebagai tugas Windows **`oleo-jaga-service-prod`** (berjalan tiap 5 menit).
   Tugasnya SUDAH ADA di komputer ini (kini berstatus Disabled) sehingga tidak
@@ -3340,6 +3344,45 @@ Batasan penting lingkungan ini:
     (`reports:pangkas-istirahat`) DAN pembacanya harus tetap benar walau kolom
     itu belum disamakan, supaya perbaikan tidak bergantung pada langkah manual
     di produksi.**
+
+45. **Halaman Finding CM tidak ikut berubah padahal spreadsheet Google sudah
+    memuat baris tanggal baru (dilaporkan 13/10/2026).** Gejala: baris
+    "13 Oct 2026" sudah ada di sheet Finding CM, tetapi aplikasi masih
+    menampilkan data sampai 12/10/2026. Penyebabnya BUKAN URL/config (insiden
+    #36 sudah menutup itu) dan bukan pula download yang gagal: `SyncGoogleSheetsJob`
+    hanya men-DOWNLOAD berkas lalu menjadwalkan `ProcessCmFindingsImport` /
+    `ProcessCmExcelImport` ke queue, sedangkan DEV memang TIDAK menjalankan
+    service `queue:work` (bagian service di atas). Akibatnya job menumpuk di
+    tabel `jobs`, baris `import_logs` tertinggal berstatus 'processing', dan
+    data tidak pernah masuk — tanpa satu pun pesan error di layar.
+    Bukti: `oleochemical_dev.jobs` masih berisi job CM yang belum diambil dan
+    `import_logs` terakhir 'processing'; setelah job dijalankan, 15 baris
+    tanggal 13/10/2026 masuk (insert_baru=15, log #71) dan halaman menampilkan
+    Total Finding 466.
+    Penutupnya: (i) kunci config baru `cm.google_sheets.import_mode`
+    (`CM_SYNC_IMPORT_MODE`) — bawaan 'inline' bila `APP_ENV=local` (import
+    dijalankan langsung di proses yang sama, tanpa `queue:work`) dan 'queue'
+    di luar local sehingga perilaku PROD TIDAK berubah; (ii) opsi
+    `php artisan cm:sync-sheets --langsung` untuk memaksa import langsung
+    kapan saja (mis. saat worker PROD sedang mati); (iii) jaring pengaman
+    `SyncGoogleSheetsJob::runImportNow()` supaya baris `import_logs` tidak
+    pernah tertinggal 'processing' bila import langsung melempar error;
+    (iv) penjaga uji `tests/Feature/CmSyncImportModeTest.php`.
+    **Pelajaran: (1) "sudah dijadwalkan" bukan berarti "sudah jalan" — pada
+    mesin tanpa worker, sync yang dilaporkan sukses hanya memindahkan masalah
+    ke tabel `jobs`; (2) setiap alur ber-queue wajib punya mode/pengaman untuk
+    lingkungan tanpa `queue:work`, jangan mengandalkan ingatan operator;
+    (3) copy PROD kini TIDAK ada di komputer DEV ini (tidak ada folder
+    `oleochemicalReport-prod`, tidak ada proses php, tidak ada listener port
+    8000); aplikasi yang dipakai kantor dilayani `http://192.168.41.74:8000`
+    (`GET /debug-login` = 404 = PROD) dan MySQL-nya MENOLAK koneksi dari
+    komputer ini, jadi perbaikan data PROD wajib dijalankan di komputer itu
+    (mis. `php artisan cm:sync-sheets --langsung`), bukan dari copy DEV.**
+    Catatan penomoran: nomor 44 di atas sudah terpakai cabang
+    `tugas/erik/lembur-tanpa-jam-istirahat-man-hour-tidak-dobel` yang SUDAH
+    DI-MERGE lewat Pull Request #2 (merge commit `f9b65c9`, 14/10/2026), jadi
+    entri ini memakai 45 supaya tidak ada nomor kembar. Kesesuaian nomor itu
+    diperiksa ulang saat rebase cabang ini ke `main` (14/10/2026).
 
 
 ## NAMA SISTEM (BRANDING) — WAJIB DIKETAHUI SEBELUM MENGUBAH TEKS TAMPILAN

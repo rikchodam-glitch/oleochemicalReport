@@ -27,6 +27,10 @@ use Illuminate\Support\Facades\Storage;
  * Link harus berstatus "Anyone with the link can view" agar bisa
  * di-download tanpa Google Cloud API.
  *
+ * Pemrosesan hasil download mengikuti config('cm.google_sheets.import_mode'):
+ * 'inline' = import dijalankan langsung (bawaan DEV, yang tidak menjalankan
+ * queue:work) dan 'queue' = diserahkan ke queue:work (bawaan PROD).
+ *
  * Dipanggil oleh:
  *   - php artisan cm:sync-sheets (sinkron, output ke terminal)
  *   - Tombol "Sync Google Sheets" di halaman Overview CM
@@ -48,8 +52,10 @@ class SyncGoogleSheetsJob implements ShouldQueue
     }
 
     /**
-     * Download & jadwalkan import semua spreadsheet yang dikonfigurasi.
-     * Dapat dipanggil sinkron (command/controller) maupun via queue.
+     * Download spreadsheet lalu jadwalkan import semua sumber yang
+     * dikonfigurasi. Dapat dipanggil sinkron (command/controller) maupun via
+     * queue. Pada mode 'inline' (lihat self::importInline()) job import
+     * dijalankan langsung di proses ini sehingga tidak butuh queue:work.
      *
      * @return array Hasil per sumber: ['data_cm' => ['status' => ..., 'message' => ...], ...]
      */
@@ -100,12 +106,27 @@ class SyncGoogleSheetsJob implements ShouldQueue
                 ]);
 
                 $jobClass = $source['import_job'];
-                dispatch(new $jobClass($path, $importLog->id, self::systemUserId()));
+                $job      = new $jobClass($path, $importLog->id, self::systemUserId());
 
-                $results[$key] = [
-                    'status'  => 'ok',
-                    'message' => 'Download OK, import dijadwalkan (log #' . $importLog->id . ')',
-                ];
+                if (self::importInline()) {
+                    self::runImportNow($job, $importLog);
+
+                    $statusImport = $importLog->refresh()->status;
+
+                    $results[$key] = [
+                        'status'  => $statusImport === 'completed' ? 'ok' : 'error',
+                        'message' => $statusImport === 'completed'
+                            ? 'Download OK, import dijalankan langsung & selesai (log #' . $importLog->id . ')'
+                            : 'Download OK, tapi import langsung GAGAL (log #' . $importLog->id . ', status ' . $statusImport . ')',
+                    ];
+                } else {
+                    dispatch($job);
+
+                    $results[$key] = [
+                        'status'  => 'ok',
+                        'message' => 'Download OK, import dijadwalkan (log #' . $importLog->id . ')',
+                    ];
+                }
             } catch (\Exception $e) {
                 Log::error("Sync Google Sheets {$key} gagal: " . $e->getMessage());
 
@@ -117,6 +138,56 @@ class SyncGoogleSheetsJob implements ShouldQueue
         }
 
         return $results;
+    }
+
+    /**
+     * Apakah import hasil download dijalankan langsung di proses ini?
+     *
+     * Mode 'inline' dipakai di DEV (tidak menjalankan service `queue:work`,
+     * lihat AGENTS.md) supaya tombol Sync Google Sheets benar-benar
+     * memperbarui data, bukan hanya menumpuk job di tabel `jobs`. PROD
+     * memakai mode 'queue' (bawaan) agar proses berat tidak menahan request.
+     * Sumber: config('cm.google_sheets.import_mode') / CM_SYNC_IMPORT_MODE.
+     *
+     * @return bool True bila import harus dijalankan langsung (tanpa queue)
+     */
+    public static function importInline(): bool
+    {
+        return config('cm.google_sheets.import_mode') === 'inline';
+    }
+
+    /**
+     * Jalankan job import sekarang juga (tanpa queue:work).
+     *
+     * Job import (ProcessCmExcelImport / ProcessCmFindingsImport) sudah
+     * menangani error internalnya sendiri dan menandai baris `import_logs`
+     * sebagai 'failed'. Penangkapan Throwable di sini adalah jaring pengaman
+     * supaya baris log tidak pernah tertinggal berstatus 'processing' — itulah
+     * gejala "data di spreadsheet sudah ada tanggal baru tapi aplikasi tidak
+     * ikut berubah" ketika tidak ada worker yang mengambil job.
+     *
+     * @param  object    $job       Instance job import yang akan dijalankan
+     * @param  ImportLog $importLog Baris log import yang dipakai job tersebut
+     * @return void
+     */
+    protected static function runImportNow(object $job, ImportLog $importLog): void
+    {
+        set_time_limit(0);
+
+        try {
+            $job->handle();
+        } catch (\Throwable $e) {
+            Log::error('Import CM mode inline gagal: ' . $e->getMessage(), [
+                'import_log_id' => $importLog->id,
+                'file'          => $e->getFile() . ':' . $e->getLine(),
+            ]);
+
+            $importLog->update([
+                'status'       => 'failed',
+                'detail_error' => [['baris' => 0, 'pesan' => 'Error: ' . $e->getMessage()]],
+                'completed_at' => now(),
+            ]);
+        }
     }
 
     /**
