@@ -325,7 +325,110 @@
                     <canvas id="temperatureChart" name="temperatureChart"></canvas>
                 </div>
             </div>
+
+            {{-- Trending Ampere — hanya bila ada pembacaan ampere pada rentang ini --}}
+            @if($parameterTrend["ampere"])
+            <div class="pt-6 border-t border-slate-100 mt-6">
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+                    <h4 class="text-sm font-semibold text-slate-900">Trending Ampere</h4>
+                    <div class="flex items-center gap-4 text-xs flex-wrap">
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #0E9E8E"></span> Ampere (A)</span>
+                    </div>
+                </div>
+                <div class="relative" style="height: 300px;">
+                    <canvas id="ampereChart" name="ampereChart"></canvas>
+                </div>
+            </div>
+            @endif
+
+            {{-- Trending Discharge Pressure — hanya bila ada pembacaan pressure pada rentang ini --}}
+            @if($parameterTrend["discharge_pressure"])
+            <div class="pt-6 border-t border-slate-100 mt-6">
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+                    <h4 class="text-sm font-semibold text-slate-900">Trending Discharge Pressure</h4>
+                    <div class="flex items-center gap-4 text-xs flex-wrap">
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background: #2563EB"></span> Discharge Pressure</span>
+                    </div>
+                </div>
+                <div class="relative" style="height: 300px;">
+                    <canvas id="pressureChart" name="pressureChart"></canvas>
+                </div>
+            </div>
+            @endif
         @endif
+
+        {{-- Analisa Pressure & Ampere — SELALU tampil di semua halaman equipment,
+             termasuk saat belum ada pembacaan sama sekali pada rentang ini --}}
+        <div class="pt-6 border-t border-slate-100 mt-6">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+                <h4 class="text-sm font-semibold text-slate-900">Analisa Pressure & Ampere</h4>
+                <p class="text-xs text-slate-400">Analisa deskriptif dari pembacaan pada rentang waktu yang dipilih di atas.</p>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                @foreach(["ampere" => "Ampere", "discharge_pressure" => "Discharge Pressure"] as $kunciAnalisa => $labelAnalisa)
+                    @php
+                        $an = $parameterTrend[$kunciAnalisa] ?? null;
+                        if ($an === null) {
+                            $kotakClass = "border-slate-200 bg-slate-50";
+                            $badgeClass = "border-slate-300 bg-white text-slate-500";
+                            $badgeLabel = "Belum ada data";
+                        } elseif ($an["signifikan"] && $an["arah"] === "naik") {
+                            $kotakClass = "border-amber-300 bg-amber-50";
+                            $badgeClass = "border-amber-400 bg-white text-amber-700";
+                            $badgeLabel = "Naik signifikan";
+                        } elseif ($an["signifikan"] && $an["arah"] === "turun") {
+                            $kotakClass = "border-sky-300 bg-sky-50";
+                            $badgeClass = "border-sky-400 bg-white text-sky-700";
+                            $badgeLabel = "Turun signifikan";
+                        } else {
+                            $kotakClass = "border-slate-200 bg-slate-50";
+                            $badgeClass = "border-slate-300 bg-white text-slate-600";
+                            $badgeLabel = ucfirst($an["arah"]);
+                        }
+                    @endphp
+                    <div class="rounded-xl border {{ $kotakClass }} p-4">
+                        <div class="flex items-center justify-between gap-2">
+                            <p class="text-xs font-semibold text-slate-700 uppercase tracking-wide">{{ $labelAnalisa }}</p>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border {{ $badgeClass }}">{{ $badgeLabel }}</span>
+                        </div>
+                        @if($an)
+                            <p class="text-xs text-slate-600 mt-2">{{ $an["message"] }}</p>
+                            <dl class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 text-xs">
+                                <div>
+                                    <dt class="text-slate-400">Terakhir</dt>
+                                    <dd class="font-mono font-semibold text-slate-800 mt-0.5">{{ number_format($an["akhir"], 2) }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-slate-400">Rata-rata</dt>
+                                    <dd class="font-mono font-semibold text-slate-800 mt-0.5">{{ number_format($an["rata_rata"], 2) }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-slate-400">Min</dt>
+                                    <dd class="font-mono text-slate-700 mt-0.5">{{ number_format($an["min"], 2) }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-slate-400">Maks</dt>
+                                    <dd class="font-mono text-slate-700 mt-0.5">{{ number_format($an["maks"], 2) }}</dd>
+                                </div>
+                            </dl>
+                            <p class="text-[11px] text-slate-400 mt-2">
+                                {{ \Carbon\Carbon::parse($an["tanggal_awal"])->format("d M Y") }}
+                                &ndash; {{ \Carbon\Carbon::parse($an["tanggal_akhir"])->format("d M Y") }}
+                                &middot; {{ $an["titik"] }} titik data
+                                @if($an["perubahan_pct"] !== null)
+                                    &middot; perubahan {{ $an["perubahan_pct"] > 0 ? "+" : "" }}{{ number_format((float) $an["perubahan_pct"], 1) }}%
+                                @endif
+                            </p>
+                        @else
+                            <p class="text-xs text-slate-500 mt-2">
+                                {{ $labelAnalisa }} belum pernah diisi pada rentang waktu ini, jadi trennya belum bisa dianalisa.
+                                Isi kolom {{ $labelAnalisa }} pada form pembacaan di bawah supaya trennya terbentuk.
+                            </p>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+        </div>
     </div>
 </div>
 
@@ -385,6 +488,7 @@
                     <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Mesin Vib</th>
                     <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Temp</th>
                     <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Ampere</th>
+                    <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Pressure</th>
                     <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Remark</th>
                     <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Aksi</th>
                 </tr>
@@ -423,6 +527,7 @@
                         <td class="px-4 py-3 text-center font-mono text-xs text-slate-700">{{ $pvStr }}</td>
                         <td class="px-4 py-3 text-center font-mono text-xs text-slate-700">{!! $tempStr !!}</td>
                         <td class="px-4 py-3 text-right font-mono text-xs text-slate-700">{{ $r->ampere ? number_format($r->ampere, 1) : "—" }}</td>
+                        <td class="px-4 py-3 text-right font-mono text-xs text-slate-700">{{ $r->discharge_pressure ? number_format($r->discharge_pressure, 2) : "—" }}</td>
                         <td class="px-4 py-3 text-xs text-slate-500 max-w-[200px] truncate" title="{{ $r->remark ?? "" }}">{{ $r->remark ?? "—" }}</td>
                         <td class="px-4 py-3 text-center whitespace-nowrap">
                             <form method="POST" action="{{ route('cm.readings.destroy', $r) }}" class="inline"
@@ -438,7 +543,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="9" class="px-5 py-8 text-center text-slate-400 text-sm">Belum ada data pembacaan untuk equipment ini.</td></tr>
+                    <tr><td colspan="10" class="px-5 py-8 text-center text-slate-400 text-sm">Belum ada data pembacaan untuk equipment ini.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -628,6 +733,8 @@
         'temp_nde_motor': { color: '#F97316', label: 'NDE Motor' },
         'temp_de_pompa':  { color: '#3B82F6', label: 'DE Mesin' },
         'temp_nde_pompa': { color: '#8B5CF6', label: 'NDE Mesin' },
+        'ampere':             { color: '#0E9E8E', label: 'Ampere' },
+        'discharge_pressure': { color: '#2563EB', label: 'Discharge Pressure' },
     };
 
     function buildDatasets(data, keys, unit) {
@@ -721,6 +828,12 @@
         'temp_de_motor', 'temp_nde_motor',
         'temp_de_pompa', 'temp_nde_pompa'
     ], '°C', tempLines);
+
+    // Chart 4: Ampere
+    renderChart('ampereChart', ['ampere'], 'A');
+
+    // Chart 5: Discharge Pressure
+    renderChart('pressureChart', ['discharge_pressure'], 'Pressure');
 })();
 </script>
 @endpush

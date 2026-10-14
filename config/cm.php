@@ -66,6 +66,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Analisa Trend Pressure & Ampere — Threshold Perubahan
+    |--------------------------------------------------------------------------
+    |
+    | Dipakai halaman detail equipment (/cm/equipment/{tag}) untuk bagian
+    | "Analisa Pressure & Ampere". Berbeda dari vibrasi dan temperatur, kedua
+    | parameter ini belum punya batas Alarm/Danger resmi (ISO 10816-3 hanya
+    | untuk vibrasi), sehingga analisanya bersifat deskriptif: nilai terakhir,
+    | rata-rata, minimum, maksimum, arah tren, serta persentase perubahan dari
+    | titik data pertama pada rentang waktu yang sedang difilter.
+    |
+    */
+    'process_parameter_insight' => [
+
+        // Jumlah minimal titik data sebelum arah tren boleh disimpulkan
+        'min_data_points' => 3,
+
+        // Perubahan (persen) yang dianggap mencolok / signifikan
+        'significant_change_pct' => 20,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Google Sheets — Sumber Data Sync
     |--------------------------------------------------------------------------
     |
