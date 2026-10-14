@@ -87,18 +87,24 @@ class ManHourService
                 // luar jendela) sehingga bila kolom itu dipakai bersama LEMBUR,
                 // menit yang sama terhitung DUA KALI (mis. laporan 6 jam pada hari
                 // Minggu dulu tampak 12 jam: 6 jam normal + 6 jam lembur).
-                $menit += $this->menitNormalLaporan($baris, $ringkasBaris);
+                $menitBaris = $this->menitLaporan($baris, $ringkasBaris);
 
-                // Lembur = menit di luar jendela kerja hari itu (seluruh jam pada
-                // hari libur/OFF). Jam istirahat BUKAN lembur (keputusan user
-                // 13/10/2026), jadi tidak ada menit yang dihitung dua kali.
-                $lembur += $ringkasBaris['lembur'];
+                // Lembur = menit di luar jendela kerja hari itu DITAMBAH seluruh
+                // durasi laporan di hari libur/OFF yang jamnya tidak diisi. Jam
+                // istirahat BUKAN lembur (keputusan user 13/10/2026), jadi tidak
+                // ada menit yang dihitung dua kali.
+                $menit  += $menitBaris['normal'];
+                $lembur += $menitBaris['lembur'];
             }
 
             $target      = $this->targetHari($shift, $tanggal, $grup);
             $jumlahKerja = count($laporanHari);
 
-            if ($shift !== null && $shift->isOff() && $jumlahKerja > 0) {
+            // Hari tanpa target = hari libur/OFF, baik karena kode shift 'x'
+            // (pekerja shift) maupun karena hari libur jadwal non-shift (Minggu
+            // untuk reguler, Sabtu-Minggu untuk reguler staff). Seluruh jam pada
+            // hari itu lembur, jadi pekerjaannya selalu ditandai anomali.
+            if ($target <= 0 && $jumlahKerja > 0) {
                 $catatan[] = 'Ada ' . $jumlahKerja . ' pekerjaan pada hari OFF';
             }
 
@@ -120,7 +126,7 @@ class ManHourService
                 'lembur'           => $lembur,
                 'persen'           => $target > 0 ? (int) round($menit / $target * 100) : null,
                 'jumlah_pekerjaan' => $jumlahKerja,
-                'status'           => $this->statusHari($target, $menit),
+                'status'           => $this->statusHari($target, $menit, $lembur),
                 'catatan'          => $catatan,
                 'laporan'          => $laporanHari,
             ];
@@ -180,7 +186,9 @@ class ManHourService
                 $baris->end_time
             );
 
-            if ($ringkas['lembur'] <= 0) {
+            $menitBaris = $this->menitLaporan($baris, $ringkas);
+
+            if ($menitBaris['lembur'] <= 0) {
                 continue;
             }
 
@@ -192,15 +200,15 @@ class ManHourService
                 ];
             }
 
-            $hasil[$tanggal]['menit'] += $ringkas['lembur'];
+            $hasil[$tanggal]['menit'] += $menitBaris['lembur'];
             $hasil[$tanggal]['laporan'][] = [
                 'id'        => $baris->id,
                 'kode'      => $baris->report_code,
                 'deskripsi' => $baris->work_description,
                 'mulai'     => $baris->start_time,
                 'selesai'   => $baris->end_time,
-                'menit'     => $this->menitNormalLaporan($baris, $ringkas),
-                'lembur'    => $ringkas['lembur'],
+                'menit'     => $menitBaris['normal'],
+                'lembur'    => $menitBaris['lembur'],
             ];
         }
 
@@ -351,7 +359,7 @@ class ManHourService
     }
 
     /**
-     * Menit man hour NORMAL satu laporan.
+     * Menit man hour NORMAL dan LEMBUR satu laporan.
      *
      * Rentang jam laporan (bila ada dan sah) selalu dihitung ulang lewat
      * JamKerjaService::ringkasJamKerja() sehingga istirahat dan jam di luar
@@ -359,17 +367,47 @@ class ManHourService
      * work_duration_minutes hanya dipakai sebagai CADANGAN untuk laporan lama
      * yang tidak punya jam mulai/selesai (durasi diketik manual di form web).
      *
+     * Laporan tanpa jam pada hari libur/OFF (mis. laporan Minggu dengan durasi
+     * manual) seluruhnya dihitung LEMBUR dengan man hour normal 0: hari libur
+     * memang seluruhnya lembur, jadi grafik man hour tidak boleh menampilkan
+     * batang "jam kerja" pada hari itu (perbaikan 14/10/2026).
+     *
+     * @param  Report                  $baris   Baris laporan
+     * @param  array<string, mixed>    $ringkas Hasil JamKerjaService::ringkasJamKerja()
+     * @return array{normal: int, lembur: int}  Menit man hour normal dan lembur
+     */
+    private function menitLaporan(Report $baris, array $ringkas): array
+    {
+        if (($ringkas['aturan'] ?? false) && ($ringkas['total'] ?? null) !== null) {
+            return [
+                'normal' => max(0, (int) $ringkas['normal']),
+                'lembur' => max(0, (int) $ringkas['lembur']),
+            ];
+        }
+
+        $cadangan = max(0, (int) ($baris->work_duration_minutes ?? 0));
+
+        if (($ringkas['libur'] ?? false)) {
+            return ['normal' => 0, 'lembur' => $cadangan];
+        }
+
+        return ['normal' => $cadangan, 'lembur' => 0];
+    }
+
+    /**
+     * Menit man hour NORMAL satu laporan (tanpa lembur).
+     *
+     * Dipakai kolom ringkas daftar teknisi; aturannya sengaja sama dengan
+     * menitLaporan() supaya angka di daftar teknisi dan di profil teknisi tidak
+     * pernah berbeda.
+     *
      * @param  Report                  $baris   Baris laporan
      * @param  array<string, mixed>    $ringkas Hasil JamKerjaService::ringkasJamKerja()
      * @return int                              Menit man hour normal
      */
     private function menitNormalLaporan(Report $baris, array $ringkas): int
     {
-        if (($ringkas['aturan'] ?? false) && ($ringkas['total'] ?? null) !== null) {
-            return max(0, (int) $ringkas['normal']);
-        }
-
-        return max(0, (int) ($baris->work_duration_minutes ?? 0));
+        return $this->menitLaporan($baris, $ringkas)['normal'];
     }
 
     /**
@@ -457,13 +495,17 @@ class ManHourService
      * Status capaian satu hari.
      *
      * @param  int $target Target menit hari itu
-     * @param  int $menit  Realisasi menit
+     * @param  int $menit  Realisasi menit man hour NORMAL
+     * @param  int $lembur Realisasi menit LEMBUR hari itu
      * @return string      'libur', 'kurang', 'terpenuhi', atau 'lebih'
      */
-    private function statusHari(int $target, int $menit): string
+    private function statusHari(int $target, int $menit, int $lembur = 0): string
     {
+        // Hari tanpa target = hari libur/OFF. Pekerjaan apa pun pada hari itu
+        // (normal maupun lembur) tetap dihitung "lebih" supaya hari kerja di
+        // hari libur tidak tampak sebagai hari kosong.
         if ($target <= 0) {
-            return $menit > 0 ? 'lebih' : 'libur';
+            return ($menit + $lembur) > 0 ? 'lebih' : 'libur';
         }
 
         if ($menit <= 0 || $menit < $target) {

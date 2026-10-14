@@ -210,7 +210,11 @@ test('man hour memakai target jadwal, mengecualikan salinan multi alat, dan mena
 
     $ringkasan = $layanan->ringkasan($harian);
 
-    expect($ringkasan['total_menit'])->toBe(1260)
+    // Laporan hari OFF (2026-09-27, 300 menit tanpa jam selesai) seluruhnya
+    // dihitung LEMBUR sehingga man hour normalnya 0: 480 + 0 + 480 = 960 menit.
+    // Sebelum perbaikan 14/10/2026 durasi itu ikut dihitung jam kerja normal.
+    expect($ringkasan['total_menit'])->toBe(960)
+        ->and($ringkasan['total_lembur_menit'])->toBe(300)
         ->and($ringkasan['total_target_menit'])->toBe(960)
         ->and($ringkasan['hari_kerja'])->toBe(2)
         ->and($ringkasan['hari_libur'])->toBe(1)
@@ -469,7 +473,7 @@ test('ringkasan man hour menyertakan laju per minggu dan per hari kerja', functi
         ]);
     }
 
-    buatLaporanManHour($this->teknisiShift, '2026-09-26', 480, '16:30');
+    buatLaporanManHour($this->teknisiShift, '2026-09-26', 450, '16:30');
     buatLaporanManHour($this->teknisiShift, '2026-09-27', 300, '09:00');
     buatLaporanManHour($this->teknisiShift, '2026-09-28', 480, '09:00');
 
@@ -480,13 +484,15 @@ test('ringkasan man hour menyertakan laju per minggu dan per hari kerja', functi
         Carbon::parse('2026-09-28')
     ));
 
-    // 3 hari = 3/7 minggu; realisasi 1.260 menit = 21 jam -> 21 / (3/7) = 49 j/minggu.
-    // Target 960 menit = 16 jam -> 16 / (3/7) = 37,3 j/minggu; 2 hari kerja terhitung.
+    // 3 hari = 3/7 minggu. Man hour normal hanya dari hari kerja: 450 (26/09) +
+    // 480 (28/09) = 930 menit = 15,5 jam -> 15,5 / (3/7) = 36,2 j/minggu; 2 hari
+    // kerja terhitung. Pekerjaan hari OFF (27/09) dihitung LEMBUR sehingga tidak
+    // menambah realisasi normal (aturan 14/10/2026).
     expect($ringkasan['jumlah_hari'])->toBe(3)
         ->and($ringkasan['hari_kerja'])->toBe(2)
-        ->and($ringkasan['realisasi_per_minggu'])->toBe(49.0)
+        ->and($ringkasan['realisasi_per_minggu'])->toBe(36.2)
         ->and($ringkasan['target_per_minggu'])->toBe(37.3)
-        ->and($ringkasan['realisasi_per_hari_kerja'])->toBe(10.5)
+        ->and($ringkasan['realisasi_per_hari_kerja'])->toBe(7.8)
         ->and($ringkasan['target_per_hari_kerja'])->toBe(8.0);
 });
 
