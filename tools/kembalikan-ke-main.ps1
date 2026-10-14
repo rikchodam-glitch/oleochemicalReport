@@ -247,7 +247,10 @@ $siap = $true
 if ($TanpaPenjaga) {
     Tulis 'Penjaga dilewati (opsi -TanpaPenjaga).'
 } else {
-    $skripPenjaga = Join-Path $PSScriptRoot 'penjaga-main-dev.ps1'
+    # Penjaga dicari di REPO yang sedang ditangani (bukan di folder skrip ini),
+    # karena skrip ini boleh dijalankan dari SALINAN di folder sementara
+    # (lihat Kembali-Ke-Main-Laporan.bat) saat berpindah cabang.
+    $skripPenjaga = Join-Path $AkarRepo 'tools\penjaga-main-dev.ps1'
 
     if (-not (Test-Path $skripPenjaga)) {
         Tulis 'PERINGATAN: tools\penjaga-main-dev.ps1 tidak ditemukan; verifikasi terakhir dilewati.'
