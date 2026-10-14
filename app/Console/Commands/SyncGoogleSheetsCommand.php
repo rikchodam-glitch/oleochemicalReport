@@ -13,13 +13,14 @@ use Illuminate\Console\Command;
  * upload file manual.
  *
  * Penggunaan:
- *   php artisan cm:sync-sheets
+ *   php artisan cm:sync-sheets             (mode bawaan: DEV langsung, PROD queue)
+ *   php artisan cm:sync-sheets --langsung  (paksa import langsung, tanpa queue:work)
  */
 class SyncGoogleSheetsCommand extends Command
 {
-    protected $signature = 'cm:sync-sheets';
+    protected $signature = 'cm:sync-sheets {--langsung : Jalankan import langsung di proses ini (tanpa menunggu queue:work)}';
 
-    protected $description = 'Download spreadsheet Google Sheets (Data CM & Finding CM) lalu jadwalkan import';
+    protected $description = 'Download spreadsheet Google Sheets (Data CM & Finding CM) lalu import ke database';
 
     /**
      * Entry point command — jalankan sync dan tampilkan hasilnya.
@@ -28,6 +29,10 @@ class SyncGoogleSheetsCommand extends Command
      */
     public function handle(): int
     {
+        if ($this->option('langsung')) {
+            config(['cm.google_sheets.import_mode' => 'inline']);
+        }
+
         $this->info('Memulai sync Google Sheets...');
         $this->newLine();
 
@@ -50,7 +55,9 @@ class SyncGoogleSheetsCommand extends Command
 
         $this->info($hasError
             ? 'Sync selesai dengan beberapa kegagalan — cek log atau .env.'
-            : 'Sync selesai. Proses import berjalan di queue (php artisan queue:work).');
+            : (SyncGoogleSheetsJob::importInline()
+                ? 'Sync selesai. Import dijalankan langsung (mode inline).'
+                : 'Sync selesai. Proses import berjalan di queue (php artisan queue:work).'));
 
         return $hasError ? Command::FAILURE : Command::SUCCESS;
     }

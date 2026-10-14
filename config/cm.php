@@ -82,6 +82,15 @@ return [
 
         // Spreadsheet Finding CM (sheet: Finding CM)
         'finding_cm_url' => env('GOOGLE_SHEETS_FINDING_CM_URL'),
+
+        // Cara memproses hasil download:
+        //   'inline' = import dijalankan LANGSUNG di proses yang sama
+        //              (bawaan DEV, karena DEV tidak menjalankan service
+        //              queue:work sehingga job hanya menumpuk di tabel jobs
+        //              dan data tidak pernah masuk);
+        //   'queue'  = import diserahkan ke queue:work (bawaan PROD).
+        // Isi CM_SYNC_IMPORT_MODE di .env untuk memaksa salah satunya.
+        'import_mode' => env('CM_SYNC_IMPORT_MODE', env('APP_ENV') === 'local' ? 'inline' : 'queue'),
     ],
 
     /*
