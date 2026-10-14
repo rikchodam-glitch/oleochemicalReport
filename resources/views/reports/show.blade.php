@@ -153,22 +153,22 @@
                 @if($report->jenis_pekerjaan)
                     <div class="flex items-center gap-1.5">
                         @php
-                            $jenisColors = [
-                                'CM'        => 'bg-red-100 text-red-700 border-red-200',
-                                'dCM'       => 'bg-amber-100 text-amber-700 border-amber-200',
-                                'PM'        => 'bg-blue-100 text-blue-700 border-blue-200',
-                                'EI'        => 'bg-cyan-100 text-cyan-700 border-cyan-200',
-                                'Mekanik'   => 'bg-slate-100 text-slate-700 border-slate-200',
-                                'CM/PM'     => 'bg-emerald-100 text-emerald-700 border-emerald-200',
-                                'Fabrikasi' => 'bg-violet-100 text-violet-700 border-violet-200',
-                                'Sipil'     => 'bg-orange-100 text-orange-700 border-orange-200',
-                                'IT'        => 'bg-indigo-100 text-indigo-700 border-indigo-200',
-                                'Project'   => 'bg-rose-100 text-rose-700 border-rose-200',
-                                'UMUM'      => 'bg-teal-100 text-teal-700 border-teal-200',
+                            $jenisGaya = [
+                                'CM'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('CM'),
+                                'dCM'       => \App\Support\WarnaJenisPekerjaan::gayaLencana('dCM'),
+                                'PM'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('PM'),
+                                'EI'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('EI'),
+                                'Mekanik'   => \App\Support\WarnaJenisPekerjaan::gayaLencana('Mekanik'),
+                                'CM/PM'     => \App\Support\WarnaJenisPekerjaan::gayaLencana('CM/PM'),
+                                'Fabrikasi' => \App\Support\WarnaJenisPekerjaan::gayaLencana('Fabrikasi'),
+                                'Sipil'     => \App\Support\WarnaJenisPekerjaan::gayaLencana('Sipil'),
+                                'IT'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('IT'),
+                                'Project'   => \App\Support\WarnaJenisPekerjaan::gayaLencana('Project'),
+                                'UMUM'      => \App\Support\WarnaJenisPekerjaan::gayaLencana('UMUM'),
                             ];
-                            $jColor = $jenisColors[$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-400';
+                            $jColor = $jenisGaya[$report->jenis_pekerjaan] ?? \App\Support\WarnaJenisPekerjaan::gayaLencana(null);
                         @endphp
-                        <span class="inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full border {{ $jColor }}">
+                        <span class="inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full border" style="{{ $jColor }}">
                             {{ $report->jenis_pekerjaan }}
                         </span>
                     </div>
@@ -457,22 +457,22 @@
                         <div>
                             <p class="text-xs text-slate-500">Jenis Pekerjaan</p>
                             @php
-                                $jenisColors = [
-                                    'CM'        => 'bg-red-100 text-red-700 border-red-200',
-                                    'dCM'       => 'bg-amber-100 text-amber-700 border-amber-200',
-                                    'PM'        => 'bg-blue-100 text-blue-700 border-blue-200',
-                                    'EI'        => 'bg-cyan-100 text-cyan-700 border-cyan-200',
-                                    'Mekanik'   => 'bg-slate-100 text-slate-700 border-slate-200',
-                                    'CM/PM'     => 'bg-emerald-100 text-emerald-700 border-emerald-200',
-                                    'Fabrikasi' => 'bg-violet-100 text-violet-700 border-violet-200',
-                                    'Sipil'     => 'bg-orange-100 text-orange-700 border-orange-200',
-                                    'IT'        => 'bg-indigo-100 text-indigo-700 border-indigo-200',
-                                    'Project'   => 'bg-rose-100 text-rose-700 border-rose-200',
-                                    'UMUM'      => 'bg-teal-100 text-teal-700 border-teal-200',
+                                $jenisGaya = [
+                                    'CM'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('CM'),
+                                    'dCM'       => \App\Support\WarnaJenisPekerjaan::gayaLencana('dCM'),
+                                    'PM'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('PM'),
+                                    'EI'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('EI'),
+                                    'Mekanik'   => \App\Support\WarnaJenisPekerjaan::gayaLencana('Mekanik'),
+                                    'CM/PM'     => \App\Support\WarnaJenisPekerjaan::gayaLencana('CM/PM'),
+                                    'Fabrikasi' => \App\Support\WarnaJenisPekerjaan::gayaLencana('Fabrikasi'),
+                                    'Sipil'     => \App\Support\WarnaJenisPekerjaan::gayaLencana('Sipil'),
+                                    'IT'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('IT'),
+                                    'Project'   => \App\Support\WarnaJenisPekerjaan::gayaLencana('Project'),
+                                    'UMUM'      => \App\Support\WarnaJenisPekerjaan::gayaLencana('UMUM'),
                                 ];
-                                $jColor = $jenisColors[$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-400';
+                                $jColor = $jenisGaya[$report->jenis_pekerjaan] ?? \App\Support\WarnaJenisPekerjaan::gayaLencana(null);
                             @endphp
-                            <span class="inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full border {{ $jColor }}">
+                            <span class="inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full border" style="{{ $jColor }}">
                                 {{ $report->jenis_pekerjaan }}
                             </span>
                         </div>

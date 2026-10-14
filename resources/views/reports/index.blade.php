@@ -92,18 +92,18 @@
         ]);
     };
 
-    $jenisColors = [
-        'CM'        => 'bg-red-100 text-red-700 border-red-200',
-        'dCM'       => 'bg-amber-100 text-amber-700 border-amber-200',
-        'PM'        => 'bg-blue-100 text-blue-700 border-blue-200',
-        'EI'        => 'bg-cyan-100 text-cyan-700 border-cyan-200',
-        'Mekanik'   => 'bg-slate-100 text-slate-700 border-slate-200',
-        'CM/PM'     => 'bg-emerald-100 text-emerald-700 border-emerald-200',
-        'Fabrikasi' => 'bg-violet-100 text-violet-700 border-violet-200',
-        'Sipil'     => 'bg-orange-100 text-orange-700 border-orange-200',
-        'IT'        => 'bg-indigo-100 text-indigo-700 border-indigo-200',
-        'Project'   => 'bg-rose-100 text-rose-700 border-rose-200',
-        'UMUM'      => 'bg-teal-100 text-teal-700 border-teal-200',
+    $jenisGaya = [
+        'CM'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('CM'),
+        'dCM'       => \App\Support\WarnaJenisPekerjaan::gayaLencana('dCM'),
+        'PM'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('PM'),
+        'EI'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('EI'),
+        'Mekanik'   => \App\Support\WarnaJenisPekerjaan::gayaLencana('Mekanik'),
+        'CM/PM'     => \App\Support\WarnaJenisPekerjaan::gayaLencana('CM/PM'),
+        'Fabrikasi' => \App\Support\WarnaJenisPekerjaan::gayaLencana('Fabrikasi'),
+        'Sipil'     => \App\Support\WarnaJenisPekerjaan::gayaLencana('Sipil'),
+        'IT'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('IT'),
+        'Project'   => \App\Support\WarnaJenisPekerjaan::gayaLencana('Project'),
+        'UMUM'      => \App\Support\WarnaJenisPekerjaan::gayaLencana('UMUM'),
     ];
 
     $zpmLabels = [
@@ -116,14 +116,14 @@
     // jenis_pekerjaan itu sendiri, supaya angka kartu lain tidak jadi nol saat
     // salah satu kartu dipakai sebagai filter.
     $kartuJenis = [
-        ['jenis' => 'EI',        'nilai' => $countEI,        'teks' => 'text-cyan-600',    'border' => 'border-cyan-200'],
-        ['jenis' => 'Mekanik',   'nilai' => $countMekanik,   'teks' => 'text-slate-700',   'border' => 'border-slate-200'],
-        ['jenis' => 'CM/PM',     'nilai' => $countCmPm,      'teks' => 'text-emerald-600', 'border' => 'border-emerald-200'],
-        ['jenis' => 'Fabrikasi', 'nilai' => $countFabrikasi, 'teks' => 'text-violet-600',  'border' => 'border-violet-200'],
-        ['jenis' => 'Sipil',     'nilai' => $countSipil,     'teks' => 'text-orange-600',  'border' => 'border-orange-200'],
-        ['jenis' => 'IT',        'nilai' => $countIT,        'teks' => 'text-indigo-600',  'border' => 'border-indigo-200'],
-        ['jenis' => 'Project',   'nilai' => $countProject,   'teks' => 'text-rose-600',    'border' => 'border-rose-200'],
-        ['jenis' => 'UMUM',      'nilai' => $countUmum,      'teks' => 'text-teal-600',    'border' => 'border-teal-200'],
+        ['jenis' => 'EI',        'nilai' => $countEI],
+        ['jenis' => 'Mekanik',   'nilai' => $countMekanik],
+        ['jenis' => 'CM/PM',     'nilai' => $countCmPm],
+        ['jenis' => 'Fabrikasi', 'nilai' => $countFabrikasi],
+        ['jenis' => 'Sipil',     'nilai' => $countSipil],
+        ['jenis' => 'IT',        'nilai' => $countIT],
+        ['jenis' => 'Project',   'nilai' => $countProject],
+        ['jenis' => 'UMUM',      'nilai' => $countUmum],
     ];
 
     $jenisAktif  = (string) request('jenis_pekerjaan', '');
@@ -307,8 +307,8 @@
            class="bg-white rounded-xl border-2 px-4 py-3 transition-colors
                   {{ $jenisAktif === $kartu['jenis']
                         ? 'border-teal-400 ring-2 ring-teal-200 bg-teal-50'
-                        : $kartu['border'] . ' hover:border-teal-300' }}">
-            <p class="text-xl font-bold {{ $kartu['teks'] }}" data-kartu="jenis-{{ $kartu['jenis'] }}">{{ number_format($kartu['nilai']) }}</p>
+                        : 'hover:border-teal-300' }}" style="{{ $jenisAktif === $kartu['jenis'] ? '' : \App\Support\WarnaJenisPekerjaan::gayaGaris($kartu['jenis']) }}">
+            <p class="text-xl font-bold" style="{{ \App\Support\WarnaJenisPekerjaan::gayaTeks($kartu['jenis']) }}" data-kartu="jenis-{{ $kartu['jenis'] }}">{{ number_format($kartu['nilai']) }}</p>
             <p class="text-xs text-slate-500 mt-0.5">{{ $kartu['jenis'] }}</p>
         </a>
     @endforeach
@@ -478,7 +478,7 @@
                 @php $kolaborasiPerLaporan = []; @endphp
                 @forelse($reports as $report)
                     @php
-                        $jColor = $jenisColors[$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-400 border-slate-200';
+                        $jColor = $jenisGaya[$report->jenis_pekerjaan] ?? \App\Support\WarnaJenisPekerjaan::gayaLencana(null);
                         $kolaborator = $report->collaboratorReports
                             ->map(fn ($baris) => $baris->technician?->name)
                             ->filter()
@@ -561,7 +561,7 @@
                         {{-- Jenis pekerjaan --}}
                         <td class="px-4 py-3.5 align-top text-center">
                             @if($report->jenis_pekerjaan)
-                                <span class="inline-flex px-2 py-0.5 rounded-md text-xs font-medium border {{ $jColor }}">
+                                <span class="inline-flex px-2 py-0.5 rounded-md text-xs font-medium border" style="{{ $jColor }}">
                                     {{ $report->jenis_pekerjaan }}
                                 </span>
                             @else

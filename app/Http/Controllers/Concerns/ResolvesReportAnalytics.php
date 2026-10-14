@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Concerns;
 
-use App\Services\TechnicianKinerjaService;
+use App\Support\WarnaJenisPekerjaan;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\DB;
  *
  * Dasar pengelompokan adalah kolom `reports.jenis_pekerjaan` (Jenis Pekerjaan)
  * karena kolom itulah yang menyimpan klasifikasi pekerjaan/ZPM tiap laporan
- * (CM, dCM, PM, CM/PM, EI, Mekanik, Fabrikasi, Sipil, IT, Project). Nilai kosong
+ * (CM, dCM, PM, CM/PM, EI, Mekanik, Fabrikasi, Sipil, IT, Project, UMUM). Nilai
  * dikelompokkan sebagai "Tanpa Jenis" supaya totalnya tidak pernah hilang.
  *
  * Semua metode menerima query laporan yang cakupannya sudah dibatasi (per alat
@@ -24,17 +24,6 @@ use Illuminate\Support\Facades\DB;
  */
 trait ResolvesReportAnalytics
 {
-    /**
-     * Warna grafik per jenis pekerjaan, dipakai batang tren maupun donut
-     * komposisi supaya satu jenis punya warna yang sama di kedua grafik.
-     * Nilainya dipusatkan di TechnicianKinerjaService::WARNA_JENIS_PEKERJAAN
-     * supaya grafik kinerja teknisi di halaman detail laporan memakai warna
-     * yang sama persis.
-     *
-     * @var array<string, string>
-     */
-    protected array $warnaJenisPekerjaan = TechnicianKinerjaService::WARNA_JENIS_PEKERJAAN;
-
     /**
      * Ekspresi SQL format bulan (YYYY-MM) sesuai driver database yang aktif.
      *
@@ -62,13 +51,16 @@ trait ResolvesReportAnalytics
 
     /**
      * Warna satu jenis pekerjaan (jenis tak dikenal memakai abu-abu).
+     * Dipakai batang tren maupun donut komposisi supaya satu jenis punya warna
+     * yang sama di kedua grafik; sumbernya App\Support\WarnaJenisPekerjaan
+     * sehingga lencana/kartu pada halaman Laporan memakai warna yang sama.
      *
      * @param  string|null  $jenis  Nilai kolom jenis_pekerjaan
      * @return string  Kode warna hex
      */
     protected function warnaJenisPekerjaan(?string $jenis): string
     {
-        return $this->warnaJenisPekerjaan[trim((string) $jenis)] ?? '#94A3B8';
+        return WarnaJenisPekerjaan::hex($jenis);
     }
 
     /**

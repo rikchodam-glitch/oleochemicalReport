@@ -14,7 +14,7 @@
 
     var tren = @json($trenPerbaikan);
     var komposisi = @json($komposisiTipe);
-    var warnaCadangan = ['#0E9E8E', '#6366F1', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#EC4899', '#94A3B8'];
+    var warnaCadangan = @json(array_values(\App\Support\WarnaJenisPekerjaan::PALET));
 
     var legend = document.getElementById('trenPerbaikanLegend');
 
