@@ -11,15 +11,15 @@
     {{-- Summary Cards --}}
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div class="bg-white rounded-xl border border-slate-200 p-4">
-            <p class="text-2xl font-bold text-red-600">{{ $workOrders->where('jenis_pekerjaan', 'CM')->count() }}</p>
+            <p class="text-2xl font-bold" style="{{ \App\Support\WarnaJenisPekerjaan::gayaTeks('CM') }}">{{ $workOrders->where('jenis_pekerjaan', 'CM')->count() }}</p>
             <p class="text-xs text-slate-500 mt-1">CM (Corrective)</p>
         </div>
-        <div class="bg-white rounded-xl border border-amber-200 p-4">
-            <p class="text-2xl font-bold text-amber-600">{{ $workOrders->where('jenis_pekerjaan', 'dCM')->count() }}</p>
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+            <p class="text-2xl font-bold" style="{{ \App\Support\WarnaJenisPekerjaan::gayaTeks('dCM') }}">{{ $workOrders->where('jenis_pekerjaan', 'dCM')->count() }}</p>
             <p class="text-xs text-slate-500 mt-1">dCM (Deferred)</p>
         </div>
-        <div class="bg-white rounded-xl border border-blue-200 p-4">
-            <p class="text-2xl font-bold text-blue-600">{{ $workOrders->where('jenis_pekerjaan', 'PM')->count() }}</p>
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+            <p class="text-2xl font-bold" style="{{ \App\Support\WarnaJenisPekerjaan::gayaTeks('PM') }}">{{ $workOrders->where('jenis_pekerjaan', 'PM')->count() }}</p>
             <p class="text-xs text-slate-500 mt-1">PM (Preventive)</p>
         </div>
         <div class="bg-white rounded-xl border border-slate-200 p-4">
@@ -109,12 +109,12 @@
                 <tbody class="divide-y divide-slate-50">
                     @forelse($workOrders as $wo)
                         @php
-                            $jenisColors = [
-                                'CM'  => 'bg-red-100 text-red-700 border-red-200',
-                                'dCM' => 'bg-amber-100 text-amber-700 border-amber-200',
-                                'PM'  => 'bg-blue-100 text-blue-700 border-blue-200',
+                            $jenisGaya = [
+                                'CM'  => \App\Support\WarnaJenisPekerjaan::gayaLencana('CM'),
+                                'dCM' => \App\Support\WarnaJenisPekerjaan::gayaLencana('dCM'),
+                                'PM'  => \App\Support\WarnaJenisPekerjaan::gayaLencana('PM'),
                             ];
-                            $jColor = $jenisColors[$wo->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-600';
+                            $jColor = $jenisGaya[$wo->jenis_pekerjaan] ?? \App\Support\WarnaJenisPekerjaan::gayaLencana(null);
                             $sesuaiLabel = match($wo->sesuai_rencana) {
                                 'ya'    => '<span class="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">Ya</span>',
                                 'tidak' => '<span class="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">Tidak</span>',
@@ -129,7 +129,7 @@
                                 @endif
                             </td>
                             <td class="px-4 py-3 text-center">
-                                <span class="inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full border {{ $jColor }}">
+                                <span class="inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full border" style="{{ $jColor }}">
                                     {{ $wo->jenis_pekerjaan }}
                                 </span>
                             </td>

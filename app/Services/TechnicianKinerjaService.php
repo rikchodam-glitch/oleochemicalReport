@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Report;
 use App\Models\Technician;
+use App\Support\WarnaJenisPekerjaan;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -34,26 +35,15 @@ class TechnicianKinerjaService
     public const JUMLAH_BULAN = 12;
 
     /**
-     * Warna penanda jenis pekerjaan. Satu sumber warna untuk seluruh aplikasi:
-     * trait ResolvesReportAnalytics (grafik perbaikan alat/lokasi) memakai
-     * konstanta ini juga, jadi warna satu jenis tidak pernah berbeda antar
-     * halaman.
+     * Warna penanda jenis pekerjaan (isi grafik). Sumber tunggalnya ada di
+     * App\Support\WarnaJenisPekerjaan::PALET supaya lencana dan kartu di
+     * halaman Laporan memakai warna yang sama dengan grafik di halaman detail
+     * alat/lokasi. Konstanta ini dipertahankan sebagai nama lama yang sudah
+     * dipakai trait ResolvesReportAnalytics dan berkas blade.
      *
      * @var array<string, string>
      */
-    public const WARNA_JENIS_PEKERJAAN = [
-        'CM'        => '#EF4444',
-        'dCM'       => '#F97316',
-        'PM'        => '#14B8A6',
-        'CM/PM'     => '#0E9E8E',
-        'EI'        => '#6366F1',
-        'Mekanik'   => '#F59E0B',
-        'Fabrikasi' => '#8B5CF6',
-        'Sipil'     => '#06B6D4',
-        'IT'        => '#EC4899',
-        'Project'   => '#64748B',
-        'UMUM'      => '#0EA5E9',
-    ];
+    public const WARNA_JENIS_PEKERJAAN = WarnaJenisPekerjaan::PALET;
 
     /**
      * Data kinerja sekumpulan teknisi, dikunci dengan id teknisi.
@@ -232,7 +222,7 @@ class TechnicianKinerjaService
      */
     private function warnaJenis(?string $jenis): string
     {
-        return self::WARNA_JENIS_PEKERJAAN[trim((string) $jenis)] ?? '#94A3B8';
+        return WarnaJenisPekerjaan::hex($jenis);
     }
 
     /**

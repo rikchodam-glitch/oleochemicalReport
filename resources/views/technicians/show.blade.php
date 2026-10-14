@@ -498,14 +498,19 @@
                         @forelse($laporanTerbaru as $report)
                             @php
                                 $jenisWarna = [
-                                    'EI'        => 'bg-sky-50 text-sky-700 border-sky-100',
-                                    'Mekanik'   => 'bg-amber-50 text-amber-700 border-amber-100',
-                                    'CM/PM'     => 'bg-teal-50 text-teal-700 border-teal-100',
-                                    'Fabrikasi' => 'bg-violet-50 text-violet-700 border-violet-100',
-                                    'Sipil'     => 'bg-lime-50 text-lime-700 border-lime-100',
-                                    'IT'        => 'bg-indigo-50 text-indigo-700 border-indigo-100',
-                                    'Project'   => 'bg-rose-50 text-rose-700 border-rose-100',
-                                ][$report->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-500 border-slate-200';
+                                    'EI'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('EI'),
+                                    'Mekanik'   => \App\Support\WarnaJenisPekerjaan::gayaLencana('Mekanik'),
+                                    'CM/PM'     => \App\Support\WarnaJenisPekerjaan::gayaLencana('CM/PM'),
+                                    'Fabrikasi' => \App\Support\WarnaJenisPekerjaan::gayaLencana('Fabrikasi'),
+                                    'Sipil'     => \App\Support\WarnaJenisPekerjaan::gayaLencana('Sipil'),
+                                    'IT'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('IT'),
+                                    'Project'   => \App\Support\WarnaJenisPekerjaan::gayaLencana('Project'),
+                                    'CM'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('CM'),
+                                    'dCM'       => \App\Support\WarnaJenisPekerjaan::gayaLencana('dCM'),
+                                    'PM'        => \App\Support\WarnaJenisPekerjaan::gayaLencana('PM'),
+                                    'UMUM'      => \App\Support\WarnaJenisPekerjaan::gayaLencana('UMUM'),
+
+                                ][$report->jenis_pekerjaan] ?? \App\Support\WarnaJenisPekerjaan::gayaLencana(null);
 
                                 $jumlahDok = count($report->photo_documentation ?? []);
                                 $jumlahHc  = count($report->photo_hygiene_clearance ?? []);
@@ -559,7 +564,7 @@
                                 </td>
                                 <td class="px-4 py-3.5 align-top text-center whitespace-nowrap">
                                     @if($report->jenis_pekerjaan)
-                                        <span class="inline-flex px-2 py-0.5 rounded-md text-xs font-medium border {{ $jenisWarna }}">
+                                        <span class="inline-flex px-2 py-0.5 rounded-md text-xs font-medium border" style="{{ $jenisWarna }}">
                                             {{ $report->jenis_pekerjaan }}
                                         </span>
                                     @else

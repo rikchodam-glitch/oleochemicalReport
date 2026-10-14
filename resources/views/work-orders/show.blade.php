@@ -18,9 +18,9 @@
                     <div class="flex items-center gap-3 flex-wrap">
                         <h2 class="text-xl font-bold font-mono" style="color: #0E9E8E;">{{ $workOrder->equipment_tag }}</h2>
                         @php
-                            $jc = ['CM' => 'bg-red-100 text-red-700 border-red-200', 'dCM' => 'bg-amber-100 text-amber-700 border-amber-200', 'PM' => 'bg-blue-100 text-blue-700 border-blue-200'];
+                            $jc = ['CM' => \App\Support\WarnaJenisPekerjaan::gayaLencana('CM'), 'dCM' => \App\Support\WarnaJenisPekerjaan::gayaLencana('dCM'), 'PM' => \App\Support\WarnaJenisPekerjaan::gayaLencana('PM')];
                         @endphp
-                        <span class="inline-flex px-3 py-1 text-xs font-medium rounded-full border {{ $jc[$workOrder->jenis_pekerjaan] ?? 'bg-slate-100 text-slate-600' }}">
+                        <span class="inline-flex px-3 py-1 text-xs font-medium rounded-full border" style="{{ $jc[$workOrder->jenis_pekerjaan] ?? \App\Support\WarnaJenisPekerjaan::gayaLencana(null) }}">
                             {{ $workOrder->jenis_pekerjaan }}
                         </span>
                     </div>
