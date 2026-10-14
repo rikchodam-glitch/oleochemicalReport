@@ -9,6 +9,7 @@ use App\Models\Asset;
 use App\Models\FunctionalLocation;
 use App\Models\Report;
 use App\Models\Technician;
+use App\Services\ReportCopyService;
 use App\Services\Shift\JamKerjaService;
 use App\Services\TechnicianKinerjaService;
 use Illuminate\Http\Request;
@@ -577,6 +578,13 @@ class ReportController extends Controller
      */
     public function update(Request $request, Report $report)
     {
+        // Hanya laporan INDUK yang boleh diubah; baris salinan (kolaborasi /
+        // alat tambahan) selalu dikelola dari induknya supaya perubahan tidak
+        // terpasang sebagian (lihat ReportCopyService::sinkronkanSalinan()).
+        if (($galat = $this->penjagaKelolaInduk($report)) !== null) {
+            return back()->with('error', $galat);
+        }
+
         $validated = $request->validate([
             'work_description'       => 'required|string',
             // Durasi boleh dikosongkan: bila jam mulai & jam selesai diisi,
@@ -691,12 +699,30 @@ class ReportController extends Controller
 
         $report->update($validated);
 
+        // Perubahan laporan INDUK disebarkan ke SELURUH baris salinannya
+        // (kolaborasi & alat tambahan) supaya isinya tidak pernah berbeda.
+        app(ReportCopyService::class)->sinkronkanSalinan($report);
+
         return redirect()->route('reports.show', $report)
             ->with('success', 'Laporan berhasil diperbarui.');
     }
 
+    /**
+     * Ubah status laporan dari jalur lama (tombol pintas).
+     *
+     * Sama seperti update(): hanya laporan INDUK yang boleh diubah, dan
+     * perubahan statusnya ikut disebarkan ke seluruh baris salinannya.
+     *
+     * @param  Request  $request  Berisi status baru
+     * @param  Report   $report   Laporan yang diubah
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function updateStatus(Request $request, Report $report)
     {
+        if (($galat = $this->penjagaKelolaInduk($report)) !== null) {
+            return back()->with('error', $galat);
+        }
+
         $request->validate([
             // 'draft' sudah tidak dipakai lagi (lihat migration 2026_09_26_000005).
             'status' => 'required|in:needs_review,completed,continue',
@@ -710,6 +736,9 @@ class ReportController extends Controller
         }
 
         $report->update($data);
+
+        // Status baris salinan mengikuti status laporan induknya.
+        app(ReportCopyService::class)->sinkronkanSalinan($report);
 
         return back()->with('success', 'Status laporan berhasil diperbarui.');
     }
@@ -836,6 +865,32 @@ class ReportController extends Controller
     }
 
     /**
+     * Laporan yang boleh DIEDIT atau DIHAPUS adalah laporan INDUK: bukan salinan
+     * kolaborasi (collaborator_of) dan bukan salinan alat/lokasi tambahan
+     * (multi_of). Baris salinan selalu dikelola dari laporan induknya supaya
+     * satu pekerjaan tidak berubah hanya pada sebagian barisnya.
+     *
+     * Penjaga ini sepasang dengan tombol pada halaman detail: baris salinan
+     * menampilkan popup penolakan yang mengarahkan admin ke laporan induk
+     * (partial resources/views/reports/partials/_penolakan-salinan.blade.php),
+     * sedangkan di sini penolakannya ditegakkan di sisi server.
+     *
+     * @param  Report  $report  Laporan yang sedang diproses
+     * @return string|null      Pesan galat, null bila laporan boleh dikelola
+     */
+    private function penjagaKelolaInduk(Report $report): ?string
+    {
+        if ($report->collaborator_of === null && $report->multi_of === null) {
+            return null;
+        }
+
+        $induk = $report->multi_of !== null ? $report->multiOf : $report->parentReport;
+        $kode  = $induk?->report_code ?? ($induk ? '#' . $induk->id : 'laporan induknya');
+
+        return 'Laporan ini baris salinan (kolaborasi / alat tambahan). Edit dan hapus hanya bisa dilakukan dari laporan INDUK ' . $kode . '.';
+    }
+
+    /**
      * Hapus satu foto dari laporan (dokumentasi atau hygiene clearance).
      * Dipanggil via fetch() dari halaman detail — return JSON, tidak redirect.
      * File fisik dihapus dari storage; array di DB di-splice dan di-reindex.
@@ -885,9 +940,25 @@ class ReportController extends Controller
         return response()->json(['success' => true]);
     }
 
+    /**
+     * Hapus laporan INDUK beserta seluruh baris salinannya.
+     *
+     * Baris salinan (kolaborasi / alat tambahan) TIDAK boleh dihapus sendiri:
+     * menghapus satu baris salinan akan memecah satu pekerjaan menjadi beberapa
+     * laporan lepas. Penghapusan selalu dilakukan dari laporan induk, dan
+     * Report::boot() menghapus seluruh salinan yang menunjuk ke induk itu.
+     *
+     * @param  Report  $report  Laporan induk yang dihapus
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function destroy(Report $report)
     {
+        if (($galat = $this->penjagaKelolaInduk($report)) !== null) {
+            return back()->with('error', $galat);
+        }
+
         $report->delete();
+
         return redirect()->route('reports.index')
             ->with('success', 'Laporan berhasil dihapus.');
     }

@@ -878,6 +878,12 @@
         @include('reports.partials._galeri-foto', ['bolehHapusFoto' => $laporanInduk->id === $report->id])
 
 
+        {{-- Popup penolakan untuk baris SALINAN (kolaborasi / alat tambahan):
+             tombol Edit/Hapus pada kartu Aksi Admin membukanya. Berisi penjelasan
+             dan tombol "Cek Laporan Induk". --}}
+        @include('reports.partials._penolakan-salinan')
+
+
     </div>{{-- /lg:col-span-2 --}}
 
     {{-- ======================================================
@@ -904,6 +910,9 @@
             <h3 class="font-medium text-slate-900 mb-4">Aksi Admin</h3>
 
             {{-- Tombol MODE VIEW --}}
+            @if($laporanInduk->id === $report->id)
+            {{-- Tombol MODE VIEW untuk laporan INDUK: mode edit + hapus laporan. --}}
+
             <div x-show="!editMode" class="space-y-3">
                 <button type="button"
                         @click="enableEditMode()"
@@ -927,6 +936,41 @@
                     </button>
                 </form>
             </div>
+            @else
+            {{-- Baris salinan (kolaborasi / alat tambahan): tombol Edit dan Hapus
+                 TIDAK mengirim perubahan apa pun, tetapi membuka popup penolakan
+                 yang mengarahkan admin ke laporan INDUK (lihat penjagaKelolaInduk()
+                 pada ReportController dan partial _penolakan-salinan). --}}
+            <div x-show="!editMode" class="space-y-3">
+                <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Laporan ini baris salinan
+                    ({{ $report->collaborator_of !== null ? 'kolaborasi teknisi' : 'alat/lokasi tambahan' }}).
+                    Edit dan hapus hanya bisa dilakukan dari laporan INDUK.
+                </p>
+
+                <button type="button"
+                        @click="bukaPenolakan()"
+                        class="w-full inline-flex items-center justify-center gap-2 px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.172-8.172z" />
+                    </svg>
+                    Edit Laporan
+                </button>
+
+                <button type="button"
+                        @click="bukaPenolakan()"
+                        class="w-full px-4 py-2 border border-red-300 hover:bg-red-50 text-red-600 text-sm font-medium rounded-lg transition-colors">
+                    Hapus Laporan
+                </button>
+
+                <a href="{{ route('reports.show', $laporanInduk) }}"
+                   class="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+                    Cek Laporan Induk
+                </a>
+            </div>
+            @endif
+
+
 
             {{-- Tombol MODE EDIT --}}
             <div x-show="editMode" x-cloak class="space-y-3">
@@ -1026,7 +1070,14 @@
 function reportDetail() {
     return {
         // ── State utama ───────────────────────────────────────
-        editMode: {{ $errors->any() ? 'true' : 'false' }},
+        // Baris salinan (kolaborasi / alat tambahan) TIDAK pernah masuk mode edit:
+        // seluruh pengelolaannya dilakukan dari laporan INDUK (popup penolakan).
+        editMode: {{ ($errors->any() && $laporanInduk->id === $report->id) ? 'true' : 'false' }},
+        salinan: {{ $laporanInduk->id === $report->id ? 'false' : 'true' }},
+
+        // Popup penolakan baris salinan (dibuka tombol Edit/Hapus pada kartu
+        // Aksi Admin, lihat partial _penolakan-salinan).
+        penolakan: false,
 
         // Data foto disimpan di sini agar bisa dimanipulasi tanpa reload
         photoGroups: {
@@ -1271,8 +1322,33 @@ function reportDetail() {
         },
 
 
+        /**
+         * Aktifkan mode edit — hanya berlaku untuk laporan INDUK. Baris salinan
+         * (kolaborasi / alat tambahan) membuka popup penolakan yang mengarahkan
+         * admin ke laporan induknya, bukan mode edit.
+         */
         enableEditMode() {
+            if (this.salinan) {
+                this.bukaPenolakan();
+
+                return;
+            }
+
             this.editMode = true;
+        },
+
+        /**
+         * Buka popup penolakan baris salinan.
+         */
+        bukaPenolakan() {
+            this.penolakan = true;
+        },
+
+        /**
+         * Tutup popup penolakan baris salinan.
+         */
+        tutupPenolakan() {
+            this.penolakan = false;
         },
 
         /**
