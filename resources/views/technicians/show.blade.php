@@ -34,6 +34,22 @@
 @section('content')
     <div x-data="technicianDetail()" class="space-y-6">
 
+        @php
+            // Tampilan halaman Laporan yang sesuai dengan tipe jadwal teknisi
+            // ini: pekerja shift (Grub A-D) dibuka pada tampilan Shift, sisanya
+            // (reguler & reguler staff) pada tampilan Reguler. Tanpa parameter
+            // ini, tautan dari profil teknisi shift terbuka pada tampilan
+            // Reguler yang hanya memuat grup non-shift sehingga daftar
+            // laporannya tampak kosong walau laporannya ada.
+            $tampilanTeknisi = \App\Models\Technician::grupShift($technician->group) ? 'shift' : 'reguler';
+
+            $parameterLaporan = array_filter([
+                'technician_id' => $technician->id,
+                'tampilan'      => $tampilanTeknisi,
+                'grub'          => $tampilanTeknisi === 'shift' ? $technician->group : null,
+            ], fn ($nilai) => $nilai !== null && $nilai !== '');
+        @endphp
+
         <!-- Profile + Stats Grid -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <!-- Profile -->
@@ -357,7 +373,7 @@
                         @forelse($manHourHarian as $hari)
                             @php
                                 $tautanHari = $hari['jumlah_pekerjaan'] > 0
-                                    ? route('reports.index', ['technician_id' => $technician->id, 'tanggal' => $hari['tanggal']])
+                                    ? route('reports.index', array_merge($parameterLaporan, ['tanggal' => $hari['tanggal']]))
                                     : null;
 
                                 $tanggalHari = \Illuminate\Support\Carbon::parse($hari['tanggal']);
@@ -472,7 +488,7 @@
                         {{ $laporanTerbaru->count() }} pekerjaan terbaru. Klik baris untuk membuka detail laporan.
                     </p>
                 </div>
-                <a href="{{ route('reports.index', ['technician_id' => $technician->id]) }}"
+                <a href="{{ route('reports.index', $parameterLaporan) }}"
                    class="inline-flex items-center gap-1 text-xs font-medium text-teal-700 hover:text-teal-800">
                     Lihat semua di halaman Laporan
                     <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
