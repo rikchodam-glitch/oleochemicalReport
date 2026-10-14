@@ -13,15 +13,17 @@
     {{-- Tab Navigasi --}}
     @include('cm._tabs')
 
-    {{-- Info periode aktif (default: bulan terakhir yang ada datanya) --}}
+    {{-- Info periode aktif. Bila parameter ?bulan tidak dikirim, controller
+         (CmController::overview) otomatis memakai bulan terakhir yang punya
+         data pada tahun & PT yang sedang difilter. Keterangan tambahan
+         "(bulan terakhir yang ada datanya)" DIHAPUS atas permintaan user
+         14/10/2026 supaya layar tidak lagi memuat tulisan itu; yang tampil
+         cukup "Periode: <bulan> <tahun>". --}}
     <p class="text-xs text-slate-500 mb-2">
         Periode:
         <span class="font-medium text-slate-700">
             {{ $filterBulan ? \DateTime::createFromFormat('!m', $filterBulan)->format('F') . ' ' . $filterTahun : 'Semua Bulan ' . $filterTahun }}
         </span>
-        @if($filterBulan && $filterBulan === $bulanTerakhir)
-            <span class="text-slate-400">(bulan terakhir yang ada datanya)</span>
-        @endif
     </p>
 
     {{-- Summary Cards --}}
