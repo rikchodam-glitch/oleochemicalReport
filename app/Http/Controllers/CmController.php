@@ -426,6 +426,8 @@ class CmController extends Controller
             'dev_pompa',  'deh_pompa',  'dea_pompa',
             'temp_de_motor', 'temp_nde_motor',
             'temp_de_pompa', 'temp_nde_pompa',
+            // Parameter proses — dipakai chart & analisa Pressure/Ampere
+            'ampere', 'discharge_pressure',
         ];
         $chartData = $filteredReadings->sortBy('tanggal')->values()->map(function ($r) use ($trendKeys) {
             $row = ['tanggal' => $r->tanggal->format('Y-m-d')];
@@ -536,6 +538,13 @@ class CmController extends Controller
         // ------------------------------------------------------------------
         $vibrationInsight = $this->detectVibrationTrend($chartData);
 
+        // ------------------------------------------------------------------
+        // Analisa Trend Pressure & Ampere — supaya SETIAP halaman equipment
+        // punya bagian "Trend & Analisa" untuk kedua parameter ini, bukan
+        // hanya untuk vibrasi.
+        // ------------------------------------------------------------------
+        $parameterTrend = $this->analisaParameterTrend($chartData);
+
         // Tahun-tahun yang tersedia untuk dropdown filter
         $availableYears = $equipment->readings()
             ->selectRaw('YEAR(tanggal) as year')
@@ -566,6 +575,7 @@ class CmController extends Controller
             'totalFindingsClosed',
             'mtbfData',
             'vibrationInsight',
+            'parameterTrend',
             'availableYears',
             'vibThresholds',
             'tempThreshold'
@@ -1490,6 +1500,128 @@ class CmController extends Controller
         }
 
         return $insight;
+    }
+
+    /**
+     * Hitung analisa tren sederhana untuk parameter proses (Ampere & Discharge
+     * Pressure) dari data chart yang sudah di-sort ascending.
+     *
+     * Dipakai halaman detail equipment supaya SETIAP equipment punya bagian
+     * "Trend & Analisa" untuk pressure dan ampere, terlepas dari ada atau
+     * tidaknya kenaikan vibrasi. Analisanya bersifat deskriptif (nilai
+     * terakhir, rata-rata, minimum, maksimum, arah tren, dan persentase
+     * perubahan) karena kedua parameter ini belum punya batas Alarm/Danger
+     * resmi seperti vibrasi (ISO 10816-3).
+     *
+     * Nilai 0/NULL pada $chartData berarti pembacaan tidak diambil (lihat cara
+     * $chartData dibentuk), sehingga otomatis tidak ikut dihitung.
+     *
+     * @param  \Illuminate\Support\Collection  $chartData  Baris tren (kunci: tanggal + nama parameter)
+     * @return array<string, array|null>  Analisa per parameter; null bila parameter itu tidak punya data
+     */
+    private function analisaParameterTrend($chartData): array
+    {
+        $config = config('cm.process_parameter_insight', []);
+        $minPoints = $config['min_data_points'] ?? 3;
+        $changePct = $config['significant_change_pct'] ?? 20;
+
+        // Kunci parameter pada $chartData => label yang ditampilkan di layar
+        $parameters = [
+            'ampere'             => 'Ampere',
+            'discharge_pressure' => 'Discharge Pressure',
+        ];
+
+        $hasil = [];
+
+        foreach ($parameters as $key => $label) {
+            $points = collect($chartData)
+                ->filter(fn($d) => isset($d[$key]) && $d[$key] !== null)
+                ->values();
+
+            // Parameter ini tidak pernah diisi pada rentang filter yang aktif.
+            if ($points->isEmpty()) {
+                $hasil[$key] = null;
+                continue;
+            }
+
+            $values   = $points->pluck($key)->map(fn($v) => (float) $v);
+            $awal     = (float) $points->first()[$key];
+            $akhir    = (float) $points->last()[$key];
+            $tglAwal  = (string) $points->first()['tanggal'];
+            $tglAkhir = (string) $points->last()['tanggal'];
+            $hari     = (int) Carbon::parse($tglAwal)->diffInDays(Carbon::parse($tglAkhir));
+            $slope    = $hari > 0 ? ($akhir - $awal) / $hari : 0.0;
+            $pct      = $awal != 0.0 ? (($akhir - $awal) / abs($awal)) * 100 : null;
+
+            if ($slope > 0) {
+                $arah = 'naik';
+            } elseif ($slope < 0) {
+                $arah = 'turun';
+            } else {
+                $arah = 'stabil';
+            }
+
+            // Nilai persen dibulatkan lebih dulu supaya ambang "signifikan"
+            // selalu sama dengan angka yang tampil di layar (menghindari
+            // selisih presisi float, mis. 20% terbaca 19,999999...)
+            $pctBulat = $pct !== null ? round($pct, 1) : null;
+
+            $analisa = [
+                'kunci'          => $key,
+                'label'          => $label,
+                'titik'          => $points->count(),
+                'min_titik'      => $minPoints,
+                'awal'           => $awal,
+                'akhir'          => $akhir,
+                'rata_rata'      => round((float) $values->avg(), 2),
+                'min'            => round((float) $values->min(), 2),
+                'maks'           => round((float) $values->max(), 2),
+                'tanggal_awal'   => $tglAwal,
+                'tanggal_akhir'  => $tglAkhir,
+                'hari'           => $hari,
+                'slope_per_hari' => round($slope, 4),
+                'perubahan_pct'  => $pctBulat,
+                'arah'           => $arah,
+                'cukup_data'     => $points->count() >= $minPoints,
+                'signifikan'     => $pctBulat !== null && abs($pctBulat) >= $changePct && $arah !== 'stabil',
+            ];
+            $analisa['message'] = $this->pesanAnalisaParameter($analisa);
+
+            $hasil[$key] = $analisa;
+        }
+
+        return $hasil;
+    }
+
+    /**
+     * Susun kalimat analisa berbahasa Indonesia untuk satu parameter proses.
+     *
+     * @param  array<string, mixed>  $analisa  Hasil hitungan analisaParameterTrend untuk satu parameter
+     * @return string  Kalimat analisa yang siap ditampilkan di view
+     */
+    private function pesanAnalisaParameter(array $analisa): string
+    {
+        $label = $analisa['label'];
+
+        // Data terlalu sedikit: arah tren tidak boleh disimpulkan.
+        if (! $analisa['cukup_data']) {
+            return "Data {$label} baru {$analisa['titik']} titik pada rentang ini (minimal "
+                . $analisa['min_titik'] . ' titik) - arah tren belum bisa disimpulkan.';
+        }
+
+        if ($analisa['signifikan']) {
+            $arah = $analisa['arah'] === 'naik' ? 'naik signifikan' : 'turun signifikan';
+
+            return "Tren {$label} {$arah} (dari " . number_format($analisa['awal'], 2)
+                . ' ke ' . number_format($analisa['akhir'], 2)
+                . " dalam {$analisa['hari']} hari, "
+                . number_format((float) $analisa['perubahan_pct'], 1) . '%).';
+        }
+
+        return "Tren {$label} relatif {$analisa['arah']} pada {$analisa['hari']} hari terakhir "
+            . '(rata-rata ' . number_format($analisa['rata_rata'], 2)
+            . ', rentang ' . number_format($analisa['min'], 2)
+            . ' - ' . number_format($analisa['maks'], 2) . ').';
     }
 
     /**
