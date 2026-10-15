@@ -42,6 +42,21 @@ class ReportController extends Controller
     {
         $tampilan     = $request->get('tampilan') === 'shift' ? 'shift' : 'reguler';
         $grubAktif    = $tampilan === 'shift' ? $this->resolveGrub($request->get('grub')) : null;
+
+        // Bila daftar disaring ke SATU teknisi TANPA parameter tampilan (mis.
+        // tautan lama atau isian filter teknisi di halaman Laporan), ikuti mode
+        // teknisi itu supaya daftarnya tidak tampak kosong: pekerja shift
+        // (Grub A-D) dibuka pada tampilan Shift beserta grub-nya, sedangkan
+        // teknisi non-shift tetap Reguler. Parameter tampilan yang dikirim
+        // eksplisit (tab Reguler/Shift) tetap dihormati.
+        if (! $request->filled('tampilan') && $request->filled('technician_id')) {
+            $teknisiFilter = Technician::find($request->get('technician_id'));
+
+            if ($teknisiFilter !== null && Technician::grupShift($teknisiFilter->group)) {
+                $tampilan  = 'shift';
+                $grubAktif = $this->resolveGrub($request->get('grub')) ?? $this->resolveGrub($teknisiFilter->group);
+            }
+        }
         $tanggalAktif = $this->resolveTanggal($request->get('tanggal'));
         $pakaiRentang = $request->filled('date_from') || $request->filled('date_to');
 
