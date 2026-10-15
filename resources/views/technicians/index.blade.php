@@ -98,10 +98,10 @@
 
             <button type="button" onclick="bukaJadwalBulanan()"
                     class="mt-3 w-full px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
-                Lihat Jadwal Bulanan
+                Lihat Kalender Teknisi
             </button>
             <p class="text-xs text-slate-400 mt-1.5">
-                Preview jadwal shift per group untuk bulan berjalan dan bulan-bulan berikutnya beserta rekapan harinya.
+                Kalender teknisi: jadwal shift per group, penanda hari libur nasional, dan rekapan hari kerja/OFF.
             </p>
         </div>
 
@@ -219,9 +219,10 @@
         <div class="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
             <div class="flex flex-wrap items-start justify-between gap-3 px-5 py-3.5 border-b border-slate-100">
                 <div>
-                    <h3 class="text-sm font-semibold text-slate-800">Jadwal Shift Bulanan</h3>
+                    <h3 class="text-sm font-semibold text-slate-800">Kalender Teknisi</h3>
                     <p class="text-xs text-slate-400 mt-0.5">
-                        Hasil proyeksi pola rotasi 20 hari (5 hari Shift 1, 2 OFF, 5 hari Shift 3, 2 OFF, 5 hari Shift 2, 1 OFF).
+                        Jadwal shift hasil proyeksi pola rotasi 20 hari (5 hari Shift 1, 2 OFF, 5 hari Shift 3, 2 OFF, 5 hari Shift 2, 1 OFF).
+                        Tanggal bertanda merah adalah hari libur nasional: target jam kerja 0 dan seluruh pekerjaan dihitung lembur.
                     </p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
@@ -252,7 +253,11 @@
                             <tr>
                                 <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-2 py-1 whitespace-nowrap">Group</th>
                                 @foreach($jadwalBulanan['hari'] as $hari)
-                                    <th class="text-center px-1 py-1 whitespace-nowrap {{ $hari['akhir_pekan'] ? 'text-rose-500' : 'text-slate-500' }}">
+                                    @php
+                                        $namaLiburHari = $hariLiburBulanan[$hari['tanggal']] ?? null;
+                                    @endphp
+                                    <th class="text-center px-1 py-1 whitespace-nowrap {{ $namaLiburHari !== null ? 'text-rose-600 bg-rose-50 rounded' : ($hari['akhir_pekan'] ? 'text-rose-500' : 'text-slate-500') }}"
+                                        @if($namaLiburHari !== null) title="Libur: {{ $namaLiburHari }}" @endif>
                                         <span class="block text-[10px] font-medium">{{ $hari['hari'] }}</span>
                                         <span class="block font-semibold">{{ $hari['nomor'] }}</span>
                                     </th>
@@ -306,6 +311,9 @@
                     <span class="inline-flex items-center gap-1.5">
                         <span class="w-4 h-4 rounded bg-slate-200"></span> OFF
                     </span>
+                    <span class="inline-flex items-center gap-1.5">
+                        <span class="w-4 h-4 rounded bg-rose-50 border border-rose-200"></span> Libur nasional (target 0, pekerjaan lembur)
+                    </span>
                 </div>
 
                 {{-- Rekap jumlah hari per group --}}
@@ -319,6 +327,63 @@
                             <p class="text-slate-500">OFF: {{ $grup['jumlah']['x'] }} hari</p>
                         </div>
                     @endforeach
+                </div>
+
+                {{-- Kelola hari libur nasional. Tanggal yang tersimpan membuat
+                     target jam kerja 0 untuk semua teknisi dan seluruh pekerjaan
+                     pada tanggal itu dihitung lembur. Hanya administrator yang
+                     boleh menyimpan/hapus (penegakan di HanyaBacaMiddleware). --}}
+                <div class="mt-5 border-t border-slate-100 pt-4" id="bagian_hari_libur">
+                    <h4 class="text-sm font-semibold text-slate-800">Hari Libur Nasional</h4>
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        Tanggal di sini membuat target jam kerja 0 untuk semua teknisi dan seluruh pekerjaan dihitung lembur.
+                    </p>
+
+                    @if(auth()->user()?->bolehMenulis())
+                        <form method="POST" action="{{ route('technicians.hari-libur.store') }}"
+                              class="mt-3 flex flex-wrap items-end gap-2">
+                            @csrf
+                            <div>
+                                <label for="hari_libur_tanggal" class="block text-xs font-medium text-slate-600 mb-1">Tanggal</label>
+                                <input type="date" id="hari_libur_tanggal" name="tanggal" required
+                                       class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                            </div>
+                            <div class="flex-1 min-w-[14rem]">
+                                <label for="hari_libur_nama" class="block text-xs font-medium text-slate-600 mb-1">Nama hari libur</label>
+                                <input type="text" id="hari_libur_nama" name="nama" required maxlength="150"
+                                       placeholder="Contoh: Hari Kemerdekaan"
+                                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                            </div>
+                            <button type="submit"
+                                    class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
+                                Simpan
+                            </button>
+                        </form>
+                    @endif
+
+                    <div class="mt-3">
+                        @forelse($daftarHariLibur as $hariLibur)
+                            <div class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-slate-200 mb-2">
+                                <div class="min-w-0">
+                                    <p class="text-sm font-medium text-slate-700">{{ $hariLibur->nama }}</p>
+                                    <p class="text-xs text-slate-400">{{ $hariLibur->tanggal?->translatedFormat('d F Y') }}</p>
+                                </div>
+                                @if(auth()->user()?->bolehMenulis())
+                                    <form method="POST" action="{{ route('technicians.hari-libur.destroy', $hariLibur) }}"
+                                          onsubmit="return confirm('Hapus hari libur ini?')">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit"
+                                                class="shrink-0 px-3 py-1.5 border border-red-300 hover:bg-red-50 text-red-600 text-xs font-medium rounded-lg transition-colors">
+                                            Hapus
+                                        </button>
+                                    </form>
+                                @endif
+                            </div>
+                        @empty
+                            <p class="text-xs text-slate-400">Belum ada hari libur pada bulan ini.</p>
+                        @endforelse
+                    </div>
                 </div>
             </div>
 

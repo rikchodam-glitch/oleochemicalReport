@@ -2,6 +2,7 @@
 
 namespace App\Services\Shift;
 
+use App\Models\HariLibur;
 use App\Models\Report;
 use App\Models\Technician;
 use App\Models\TechnicianShift;
@@ -13,9 +14,61 @@ use Carbon\CarbonInterface;
  * (istirahat 2 jam) dan Sabtu (jam kerja lebih pendek) otomatis lebih kecil.
  *
  * Definisi jam kerja ada di config('cm.man_hour.jam_kerja') agar mudah diubah.
+ *
+ * HARI LIBUR NASIONAL (diputuskan user 15/10/2026): setiap tanggal pada tabel
+ * hari_libur diperlakukan sebagai hari libur untuk SEMUA grup (termasuk pekerja
+ * shift). Akibatnya jendela kerja hari itu tidak ada (seluruh jam yang
+ * dilaporkan dihitung lembur) dan target menit 0. Pekerja shift tetap mengikuti
+ * rotasinya (jadwal shift tetap tampil), hanya perhitungannya menjadi lembur.
  */
 class JamKerjaService
 {
+    /**
+     * Peta hari libur (tanggal Y-m-d => nama) yang dimuat sekali per instance.
+     *
+     * Dimuat malas (lazy) supaya satu perhitungan man hour tidak menanyakan
+     * tabel hari_libur berkali-kali.
+     *
+     * @var array<string, string>|null
+     */
+    private ?array $petaHariLibur = null;
+
+    /**
+     * Peta hari libur seluruh tanggal yang tersimpan (dimuat sekali).
+     *
+     * @return array<string, string> Peta tanggal Y-m-d => nama
+     */
+    private function petaHariLibur(): array
+    {
+        if ($this->petaHariLibur === null) {
+            $this->petaHariLibur = HariLibur::petaRentang('1970-01-01', '2999-12-31');
+        }
+
+        return $this->petaHariLibur;
+    }
+
+    /**
+     * Nama hari libur pada satu tanggal, null bila bukan hari libur.
+     *
+     * @param  CarbonInterface $tanggal Tanggal yang dicek
+     * @return string|null              Nama hari libur atau null
+     */
+    public function namaHariLibur(CarbonInterface $tanggal): ?string
+    {
+        return $this->petaHariLibur()[$tanggal->toDateString()] ?? null;
+    }
+
+    /**
+     * Apakah satu tanggal termasuk hari libur nasional.
+     *
+     * @param  CarbonInterface $tanggal Tanggal yang dicek
+     * @return bool                     True bila hari libur
+     */
+    public function apakahHariLibur(CarbonInterface $tanggal): bool
+    {
+        return $this->namaHariLibur($tanggal) !== null;
+    }
+
     /**
      * Definisi jam kerja untuk satu group teknisi (fallback: reguler).
      *
@@ -38,6 +91,12 @@ class JamKerjaService
      */
     public function hari(string $grupTeknisi, CarbonInterface $tanggal): ?array
     {
+        // Hari libur nasional berlaku untuk semua grup: tidak ada jam kerja
+        // (jendela null) sehingga target 0 dan seluruh jam menjadi lembur.
+        if ($this->apakahHariLibur($tanggal)) {
+            return null;
+        }
+
         $definisi = $this->definisi($grupTeknisi);
         $jadwal   = $definisi[$tanggal->dayOfWeek] ?? null;
 
@@ -443,6 +502,12 @@ class JamKerjaService
      */
     private function jendelaDariJadwal(?TechnicianShift $shift, ?string $grup, CarbonInterface $tanggal): ?array
     {
+        // Hari libur nasional: jadwal shift apa pun tidak memberi jendela kerja,
+        // sehingga seluruh jam yang dilaporkan dihitung lembur.
+        if ($this->apakahHariLibur($tanggal)) {
+            return null;
+        }
+
         if ($shift !== null) {
             return $shift->jendela($grup);
         }

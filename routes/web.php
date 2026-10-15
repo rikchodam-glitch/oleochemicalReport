@@ -8,6 +8,7 @@ use App\Http\Controllers\CmController;
 use App\Http\Controllers\CmImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FunctionalLocationController;
+use App\Http\Controllers\HariLiburController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\IpAddressController;
 use App\Http\Controllers\ItAssetController;
@@ -100,6 +101,10 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
 
     // Technicians
     Route::post('/technicians/shift-schedule', [ShiftScheduleController::class, 'store'])->name('technicians.shift-schedule.store');
+    // Hari libur nasional dari kalender teknisi (rute statis WAJIB sebelum
+    // resource agar tidak ditimpa wildcard {technician}).
+    Route::post('/technicians/hari-libur', [HariLiburController::class, 'store'])->name('technicians.hari-libur.store');
+    Route::delete('/technicians/hari-libur/{hariLibur}', [HariLiburController::class, 'destroy'])->name('technicians.hari-libur.destroy');
     Route::resource('technicians', TechnicianController::class);
     Route::post('/technicians/{technician}/approve', [TechnicianController::class, 'approve'])->name('technicians.approve');
     Route::post('/technicians/{technician}/suspend', [TechnicianController::class, 'suspend'])->name('technicians.suspend');

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Department;
+use App\Models\HariLibur;
 use App\Models\ShiftSchedule;
 use App\Models\Technician;
 use App\Models\TechnicianShift;
@@ -85,6 +86,20 @@ class TechnicianController extends Controller
 
         $jadwalBulanan = app(ShiftPatternService::class)->jadwalBulan($bulanJadwal);
 
+        // Hari libur nasional bulan yang ditampilkan: peta (tanggal => nama)
+        // untuk penanda kalender, dan daftar modelnya untuk pengelolaan.
+        $daftarHariLibur = HariLibur::query()
+            ->antara(
+                $bulanJadwal->copy()->startOfMonth()->toDateString(),
+                $bulanJadwal->copy()->endOfMonth()->toDateString()
+            )
+            ->orderBy('tanggal')
+            ->get();
+
+        $hariLiburBulanan = $daftarHariLibur
+            ->mapWithKeys(fn (HariLibur $hari) => [$hari->tanggal->toDateString() => (string) $hari->nama])
+            ->all();
+
         return view('technicians.index', compact(
             'technicians',
             'departments',
@@ -94,7 +109,9 @@ class TechnicianController extends Controller
             'jumlahHariPeriode',
             'shiftTerakhir',
             'ringkasanJadwal',
-            'jadwalBulanan'
+            'jadwalBulanan',
+            'hariLiburBulanan',
+            'daftarHariLibur'
         ));
     }
 

@@ -244,8 +244,8 @@ test('halaman teknisi menampilkan man hour, rincian harian, dan kolom jam kerja'
         ->assertDontSee('Buat Jadwal Otomatis', false)
         ->assertDontSee('Riwayat Import Jadwal', false)
         ->assertDontSee('Upload jadwal', false)
-        ->assertSee('Lihat Jadwal Bulanan', false)
-        ->assertSee('Jadwal Shift Bulanan', false)
+        ->assertSee('Lihat Kalender Teknisi', false)
+        ->assertSee('Kalender Teknisi', false)
         ->assertSee('modal-jadwal-bulanan', false)
         ->assertSee('Shift 1 (08.00-16.00)', false);
 
@@ -528,11 +528,11 @@ test('popup jadwal bulanan bisa digeser ke bulan berikutnya', function () {
         ->get('/technicians?jadwal_bulan=2026-11')
         ->assertStatus(200)
         ->assertSee('November 2026', false)
-        ->assertSee('Jadwal Shift Bulanan', false);
+        ->assertSee('Kalender Teknisi', false);
 
     // Parameter tidak valid tidak membuat halaman error (pakai bulan berjalan).
     $this->actingAs($this->admin)
         ->get('/technicians?jadwal_bulan=ngawur')
         ->assertStatus(200)
-        ->assertSee('Jadwal Shift Bulanan', false);
+        ->assertSee('Kalender Teknisi', false);
 });
