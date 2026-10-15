@@ -126,14 +126,31 @@ test('membuka tautan dari profil teknisi shift menampilkan laporan pada tanggal 
         ->assertDontSee('data-laporan-id="' . $this->laporanReguler->id . '"', false);
 });
 
-test('laporan teknisi shift memang tidak tampil pada tampilan reguler', function () {
-    // Inilah sebab tautan profil WAJIB membawa tampilan: tampilan Reguler hanya
-    // memuat teknisi non-shift (keputusan 26/09/2026), sehingga daftar laporan
-    // teknisi shift tampak kosong bila tautannya tanpa parameter tampilan.
+test('saringan teknisi shift tanpa parameter tampilan otomatis memakai tampilan shift', function () {
+    // Perbaikan 15/10/2026: walau tautannya lupa membawa parameter tampilan,
+    // menyaring satu teknisi shift otomatis membuka tampilan Shift sehingga
+    // daftar laporannya tidak tampak kosong.
     $this->actingAs($this->admin)
         ->get('/reports?technician_id=' . $this->teknisiShift->id . '&tanggal=' . $this->tanggal)
         ->assertStatus(200)
-        ->assertSee('Belum ada pekerjaan', false)
+        ->assertSee('data-laporan-id="' . $this->laporanShift->id . '"', false)
+        ->assertDontSee('data-laporan-id="' . $this->laporanReguler->id . '"', false);
+});
+
+test('parameter tampilan eksplisit tetap dihormati walau menyaring teknisi shift', function () {
+    // Tab Reguler yang diklik pengguna tetap membuka tampilan Reguler (tidak
+    // ditimpa oleh penyesuaian otomatis).
+    $this->actingAs($this->admin)
+        ->get('/reports?technician_id=' . $this->teknisiShift->id . '&tampilan=reguler&tanggal=' . $this->tanggal)
+        ->assertStatus(200)
+        ->assertDontSee('data-laporan-id="' . $this->laporanShift->id . '"', false);
+});
+
+test('saringan teknisi reguler tanpa parameter tampilan tetap tampilan reguler', function () {
+    $this->actingAs($this->admin)
+        ->get('/reports?technician_id=' . $this->teknisiReguler->id . '&tanggal=' . $this->tanggal)
+        ->assertStatus(200)
+        ->assertSee('data-laporan-id="' . $this->laporanReguler->id . '"', false)
         ->assertDontSee('data-laporan-id="' . $this->laporanShift->id . '"', false);
 });
 
