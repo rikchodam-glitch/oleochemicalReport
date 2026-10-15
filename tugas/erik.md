@@ -1,14 +1,15 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-15 13:15 WIB
+Diperbarui: 2026-10-15 13:35 WIB
 
-- Cabang aktif: `tugas/erik/tautan-laporan-mengikuti-grup`
-- Mulai: 2026-10-15 13:15
+- Cabang aktif: `tugas/erik/popup-kalender-tidak-terbuka-sendiri`
+- Mulai: 2026-10-15 13:35
 - Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
-  - `app/Http/Controllers/ReportController.php` (fallback tampilan dari group teknisi saat disaring `technician_id` tanpa parameter `tampilan`)
-  - `tests/Feature/TechnicianTautanTampilanTest.php` (3 test: inferensi shift, tab eksplisit dihormati, reguler tidak berubah)
-- Catatan: Melengkapi keputusan 14/10/2026 (tautan profil sudah membawa `tampilan`); ini penjaga di sisi server agar daftar tidak kosong walau parameter tampilan tidak dikirim. Tanpa migrasi/perubahan data.
+  - `resources/views/technicians/index.blade.php` (popup hanya dibuka bila URL ditandai `buka_kalender=1`; tautan bulan menambahkan penanda; penanda dibuang dari address bar setelah dipakai)
+  - `app/Http/Controllers/TechnicianController.php` (tautan paginasi tidak lagi membawa `jadwal_bulan`/`buka_kalender`, hanya filter daftar)
+  - `tests/Feature/TechnicianKalenderAutoBukaTest.php` (BARU)
+- Catatan: cabang dibuat dari main terbaru (PR #16 kalender & #17 tautan laporan sudah di-merge). Tanpa migrasi/perubahan data.
 
 ## Riwayat
-- tugas/erik/kalender-teknisi-hari-libur (mulai 2026-10-15 10:58) -> dilanjutkan 2026-10-15 13:15
+- tugas/erik/tautan-laporan-mengikuti-grup (mulai 2026-10-15 13:15) -> dilanjutkan 2026-10-15 13:35
