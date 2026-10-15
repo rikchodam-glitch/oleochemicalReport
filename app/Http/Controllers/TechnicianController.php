@@ -51,7 +51,13 @@ class TechnicianController extends Controller
             });
         }
 
-        $technicians = $query->latest()->paginate(20)->withQueryString();
+        // Tautan paginasi hanya membawa filter daftar. Parameter kalender
+        // (jadwal_bulan/buka_kalender) sengaja TIDAK diikutkan supaya popup
+        // kalender tidak ikut terbuka saat berpindah halaman (perbaikan
+        // 15/10/2026).
+        $technicians = $query->latest()
+            ->paginate(20)
+            ->appends($request->only(['status', 'department_id', 'group', 'section', 'search']));
         $departments = Department::all();
 
         // Ringkasan man hour periode berjalan untuk kolom di tabel teknisi.

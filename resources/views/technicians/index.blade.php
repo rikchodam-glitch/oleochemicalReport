@@ -226,14 +226,14 @@
                     </p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
-                    <a href="{{ route('technicians.index', ['jadwal_bulan' => $jadwalBulanan['bulan_sebelumnya']]) }}"
+                    <a href="{{ route('technicians.index', ['jadwal_bulan' => $jadwalBulanan['bulan_sebelumnya'], 'buka_kalender' => 1]) }}"
                        class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50">
                         Bulan Sebelumnya
                     </a>
                     <span class="px-3 py-1.5 rounded-lg bg-teal-50 border border-teal-100 text-xs font-semibold text-teal-700">
                         {{ $jadwalBulanan['label'] }}
                     </span>
-                    <a href="{{ route('technicians.index', ['jadwal_bulan' => $jadwalBulanan['bulan_berikutnya']]) }}"
+                    <a href="{{ route('technicians.index', ['jadwal_bulan' => $jadwalBulanan['bulan_berikutnya'], 'buka_kalender' => 1]) }}"
                        class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50">
                         Bulan Berikutnya
                     </a>
@@ -428,10 +428,21 @@
         }
     });
 
-    // Buka otomatis bila halaman dimuat dengan parameter bulan jadwal
-    // (dipakai tombol Bulan Sebelumnya / Bulan Berikutnya di dalam popup).
-    if (window.location.search.indexOf('jadwal_bulan=') !== -1) {
+    // Buka otomatis HANYA ketika tombol Bulan Sebelumnya / Bulan Berikutnya di
+    // dalam popup diklik (URL ditandai buka_kalender=1). Penanda itu langsung
+    // dibuang dari address bar setelah dipakai supaya popup tidak terbuka
+    // sendiri saat halaman dimuat ulang oleh paginasi atau simpan hari libur
+    // (perbaikan 15/10/2026).
+    if (window.location.search.indexOf('buka_kalender=1') !== -1) {
         bukaJadwalBulanan();
+
+        try {
+            var alamat = new URL(window.location.href);
+            alamat.searchParams.delete('buka_kalender');
+            window.history.replaceState({}, '', alamat.pathname + alamat.search + alamat.hash);
+        } catch (e) {
+            // Abaikan bila URL tidak bisa diproses.
+        }
     }
 </script>
 @endpush
