@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 
 class User extends Authenticatable
 {
@@ -111,6 +112,130 @@ class User extends Authenticatable
     public function bolehMenulis(): bool
     {
         return in_array((string) $this->role, (array) config('akses.role_penulis', ['admin']), true);
+    }
+
+    /**
+     * Daftar kemampuan tulis sebagian akun ini (lihat config('akses.tulis_grup')).
+     *
+     * Diambil dari group teknisi yang terhubung. Administrator tidak memakai
+     * daftar ini (selalu boleh menulis), dan akun tanpa group mengembalikan
+     * daftar kosong (hanya baca).
+     *
+     * @return array<int, string>
+     */
+    public function kemampuanTulis(): array
+    {
+        if ($this->bolehMenulis()) {
+            return [];
+        }
+
+        $grup = $this->grupBagian();
+
+        if ($grup === null) {
+            return [];
+        }
+
+        return array_values((array) config('akses.tulis_grup.' . $grup, []));
+    }
+
+    /**
+     * Apakah akun ini punya kemampuan tulis tertentu.
+     *
+     * @param  string $kemampuan Kunci kemampuan (mis. 'laporan')
+     * @return bool
+     */
+    public function bolehMenulisKemampuan(string $kemampuan): bool
+    {
+        return in_array($kemampuan, $this->kemampuanTulis(), true);
+    }
+
+    /**
+     * Apakah akun ini boleh memakai metode tulis pada route tertentu.
+     *
+     * Administrator selalu boleh. Selain itu hanya route yang termasuk
+     * kemampuan tulis sebagian group-nya (mis. 'reports.update') yang boleh.
+     * Dipakai HanyaBacaMiddleware sebagai penegak utama.
+     *
+     * @param  string|null $namaRoute Nama route yang diminta
+     * @return bool
+     */
+    public function bolehMenulisRoute(?string $namaRoute): bool
+    {
+        if ($this->bolehMenulis()) {
+            return true;
+        }
+
+        if ($namaRoute === null || $namaRoute === '') {
+            return false;
+        }
+
+        foreach ($this->kemampuanTulis() as $kemampuan) {
+            foreach ((array) config('akses.tulis_kemampuan.' . $kemampuan, []) as $pola) {
+                if (Str::is((string) $pola, $namaRoute)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Pola PATH (regex) yang boleh dikirim akun ini pada tampilan.
+     *
+     * Dipakai partial mode-hanya-baca supaya form yang boleh (mis. form edit
+     * laporan staf) tetap tampil, sedangkan form lain disembunyikan.
+     *
+     * @return array<int, string>
+     */
+    public function polaTulisTampilan(): array
+    {
+        if ($this->bolehMenulis()) {
+            return [];
+        }
+
+        $pola = [];
+
+        foreach ($this->kemampuanTulis() as $kemampuan) {
+            $pola = array_merge($pola, (array) config('akses.tulis_kemampuan_tampilan.' . $kemampuan, []));
+        }
+
+        return array_values($pola);
+    }
+
+    /**
+     * Apakah akun ini boleh mengelola (ubah/hapus/status/foto/kolaborator/
+     * alat tambahan) sebuah laporan INDUK.
+     *
+     * Semua akun selain group STAFF (reguler_staff / Staff Grub A-D) mengikuti
+     * perilaku lama: penegakannya ada di HanyaBacaMiddleware dan penjaga
+     * laporan induk. Group STAFF dibatasi pada grub yang dinaunginya, jadi
+     * Staff Grub A tidak boleh mengubah laporan grub lain.
+     *
+     * @param  Report|null $laporan Laporan INDUK yang sedang diproses
+     * @return bool
+     */
+    public function bolehKelolaLaporan(?Report $laporan): bool
+    {
+        if ($this->bolehMenulis()) {
+            return true;
+        }
+
+        $grup = $this->grupBagian();
+
+        // Bukan group STAFF: perilaku lama (bukan pengelola terbatas).
+        if ($grup === null || Technician::grupYangDikelola($grup) === []) {
+            return true;
+        }
+
+        if ($laporan === null || ! $this->bolehMenulisKemampuan('laporan')) {
+            return false;
+        }
+
+        $grupLaporan = $laporan->technician?->group;
+
+        return $grupLaporan !== null
+            && in_array((string) $grupLaporan, Technician::grupYangDikelola($grup), true);
     }
 
     /**

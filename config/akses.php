@@ -157,6 +157,72 @@ return [
     'role_penulis' => ['admin'],
 
     /**
+     * Kemampuan tulis sebagian untuk group teknisi tertentu (di luar
+     * administrator). Akun yang terhubung teknisi dengan group di bawah ini
+     * BOLEH memakai metode tulis, tetapi HANYA pada route yang termasuk
+     * kemampuan yang tercantum. Semua tulisan lain tetap ditolak
+     * HanyaBacaMiddleware.
+     *
+     * Diputuskan user 15/10/2026: Reguler Staff dan Staff Grub A-D boleh
+     * mengelola laporan grub yang dinaunginya (termasuk baris kolaborasi bila
+     * laporan itu induk), TIDAK boleh mengubah aset/menu lain, TIDAK boleh
+     * import apa pun KECUALI import PO Spare Part dan sync data CM/PM. Export
+     * tetap boleh karena route-nya GET.
+     */
+    'tulis_grup' => [
+        'reguler_staff' => ['laporan', 'sparepart_impor', 'cm_sync'],
+        'grub_a_staff'  => ['laporan', 'sparepart_impor', 'cm_sync'],
+        'grub_b_staff'  => ['laporan', 'sparepart_impor', 'cm_sync'],
+        'grub_c_staff'  => ['laporan', 'sparepart_impor', 'cm_sync'],
+        'grub_d_staff'  => ['laporan', 'sparepart_impor', 'cm_sync'],
+    ],
+
+    /**
+     * Daftar NAMA ROUTE yang termasuk tiap kemampuan tulis sebagian.
+     *
+     * SENGAJA memakai daftar nama route eksplisit (bukan pola reports.*):
+     * reports.store (buat laporan baru) TIDAK termasuk, sesuai keputusan user
+     * bahwa staf hanya boleh MENGELOLA laporan yang sudah ada.
+     */
+    'tulis_kemampuan' => [
+        'laporan' => [
+            'reports.update',
+            'reports.update-status',
+            'reports.destroy',
+            'reports.add-photo',
+            'reports.photos.delete',
+            'reports.collaborators.store',
+            'reports.collaborators.destroy',
+            'reports.multi-items.store',
+            'reports.multi-items.destroy',
+        ],
+        'sparepart_impor' => [
+            'sparepart.impor.proses',
+        ],
+        'cm_sync' => [
+            'cm.sync-google-sheets',
+        ],
+    ],
+
+    /**
+     * Pola PATH (regex, diuji JavaScript pada halaman) untuk tiap kemampuan
+     * tulis sebagian. Dipakai partial layouts/partials/mode-hanya-baca untuk
+     * menyembunyikan form yang TIDAK boleh dikirim staf, dan tetap
+     * menampilkan form yang boleh (mis. form edit laporan).
+     *
+     * Ubah pola ini sepasang dengan 'tulis_kemampuan' di atas.
+     */
+    'tulis_kemampuan_tampilan' => [
+        'laporan'         => ['^/reports/[0-9]+(/|$)'],
+        'sparepart_impor' => ['^/sparepart/impor$'],
+        'cm_sync'         => ['^/cm/sync-google-sheets$'],
+    ],
+
+    'pesan_tulis_sebagian' => 'Akun Anda hanya bisa mengelola laporan grub yang Anda naungi, ditambah import PO Spare Part dan sync data CM. Perubahan data lain ditolak.',
+
+    'pesan_kelola_grub' => 'Akun Anda hanya bisa mengelola laporan grub yang Anda naungi.',
+
+    /**
      * Route yang boleh memakai metode tulis walau akunnya hanya baca
      * (mis. logout supaya pengguna tetap bisa keluar).
      */

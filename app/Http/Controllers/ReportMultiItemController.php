@@ -46,6 +46,10 @@ class ReportMultiItemController extends Controller
             return $this->tolak($request, $galat);
         }
 
+        if (($galat = $this->penjagaStaf($report)) !== null) {
+            return $this->tolak($request, $galat);
+        }
+
         $assetId     = $validated['asset_id'] ?? null;
         $funclocId   = $validated['funcloc_id'] ?? null;
 
@@ -79,6 +83,10 @@ class ReportMultiItemController extends Controller
             return $this->tolak($request, 'Baris itu bukan alat tambahan laporan ini.');
         }
 
+        if (($galat = $this->penjagaStaf($report)) !== null) {
+            return $this->tolak($request, $galat);
+        }
+
         $item->delete();
 
         return $this->balas($request, $report, 'Alat/lokasi tambahan dihapus dari pekerjaan ini.');
@@ -103,6 +111,27 @@ class ReportMultiItemController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Batas pengelolaan group STAFF: Reguler Staff / Staff Grub A-D hanya boleh
+     * mengubah alat/lokasi tambahan laporan grub yang dinaunginya.
+     *
+     * @param  Report  $report  Laporan induk
+     * @return string|null      Pesan galat, null bila boleh dikelola
+     */
+    private function penjagaStaf(Report $report): ?string
+    {
+        $user = auth()->user();
+
+        if ($user !== null && $user->bolehKelolaLaporan($report)) {
+            return null;
+        }
+
+        return (string) config(
+            'akses.pesan_kelola_grub',
+            'Akun Anda hanya bisa mengelola laporan grub yang Anda naungi.'
+        );
     }
 
     /**

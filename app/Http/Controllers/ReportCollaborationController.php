@@ -46,6 +46,10 @@ class ReportCollaborationController extends Controller
             return $this->tolak($request, $galat);
         }
 
+        if (($galat = $this->penjagaStaf($report)) !== null) {
+            return $this->tolak($request, $galat);
+        }
+
         $teknisi   = Technician::find($validated['technician_id']);
         $kolaborator = $report->collaboratorReports()->get();
 
@@ -87,6 +91,10 @@ class ReportCollaborationController extends Controller
             return $this->tolak($request, 'Baris itu bukan salinan kolaborasi laporan ini.');
         }
 
+        if (($galat = $this->penjagaStaf($report)) !== null) {
+            return $this->tolak($request, $galat);
+        }
+
         $nama = $kolaborator->technician?->name ?? ('#' . $kolaborator->id);
 
         $kolaborator->delete();
@@ -114,6 +122,27 @@ class ReportCollaborationController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Batas pengelolaan group STAFF: Reguler Staff / Staff Grub A-D hanya boleh
+     * mengubah daftar kolaborator laporan grub yang dinaunginya.
+     *
+     * @param  Report  $report  Laporan induk
+     * @return string|null      Pesan galat, null bila boleh dikelola
+     */
+    private function penjagaStaf(Report $report): ?string
+    {
+        $user = auth()->user();
+
+        if ($user !== null && $user->bolehKelolaLaporan($report)) {
+            return null;
+        }
+
+        return (string) config(
+            'akses.pesan_kelola_grub',
+            'Akun Anda hanya bisa mengelola laporan grub yang Anda naungi.'
+        );
     }
 
     /**

@@ -254,18 +254,13 @@ class ReportController extends Controller
         }
 
         if ($tampilan === 'shift') {
-            // Tampilan Shift hanya memuat pekerja shift (Grub A-D). Reguler dan
+            // Tampilan Shift memuat pekerja shift (Grub A-D) DAN Staff Grub
+            // yang menaungi grub itu (keputusan user 15/10/2026). Reguler dan
             // Reguler Staff BUKAN shift, jadi tidak boleh ikut di sini.
-            $grubShift = Technician::GRUP_SHIFT;
+            $kelompok = Technician::grupTampilanShift($grubAktif);
 
-            $query->whereHas('technician', function ($q) use ($grubAktif, $grubShift) {
-                if ($grubAktif !== null) {
-                    $q->where('group', $grubAktif);
-
-                    return;
-                }
-
-                $q->whereIn('group', $grubShift);
+            $query->whereHas('technician', function ($q) use ($kelompok) {
+                $q->whereIn('group', $kelompok);
             });
 
             return;
@@ -454,8 +449,11 @@ class ReportController extends Controller
     // Data kartu "Teknisi Pelaksana" pada kolom kanan (profil + grafik kinerja).
     $kartuTeknisi = $this->siapkanKartuTeknisi($report, $pengelolaan['laporanInduk'], $pengelolaan['kolaborator']);
 
+    // Boleh tidaknya pengguna kini mengelola laporan ini (batas group STAFF).
+    $bolehKelolaLaporan = (bool) auth()->user()?->bolehKelolaLaporan($pengelolaan['laporanInduk']);
+
     return view('reports.show', array_merge(
-        compact('report', 'areas', 'funcLocs', 'assets', 'kartuTeknisi'),
+        compact('report', 'areas', 'funcLocs', 'assets', 'kartuTeknisi', 'bolehKelolaLaporan'),
         $pengelolaan
     ));
 }
@@ -582,6 +580,12 @@ class ReportController extends Controller
         // alat tambahan) selalu dikelola dari induknya supaya perubahan tidak
         // terpasang sebagian (lihat ReportCopyService::sinkronkanSalinan()).
         if (($galat = $this->penjagaKelolaInduk($report)) !== null) {
+            return back()->with('error', $galat);
+        }
+
+        // Group STAFF (Reguler Staff / Staff Grub A-D) hanya boleh mengelola
+        // laporan grub yang dinaunginya.
+        if (($galat = $this->penjagaStafLaporan($report)) !== null) {
             return back()->with('error', $galat);
         }
 
@@ -723,6 +727,10 @@ class ReportController extends Controller
             return back()->with('error', $galat);
         }
 
+        if (($galat = $this->penjagaStafLaporan($report)) !== null) {
+            return back()->with('error', $galat);
+        }
+
         $request->validate([
             // 'draft' sudah tidak dipakai lagi (lihat migration 2026_09_26_000005).
             'status' => 'required|in:needs_review,completed,continue',
@@ -774,6 +782,14 @@ class ReportController extends Controller
         $berkas = $this->kumpulkanBerkasFoto($request);
 
         if (($galat = $this->penjagaFotoInduk($report)) !== null) {
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => $galat], 422);
+            }
+
+            return back()->with('error', $galat);
+        }
+
+        if (($galat = $this->penjagaStafLaporan($report)) !== null) {
             if ($request->expectsJson()) {
                 return response()->json(['success' => false, 'message' => $galat], 422);
             }
@@ -891,6 +907,31 @@ class ReportController extends Controller
     }
 
     /**
+     * Batas pengelolaan untuk group STAFF (Reguler Staff / Staff Grub A-D):
+     * akun group itu hanya boleh mengelola laporan yang pemiliknya berada di
+     * grup yang dinaungi (lihat Technician::grupYangDikelola()).
+     *
+     * Untuk akun lain (administrator, supervisor, Bagian non-staff) penjaga ini
+     * selalu meloloskan, sehingga perilaku lamanya tidak berubah.
+     *
+     * @param  Report  $induk  Laporan INDUK yang sedang diproses
+     * @return string|null     Pesan galat, null bila boleh dikelola
+     */
+    private function penjagaStafLaporan(Report $induk): ?string
+    {
+        $user = auth()->user();
+
+        if ($user !== null && $user->bolehKelolaLaporan($induk)) {
+            return null;
+        }
+
+        return (string) config(
+            'akses.pesan_kelola_grub',
+            'Akun Anda hanya bisa mengelola laporan grub yang Anda naungi.'
+        );
+    }
+
+    /**
      * Hapus satu foto dari laporan (dokumentasi atau hygiene clearance).
      * Dipanggil via fetch() dari halaman detail — return JSON, tidak redirect.
      * File fisik dihapus dari storage; array di DB di-splice dan di-reindex.
@@ -909,6 +950,10 @@ class ReportController extends Controller
         // Baris salinan memakai path foto yang sama dengan laporan induk,
         // jadi penghapusan foto hanya boleh dari laporan induk.
         if (($galat = $this->penjagaFotoInduk($report)) !== null) {
+            return response()->json(['success' => false, 'message' => $galat], 422);
+        }
+
+        if (($galat = $this->penjagaStafLaporan($report)) !== null) {
             return response()->json(['success' => false, 'message' => $galat], 422);
         }
 
@@ -954,6 +999,10 @@ class ReportController extends Controller
     public function destroy(Report $report)
     {
         if (($galat = $this->penjagaKelolaInduk($report)) !== null) {
+            return back()->with('error', $galat);
+        }
+
+        if (($galat = $this->penjagaStafLaporan($report)) !== null) {
             return back()->with('error', $galat);
         }
 
