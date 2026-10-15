@@ -10,10 +10,14 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Membatasi akun non-administrator menjadi hanya baca (read only).
  *
- * Semua permintaan yang mengubah data (POST/PUT/PATCH/DELETE) ditolak, kecuali
- * route yang memang bebas (mis. logout) atau route yang tidak mengubah data
- * (mis. menandai notifikasi sudah dibaca) sesuai config('akses.route_hanya_baca_bebas').
- * Halaman yang boleh DIBUKA tetap diatur per Bagian lewat AksesMiddleware.
+ * Semua permintaan yang mengubah data (POST/PUT/PATCH/DELETE) ditolak, kecuali:
+ * - route yang memang bebas (mis. logout) atau route yang tidak mengubah data
+ *   (mis. menandai notifikasi sudah dibaca) sesuai config('akses.route_hanya_baca_bebas');
+ * - route yang termasuk kemampuan tulis sebagian group akun (mis. Staff Grub
+ *   boleh mengelola laporan + import PO Spare Part + sync data CM) sesuai
+ *   config('akses.tulis_grup') dan config('akses.tulis_kemampuan').
+ * Halaman yang boleh DIBUKA tetap diatur per Bagian lewat AksesMiddleware, dan
+ * batas per-baris (hanya laporan grub yang dinaungi) ditegakkan di controller.
  */
 class HanyaBacaMiddleware
 {
@@ -53,6 +57,16 @@ class HanyaBacaMiddleware
             return $next($request);
         }
 
-        abort(403, (string) config('akses.pesan_hanya_baca', 'Akun Anda hanya bisa melihat data.'));
+        // Izin tulis sebagian (mis. Staff Grub hanya boleh mengelola laporan
+        // grubnya + import PO Spare Part + sync data CM).
+        if ($user->bolehMenulisRoute($namaRoute)) {
+            return $next($request);
+        }
+
+        $pesan = $user->kemampuanTulis() === []
+            ? (string) config('akses.pesan_hanya_baca', 'Akun Anda hanya bisa melihat data.')
+            : (string) config('akses.pesan_tulis_sebagian', config('akses.pesan_hanya_baca'));
+
+        abort(403, $pesan);
     }
 }

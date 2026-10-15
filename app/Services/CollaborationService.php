@@ -290,7 +290,10 @@ class CollaborationService
 
         // Group non-shift: tidak dibuatkan kelompok otomatis karena anggotanya
         // banyak dan kolaborasi otomatis akan membanjiri laporan.
-        $tanpaOtomasi = ['reguler', 'reguler_staff'];
+        // Group non-shift (reguler/reguler staff) DAN Staff Grub A-D tidak
+        // dibuatkan kelompok otomatis: anggotanya banyak, dan staf bukan pelaksana
+        // shift sehingga kolaborasi otomatis akan membanjiri laporan.
+        $tanpaOtomasi = array_merge(Technician::GRUP_NON_SHIFT, Technician::GRUP_STAFF);
 
         foreach (Technician::GROUPS as $kode => $label) {
             if (in_array($kode, $tanpaOtomasi, true) && ! $denganReguler) {

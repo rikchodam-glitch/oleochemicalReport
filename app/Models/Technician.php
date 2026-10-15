@@ -40,6 +40,10 @@ class Technician extends Model
         'grub_b'        => 'Grub B',
         'grub_c'        => 'Grub C',
         'grub_d'        => 'Grub D',
+        'grub_a_staff'  => 'Staff Grub A',
+        'grub_b_staff'  => 'Staff Grub B',
+        'grub_c_staff'  => 'Staff Grub C',
+        'grub_d_staff'  => 'Staff Grub D',
     ];
 
     /**
@@ -56,7 +60,29 @@ class Technician extends Model
     public const GRUP_NON_SHIFT = ['reguler', 'reguler_staff'];
 
     /**
+     * Group STAFF yang menaungi satu grub shift. Staff Grub A-D bukan pekerja
+     * shift (tidak punya pola rotasi); ia hanya berperan sebagai pengelola
+     * laporan grub yang dinaunginya.
+     */
+    public const GRUP_STAFF = ['grub_a_staff', 'grub_b_staff', 'grub_c_staff', 'grub_d_staff'];
+
+    /**
+     * Peta Staff Grub -> grub yang dinaunginya. Dipakai untuk menyatukan
+     * laporan Staff Grub ke tampilan Shift dan untuk membatasi laporan yang
+     * boleh dikelolanya (lihat User::bolehKelolaLaporan()).
+     */
+    public const GRUP_STAFF_INDUK = [
+        'grub_a_staff' => 'grub_a',
+        'grub_b_staff' => 'grub_b',
+        'grub_c_staff' => 'grub_c',
+        'grub_d_staff' => 'grub_d',
+    ];
+
+    /**
      * Apakah group teknisi termasuk pekerja shift (Grub A-D).
+     *
+     * Staff Grub A-D BUKAN pekerja shift (tidak ikut pola rotasi), jadi tidak
+     * masuk ke daftar ini walau laporannya tampil di tampilan Shift.
      *
      * @param  string|null $grup Group teknisi
      * @return bool               True bila pekerja shift
@@ -64,6 +90,57 @@ class Technician extends Model
     public static function grupShift(?string $grup): bool
     {
         return in_array((string) $grup, self::GRUP_SHIFT, true);
+    }
+
+    /**
+     * Kelompok group yang tampil pada satu penyaringan tampilan Shift.
+     *
+     * @param  string|null $grub Kunci grub terpilih (Grub A-D), null = semua
+     * @return array<int, string> Daftar kode group
+     */
+    public static function grupTampilanShift(?string $grub = null): array
+    {
+        if ($grub === null || $grub === '') {
+            return array_merge(self::GRUP_SHIFT, self::GRUP_STAFF);
+        }
+
+        $kelompok = [$grub];
+
+        foreach (self::GRUP_STAFF_INDUK as $staff => $induk) {
+            if ($induk === $grub) {
+                $kelompok[] = $staff;
+            }
+        }
+
+        return $kelompok;
+    }
+
+    /**
+     * Kelompok group yang laporannya boleh dikelola oleh group ini.
+     *
+     * Hanya group STAFF yang punya cakupan terbatas: Reguler Staff menaungi
+     * Reguler + Reguler Staff, sedangkan Staff Grub A-D menaungi grub-nya
+     * masing-masing. Group lain mengembalikan daftar kosong (bukan pengelola
+     * terbatas, perilakunya diatur penjaga lain).
+     *
+     * @param  string|null $grup Kode group teknisi
+     * @return array<int, string> Daftar kode group yang dinaungi
+     */
+    public static function grupYangDikelola(?string $grup): array
+    {
+        if ($grup === null || $grup === '') {
+            return [];
+        }
+
+        if ($grup === 'reguler_staff') {
+            return ['reguler', 'reguler_staff'];
+        }
+
+        if (array_key_exists($grup, self::GRUP_STAFF_INDUK)) {
+            return [$grup, self::GRUP_STAFF_INDUK[$grup]];
+        }
+
+        return [];
     }
 
     public const SECTIONS = [

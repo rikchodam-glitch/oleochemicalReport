@@ -11,7 +11,7 @@
     <div class="bg-white rounded-xl border border-slate-200 p-4 mb-6">
         <p class="text-sm text-slate-600">
             Halaman yang boleh dibuka diatur per Bagian, dan bisa dipersempit lagi per Group
-            (Reguler, Reguler Staff, Grub A sampai Grub D). Jadi akses Bagian Mekanik Group Reguler
+            (Reguler, Reguler Staff, Grub A sampai Grub D, dan Staff Grub A sampai Staff Grub D). Jadi akses Bagian Mekanik Group Reguler
             bisa berbeda dari Mekanik Group Reguler Staff. Akun dengan role
             <span class="font-medium text-slate-800">Administrator</span> dan
             <span class="font-medium text-slate-800">Supervisor</span> selalu bisa membuka semua halaman

@@ -1,22 +1,20 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-14 15:55 WIB
+Diperbarui: 2026-10-15 09:17 WIB
 
-- Cabang aktif: `tugas/erik/filter-laporan-tanggal-dan-tampilan`
-- Mulai: 2026-10-14 15:55
-- Status: SELESAI DI DEV (uji hijau, siap Pull Request)
+- Cabang aktif: `tugas/erik/staff-grub-hak-tulis-laporan`
+- Mulai: 2026-10-15 09:17
+- Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
-  - `resources/views/reports/index.blade.php` (halaman Laporan: kartu "Total
-    Pekerjaan" dipindah ke samping Done/Continue; tautan pindah tampilan/grub
-    mempertahankan tanggal & rentang yang sedang aktif via `$kunciTanggal`)
-  - `resources/views/technicians/show.blade.php` (tautan ke halaman Laporan dari
-    profil teknisi membawa `tampilan`/`grub` sesuai tipe jadwal teknisi)
-  - `tests/Feature/ReportFilterTampilanTanggalTest.php` (BARU, uji penjaga)
-  - `tests/Feature/TechnicianTautanTampilanTest.php` (BARU, uji penjaga)
-  - `AGENTS.md` (catatan keputusan + pelajaran)
-  - `tugas/erik.md`, `tugas/pr-filter-laporan-tanggal-dan-tampilan.md`
-- Catatan: murni tampilan/tautan (tidak ada migrasi, tidak ada perubahan kolom
-  atau definisi filter di server)
+  - Grup teknisi: `app/Models/Technician.php` (tambah grup `grub_a_staff`..`grub_d_staff`, helper `grupTampilanShift()`, `grupYangDikelola()`, `GRUP_STAFF`, `GRUP_STAFF_INDUK`)
+  - Izin tulis sebagian: `config/akses.php` (`tulis_grup`, `tulis_kemampuan`, `tulis_kemampuan_tampilan`, pesan)
+  - Model User: `app/Models/User.php` (`kemampuanTulis`, `bolehMenulisKemampuan`, `bolehMenulisRoute`, `polaTulisTampilan`, `bolehKelolaLaporan`)
+  - Middleware: `app/Http/Middleware/HanyaBacaMiddleware.php`
+  - Controller: `app/Http/Controllers/ReportController.php`, `ReportCollaborationController.php`, `ReportMultiItemController.php`
+  - Service: `app/Services/CollaborationService.php` (kecualikan grup staff dari kelompok kolaborasi otomatis)
+  - Tampilan: `resources/views/layouts/partials/mode-hanya-baca.blade.php`, `resources/views/akses/index.blade.php`
+  - Uji: `tests/Feature/StafGrubKelolaLaporanTest.php`
+- Catatan: Pr #13 (filter laporan tanggal) sudah di-merge; cabang ini dibuat dari main terbaru. Perubahan sesi lain (`.env.example`, `.gitignore`, `_temuan.blade.php`, `SiapkanDeployTest.php`, dll.) sengaja TIDAK di-commit.
 
 ## Riwayat
-- tugas/erik/tambah-laporan-teknisi-di-halaman-tiap-equipment-cm (mulai 2026-10-14 15:31) -> dilanjutkan 2026-10-14 15:55
+- tugas/erik/filter-laporan-tanggal-dan-tampilan (mulai 2026-10-14 15:55) -> dilanjutkan 2026-10-15 09:17
