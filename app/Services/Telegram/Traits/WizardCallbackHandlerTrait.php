@@ -79,9 +79,9 @@ use Illuminate\Support\Facades\Log;
  * rebuildPromptForStep() akan mengembalikan errorResponse().
  *
  * CATATAN — Resolusi self::KONSTANTA di IDE/static analyzer:
- * Trait ini memakai self::STEP_*, self::MAX_COLLABORATORS, dsb. yang
+ * Trait ini memakai self::STEP_*, self::MAX_MULTI_CANDIDATES, dsb. yang
  * didefinisikan bukan di trait ini sendiri, melainkan di ReportWizardService
- * (const STEP_*) dan WizardStepHandlerTrait (const MAX_COLLABORATORS).
+ * (const STEP_*) dan WizardStepHandlerTrait (const MAX_MULTI_CANDIDATES).
  * Ini valid dan aman saat runtime karena trait selalu dipakai bersama
  * kedua sumber tersebut di ReportWizardService. Anotasi @mixin di bawah
  * hanya membantu Intelephense/PHPStan meresolusi konstanta tersebut agar
@@ -1500,22 +1500,7 @@ trait WizardCallbackHandlerTrait
             return $this->errorResponse('Teknisi tidak ditemukan. Silakan pilih ulang atau ketik ulang nama.');
         }
 
-        // Guard maks kolaborator: tolak jika sudah penuh
         $collabNiks = $state['collaborator_niks'] ?? [];
-        if (count($collabNiks) >= self::MAX_COLLABORATORS) {
-            $state['collab_search_candidates'] = [];
-            $this->saveState($chatId, $state);
-            return [
-                'message'  => "Maksimum " . self::MAX_COLLABORATORS . " kolaborator per laporan sudah tercapai. " .
-                    "Lanjut ke konfirmasi:",
-                'keyboard' => array_merge(
-                    [
-                        ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
-                    ],
-                    $this->navigationButtons($state)
-                ),
-            ];
-        }
 
         // Tambahkan NIK jika belum ada (hindari duplikat)
         if (!in_array($technician->nik, $collabNiks, true)) {
@@ -1606,22 +1591,7 @@ trait WizardCallbackHandlerTrait
             return $this->errorResponse('Teknisi tidak ditemukan. Silakan pilih ulang.');
         }
 
-        // Guard maks kolaborator: tolak jika sudah penuh
         $collabNiks = $state['collaborator_niks'] ?? [];
-        if (count($collabNiks) >= self::MAX_COLLABORATORS) {
-            $state = $this->clearCollabHierarchyState($state);
-            $this->saveState($chatId, $state);
-            return [
-                'message'  => "Maksimum " . self::MAX_COLLABORATORS . " kolaborator per laporan sudah tercapai. " .
-                    "Lanjut ke konfirmasi:",
-                'keyboard' => array_merge(
-                    [
-                        ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
-                    ],
-                    $this->navigationButtons($state)
-                ),
-            ];
-        }
 
         // Tambahkan NIK dan nama jika belum ada (hindari duplikat)
         if (!in_array($technician->nik, $collabNiks, true)) {

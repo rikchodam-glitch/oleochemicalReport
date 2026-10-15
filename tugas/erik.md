@@ -1,15 +1,18 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-15 13:35 WIB
+Diperbarui: 2026-10-15 17:03 WIB
 
-- Cabang aktif: `tugas/erik/popup-kalender-tidak-terbuka-sendiri`
-- Mulai: 2026-10-15 13:35
+- Cabang aktif: `tugas/erik/hapus-batas-kolaborator`
+- Mulai: 2026-10-15 17:03
 - Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
-  - `resources/views/technicians/index.blade.php` (popup hanya dibuka bila URL ditandai `buka_kalender=1`; tautan bulan menambahkan penanda; penanda dibuang dari address bar setelah dipakai)
-  - `app/Http/Controllers/TechnicianController.php` (tautan paginasi tidak lagi membawa `jadwal_bulan`/`buka_kalender`, hanya filter daftar)
-  - `tests/Feature/TechnicianKalenderAutoBukaTest.php` (BARU)
-- Catatan: cabang dibuat dari main terbaru (PR #16 kalender & #17 tautan laporan sudah di-merge). Tanpa migrasi/perubahan data.
+  - `app/Services/CollaborationService.php` (hapus konstanta MAX_KOLABORATOR + pemotongan/pembatasan)
+  - `app/Services/Telegram/Traits/WizardStepHandlerTrait.php` (hapus MAX_COLLABORATORS + guard/slot di Step 8a)
+  - `app/Services/Telegram/Traits/WizardCallbackHandlerTrait.php` (hapus guard batas pada pemilihan kandidat & hierarki)
+  - `app/Http/Controllers/ReportCollaborationController.php` (hapus penolakan batas + kolom `maksimal`)
+  - `resources/views/reports/partials/_kolaborasi.blade.php` (label "x kolaborator")
+  - `tests/Feature/CollaborationTest.php`, `tests/Feature/ReportEditKolaborasiTest.php`
+- Catatan: batas lama = 5 kolaborator per laporan. Tanpa migrasi/perubahan data. Dedup NIK dan pengecualian pelaksana sendiri tetap dijaga.
 
 ## Riwayat
-- tugas/erik/tautan-laporan-mengikuti-grup (mulai 2026-10-15 13:15) -> dilanjutkan 2026-10-15 13:35
+- tugas/erik/popup-kalender-tidak-terbuka-sendiri (mulai 2026-10-15 13:35) -> dilanjutkan 2026-10-15 17:03

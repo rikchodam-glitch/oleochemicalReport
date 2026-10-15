@@ -9,7 +9,7 @@
     <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-medium text-slate-900">Kolaborasi Teknisi</h3>
         <span class="text-xs text-slate-400">
-            {{ $kolaborator->count() }} / {{ \App\Services\CollaborationService::MAX_KOLABORATOR }} kolaborator
+            {{ $kolaborator->count() }} kolaborator
         </span>
     </div>
 
