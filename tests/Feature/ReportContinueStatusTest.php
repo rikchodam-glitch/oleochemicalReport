@@ -84,7 +84,7 @@ test('wizard lanjutan mewarisi data asal tetapi jam kerja wajib diisi ulang', fu
     $respons = $wizard->startContinuation($this->chatId, 'RPT-20260925-0001', 'done');
     $state   = $wizard->getState($this->chatId);
 
-    expect($respons['message'])->toContain('Lanjutan dari')
+    expect($respons['message'])->toContain('Lanjutan laporan')
         ->and($respons['message'])->toContain('RPT-20260925-0001')
         ->and($state['lanjutan_dari_id'])->toBe($this->laporanContinue->id)
         ->and($state['lanjutan_kode'])->toBe('RPT-20260925-0001')
@@ -93,8 +93,8 @@ test('wizard lanjutan mewarisi data asal tetapi jam kerja wajib diisi ulang', fu
         ->and($state['jenis_pekerjaan'])->toBe('CM/PM')
         // Durasi dikosongkan → wajib diisi teknisi karena beda hari.
         ->and($state['work_duration_minutes'])->toBeNull()
-        // Langkah pertama setelah memilih alat: tawaran alat/lokasi tambahan.
-        ->and($state['step'])->toBe(ReportWizardService::STEP_MULTI_EQUIPMENT)
+        // Langkah pertama lanjutan: tawaran mengisi tanggal pekerjaan.
+        ->and($state['step'])->toBe(ReportWizardService::STEP_CONTINUATION_DATE)
         ->and($state['report_date'])->toBe(now()->toDateString());
 
     $wizard->destroyWizard($this->chatId);

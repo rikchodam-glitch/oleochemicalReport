@@ -243,9 +243,8 @@ trait WizardStepHandlerTrait
         $catatanLanjutan = '';
 
         if (!empty($state['lanjutan_dari_id'])) {
-            $catatanLanjutan = "*Lanjutan dari* " . ($state['lanjutan_kode'] ?? '') . "\n"
-                . "Deskripsi, root cause, lokasi/alat, foto, dan kolaborator diwarisi dari laporan itu "
-                . "(opsional — bisa ditambah/diubah di langkah berikutnya).\n\n";
+            $catatanLanjutan = "*Lanjutan dari* `" . ($state['lanjutan_kode'] ?? '') . "`\n"
+                . "Data pekerjaan diwarisi dari laporan itu; isi jam kerja untuk pengerjaan hari ini.\n\n";
         }
 
         if ($autoDetected && !empty($state['work_duration_minutes'])) {
@@ -1182,6 +1181,80 @@ trait WizardStepHandlerTrait
      * @param  array  $state  State wizard saat ini
      * @return array  Respons prompt dengan daftar item + tombol selesai/hapus
      */
+    /**
+     * Prompt tanggal pekerjaan untuk laporan LANJUTAN (STEP_CONTINUATION_DATE).
+     *
+     * Dipakai supaya teknisi bisa mengisi tanggal pekerjaan lanjutan yang
+     * mungkin bukan hari ini; tombol "Pakai Hari Ini" melewati isian ini dan
+     * memakai tanggal hari ini.
+     *
+     * @param  array  $state  State wizard lanjutan
+     * @return array  Respons prompt tanggal
+     */
+    protected function buildContinuationDatePrompt(array $state): array
+    {
+        $kode    = $state['lanjutan_kode'] ?? '-';
+        $hariIni = $this->formatIndonesianDate(now()->toDateString());
+
+        $msg  = "*Lanjutan laporan* `{$kode}`\n";
+        $msg .= "Deskripsi, alat/lokasi, temuan, root cause, dan foto diwarisi dari laporan itu.\n\n";
+        $msg .= $this->daftarEquipmentState($state) . "\n\n";
+        $msg .= "*Tanggal pekerjaan lanjutan ini kapan?*\n";
+        $msg .= "• Kirim tanggalnya, contoh: `14/10/2026`, `14 Oktober 2026`, atau `kemarin`.\n";
+        $msg .= "• Tekan *Pakai Hari Ini* bila dikerjakan hari ini ({$hariIni}).";
+
+        $keyboard = array_merge(
+            [['text' => 'Pakai Hari Ini', 'callback_data' => 'wizard:confirm:lanjutan_tanggal_hari_ini']],
+            $this->navigationButtons($state)
+        );
+
+        return [
+            'message'  => $msg,
+            'keyboard' => $keyboard,
+        ];
+    }
+
+    /**
+     * Proses isian tanggal pada laporan lanjutan.
+     *
+     * Tanggal yang valid langsung dipakai; tanggal yang tidak terbaca, di masa
+     * depan, atau terlalu lama membuat prompt ditampilkan ulang dengan alasan
+     * yang jelas agar teknisi tahu harus mengirim apa.
+     *
+     * @param  string  $chatId  Chat ID Telegram
+     * @param  string  $text    Teks tanggal dari teknisi
+     * @param  array   $state   State wizard
+     * @return array   Respons
+     */
+    protected function handleContinuationDateInput(string $chatId, string $text, array $state): array
+    {
+        $hasil = $this->parseDateFromText($text);
+
+        if ($hasil['status'] === 'ok' && ! empty($hasil['date'])) {
+            $state['report_date']        = $hasil['date'];
+            $state['report_date_status'] = 'ok';
+            $this->saveState($chatId, $state);
+
+            $respons = $this->advanceToMultiEquipment($chatId, $state);
+            $tanggal = $this->formatIndonesianDate($hasil['date']);
+            $respons['message'] = "_Tanggal lanjutan diset: {$tanggal}._\n\n" . $respons['message'];
+
+            return $respons;
+        }
+
+        $alasan = match ($hasil['status']) {
+            'future'           => 'Tanggal itu ada di masa depan, jadi belum bisa dipakai.',
+            'too_old'          => 'Tanggal itu terlalu lama (maksimal ' . self::REPORT_DATE_MAX_BACKDATE_DAYS . ' hari ke belakang).',
+            'invalid_calendar' => 'Tanggal itu tidak ada di kalender.',
+            default            => 'Tanggal tidak terbaca.',
+        };
+
+        $prompt = $this->buildContinuationDatePrompt($state);
+        $prompt['message'] = $alasan . "\n\n" . $prompt['message'];
+
+        return $prompt;
+    }
+
     protected function buildMultiEquipmentPrompt(array $state): array
     {
         $daftar  = $state['multi_items'] ?? [];
@@ -1189,8 +1262,8 @@ trait WizardStepHandlerTrait
 
         // Bila ini laporan lanjutan, jelaskan bahwa data diwarisi dari laporan asal.
         if (!empty($state['lanjutan_dari_id'])) {
-            $catatan = "*Lanjutan dari* " . ($state['lanjutan_kode'] ?? '') . "\n"
-                . "Deskripsi, root cause, lokasi/alat, foto, dan kolaborator diwarisi dari laporan itu.\n\n";
+            $catatan = "*Lanjutan dari* `" . ($state['lanjutan_kode'] ?? '') . "`\n"
+                . "Deskripsi, temuan, root cause, alat/lokasi, dan foto sudah terisi dari laporan itu.\n\n";
         }
 
         $msg = $catatan . "*Alat/Lokasi Tambahan*\n\n";

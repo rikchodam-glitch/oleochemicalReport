@@ -132,6 +132,8 @@ class ReportWizardService
     const STEP_INITIAL             = 'initial';
     const STEP_WORK_CLASSIFICATION = 'work_classification';
     const STEP_JENIS_PEKERJAAN     = 'jenis_pekerjaan';
+    // Khusus laporan lanjutan: tawaran mengisi tanggal sebelum masuk alur biasa.
+    const STEP_CONTINUATION_DATE   = 'continuation_date';
     const STEP_EQUIPMENT_SEARCH    = 'equipment_search';
     const STEP_EQUIPMENT_CLARIFY   = 'equipment_clarify';
     const STEP_WORK_DURATION       = 'work_duration';
@@ -334,11 +336,14 @@ class ReportWizardService
      * Mulai wizard lanjutan dari laporan berstatus 'continue'.
      *
      * Semua data laporan asal diwarisi (deskripsi, klasifikasi, jenis pekerjaan,
-     * root cause, lokasi/alat, foto, kolaborator) supaya teknisi tidak perlu
-     * menulis ulang — tetapi DURASI/JAM KERJA dikosongkan dan wajib diisi ulang
-     * karena pekerjaannya berlangsung di hari yang berbeda. Teknisi tetap bisa
-     * menambah/mengubah data warisan di step-step berikutnya, dan di Step 8 bisa
-     * memilih Done (selesai) atau Continue (lanjut lagi hari berikutnya).
+     * root cause, temuan, lokasi/alat, foto, kolaborator) supaya teknisi tidak
+     * perlu menulis ulang — tetapi DURASI/JAM KERJA dikosongkan dan wajib diisi
+     * ulang karena pekerjaannya berlangsung di hari yang berbeda. Teknisi tetap
+     * bisa menambah/mengubah data warisan di step-step berikutnya, dan di Step 8
+     * bisa memilih Done (selesai) atau Continue (lanjut lagi hari berikutnya).
+     *
+     * Khusus laporan lanjutan, wizard lebih dulu menawarkan STEP_CONTINUATION_DATE
+     * (tanggal pekerjaan lanjutan); bila dilewati dipakai tanggal hari ini.
      *
      * @param  string  $chatId  Chat ID Telegram
      * @param  string  $kode    Kode laporan sumber (RPT-YYYYMMDD-XXXX)
@@ -368,15 +373,37 @@ class ReportWizardService
         $state = $this->createInitialState($chatId, (string) $asal->work_description);
 
         // ---- Data warisan dari laporan asal (opsional, bisa diubah teknisi) ----
+        $asal->loadMissing(['asset', 'functionalLocation', 'area']);
+
         $state['lanjutan_dari_id']        = $asal->id;
         $state['lanjutan_kode']           = $asal->report_code;
         $state['lanjutan_mode_awal']      = $mode;
         $state['work_classification']     = $asal->work_classification;
         $state['jenis_pekerjaan']         = $asal->jenis_pekerjaan;
         $state['root_cause']              = $asal->root_cause;
+        $state['finding']                 = $asal->finding;
         $state['is_area_work']            = $asal->report_type === 'area_work';
         $state['photo_documentation']     = $asal->photo_documentation ?? [];
         $state['photo_hygiene_clearance'] = $asal->photo_hygiene_clearance ?? [];
+
+        // Lokasi disalin APA ADANYA dari laporan asal lebih dulu supaya lokasi
+        // laporan AREA (yang tidak punya aset) tidak hilang. Resolver hanya
+        // dipakai untuk menyempurnakan bagian yang masih kosong (mis. laporan
+        // lama yang funcloc_id-nya kosong tetapi kode lokasinya diketahui).
+        $state['funcloc_id']   = $asal->funcloc_id;
+        $state['funcloc_code'] = $asal->functionalLocation?->code ?? $asal->asset?->functional_loc;
+        $state['funcloc_name'] = $asal->functionalLocation?->name;
+        $state['area_id']      = $asal->area_id;
+        $state['area_code']    = $asal->area?->code;
+
+        if ($asal->asset !== null) {
+            $state['equipment_id']      = $asal->asset->id;
+            $state['equipment_ident']   = $asal->asset->tech_ident_no;
+            $state['equipment_desc']    = $asal->asset->description;
+            $state['equipment_funcloc'] = $asal->asset->functional_loc;
+        }
+
+        $state = $this->lengkapiStateLokasi($state, $asal->functionalLocation, $asal->asset);
 
         // Kolaborator laporan asal (baris salinan kolaborasi) ikut diwarisi.
         $kolaborator = Report::with('technician')
@@ -386,27 +413,21 @@ class ReportWizardService
         $state['collaborator_niks']  = $kolaborator->map(fn (Report $baris) => $baris->technician?->nik)->filter()->values()->all();
         $state['collaborator_names'] = $kolaborator->map(fn (Report $baris) => $baris->technician?->name)->filter()->values()->all();
 
-        // Lokasi & alat diwarisi lewat resolver bersama (funcloc_id, area_id, kode).
-        $state = $this->lengkapiStateLokasi($state, null, $asal->asset);
-
-        if ($asal->asset !== null) {
-            $state['equipment_id']      = $asal->asset->id;
-            $state['equipment_ident']   = $asal->asset->tech_ident_no;
-            $state['equipment_desc']    = $asal->asset->description;
-            $state['equipment_funcloc'] = $asal->asset->functional_loc;
-        }
-
-        // Tanggal laporan = hari ini (pekerjaan lanjutan pasti beda hari) dan
-        // durasi dikosongkan supaya WAJIB diisi ulang oleh teknisi.
+        // Durasi/jam kerja dikosongkan supaya WAJIB diisi ulang oleh teknisi
+        // (pekerjaan lanjutan berlangsung di hari yang berbeda). Tanggal laporan
+        // ditawarkan di langkah berikutnya; bawaannya hari ini.
         $state['report_date']           = now()->toDateString();
         $state['report_date_status']    = 'today';
         $state['work_duration_minutes'] = null;
         $state['start_time']            = null;
         $state['end_time']              = null;
 
-        // Lanjut ke tawaran alat/lokasi tambahan (sama seperti alur normal):
-        // setelah itu barulah teknisi mengisi jam kerja hari ini.
-        return $this->advanceToMultiEquipment($chatId, $state);
+        // Khusus lanjutan: tanyakan tanggal pekerjaan dulu (bisa dilewati untuk
+        // memakai hari ini), baru masuk tawaran alat/lokasi tambahan.
+        $state['step'] = self::STEP_CONTINUATION_DATE;
+        $this->saveState($chatId, $state);
+
+        return $this->buildContinuationDatePrompt($state);
     }
 
     /**
@@ -435,6 +456,9 @@ class ReportWizardService
         }
 
         switch ($state['step']) {
+            case self::STEP_CONTINUATION_DATE:
+                return $this->handleContinuationDateInput($chatId, $text, $state);
+
             case self::STEP_EQUIPMENT_CLARIFY:
                 return $this->handleEquipmentRetype($chatId, $text, $state);
 

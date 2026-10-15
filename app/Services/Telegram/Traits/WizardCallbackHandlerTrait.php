@@ -815,6 +815,23 @@ trait WizardCallbackHandlerTrait
             case 'multi_done':
                 return $this->advanceToWorkDuration($chatId, $state);
 
+            // Khusus laporan lanjutan: tombol "Pakai Hari Ini" pada
+            // STEP_CONTINUATION_DATE. Dipakai bila teknisi melewati isian tanggal.
+            case 'lanjutan_tanggal_hari_ini':
+                if ($state['step'] !== self::STEP_CONTINUATION_DATE) {
+                    return $this->errorResponse('Tombol tanggal lanjutan tidak sesuai langkah saat ini.');
+                }
+
+                $state['report_date']        = now()->toDateString();
+                $state['report_date_status'] = 'today';
+                $this->saveState($chatId, $state);
+
+                $respons = $this->advanceToMultiEquipment($chatId, $state);
+                $respons['message'] = '_Tanggal lanjutan memakai hari ini: '
+                    . $this->formatIndonesianDate($state['report_date']) . "._\n\n" . $respons['message'];
+
+                return $respons;
+
             // Penautan otomatis ke laporan 'continue' yang mirip (ditawarkan di
             // Step 8 berdasarkan deskripsi/root cause/lokasi).
             case 'lanjutan_ya':
@@ -1853,6 +1870,9 @@ trait WizardCallbackHandlerTrait
 
             case self::STEP_JENIS_PEKERJAAN:
                 return $this->buildJenisPekerjaanPrompt($state);
+
+            case self::STEP_CONTINUATION_DATE:
+                return $this->buildContinuationDatePrompt($state);
 
             case self::STEP_EQUIPMENT_SEARCH:
             case self::STEP_EQUIPMENT_CLARIFY:

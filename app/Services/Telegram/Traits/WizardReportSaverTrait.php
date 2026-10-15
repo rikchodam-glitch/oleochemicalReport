@@ -116,7 +116,7 @@ trait WizardReportSaverTrait
         // Info bila laporan ini merupakan lanjutan dari laporan 'continue'
         // sebelumnya, supaya teknisi tahu deskripsi/lokasi diwarisi dari sana.
         if (!empty($state['lanjutan_dari_id'])) {
-            $msg .= "\n*Lanjutan dari*: " . ($state['lanjutan_kode'] ?? ('#' . $state['lanjutan_dari_id'])) . "\n";
+            $msg .= "\n*Lanjutan dari*: `" . ($state['lanjutan_kode'] ?? ('#' . $state['lanjutan_dari_id'])) . "`\n";
         }
 
         // Tawarkan penautan otomatis: bila ada laporan 'continue' yang mirip
@@ -414,11 +414,15 @@ trait WizardReportSaverTrait
             $equipmentLabel = $this->equipmentLabel($state);
             $duration       = $this->formatDuration($state['work_duration_minutes'] ?? 0);
             $formattedDate  = $this->formatIndonesianDate($reportDate);
-            $rootCauseShort = Str::limit($state['root_cause'] ?? '-', 80);
-            $findingShort   = Str::limit($state['finding'] ?? '-', 80);
+            $descShort      = $this->escapeMarkdown(Str::limit((string) ($state['text'] ?? '-'), 200));
+            $rootCauseShort = $this->escapeMarkdown(Str::limit($state['root_cause'] ?? '-', 80));
+            $findingShort   = $this->escapeMarkdown(Str::limit($state['finding'] ?? '-', 80));
             $submittedAt    = $report->submitted_at?->format('d/m/Y H:i') ?? now()->format('d/m/Y H:i');
             $photoDocCount  = count($photoDocumentation);
             $photoHygCount  = count($photoHygieneClearance);
+            // Tautan halaman detail laporan (memakai APP_URL) supaya teknisi bisa
+            // langsung mengecek hasil laporannya dari Telegram.
+            $tautanLaporan  = route('reports.show', $report);
 
             // Total laporan yang berhasil dibuat (utama + kolaborator)
             $totalLaporan = 1 + $jumlahKolaborator;
@@ -449,6 +453,7 @@ trait WizardReportSaverTrait
                 $successMsg .= "Equipment    : {$equipmentLabel}\n";
             }
 
+            $successMsg .= "Deskripsi    : {$descShort}\n";
             $successMsg .= "Durasi       : {$duration}\n";
             $successMsg .= "Foto Dok     : {$photoDocCount} foto\n";
             $successMsg .= "Foto HC      : {$photoHygCount} foto\n";
@@ -475,6 +480,8 @@ trait WizardReportSaverTrait
             } else {
                 $successMsg .= "Gunakan kode di atas untuk menambah foto ke laporan ini di kemudian hari.";
             }
+
+            $successMsg .= "\n*Detail laporan* : [buka halaman laporan]({$tautanLaporan})\n";
 
             return [
                 'edit_message'    => $editMsg,
@@ -554,6 +561,18 @@ trait WizardReportSaverTrait
      *
      * @return string Kode laporan baru
      */
+    /**
+     * Escape karakter khusus Markdown Telegram pada nilai dinamis (teks bebas
+     * teknisi) supaya pesan tidak gagal dikirim atau tampil berantakan.
+     *
+     * @param  string  $teks  Teks dinamis
+     * @return string         Teks yang aman untuk parse_mode Markdown
+     */
+    protected function escapeMarkdown(string $teks): string
+    {
+        return str_replace(['_', '*', '`', '[', ']'], ['\\_', '\\*', '\\`', '\\[', '\\]'], $teks);
+    }
+
     protected function generateReportCode(): string
     {
         return Report::generateReportCode();
