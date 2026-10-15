@@ -126,6 +126,14 @@ class TechnicianShift extends Model
             return 0;
         }
 
+        $tanggal = $this->shift_date ?? now();
+
+        // Hari libur nasional: target 0 untuk SEMUA grup (pekerja shift tetap
+        // wajib masuk sesuai rotasi, tetapi hasilnya dihitung lembur).
+        if (app(JamKerjaService::class)->apakahHariLibur($tanggal)) {
+            return 0;
+        }
+
         $kode = $this->kode();
 
         if (in_array($kode, ['1', '2', '3'], true)) {
@@ -134,7 +142,7 @@ class TechnicianShift extends Model
 
         return app(JamKerjaService::class)->targetMenit(
             $this->grupBerlaku($grupTeknisi),
-            $this->shift_date ?? now()
+            $tanggal
         );
     }
 
@@ -151,6 +159,14 @@ class TechnicianShift extends Model
             return null;
         }
 
+        $tanggal = $this->shift_date ?? now();
+
+        // Hari libur nasional: tidak ada jendela kerja, sehingga seluruh jam
+        // yang dilaporkan pada tanggal itu dihitung lembur.
+        if (app(JamKerjaService::class)->apakahHariLibur($tanggal)) {
+            return null;
+        }
+
         $kode    = $this->kode();
         $windows = (array) config('cm.man_hour.windows', []);
 
@@ -160,7 +176,7 @@ class TechnicianShift extends Model
 
         return app(JamKerjaService::class)->jendela(
             $this->grupBerlaku($grupTeknisi),
-            $this->shift_date ?? now()
+            $tanggal
         );
     }
 

@@ -1,14 +1,16 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-15 10:06 WIB
+Diperbarui: 2026-10-15 10:58 WIB
 
-- Cabang aktif: `tugas/erik/telegram-lanjutan-dan-pesan`
-- Mulai: 2026-10-15 10:06
+- Cabang aktif: `tugas/erik/kalender-teknisi-hari-libur`
+- Mulai: 2026-10-15 10:58
 - Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
-  - Wizard Telegram: `app/Services/Telegram/ReportWizardService.php` (konstanta `STEP_CONTINUATION_DATE`, warisan data + tawaran tanggal lanjutan), `app/Services/Telegram/Traits/WizardStepHandlerTrait.php` (prompt/handler tanggal lanjutan + perapian kata), `app/Services/Telegram/Traits/WizardCallbackHandlerTrait.php` (tombol "Pakai Hari Ini" + rebuild step), `app/Services/Telegram/Traits/WizardReportSaverTrait.php` (pesan akhir: deskripsi + tautan detail, escape Markdown)
-  - Uji: `tests/Feature/TelegramLanjutanPesanTest.php`, `tests/Feature/ReportContinueStatusTest.php`
-- Catatan: Cabang staff-grub (PR belum di-merge) tidak ikut; cabang ini dibuat dari main terbaru. Perubahan sesi lain sengaja TIDAK di-commit.
+  - Kalender teknisi + hari libur: `resources/views/technicians/index.blade.php`, `app/Http/Controllers/TechnicianController.php`
+  - Hari libur: `database/migrations/2026_10_15_000001_create_hari_libur_table.php` (BARU), `app/Models/HariLibur.php` (BARU), `app/Http/Controllers/HariLiburController.php` (BARU), `routes/web.php`
+  - Perhitungan jam kerja/man hour: `app/Services/Shift/JamKerjaService.php`, `app/Services/Shift/ManHourService.php`, `app/Models/TechnicianShift.php`
+  - Uji: `tests/Feature/HariLiburManHourTest.php` (BARU), `tests/Feature/TechnicianShiftManHourTest.php`
+- Catatan: Cabang dibuat dari main terbaru (tanpa perubahan cabang tugas lain). Perubahan sesi lain sengaja TIDAK di-commit. Ada migrasi baru (hari_libur) - DEV sudah dimigrasi.
 
 ## Riwayat
-- tugas/erik/staff-grub-hak-tulis-laporan (mulai 2026-10-15 09:17) -> dilanjutkan 2026-10-15 10:06
+- tugas/erik/telegram-lanjutan-dan-pesan (mulai 2026-10-15 10:06) -> dilanjutkan 2026-10-15 10:58

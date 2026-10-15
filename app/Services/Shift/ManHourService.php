@@ -67,6 +67,7 @@ class ManHourService
             $kunci       = $tanggal->toDateString();
             $shift       = $jadwal[$kunci] ?? null;
             $laporanHari = $perHari[$kunci] ?? [];
+            $namaLibur   = $jamKerja->namaHariLibur($tanggal);
             $menit       = 0;
             $lembur      = 0;
             $catatan     = [];
@@ -97,18 +98,24 @@ class ManHourService
                 $lembur += $menitBaris['lembur'];
             }
 
-            $target      = $this->targetHari($shift, $tanggal, $grup);
+            $target      = $this->targetHari($jamKerja, $shift, $tanggal, $grup);
             $jumlahKerja = count($laporanHari);
 
-            // Hari tanpa target = hari libur/OFF, baik karena kode shift 'x'
-            // (pekerja shift) maupun karena hari libur jadwal non-shift (Minggu
-            // untuk reguler, Sabtu-Minggu untuk reguler staff). Seluruh jam pada
-            // hari itu lembur, jadi pekerjaannya selalu ditandai anomali.
-            if ($target <= 0 && $jumlahKerja > 0) {
+            // Hari libur nasional: seluruh pekerjaan dihitung lembur, ditandai
+            // dengan nama liburnya supaya teknisi tahu sebabnya.
+            if ($namaLibur !== null && $jumlahKerja > 0) {
+                $catatan[] = 'Libur nasional (' . $namaLibur . '): ' . $jumlahKerja . ' pekerjaan dihitung lembur';
+            } elseif ($target <= 0 && $jumlahKerja > 0) {
+                // Hari tanpa target = hari libur/OFF, baik karena kode shift 'x'
+                // (pekerja shift) maupun karena hari libur jadwal non-shift (Minggu
+                // untuk reguler, Sabtu-Minggu untuk reguler staff). Seluruh jam pada
+                // hari itu lembur, jadi pekerjaannya selalu ditandai anomali.
                 $catatan[] = 'Ada ' . $jumlahKerja . ' pekerjaan pada hari OFF';
             }
 
-            if ($shift !== null && !$shift->isOff() && $jumlahKerja > 0) {
+            // Peringatan "di luar jam shift" tidak berlaku pada hari libur
+            // nasional karena seluruh jam memang sudah dihitung lembur.
+            if ($namaLibur === null && $shift !== null && !$shift->isOff() && $jumlahKerja > 0) {
                 $luar = $this->hitungLaporanLuarShift($laporanHari, $shift, $grup);
 
                 if ($luar > 0) {
@@ -120,7 +127,9 @@ class ManHourService
                 'tanggal'          => $kunci,
                 'hari'             => $tanggal->locale('id')->translatedFormat('l'),
                 'kode'             => $shift?->kode(),
-                'label_shift'      => $shift?->label($grup) ?? app(JamKerjaService::class)->label($grup, $tanggal),
+                'label_shift'      => $namaLibur !== null
+                    ? 'Libur Nasional'
+                    : ($shift?->label($grup) ?? $jamKerja->label($grup, $tanggal)),
                 'target_menit'     => $target,
                 'menit'            => $menit,
                 'lembur'           => $lembur,
@@ -460,6 +469,12 @@ class ManHourService
                     continue;
                 }
 
+                // Hari libur nasional: target 0 untuk semua grup (pekerja shift
+                // tetap masuk sesuai rotasi, tetapi dihitung lembur).
+                if ($jam->apakahHariLibur($tanggal)) {
+                    continue;
+                }
+
                 $kode = $pola->kode($grup, $tanggal);
 
                 $menit = $kode !== null
@@ -482,13 +497,18 @@ class ManHourService
      * @param  string               $grupTeknisi Group teknisi
      * @return int                               Target menit
      */
-    private function targetHari(?TechnicianShift $shift, CarbonInterface $tanggal, string $grupTeknisi): int
+    private function targetHari(JamKerjaService $jamKerja, ?TechnicianShift $shift, CarbonInterface $tanggal, string $grupTeknisi): int
     {
+        // Hari libur nasional: target 0 untuk semua grup.
+        if ($jamKerja->apakahHariLibur($tanggal)) {
+            return 0;
+        }
+
         if ($shift !== null) {
             return $shift->targetMenit($grupTeknisi);
         }
 
-        return app(JamKerjaService::class)->targetMenit($grupTeknisi, $tanggal);
+        return $jamKerja->targetMenit($grupTeknisi, $tanggal);
     }
 
     /**
