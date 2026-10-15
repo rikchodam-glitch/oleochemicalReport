@@ -23,14 +23,6 @@ use Illuminate\Support\Facades\Log;
 class CollaborationService
 {
     /**
-     * Batas maksimum kolaborator per laporan.
-     *
-     * Disamakan dengan WizardStepHandlerTrait::MAX_COLLABORATORS (5) agar
-     * daftar dari wizard dan dari otomasi tidak pernah melebihi kapasitas.
-     */
-    public const MAX_KOLABORATOR = 5;
-
-    /**
      * Semua kelompok kolaborasi beserta anggotanya, diurutkan untuk tampilan.
      *
      * @return Collection<int, CollaborationGroup>
@@ -66,8 +58,8 @@ class CollaborationService
      * Rekan yang otomatis ikut andil ketika $pelapor membuat laporan.
      *
      * Anggota dari SELURUH kelompok aktif + otomatis yang diikuti pelapor
-     * digabung, tanpa pelapor sendiri, unik per teknisi, dan dipotong pada
-     * batas MAX_KOLABORATOR.
+     * digabung, tanpa pelapor sendiri, dan unik per teknisi. Tidak ada batas
+     * jumlah kolaborator (batas 5 dihapus atas permintaan user 15/10/2026).
      *
      * @param  Technician|null  $pelapor
      * @return Collection<int, Technician>
@@ -94,7 +86,7 @@ class CollaborationService
             }
         }
 
-        return $hasil->take(self::MAX_KOLABORATOR)->values();
+        return $hasil->values();
     }
 
     /**
@@ -134,14 +126,10 @@ class CollaborationService
             $names[] = (string) ($manualNames[$index] ?? '');
         }
 
-        // Rekan otomatis dari kelompok, hanya bila belum ada dan masih ada slot.
+        // Rekan otomatis dari kelompok, hanya bila belum ada (tanpa batas jumlah).
         $autoNiks = [];
 
         foreach ($this->autoCollaboratorsFor($pelapor) as $rekan) {
-            if (count($niks) >= self::MAX_KOLABORATOR) {
-                break;
-            }
-
             $nikRekan = (string) $rekan->nik;
 
             // Nama yang sudah dihapus teknisi tidak dimasukkan kembali.

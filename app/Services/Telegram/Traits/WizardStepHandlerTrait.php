@@ -95,9 +95,6 @@ use Illuminate\Support\Facades\Log;
  */
 trait WizardStepHandlerTrait
 {
-    // Batas maksimum kolaborator per laporan
-    const MAX_COLLABORATORS = 5;
-
     /**
      * Jumlah maksimum kandidat alat tambahan yang ditampilkan sebagai tombol
      * pada pekerjaan multi equipment/lokasi.
@@ -912,8 +909,8 @@ trait WizardStepHandlerTrait
      * dicari via CollaboratorSearchService (NIK exact match dulu, lalu nama
      * fuzzy match). Teknisi pengirim laporan sendiri otomatis dikecualikan.
      *
-     * Guard maks 5 kolaborator: jika state sudah mencapai batas MAX_COLLABORATORS,
-     * input baru ditolak dan teknisi diminta lanjut ke konfirmasi.
+     * Tidak ada batas jumlah kolaborator (batas 5 dihapus atas permintaan user
+     * 15/10/2026); input hanya dibatasi oleh kecocokan pencarian.
      *
      * Jika sebuah token menghasilkan lebih dari satu kandidat nama, method
      * ini berhenti memproses token berikutnya dan langsung menampilkan
@@ -928,22 +925,6 @@ trait WizardStepHandlerTrait
      */
     protected function handleCollaboratorInput(string $chatId, string $text, array $state): array
     {
-        // Guard: tolak input baru jika sudah mencapai batas maksimum kolaborator
-        $collabSudahAda = $state['collaborator_niks'] ?? [];
-        if (count($collabSudahAda) >= self::MAX_COLLABORATORS) {
-            return [
-                'message'  => "Maksimum " . self::MAX_COLLABORATORS . " kolaborator per laporan sudah tercapai.\n\n" .
-                    "Kolaborator saat ini: *" . implode(', ', $collabSudahAda) . "*\n\n" .
-                    "Lanjut ke konfirmasi atau batalkan laporan:",
-                'keyboard' => array_merge(
-                    [
-                        ['text' => 'Selesai, Lanjut Konfirmasi', 'callback_data' => 'wizard:confirm:collab_done'],
-                    ],
-                    $this->navigationButtons($state)
-                ),
-            ];
-        }
-
         // Pisah input berdasarkan koma, titik koma, atau baris baru
         $rawQueries = preg_split('/[\s,;]+/', trim($text), -1, PREG_SPLIT_NO_EMPTY);
 
@@ -951,6 +932,7 @@ trait WizardStepHandlerTrait
             return $this->buildCollaboratorPrompt($state);
         }
 
+        $collabSudahAda = $state['collaborator_niks'] ?? [];
         $ditemukan  = [];
         $namaDitemukan = [];
         $tidakAda   = [];
@@ -962,15 +944,7 @@ trait WizardStepHandlerTrait
             $nikSendiri = $teknisiPengirim->nik;
         }
 
-        // Hitung slot yang masih tersedia agar tidak melewati batas maksimum
-        $slotTersisa = self::MAX_COLLABORATORS - count($collabSudahAda);
-
         foreach ($rawQueries as $query) {
-            // Hentikan loop jika slot sudah habis
-            if (count($ditemukan) >= $slotTersisa) {
-                break;
-            }
-
             $query = trim($query);
 
             // Abaikan NIK/nama yang sama persis dengan NIK pengirim sendiri
@@ -1045,12 +1019,6 @@ trait WizardStepHandlerTrait
 
         if (!empty($tidakAda)) {
             $msg .= 'Tidak ditemukan: ' . implode(', ', $tidakAda) . "\n";
-        }
-
-        // Peringatan jika ada query yang terpotong karena slot penuh
-        $sisaQuery = count($rawQueries) - (count($ditemukan) + count($tidakAda));
-        if ($sisaQuery > 0 && count($state['collaborator_niks']) >= self::MAX_COLLABORATORS) {
-            $msg .= "_Batas " . self::MAX_COLLABORATORS . " kolaborator tercapai. Input berikutnya diabaikan._\n";
         }
 
         if (empty($state['collaborator_niks'])) {

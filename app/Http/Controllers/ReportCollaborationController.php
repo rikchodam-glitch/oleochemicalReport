@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Report;
 use App\Models\Technician;
-use App\Services\CollaborationService;
 use App\Services\ReportCopyService;
 use Illuminate\Http\Request;
 
@@ -17,8 +16,9 @@ use Illuminate\Http\Request;
  * Telegram — sehingga pekerjaan itu ikut terhitung pada man hour teknisi
  * kolaborator dan muncul di riwayat pekerjaannya.
  *
- * Batas maksimum kolaborator memakai CollaborationService::MAX_KOLABORATOR (5)
- * supaya sama dengan batas di wizard.
+ * Batas jumlah kolaborator sudah DIHAPUS (permintaan user 15/10/2026). Yang
+ * tetap dijaga hanya: teknisi yang sama tidak tercatat dua kali, dan pelaksana
+ * laporan sendiri tidak bisa ditambahkan sebagai kolaborator.
  */
 class ReportCollaborationController extends Controller
 {
@@ -59,13 +59,6 @@ class ReportCollaborationController extends Controller
 
         if ($kolaborator->contains('technician_id', $teknisi->id)) {
             return $this->tolak($request, 'Teknisi itu sudah tercatat sebagai kolaborator laporan ini.');
-        }
-
-        if ($kolaborator->count() >= CollaborationService::MAX_KOLABORATOR) {
-            return $this->tolak(
-                $request,
-                'Kolaborator laporan ini sudah mencapai batas ' . CollaborationService::MAX_KOLABORATOR . ' orang.'
-            );
         }
 
         $this->salinan->buatSalinanKolaborasi($report, $teknisi);
@@ -162,7 +155,6 @@ class ReportCollaborationController extends Controller
                 'success'     => true,
                 'message'     => $pesan,
                 'kolaborator' => $this->daftarKolaborator($report),
-                'maksimal'    => CollaborationService::MAX_KOLABORATOR,
             ]);
         }
 

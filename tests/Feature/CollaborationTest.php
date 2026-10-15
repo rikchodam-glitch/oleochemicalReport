@@ -83,8 +83,8 @@ test('penggabungan kolaborator manual dan otomatis tanpa duplikat', function () 
         ->and($gabungan['auto_niks'])->toBe([]);
 });
 
-test('jumlah kolaborator dibatasi lima nama', function () {
-    foreach (range(1, 7) as $nomor) {
+test('jumlah kolaborator tidak dibatasi lagi', function () {
+    foreach (range(1, 9) as $nomor) {
         $anggota = Technician::create([
             'name'   => 'Anggota Tambahan ' . $nomor,
             'nik'    => 'KT00' . $nomor,
@@ -95,8 +95,10 @@ test('jumlah kolaborator dibatasi lima nama', function () {
         $this->kolaborasi->tambahAnggota($this->groupD, (int) $anggota->id);
     }
 
+    // Pelapor + rekan awal + 9 anggota tambahan = 10 kolaborator otomatis
+    // (pelapor sendiri dikecualikan) — batas 5 sudah dihapus.
     expect($this->kolaborasi->gabungKolaborator($this->pelapor, [], [])['niks'])
-        ->toHaveCount(CollaborationService::MAX_KOLABORATOR);
+        ->toHaveCount(10);
 });
 
 test('perintah sinkronisasi membuat kelompok grub tanpa reguler', function () {

@@ -3,7 +3,6 @@
 use App\Models\Report;
 use App\Models\Technician;
 use App\Models\User;
-use App\Services\CollaborationService;
 use App\Services\Shift\ManHourService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -17,8 +16,8 @@ uses(RefreshDatabase::class);
  *   1. Menambah kolaborator membuat baris salinan laporan tersendiri
  *      (collaborator_of menunjuk laporan induk) dengan detail pekerjaan yang
  *      SAMA seperti induk, tetapi kode laporan baru dan teknisi berbeda.
- *   2. Pelaksana laporan sendiri, teknisi yang sudah terdaftar, dan penambahan
- *      melebihi batas CollaborationService::MAX_KOLABORATOR ditolak.
+ *   2. Pelaksana laporan sendiri dan teknisi yang sudah terdaftar ditolak;
+ *      jumlah kolaborator TIDAK dibatasi (batas 5 dihapus 15/10/2026).
  *   3. Menghapus kolaborator hanya menghapus baris salinannya, laporan induk
  *      tetap utuh.
  *   4. Laporan salinan (kolaborasi/multi alat) tidak boleh menambah kolaborator
@@ -130,8 +129,8 @@ test('kolaborator yang sudah terdaftar dan pelaksana sendiri ditolak', function 
     expect(Report::where('collaborator_of', $this->induk->id)->count())->toBe(1);
 });
 
-test('penambahan kolaborator dibatasi lima orang', function () {
-    foreach (range(1, CollaborationService::MAX_KOLABORATOR) as $nomor) {
+test('penambahan kolaborator tidak dibatasi jumlahnya', function () {
+    foreach (range(1, 8) as $nomor) {
         $orang = teknisiKolaborasi('Kolaborator ' . $nomor, 'KOL2' . str_pad((string) $nomor, 2, '0', STR_PAD_LEFT));
 
         $this->actingAs($this->admin)
@@ -139,14 +138,8 @@ test('penambahan kolaborator dibatasi lima orang', function () {
             ->assertStatus(200);
     }
 
-    $kelebihan = teknisiKolaborasi('Kolaborator Kelebihan', 'KOL299');
-
-    $this->actingAs($this->admin)
-        ->postJson('/reports/' . $this->induk->id . '/collaborators', ['technician_id' => $kelebihan->id])
-        ->assertStatus(422)
-        ->assertJsonPath('success', false);
-
-    expect(Report::where('collaborator_of', $this->induk->id)->count())->toBe(CollaborationService::MAX_KOLABORATOR);
+    // Delapan kolaborator sekaligus diterima (batas 5 sudah dihapus).
+    expect(Report::where('collaborator_of', $this->induk->id)->count())->toBe(8);
 });
 
 test('menghapus kolaborator hanya menghapus baris salinannya', function () {
