@@ -31,10 +31,10 @@
 ## Uji
 
 - `php artisan test --filter=Sparepart`: **38 test hijau, 252 assertions**.
-- `php artisan test` (seluruh suite): **666 dari 669 hijau**. Tiga kegagalan
-  adalah test man hour lama yang memakai `now()->subDay()`; pada 19/10/2026
-  tanggal itu jatuh hari Minggu (18/10/2026), sehingga man hour normal menjadi 0.
-  Ketiga test itu tidak menyentuh modul Sparepart.
+- `php artisan test` (seluruh suite): **669 test hijau, 3.277 assertions**.
+- Tiga test man hour yang semula gagal karena memakai `now()->subDay()` (pada
+  19/10/2026 jatuh hari Minggu) distabilkan dengan tanggal tetap hari kerja
+  `2026-10-15`; tidak ada logika aplikasi yang diubah.
 - `php artisan view:cache` sukses.
 
 ## Berkas
@@ -50,5 +50,8 @@
 - `resources/views/sparepart/{index,impor,riwayat}.blade.php`
 - `resources/views/sparepart/partials/_peringatan-cakupan.blade.php`
 - `tests/Feature/SparepartMultiPrMrpTest.php` (baru) + test Sparepart lama
+- `tests/Feature/ReportEditAlatTambahanTest.php`,
+  `tests/Feature/ReportEditKolaborasiTest.php`,
+  `tests/Feature/ReportTeknisiKolaborasiTest.php` (stabilisasi tanggal uji)
 - `docs/15-modul-spare-part.md`
 - `tugas/erik.md`
