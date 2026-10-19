@@ -63,6 +63,7 @@ Semua berkas di bawah ini ada di `docs/`.
 | [18-warna-jenis-pekerjaan.md](docs/18-warna-jenis-pekerjaan.md) | Palet warna jenis pekerjaan yang seragam | Mengubah filter, lencana, atau grafik |
 | [19-laporan-teknisi-equipment-cm.md](docs/19-laporan-teknisi-equipment-cm.md) | Laporan teknisi di halaman tiap equipment CM | Menyentuh halaman equipment CM |
 | [20-filter-laporan-dan-total-pekerjaan.md](docs/20-filter-laporan-dan-total-pekerjaan.md) | Filter tanggal/tampilan dan kartu total pekerjaan | Menyentuh filter atau ringkasan halaman Laporan |
+| [21-dashboard-utama.md](docs/21-dashboard-utama.md) | Dashboard lintas modul: KPI, grafik, akses per Bagian, aturan query | Mengubah `/dashboard`, menambah modul, atau grafik |
 
 ## Dokumen pendukung di `docs/`
 
