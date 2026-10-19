@@ -30,7 +30,8 @@
         'workorder' => 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
     ];
 
-    $trenLaporan = $laporan['tren'] ?? ['labels' => [], 'selesai' => [], 'review' => [], 'lanjut' => [], 'lainnya' => []];
+    $trenJenis = $laporan['tren_jenis'] ?? ['labels' => [], 'datasets' => []];
+    $trenTeknisi = $laporan['tren_teknisi'] ?? ['labels' => [], 'datasets' => []];
     $statusLaporan = $laporan['status'] ?? ['labels' => [], 'data' => []];
     $jenisLaporan = $laporan['jenis'] ?? [];
     $topTeknisi = $laporan['top_teknisi'] ?? [];
@@ -106,14 +107,29 @@
                 <div class="xl:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col" data-chart="laporan-tren">
                     <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap items-start justify-between gap-2">
                         <div>
-                            <h3 class="font-semibold text-slate-900">Tren laporan</h3>
+                            <h3 class="font-semibold text-slate-900">Tren laporan per jenis pekerjaan</h3>
                             <p class="text-xs text-slate-500 mt-0.5">{{ $labelPeriode }} · {{ number_format($laporan['total'], 0, ',', '.') }} laporan · {{ number_format($laporan['jam'], 1, ',', '.') }} jam kerja</p>
                         </div>
-                        <a href="{{ route('reports.index') }}" class="text-xs font-semibold text-teal-700 hover:text-teal-800">Lihat laporan</a>
+                        <div class="flex items-center gap-2">
+                            <div class="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="Mode tren laporan">
+                                <button type="button" data-tren-mode="laporan"
+                                        class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white text-slate-800 shadow-sm">
+                                    Laporan masuk
+                                </button>
+                                <button type="button" data-tren-mode="teknisi"
+                                        class="px-2.5 py-1 rounded-md text-[11px] font-semibold text-slate-500">
+                                    Teknisi
+                                </button>
+                            </div>
+                            <a href="{{ route('reports.index') }}" class="text-xs font-semibold text-teal-700 hover:text-teal-800">Lihat laporan</a>
+                        </div>
                     </div>
                     <div class="p-4 flex-1 min-h-[280px]">
-                        <canvas id="chartLaporanTren" aria-label="Tren laporan per hari"></canvas>
+                        <canvas id="chartLaporanTren" aria-label="Tren laporan per jenis pekerjaan"></canvas>
                     </div>
+                    <p id="tren-mode-catatan" class="px-5 pb-4 text-[11px] text-slate-400">
+                        Jumlah laporan masuk per jenis pekerjaan setiap hari.
+                    </p>
                 </div>
 
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col" data-chart="status-laporan">
@@ -606,11 +622,14 @@
                 const elemen = document.getElementById(id);
 
                 if (elemen !== null) {
-                    new Chart(elemen, konfigurasi);
+                    return new Chart(elemen, konfigurasi);
                 }
+
+                return null;
             };
 
-            const tren = @json($trenLaporan);
+            const trenJenis = @json($trenJenis);
+            const trenTeknisi = @json($trenTeknisi);
             const status = @json($statusLaporan);
             const jenis = @json($jenisLaporan);
             const teknisi = @json($topTeknisi);
@@ -621,16 +640,11 @@
             const panel = @json($panelSeries);
             const workOrder = @json($workOrderJenis);
 
-            buat('chartLaporanTren', {
+            const chartTren = buat('chartLaporanTren', {
                 type: 'bar',
                 data: {
-                    labels: tren.labels || [],
-                    datasets: [
-                        { label: 'Selesai', data: tren.selesai || [], backgroundColor: warna.teal, borderRadius: 4, stack: 'laporan' },
-                        { label: 'Perlu review', data: tren.review || [], backgroundColor: warna.amber, borderRadius: 4, stack: 'laporan' },
-                        { label: 'Dilanjutkan', data: tren.lanjut || [], backgroundColor: warna.sky, borderRadius: 4, stack: 'laporan' },
-                        { label: 'Lainnya', data: tren.lainnya || [], backgroundColor: warna.slate, borderRadius: 4, stack: 'laporan' },
-                    ],
+                    labels: trenJenis.labels || [],
+                    datasets: trenJenis.datasets || [],
                 },
                 options: {
                     responsive: true,
@@ -639,10 +653,51 @@
                     plugins: { legend: legenda, tooltip: { padding: 10 } },
                     scales: {
                         x: { stacked: true, grid: { display: false }, ticks: { maxTicksLimit: 12, font: { size: 10 } } },
-                        y: { stacked: true, beginAtZero: true, grid: grid, ticks: { precision: 0 } },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            grid: grid,
+                            title: { display: true, text: 'Jumlah laporan', font: { size: 10 } },
+                            ticks: { precision: 0 },
+                        },
                     },
                 },
             });
+
+            if (chartTren !== null) {
+                const tombolTren = document.querySelectorAll('[data-tren-mode]');
+                const catatanTren = document.getElementById('tren-mode-catatan');
+
+                const aturModeTren = function (mode) {
+                    const sumber = mode === 'teknisi' ? trenTeknisi : trenJenis;
+
+                    chartTren.data.labels = sumber.labels || [];
+                    chartTren.data.datasets = sumber.datasets || [];
+                    chartTren.options.scales.y.title.text = mode === 'teknisi' ? 'Teknisi unik' : 'Jumlah laporan';
+                    chartTren.update();
+
+                    tombolTren.forEach(function (tombol) {
+                        const aktif = tombol.dataset.trenMode === mode;
+
+                        tombol.classList.toggle('bg-white', aktif);
+                        tombol.classList.toggle('text-slate-800', aktif);
+                        tombol.classList.toggle('shadow-sm', aktif);
+                        tombol.classList.toggle('text-slate-500', !aktif);
+                    });
+
+                    if (catatanTren !== null) {
+                        catatanTren.textContent = mode === 'teknisi'
+                            ? 'Jumlah teknisi unik yang melapor per jenis pekerjaan setiap hari.'
+                            : 'Jumlah laporan masuk per jenis pekerjaan setiap hari.';
+                    }
+                };
+
+                tombolTren.forEach(function (tombol) {
+                    tombol.addEventListener('click', function () {
+                        aturModeTren(tombol.dataset.trenMode);
+                    });
+                });
+            }
 
             buat('chartStatusLaporan', {
                 type: 'doughnut',
@@ -662,7 +717,7 @@
                 type: 'bar',
                 data: {
                     labels: jenis.map(function (item) { return item.label; }),
-                    datasets: [{ data: jenis.map(function (item) { return item.total; }), backgroundColor: warna.blue, borderRadius: 4 }],
+                    datasets: [{ data: jenis.map(function (item) { return item.total; }), backgroundColor: jenis.map(function (item) { return item.warna; }), borderRadius: 4 }],
                 },
                 options: {
                     indexAxis: 'y',

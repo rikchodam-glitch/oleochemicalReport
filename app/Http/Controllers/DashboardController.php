@@ -20,6 +20,7 @@ use App\Models\SpImpor;
 use App\Models\SpMaterial;
 use App\Models\Technician;
 use App\Models\WorkOrder;
+use App\Support\WarnaJenisPekerjaan;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -147,16 +148,29 @@ class DashboardController extends Controller
         $hariIni   = Report::whereDate('report_date', now()->toDateString())->count();
         $menit     = (int) (clone $base)->sum('work_duration_minutes');
 
+        // Tren dihitung per JENIS PEKERJAAN, bukan per status. Dua mode:
+        // jumlah laporan masuk dan jumlah teknisi unik yang melapor.
         $trendRaw = (clone $base)
-            ->selectRaw('DATE(report_date) as tanggal, status, COUNT(*) as total')
-            ->groupByRaw('DATE(report_date), status')
+            ->selectRaw("DATE(report_date) as tanggal, COALESCE(NULLIF(jenis_pekerjaan, ''), 'Lainnya') as jenis, COUNT(*) as total, COUNT(DISTINCT technician_id) as teknisi")
+            ->groupByRaw("DATE(report_date), COALESCE(NULLIF(jenis_pekerjaan, ''), 'Lainnya')")
             ->get();
 
-        $petaTrend = [];
+        $petaJenis = [];
+        $totalPerJenis = [];
 
         foreach ($trendRaw as $baris) {
-            $petaTrend[(string) $baris->tanggal][(string) $baris->status] = (int) $baris->total;
+            $tanggal = (string) $baris->tanggal;
+            $jenis   = (string) $baris->jenis;
+
+            $petaJenis[$tanggal][$jenis] = [
+                'laporan' => (int) $baris->total,
+                'teknisi' => (int) $baris->teknisi,
+            ];
+
+            $totalPerJenis[$jenis] = ($totalPerJenis[$jenis] ?? 0) + (int) $baris->total;
         }
+
+        arsort($totalPerJenis);
 
         $labels  = [];
         $tanggal = [];
@@ -167,24 +181,37 @@ class DashboardController extends Controller
             $tanggal[] = $hari->toDateString();
         }
 
-        $tren = [
-            'labels'   => $labels,
-            'selesai'  => [],
-            'review'   => [],
-            'lanjut'   => [],
-            'lainnya'  => [],
-        ];
+        $trenJenis = ['labels' => $labels, 'datasets' => []];
+        $trenTeknisi = ['labels' => $labels, 'datasets' => []];
 
-        foreach ($tanggal as $hari) {
-            $tren['selesai'][] = (int) ($petaTrend[$hari]['completed'] ?? 0);
-            $tren['review'][]  = (int) ($petaTrend[$hari]['needs_review'] ?? 0);
-            $tren['lanjut'][]  = (int) ($petaTrend[$hari]['continue'] ?? 0);
+        foreach (array_keys($totalPerJenis) as $jenis) {
+            $dataLaporan = [];
+            $dataTeknisi = [];
 
-            $dikenal = (int) ($petaTrend[$hari]['completed'] ?? 0)
-                + (int) ($petaTrend[$hari]['needs_review'] ?? 0)
-                + (int) ($petaTrend[$hari]['continue'] ?? 0);
+            foreach ($tanggal as $hari) {
+                $dataLaporan[] = (int) ($petaJenis[$hari][$jenis]['laporan'] ?? 0);
+                $dataTeknisi[] = (int) ($petaJenis[$hari][$jenis]['teknisi'] ?? 0);
+            }
 
-            $tren['lainnya'][] = max(0, array_sum($petaTrend[$hari] ?? []) - $dikenal);
+            $warna = $jenis === 'Lainnya'
+                ? WarnaJenisPekerjaan::CADANGAN
+                : WarnaJenisPekerjaan::hex($jenis);
+
+            $trenJenis['datasets'][] = [
+                'label'           => $jenis,
+                'data'            => $dataLaporan,
+                'backgroundColor' => $warna,
+                'borderRadius'    => 4,
+                'stack'           => 'jenis',
+            ];
+
+            $trenTeknisi['datasets'][] = [
+                'label'           => $jenis,
+                'data'            => $dataTeknisi,
+                'backgroundColor' => $warna,
+                'borderRadius'    => 4,
+                'stack'           => 'jenis',
+            ];
         }
 
         $jenis = (clone $base)
@@ -196,6 +223,9 @@ class DashboardController extends Controller
             ->map(fn ($baris): array => [
                 'label' => (string) $baris->label,
                 'total' => (int) $baris->total,
+                'warna' => $baris->label === 'Lainnya'
+                    ? WarnaJenisPekerjaan::CADANGAN
+                    : WarnaJenisPekerjaan::hex((string) $baris->label),
             ])
             ->all();
 
@@ -223,7 +253,8 @@ class DashboardController extends Controller
             'lanjut'     => $lanjut,
             'lainnya'    => $lainnya,
             'jam'        => round($menit / 60, 1),
-            'tren'       => $tren,
+            'tren_jenis'    => $trenJenis,
+            'tren_teknisi'  => $trenTeknisi,
             'status'     => [
                 'labels' => ['Selesai', 'Perlu review', 'Dilanjutkan', 'Lainnya'],
                 'data'   => [$selesai, $review, $lanjut, $lainnya],

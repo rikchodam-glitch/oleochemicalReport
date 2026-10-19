@@ -16,7 +16,8 @@
 ## Data yang ditampilkan
 
 - Laporan: total periode, hari ini, selesai/perlu review/dilanjutkan, jam kerja,
-  tren harian, jenis pekerjaan, top teknisi.
+  tren harian **per jenis pekerjaan** dengan dua mode: jumlah laporan masuk atau
+  jumlah teknisi unik yang melapor; top teknisi.
 - CM: kondisi good/alarm/danger/visual bad, temuan terbuka, severity, kategori,
   equipment danger terbaru.
 - Reliability: fleet MTBF, defer success, undetected failure, rasio CM:dCM:PM.
