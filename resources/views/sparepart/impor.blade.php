@@ -35,7 +35,7 @@
               class="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
             @csrf
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                     <label for="stok" class="block text-sm font-medium text-slate-700 mb-1">1. Laporan stok gudang</label>
                     <input type="file" name="stok" id="stok" accept=".xlsx,.xls"
@@ -53,6 +53,12 @@
                     <input type="file" name="po" id="po" accept=".xlsx,.xls"
                            class="w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-slate-100 file:text-slate-700">
                     <p class="text-xs text-slate-400 mt-1">Wajib memuat kolom sisa kirim ("Still to be delivered").</p>
+                </div>
+                <div>
+                    <label for="mrp" class="block text-sm font-medium text-slate-700 mb-1">4. EXPORT MRP (SAP MD07)</label>
+                    <input type="file" name="mrp" id="mrp" accept=".xlsx,.xls"
+                           class="w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-slate-100 file:text-slate-700">
+                    <p class="text-xs text-slate-400 mt-1">Opsional. Mengisi Stock by SAP, Safety Stk, dan Stok Min MRP.</p>
                 </div>
             </div>
 
@@ -122,6 +128,12 @@
                     <p class="font-semibold text-slate-700">EXPORT PO (SAP ME2M)</p>
                     <p>{{ implode(' | ', \App\Services\Sparepart\SparepartReader::JUDUL_PO) }}
                         | {{ \App\Services\Sparepart\SparepartReader::JUDUL_PO_AWALAN }} (qty)</p>
+                </div>
+                <div>
+                    <p class="font-semibold text-slate-700">EXPORT MRP (SAP MD07)</p>
+                    <p>{{ implode(' | ', \App\Services\Sparepart\SparepartReader::JUDUL_MRP) }}</p>
+                    <p class="text-slate-400 mt-1">Kolom pendukung: {{ implode(' | ', \App\Services\Sparepart\SparepartReader::JUDUL_MRP_OPSIONAL) }}.
+                        Nilai MRP hanya pelengkap; status REORDER tetap memakai stok minimum daftar pantau.</p>
                 </div>
                 <div>
                     <p class="font-semibold text-slate-700">Daftar pantau</p>

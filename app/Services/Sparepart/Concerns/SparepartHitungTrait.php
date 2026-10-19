@@ -192,14 +192,21 @@ trait SparepartHitungTrait
      */
     private function rekapPr(array $prBaris, ?array $prTerpilih): array
     {
-        $terbukaJml = 0;
-        $closedJml  = 0;
-        $batalJml   = 0;
-        $qtyTotal   = 0.0;
+        $terbukaJml  = 0;
+        $closedJml   = 0;
+        $batalJml    = 0;
+        $qtyTotal    = 0.0;
+        $terbukaNums = [];
 
         foreach ($prBaris as $item) {
             if (empty($item['batal']) && ($item['processing_status'] ?? '') === 'N') {
                 $terbukaJml++;
+
+                $nomorTerbuka = trim((string) ($item['no_pr'] ?? ''));
+
+                if ($nomorTerbuka !== '' && ! in_array($nomorTerbuka, $terbukaNums, true)) {
+                    $terbukaNums[] = $nomorTerbuka;
+                }
             }
 
             if (($item['processing_status'] ?? '') === 'B') {
@@ -255,6 +262,7 @@ trait SparepartHitungTrait
             'nomor'       => $nomorTerpilih,
             'req'         => $this->nilaiUnik($prBaris, 'requisitioner'),
             'nums'        => implode('; ', array_keys(array_flip(array_column($prBaris, 'no_pr')))),
+            'open_nums'   => $terbukaNums,
         ];
     }
 
@@ -276,6 +284,7 @@ trait SparepartHitungTrait
         $terbuka    = 0;
         $sisaTotal  = 0.0;
         $tanggalMax = '';
+        $openNums   = [];
 
         foreach ($poBaris as $item) {
             $status = (string) ($item['status'] ?? '');
@@ -286,6 +295,12 @@ trait SparepartHitungTrait
 
             if ($status === 'OPEN') {
                 $terbuka++;
+
+                $nomorTerbuka = trim((string) ($item['no_po'] ?? ''));
+
+                if ($nomorTerbuka !== '' && ! in_array($nomorTerbuka, $openNums, true)) {
+                    $openNums[] = $nomorTerbuka;
+                }
             }
 
             $sisaTotal += (float) ($item['sisa_kirim'] ?? 0);
@@ -351,6 +366,7 @@ trait SparepartHitungTrait
             'last_vendor'      => (string) ($terakhir['vendor'] ?? ''),
             'uniq'             => count($poUnik),
             'nums'             => implode('; ', array_keys($poUnik)),
+            'open_nums'        => $openNums,
         ];
     }
 
@@ -373,6 +389,7 @@ trait SparepartHitungTrait
      * @param  array<string, mixed>|null        $g            Ringkasan stok gudang material
      * @param  array<int, array<string, mixed>> $prBaris      Seluruh baris PR material
      * @param  array<int, array<string, mixed>> $poBaris      Seluruh baris PO material
+     * @param  array<string, mixed>|null        $mrp          Baris MRP material (null bila tidak ada)
      * @return array<string, mixed>                           Nilai kolom sp_material
      */
     public function keadaanMaterial(
@@ -382,7 +399,8 @@ trait SparepartHitungTrait
         ?float $stokTersedia,
         ?array $g,
         array $prBaris,
-        array $poBaris
+        array $poBaris,
+        ?array $mrp = null
     ): array {
         $pilihan = $this->pilihDokumen($prBaris, $poBaris);
         $aksi    = $this->kunciAksi($pilihan['po_terbuka'], $pilihan['pr_terbuka'], $prBaris);
@@ -425,6 +443,7 @@ trait SparepartHitungTrait
             'pr_qty'          => $rekapPr['qty'],
             'pr_line'         => count($prBaris),
             'pr_terbuka'      => (int) ($rekapPr['terbuka_jml'] ?? 0),
+            'pr_open_nums'    => $this->potong(implode('; ', (array) ($rekapPr['open_nums'] ?? [])), 2000),
             'pr_nums'         => $rekapPr['nums'],
             'req_list'        => implode('; ', (array) ($rekapPr['req'] ?? [])),
             'po_no'           => $this->potong((string) ($rekapPo['po_no'] ?? ''), self::BATAS_NO_DOKUMEN),
@@ -433,6 +452,7 @@ trait SparepartHitungTrait
             'po_uniq'         => (int) ($rekapPo['uniq'] ?? 0),
             'po_closed'       => (int) ($rekapPo['closed'] ?? 0),
             'po_open'         => (int) ($rekapPo['open'] ?? 0),
+            'po_open_nums'    => $this->potong(implode('; ', (array) ($rekapPo['open_nums'] ?? [])), 2000),
             'po_sisa_total'   => $rekapPo['sisa_total'],
             'po_tanggal'      => ((string) ($rekapPo['tanggal_max'] ?? '')) === '' ? null : $rekapPo['tanggal_max'],
             'po_tanggal_teks' => $tanggalTerakhir === ''
@@ -456,7 +476,29 @@ trait SparepartHitungTrait
             'g_lokasi'        => $g === null
                 ? null
                 : $this->potong(implode('; ', (array) ($g['sloc'] ?? [])), self::BATAS_LOKASI),
+            'mrp_stock'       => $mrp === null ? null : ($mrp['mrp_stock'] ?? null),
+            'mrp_safety'      => $mrp === null ? null : ($mrp['mrp_safety'] ?? null),
+            'mrp_reorder'     => $mrp === null ? null : ($mrp['mrp_reorder'] ?? null),
+            'mrp_unit'        => $mrp === null ? null : $this->potong($mrp['mrp_unit'] ?? null, 20),
+            'mrp_type'        => $mrp === null ? null : $this->potong($mrp['mrp_type'] ?? null, 20),
+            'mrp_cmp'         => $this->bandingkanMin($stokMin, $mrp['mrp_reorder'] ?? null),
             'ket'             => $this->potong($ket, self::BATAS_KET),
         ];
+    }
+
+    /**
+     * Membandingkan stok minimum daftar pantau dengan reorder point MRP.
+     *
+     * @param  float|null $stokMin     Stok minimum daftar pantau
+     * @param  mixed      $mrpReorder  Reorder point dari berkas MRP
+     * @return string|null             "Sama", "Beda", atau null bila tidak bisa dibandingkan
+     */
+    private function bandingkanMin(?float $stokMin, mixed $mrpReorder): ?string
+    {
+        if ($stokMin === null || ! is_numeric($mrpReorder)) {
+            return null;
+        }
+
+        return abs((float) $stokMin - (float) $mrpReorder) < 0.0001 ? 'Sama' : 'Beda';
     }
 }

@@ -40,6 +40,7 @@ class SpImpor extends Model
         'jumlah_stok',
         'jumlah_pr',
         'jumlah_po',
+        'jumlah_mrp',
         'jumlah_keadaan',
         'pesan',
         'oleh',
@@ -60,6 +61,7 @@ class SpImpor extends Model
             'jumlah_stok'    => 'integer',
             'jumlah_pr'      => 'integer',
             'jumlah_po'      => 'integer',
+            'jumlah_mrp'     => 'integer',
             'jumlah_keadaan' => 'integer',
             'selesai_at'     => 'datetime',
         ];

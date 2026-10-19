@@ -53,6 +53,7 @@ class SparepartController extends Controller
         'stok' => 'Punya catatan stok',
         'pr'   => 'Punya PR',
         'po'   => 'Punya PO',
+        'mrp'  => 'Punya data MRP',
     ];
 
     /**
@@ -124,6 +125,7 @@ class SparepartController extends Controller
             'stok'        => ['nullable', 'file', 'mimes:xlsx,xls', 'max:51200'],
             'pr'          => ['nullable', 'file', 'mimes:xlsx,xls', 'max:51200'],
             'po'          => ['nullable', 'file', 'mimes:xlsx,xls', 'max:51200'],
+            'mrp'         => ['nullable', 'file', 'mimes:xlsx,xls', 'max:51200'],
             'pantau'      => ['nullable', 'file', 'mimes:xlsx,xls,csv', 'max:51200'],
             'label'       => ['nullable', 'string', 'max:120'],
             'mode_pantau' => ['nullable', 'in:gabung,ganti'],
@@ -131,20 +133,22 @@ class SparepartController extends Controller
             'stok'   => 'berkas stok gudang',
             'pr'     => 'berkas EXPORT PR',
             'po'     => 'berkas EXPORT PO',
+            'mrp'    => 'berkas EXPORT MRP',
             'pantau' => 'berkas daftar pantau',
         ]);
 
-        if (! $request->hasFile('stok') && ! $request->hasFile('pr') && ! $request->hasFile('po')) {
+        if (! $request->hasFile('stok') && ! $request->hasFile('pr')
+            && ! $request->hasFile('po') && ! $request->hasFile('mrp')) {
             return back()
                 ->withInput()
-                ->with('error', 'Pilih minimal satu berkas sumber (stok gudang, EXPORT PR, atau EXPORT PO).');
+                ->with('error', 'Pilih minimal satu berkas sumber (stok gudang, EXPORT PR, EXPORT PO, atau EXPORT MRP).');
         }
 
         $tersimpan     = [];
         $catatanPantau = null;
 
         try {
-            foreach (['stok', 'pr', 'po', 'pantau'] as $kunci) {
+            foreach (['stok', 'pr', 'po', 'mrp', 'pantau'] as $kunci) {
                 if ($request->hasFile($kunci)) {
                     $tersimpan[$kunci] = $this->simpanSementara($request->file($kunci), $kunci);
                 }
@@ -164,6 +168,7 @@ class SparepartController extends Controller
                     SparepartImportService::SUMBER_STOK => $tersimpan['stok'] ?? null,
                     SparepartImportService::SUMBER_PR   => $tersimpan['pr'] ?? null,
                     SparepartImportService::SUMBER_PO   => $tersimpan['po'] ?? null,
+                    SparepartImportService::SUMBER_MRP  => $tersimpan['mrp'] ?? null,
                 ],
                 $request->user()?->id,
                 (string) ($request->input('label') ?? '') ?: null
@@ -266,6 +271,7 @@ class SparepartController extends Controller
                 'sp_material.pr_qty as m_pr_qty',
                 'sp_material.pr_line as m_pr_line',
                 'sp_material.pr_terbuka as m_pr_terbuka',
+                'sp_material.pr_open_nums as m_pr_open_nums',
                 'sp_material.pr_nums as m_pr_nums',
                 'sp_material.req_list as m_req_list',
                 'sp_material.po_no as m_po_no',
@@ -274,6 +280,7 @@ class SparepartController extends Controller
                 'sp_material.po_uniq as m_po_uniq',
                 'sp_material.po_closed as m_po_closed',
                 'sp_material.po_open as m_po_open',
+                'sp_material.po_open_nums as m_po_open_nums',
                 'sp_material.po_sisa_total as m_po_sisa_total',
                 'sp_material.po_tanggal_teks as m_po_tanggal_teks',
                 'sp_material.po_nums as m_po_nums',
@@ -290,10 +297,17 @@ class SparepartController extends Controller
                 'sp_material.g_sisa as m_g_sisa',
                 'sp_material.g_satuan as m_g_satuan',
                 'sp_material.g_lokasi as m_g_lokasi',
+                'sp_material.mrp_stock as m_mrp_stock',
+                'sp_material.mrp_safety as m_mrp_safety',
+                'sp_material.mrp_reorder as m_mrp_reorder',
+                'sp_material.mrp_unit as m_mrp_unit',
+                'sp_material.mrp_type as m_mrp_type',
+                'sp_material.mrp_cmp as m_mrp_cmp',
                 'sp_material.ket as m_ket',
                 'sp_material.stok_diupdate_at as m_stok_diupdate_at',
                 'sp_material.pr_diupdate_at as m_pr_diupdate_at',
                 'sp_material.po_diupdate_at as m_po_diupdate_at',
+                'sp_material.mrp_diupdate_at as m_mrp_diupdate_at',
                 'sp_material.updated_at as m_diubah_at',
             ]);
 
@@ -305,8 +319,13 @@ class SparepartController extends Controller
                     ->orWhere('sp_pantau.deskripsi', 'like', '%' . $kunci . '%')
                     ->orWhere('sp_material.deskripsi', 'like', '%' . $kunci . '%')
                     ->orWhere('sp_material.pr_no', 'like', '%' . $kunci . '%')
+                    ->orWhere('sp_material.pr_nums', 'like', '%' . $kunci . '%')
+                    ->orWhere('sp_material.pr_open_nums', 'like', '%' . $kunci . '%')
                     ->orWhere('sp_material.po_no', 'like', '%' . $kunci . '%')
-                    ->orWhere('sp_material.vendor', 'like', '%' . $kunci . '%');
+                    ->orWhere('sp_material.po_nums', 'like', '%' . $kunci . '%')
+                    ->orWhere('sp_material.po_open_nums', 'like', '%' . $kunci . '%')
+                    ->orWhere('sp_material.vendor', 'like', '%' . $kunci . '%')
+                    ->orWhere('sp_material.mrp_type', 'like', '%' . $kunci . '%');
             });
         }
 
@@ -328,6 +347,8 @@ class SparepartController extends Controller
             $query->where('sp_material.pr_line', '>', 0);
         } elseif ($saringan['punya'] === 'po') {
             $query->where('sp_material.po_line', '>', 0);
+        } elseif ($saringan['punya'] === 'mrp') {
+            $query->whereNotNull('sp_material.mrp_reorder');
         }
 
         return match ($saringan['urut']) {
@@ -356,6 +377,7 @@ class SparepartController extends Controller
             ->selectRaw('SUM(CASE WHEN sp_material.stok_tersedia IS NULL THEN 1 ELSE 0 END) AS tanpa_stok')
             ->selectRaw('SUM(CASE WHEN sp_material.pr_line > 0 THEN 1 ELSE 0 END) AS punya_pr')
             ->selectRaw('SUM(CASE WHEN sp_material.po_line > 0 THEN 1 ELSE 0 END) AS punya_po')
+            ->selectRaw('SUM(CASE WHEN sp_material.mrp_reorder IS NOT NULL THEN 1 ELSE 0 END) AS punya_mrp')
             ->first();
 
         return [
@@ -366,6 +388,7 @@ class SparepartController extends Controller
             'tanpa_stok' => (int) ($baris->tanpa_stok ?? 0),
             'punya_pr'   => (int) ($baris->punya_pr ?? 0),
             'punya_po'   => (int) ($baris->punya_po ?? 0),
+            'punya_mrp'  => (int) ($baris->punya_mrp ?? 0),
         ];
     }
 
@@ -406,14 +429,14 @@ class SparepartController extends Controller
      * Keterangan saringan untuk baris judul berkas Excel.
      *
      * @param  array<string, string> $saringan Saringan halaman
-     * @return string                          Contoh: "Aksi: BUAT PO | Pencarian: seal"
+     * @return string                          Contoh: "Aksi: Kejar PO | Pencarian: seal"
      */
     private function labelSaringan(array $saringan): string
     {
         $bagian = [];
 
         if ($saringan['aksi'] !== '') {
-            $bagian[] = 'Aksi: ' . $saringan['aksi'];
+            $bagian[] = 'Aksi: ' . SpMaterial::labelAksi($saringan['aksi']);
         }
 
         if ($saringan['status'] !== '') {

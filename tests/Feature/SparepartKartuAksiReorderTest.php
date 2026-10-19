@@ -14,14 +14,14 @@ uses(RefreshDatabase::class);
 // 12/10/2026 atas permintaan user: kartu Aksi disamakan dengan sheet "Daftar
 // Aksi" dashboard lama yang hanya memuat item REORDER (fokus tindakan).
 // Sebelumnya kartu menghitung seluruh 449 material pantau, sehingga angka
-// "Buat PO" tidak bisa dibandingkan dengan Ringkasan dashboard lama
-// (Kejar PO 25 / Buat PO 51 / Cek 45 / Buat PR 28 dari 149 item REORDER).
+// Angka kartu tidak bisa dibandingkan dengan Ringkasan dashboard lama
+// (Kejar Delivery 25 / Kejar PO 51 / Cek 45 / Buat PR 28 dari 149 item REORDER).
 
 /**
  * Membaca angka satu kartu aksi dari HTML halaman Sparepart.
  *
  * @param  string $html  Isi halaman
- * @param  string $label Label kartu (mis. "Buat PO")
+ * @param  string $label Label kartu (mis. "Kejar PO")
  * @return int           Angka kartu (0 bila kartu tidak ditemukan)
  */
 function spAngkaKartuAksi(string $html, string $label): int
@@ -40,7 +40,7 @@ function spAngkaKartuAksi(string $html, string $label): int
 /**
  * Menyiapkan halaman Sparepart dengan fixture bawaan modul.
  *
- * Fixture: 30000001 (tanpa catatan stok, PR terbuka) -> REORDER + BUAT PO;
+ * Fixture: 30000001 (tanpa catatan stok, PR terbuka) -> REORDER + KEJAR PO;
  * 30000002 (sisa 0, PO terbuka) -> REORDER + KEJAR; 30000003 (sisa 7, PR sudah
  * jadi PO) -> AMAN + CEK; 30000004 (sisa 0, PO tertutup) -> REORDER + BUAT PR;
  * 30000005 (sisa 2, tanpa PR/PO) -> AMAN + BUAT PR.
@@ -64,10 +64,10 @@ function spHalamanSparepart(object $uji): string
 test('kartu aksi hanya menghitung item REORDER seperti sheet Daftar Aksi dashboard lama', function () {
     $html = spHalamanSparepart($this);
 
-    // Fixture memuat 3 item REORDER: 30000001 (Buat PO), 30000002 (Kejar PO),
+    // Fixture memuat 3 item REORDER: 30000001 (Kejar PO), 30000002 (Kejar Delivery),
     // 30000004 (Buat PR). Item aman 30000003 (Cek/Buat PR) tidak dihitung.
-    expect(spAngkaKartuAksi($html, 'Kejar PO'))->toBe(1)
-        ->and(spAngkaKartuAksi($html, 'Buat PO'))->toBe(1)
+    expect(spAngkaKartuAksi($html, 'Kejar Delivery'))->toBe(1)
+        ->and(spAngkaKartuAksi($html, 'Kejar PO'))->toBe(1)
         ->and(spAngkaKartuAksi($html, 'Cek / Buat PR'))->toBe(0)
         ->and(spAngkaKartuAksi($html, 'Buat PR'))->toBe(1)
         ->and($html)->toContain('item REORDER (fokus tindakan)')

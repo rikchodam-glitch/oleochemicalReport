@@ -13,7 +13,7 @@ use Throwable;
  * Impor berkas Integrasi PR/PO Spare Part dari baris perintah.
  *
  * Dipakai sebagai alternatif halaman unggah (mis. untuk pengujian atau saat
- * berkas berada di server): ketiga berkas sumber boleh sebagian, dan daftar
+ * berkas berada di server): keempat berkas sumber boleh sebagian, dan daftar
  * pantau dapat ikut diimpor lewat opsi --pantau.
  */
 class SparepartImportCommand extends Command
@@ -22,12 +22,13 @@ class SparepartImportCommand extends Command
         {--stok= : Path laporan stok gudang (xlsx)}
         {--pr= : Path EXPORT PR (xlsx, SAP ME5A)}
         {--po= : Path EXPORT PO (xlsx, SAP ME2M)}
+        {--mrp= : Path EXPORT MRP (xlsx, SAP MD07)}
         {--pantau= : Path berkas daftar pantau (xlsx sheet MASTER DATA atau CSV)}
         {--ganti-pantau : Daftar pantau diganti seluruhnya dengan isi berkas --pantau}
         {--label= : Catatan label import}
         {--oleh= : Id pengguna yang menjalankan import}';
 
-    protected $description = 'Impor keadaan Spare Part (stok gudang, PR, PO) dan perbarui tabel per kode material';
+    protected $description = 'Impor keadaan Spare Part (stok gudang, PR, PO, MRP) dan perbarui tabel per kode material';
 
     /**
      * Menjalankan import dan menampilkan analisanya.
@@ -71,6 +72,7 @@ class SparepartImportCommand extends Command
                     SparepartImportService::SUMBER_STOK => (string) ($this->option('stok') ?? '') ?: null,
                     SparepartImportService::SUMBER_PR   => (string) ($this->option('pr') ?? '') ?: null,
                     SparepartImportService::SUMBER_PO   => (string) ($this->option('po') ?? '') ?: null,
+                    SparepartImportService::SUMBER_MRP  => (string) ($this->option('mrp') ?? '') ?: null,
                 ],
                 $oleh === '' ? null : (int) $oleh,
                 $label === '' ? null : $label

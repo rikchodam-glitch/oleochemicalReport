@@ -33,6 +33,7 @@ class SpMaterial extends Model
         'pr_qty',
         'pr_line',
         'pr_terbuka',
+        'pr_open_nums',
         'pr_nums',
         'req_list',
         'po_no',
@@ -41,6 +42,7 @@ class SpMaterial extends Model
         'po_uniq',
         'po_closed',
         'po_open',
+        'po_open_nums',
         'po_sisa_total',
         'po_tanggal',
         'po_tanggal_teks',
@@ -58,10 +60,17 @@ class SpMaterial extends Model
         'g_sisa',
         'g_satuan',
         'g_lokasi',
+        'mrp_stock',
+        'mrp_safety',
+        'mrp_reorder',
+        'mrp_unit',
+        'mrp_type',
+        'mrp_cmp',
         'ket',
         'stok_diupdate_at',
         'pr_diupdate_at',
         'po_diupdate_at',
+        'mrp_diupdate_at',
     ];
 
     /**
@@ -90,9 +99,13 @@ class SpMaterial extends Model
             'g_masuk'         => 'float',
             'g_keluar'        => 'float',
             'g_sisa'          => 'float',
+            'mrp_stock'       => 'float',
+            'mrp_safety'      => 'float',
+            'mrp_reorder'     => 'float',
             'stok_diupdate_at' => 'datetime',
             'pr_diupdate_at'  => 'datetime',
             'po_diupdate_at'  => 'datetime',
+            'mrp_diupdate_at' => 'datetime',
         ];
     }
 
@@ -147,8 +160,8 @@ class SpMaterial extends Model
     public static function labelAksi(?string $aksi): string
     {
         return match ($aksi) {
-            self::AKSI_KEJAR   => 'Kejar PO',
-            self::AKSI_BUAT_PO => 'Buat PO',
+            self::AKSI_KEJAR   => 'Kejar Delivery',
+            self::AKSI_BUAT_PO => 'Kejar PO',
             self::AKSI_CEK     => 'Cek / Buat PR',
             self::AKSI_BUAT_PR => 'Buat PR',
             default            => 'Tidak diketahui',
@@ -179,8 +192,8 @@ class SpMaterial extends Model
     public static function keteranganAksi(?string $aksi): string
     {
         return match ($aksi) {
-            self::AKSI_KEJAR   => 'PO sudah terbit dan masih terbuka (barang belum diterima lengkap).',
-            self::AKSI_BUAT_PO => 'PR sudah terbit dan masih terbuka, tetapi PO-nya belum dibuat (inilah yang disebut Belum PO pada dashboard lama).',
+            self::AKSI_KEJAR   => 'PO sudah terbit dan masih terbuka; barang belum diterima lengkap sehingga delivery perlu dikejar.',
+            self::AKSI_BUAT_PO => 'PR sudah terbit dan masih terbuka, tetapi PO belum dibuat; segera kejar pembuatan PO.',
             self::AKSI_CEK     => 'PR pernah dibuat tetapi tidak ada yang masih terbuka; periksa apakah PO-nya sudah terbit atau PR perlu dibuat ulang.',
             self::AKSI_BUAT_PR => 'Belum ada PR maupun PO untuk material ini.',
             default            => 'Belum ada keterangan untuk nilai aksi ini.',

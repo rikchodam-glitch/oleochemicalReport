@@ -81,6 +81,17 @@ class SparepartReader
      */
     public const JUDUL_PO_AWALAN = 'Still to be delivered';
 
+    /** Judul kolom wajib pada berkas EXPORT MRP (SAP MD07). */
+    public const JUDUL_MRP = [
+        'Material',
+        'Plnt stock',
+        'Safety Stk',
+        'Reorder Pt',
+    ];
+
+    /** Judul kolom pendukung MRP (boleh tidak ada). */
+    public const JUDUL_MRP_OPSIONAL = ['Description', 'Unit', 'MRP Type'];
+
     /** Judul kolom wajib pada berkas daftar pantau (sheet MASTER DATA). */
     public const JUDUL_PANTAU = ['Kode Material'];
 
@@ -340,6 +351,89 @@ class SparepartReader
             'lembar'    => [$lembar],
             'judul'     => $judul,
             'catatan'   => [],
+        ];
+    }
+
+    /**
+     * Membaca berkas EXPORT MRP (SAP MD07 - Stock/Requirements List).
+     *
+     * Nilai yang diambil: stok di SAP ("Plnt stock"), safety stock, reorder
+     * point, satuan, dan tipe MRP. Angka stok TIDAK dipakai untuk menghitung
+     * REORDER; status reorder tetap memakai stok minimum daftar pantau dan
+     * sisa stok G001. Kolom MRP hanya pelengkap pembanding seperti dashboard
+     * lama (Stock by SAP, Safety Stk, Stok Min MRP, Min vs MRP).
+     *
+     * @param  string $path Path berkas xlsx
+     * @return array<string, mixed> Data per material + rincian baca
+     *
+     * @throws SparepartFormatException Bila judul kolom wajib tidak ada
+     */
+    public function bacaMrp(string $path): array
+    {
+        $lembar = $this->daftarLembar($path)[0] ?? '';
+        $rows   = $this->bacaLembar($path, $lembar);
+        $judul  = [];
+
+        [$barisJudul, $kolom] = $this->cariJudul(
+            $rows,
+            self::JUDUL_MRP,
+            self::JUDUL_MRP_OPSIONAL,
+            basename($path),
+            $judul
+        );
+
+        $data      = [];
+        $baris     = 0;
+        $diabaikan = 0;
+        $ganda     = 0;
+
+        foreach ($rows as $i => $r) {
+            if ($i <= $barisJudul) {
+                continue;
+            }
+
+            $material = self::teks($this->sel($r, $kolom, 'Material'));
+
+            if ($material === '') {
+                continue;
+            }
+
+            if (! $this->kodeSah($material)) {
+                $diabaikan++;
+                continue;
+            }
+
+            $baris++;
+
+            if (isset($data[$material])) {
+                $ganda++;
+            }
+
+            $data[$material] = [
+                'kode_material' => $material,
+                'mrp_stock'     => self::angka($this->sel($r, $kolom, 'Plnt stock')),
+                'mrp_safety'    => self::angka($this->sel($r, $kolom, 'Safety Stk')),
+                'mrp_reorder'   => self::angka($this->sel($r, $kolom, 'Reorder Pt')),
+                'mrp_unit'      => mb_substr(self::teks($this->sel($r, $kolom, 'Unit')), 0, 20),
+                'mrp_type'      => mb_substr(self::teks($this->sel($r, $kolom, 'MRP Type')), 0, 20),
+                'mrp_desc'      => mb_substr(self::teks($this->sel($r, $kolom, 'Description')), 0, 255),
+            ];
+        }
+
+        $catatan = [];
+
+        if ($ganda > 0) {
+            $catatan[] = $ganda . ' material muncul lebih dari sekali di berkas MRP; nilai baris terakhir yang dipakai.';
+        }
+
+        return [
+            'data'      => $data,
+            'baris'     => $baris,
+            'diabaikan' => $diabaikan,
+            'dokumen'   => null,
+            'lembar'    => [$lembar],
+            'judul'     => $judul,
+            'catatan'   => $catatan,
         ];
     }
 

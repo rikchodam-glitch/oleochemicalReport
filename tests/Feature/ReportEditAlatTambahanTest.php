@@ -95,7 +95,9 @@ beforeEach(function () {
         'status' => 'active',
     ]);
 
-    $this->tanggal = now()->subDay()->toDateString();
+        // Tanggal tetap hari kerja (Kamis) supaya man hour normal tidak
+        // berubah menjadi lembur saat suite dijalankan pada hari Minggu.
+        $this->tanggal = '2026-10-15';
 
     $this->induk = Report::create([
         'technician_id'         => $this->teknisi->id,

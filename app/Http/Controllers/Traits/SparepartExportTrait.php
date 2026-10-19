@@ -42,6 +42,8 @@ trait SparepartExportTrait
         'Vendor PO', 'Purchaser', 'Purchaser PO Terakhir', 'Vendor PO Terakhir', 'PO Sebelumnya', 'Vendor Sebelumnya',
         'Stok Awal G001', 'Masuk G001', 'Keluar G001', 'Sisa G001', 'Lokasi G001', 'Keterangan',
         'Stok Diperbarui', 'PR Diperbarui', 'PO Diperbarui',
+        'Stock by SAP (MRP)', 'Safety Stk (MRP)', 'Stok Min (MRP)', 'Unit (MRP)', 'Tipe MRP',
+        'Min Monitoring vs MRP', 'MRP Diperbarui',
     ];
 
     /**
@@ -248,6 +250,13 @@ trait SparepartExportTrait
             $this->waktuSel($baris->m_stok_diupdate_at ?? null),
             $this->waktuSel($baris->m_pr_diupdate_at ?? null),
             $this->waktuSel($baris->m_po_diupdate_at ?? null),
+            $this->angkaSel($baris->m_mrp_stock ?? null),
+            $this->angkaSel($baris->m_mrp_safety ?? null),
+            $this->angkaSel($baris->m_mrp_reorder ?? null),
+            (string) ($baris->m_mrp_unit ?? ''),
+            (string) ($baris->m_mrp_type ?? ''),
+            (string) ($baris->m_mrp_cmp ?? ''),
+            $this->waktuSel($baris->m_mrp_diupdate_at ?? null),
         ];
     }
 
@@ -304,6 +313,7 @@ trait SparepartExportTrait
             'Tanpa stok minimum'         => (int) ($ringkasan['belum'] ?? 0),
             'Punya data PR'              => (int) ($ringkasan['punya_pr'] ?? 0),
             'Punya data PO'              => (int) ($ringkasan['punya_po'] ?? 0),
+            'Punya data MRP'             => (int) ($ringkasan['punya_mrp'] ?? 0),
         ];
 
         $r = 3;
@@ -343,13 +353,15 @@ trait SparepartExportTrait
             'Stok Tersedia'       => 'Sisa stok gudang G001 pada laporan stok terakhir; material yang tidak ada di laporan stok ditulis 0 mengikuti dashboard lama (di halaman web material seperti itu tetap ditandai "datanya belum ada").',
             'Stok Min'            => 'Stok minimum dari daftar pantau (biasanya kolom Jumlah pada sheet MASTER DATA).',
             'Status REORDER'      => 'Stok tersedia <= stok minimum. Material tanpa catatan stok dihitung sebagai stok nol.',
-            'Aksi'                => 'Kejar PO: ada PO terbuka; Buat PO: ada PR terbuka; Cek/Buat PR: PR pernah/ada tetapi tidak terbuka; Buat PR: belum ada PR maupun PO.',
+            'Aksi'                => 'Kejar Delivery: ada PO terbuka; Kejar PO: ada PR terbuka tetapi PO belum dibuat; Cek/Buat PR: PR pernah/ada tetapi tidak terbuka; Buat PR: belum ada PR maupun PO.',
             'No PR / No PO'       => 'Dokumen paling relevan untuk material itu; kolom "Semua No PR" dan "Semua No PO" memuat seluruh nomor dokumen yang pernah dibaca.',
             'Requisitioner'       => 'Nama peminta dari berkas EXPORT PR yang dibaca (semua peminta digabung dengan titik koma bila lebih dari satu).',
             'Jml PO'              => 'Jumlah nomor PO unik material ini; satu nomor PO boleh memuat beberapa baris item (lihat "Jml Baris PO").',
             'Purchaser / Vendor PO Terakhir' => 'Diambil dari nomor PO TERBARU material ini; kolom "Purchaser" dan "Vendor PO" (tanpa akhiran) mengikuti nomor pada kolom "No PO".',
             'Diperbarui'          => 'Waktu sumber datanya terakhir dipasok import (boleh berbeda antar kolom karena import boleh sebagian berkas).',
-            'Selaras dashboard lama' => 'Kolom "Requisitioner", "Jml PO", "Semua No PO", "Purchaser PO Terakhir", dan "Vendor PO Terakhir" ditambahkan supaya isi berkas ini setara sheet "Data Lengkap" dashboard lama. Kolom MRP (Stock by SAP, Safety Stock, Stok Min MRP, Max Stock, Min vs MRP) belum tersedia karena berkas EXPORT MRP belum pernah diimport ke modul.',
+            'Selaras dashboard lama' => 'Kolom "Requisitioner", "Jml PO", "Semua No PO", "Purchaser PO Terakhir", dan "Vendor PO Terakhir" ditambahkan supaya isi berkas ini setara sheet "Data Lengkap" dashboard lama.',
+            'MRP (MD07)'          => 'Stock by SAP = kolom "Plnt stock" pada EXPORT MRP; Safety Stk (MRP) = "Safety Stk"; Stok Min (MRP) = "Reorder Pt". "Min Monitoring vs MRP" bernilai Sama/Beda, atau kosong bila material tidak ada di berkas MRP.',
+            'Max Stock (MRP)'     => 'Tidak disediakan oleh MD07 dan belum diisi manual di modul ini, sama seperti catatan pada dashboard lama.',
         ];
 
         $r = 3;
