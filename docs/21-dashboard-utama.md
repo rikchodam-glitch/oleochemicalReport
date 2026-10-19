@@ -24,9 +24,9 @@ tanpa membuka setiap halaman, dengan ukuran grafik sesuai kepentingan fitur.
 | Bagian | Indikator | Sumber data |
 |---|---|---|
 | KPI | Asset aktif, teknisi aktif, laporan periode, perlu review, temuan CM terbuka, sparepart perlu tindakan, perangkat IT online, ruang panel normal | `assets`, `technicians`, `reports`, `cm_findings`, `sp_material`, `it_assets`, `panel_ruangan` |
-| Tren laporan | Harian: selesai / perlu review / dilanjutkan / lainnya | `reports.report_date`, `reports.status` |
+| Tren laporan | Harian **per jenis pekerjaan**; tombol "Laporan masuk" (jumlah laporan) atau "Teknisi" (teknisi unik per jenis per hari) | `reports.report_date`, `reports.jenis_pekerjaan`, `reports.technician_id` |
 | Status laporan | Komposisi status periode | `reports.status` |
-| Jenis pekerjaan | Top 8 `jenis_pekerjaan` | `reports.jenis_pekerjaan` |
+| Jenis pekerjaan | Top 8 `jenis_pekerjaan`, warna dari `WarnaJenisPekerjaan` | `reports.jenis_pekerjaan` |
 | Teknisi paling aktif | Jumlah laporan + jam kerja | `reports.technician_id`, `work_duration_minutes` |
 | Aset per departemen | Top 8 departemen | `assets.area_id` → `areas.department_id` → `departments.name` |
 | Condition Monitoring | Good/alarm/danger/visual bad, temuan terbuka, severity, equipment danger terbaru | `cm_readings`, `cm_findings`, `cm_equipment` |
