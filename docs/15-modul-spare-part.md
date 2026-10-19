@@ -23,9 +23,9 @@ baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
   `SpPo`, `SpMrp`, `SpIntegrasi`, `SparepartPenyimpananTrait`). Aman karena
   modul ini belum pernah ada di database produksi (diperiksa 09/10/2026:
   `show tables like 'sp%'` pada `oleochemical` kosong).
-- **Tiga berkas sumber** (NAMA berkas bebas, ISI yang dikunci): laporan stok
-  gudang (lembar `G001`/`MASUK`/`KELUAR`), EXPORT PR (ME5A), EXPORT PO (ME2M).
-  Judul kolom wajib ada di `SparepartReader::JUDUL_*`; berkas yang kehilangan
+- **Empat berkas sumber** (NAMA berkas bebas, ISI yang dikunci): laporan stok
+  gudang (lembar `G001`/`MASUK`/`KELUAR`), EXPORT PR (ME5A), EXPORT PO (ME2M),
+  dan EXPORT MRP (MD07). Judul kolom wajib ada di `SparepartReader::JUDUL_*`; berkas yang kehilangan
   judul wajib DITOLAK (`App\Exceptions\SparepartFormatException`, memuat daftar
   judul yang hilang) **sebelum ada baris database yang ditulis**. Judul dikenali
   dari NAMA (urutan kolom boleh bergeser). Berkas PR user bernama `EXPORT Okt
@@ -40,8 +40,9 @@ baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
   **Status REORDER = stok tersedia <= stok minimum**; material yang tidak
   tercantum di laporan stok dihitung sebagai stok nol (perilaku ini yang
   mereproduksi angka dashboard lama).
-- **Aturan AKSI TIDAK berubah**: Kejar PO (ada PO terbuka) -> Buat PO (ada PR
-  terbuka) -> Cek/Buat PR (ada PR tetapi tidak ada yang terbuka) -> Buat PR.
+- **Aturan AKSI TIDAK berubah** (label tampilan sejak 19/10/2026): Kejar
+  Delivery (ada PO terbuka) -> Kejar PO (ada PR terbuka) -> Cek/Buat PR (ada PR
+  tetapi tidak ada yang terbuka) -> Buat PR.
   Bukti 09/10/2026: aturan ini diterapkan pada kolom hasil dashboard lama
   (`Integrasi_PR_PO_SparePart.xlsx`, sheet Daftar Aksi) **cocok 149/149 baris**
   (sebaran 25/51/45/28). Kolom `sp_material.pr_terbuka` (jumlah PR terbuka per
@@ -65,9 +66,9 @@ baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
   cakupan berkas sumber").
 - **Import boleh SEBAGIAN** (pilihan user 09/10/2026): minimal satu berkas;
   bagian yang tidak diunggah memakai nilai terakhir (`SparepartImportService`
-  menyalin `BLOK_STOK`/`BLOK_PR`/`BLOK_PO` dari baris lama). Cap waktu per
-  sumber (`stok_diupdate_at`, `pr_diupdate_at`, `po_diupdate_at`) menunjukkan
-  bagian mana yang terakhir dipasok.
+  menyalin `BLOK_STOK`/`BLOK_PR`/`BLOK_PO`/`BLOK_MRP` dari baris lama). Cap waktu per
+  sumber (`stok_diupdate_at`, `pr_diupdate_at`, `po_diupdate_at`,
+  `mrp_diupdate_at`) menunjukkan bagian mana yang terakhir dipasok.
 - **Analisa tiap import** tersimpan di `sp_impor.analisa` dan tampil di
   `sparepart.riwayat`: rincian baris/lembar/judul kolom per berkas, material di
   luar daftar pantau (+contoh kode), keadaan baru/diubah/tidak berubah,
@@ -94,9 +95,10 @@ baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
   - **Kolom tambahan** supaya setara legacy: `Requisitioner`, `Jml PO`,
     `Semua No PO`, `Purchaser PO Terakhir`, `Vendor PO Terakhir` (`HEADER_SP`
     bertambah dan `KOLOM_TEKS_SP` kini `[1, 12, 18, 19, 20, 28, 33]` karena
-    `Semua No PO` juga nomor dokumen yang wajib teks). Kolom MRP (Stock by SAP,
-    Safety Stock, Stok Min MRP, Max Stock, Min vs MRP) BELUM ada karena berkas
-    EXPORT MRP belum pernah diimport ke modul.
+    `Semua No PO` juga nomor dokumen yang wajib teks). Sejak 19/10/2026 kolom
+    MRP juga tersedia di akhir berkas: `Stock by SAP (MRP)`, `Safety Stk (MRP)`,
+    `Stok Min (MRP)`, `Unit (MRP)`, `Tipe MRP`, `Min Monitoring vs MRP`, dan
+    `MRP Diperbarui`. Kolom lama tidak digeser (Lokasi G001 tetap AN).
   - **Pembaca satuan ikut diperbaiki** (`SparepartReader::JUDUL_STOK_OPSIONAL
     = ['UN']`): kolom UN tidak wajib ada, tetapi wajib dipetakan bila ada.
     Sebelumnya `$kolom['UN'] ?? 0` membuat pembacaan jatuh ke kolom 0
@@ -262,3 +264,49 @@ baru `2026_10_09_000002_sparepart_pantau_keadaan_impor`).
   - PROD BELUM disentuh: angkanya masih 31/0/20/398 sampai (a) perubahan kode
     ini di-deploy dan (b) dua berkas rentang penuh itu diunggah pada halaman
     `/sparepart/impor` PROD.
+
+## SEMUA PR, MRP, DAN LABEL BARU — 19/10/2026
+
+Latar: user melaporkan satu material punya lebih dari satu PR baru, tetapi
+dashboard hanya menampilkan satu nomor. Pemeriksaan DEV `oleochemical_dev`
+(sebelum perubahan): 183 material sudah punya lebih dari satu baris PR dan
+`sp_material.pr_nums` sudah memuat semua nomornya. Jadi datanya sudah masuk;
+yang kurang adalah TAMPILAN. Contoh nyata `30003838`: 3 baris PR, 2 PR terbuka
+(`1000004103`, `1000004108`), tetapi kolom tabel hanya menampilkan `pr_no`
+terpilih (`1000004108`).
+
+Perubahan yang dikerjakan:
+
+- **Semua nomor PR/PO terbuka disimpan dan ditampilkan.** Migrasi
+  `2026_10_19_000001_add_mrp_and_open_numbers_to_sparepart` menambah
+  `sp_material.pr_open_nums` dan `po_open_nums`. `pr_nums`/`po_nums` tetap
+  memuat seluruh nomor; `*_open_nums` memuat yang masih terbuka. Halaman
+  menampilkan nomor terbuka di kolom PR/PO dan seluruh nomor di panel rincian.
+- **Import MRP (SAP MD07).** Berkas `EXPORT MRP.XLSX` sekarang diterima lewat
+  form (`mrp`) maupun perintah `sparepart:import --mrp=...`. Nilai yang diambil:
+  `Plnt stock` -> `mrp_stock`, `Safety Stk` -> `mrp_safety`, `Reorder Pt` ->
+  `mrp_reorder`, `Unit`, `MRP Type`, dan pembanding `mrp_cmp` (Sama/Beda).
+  `sp_impor.jumlah_mrp` mencatat jumlah baris MRP. MRP TIDAK mengubah aturan
+  REORDER; status tetap dari stok minimum daftar pantau vs stok tersedia G001.
+- **Label filter/kartu.** `KEJAR KEDATANGAN (PO OPEN)` tetap nilai internal,
+  label tampilan menjadi **Kejar Delivery**. `BUAT PO` tetap nilai internal,
+  label tampilan menjadi **Kejar PO**. `Cek / Buat PR` dan `Buat PR` tidak
+  berubah. Semua dropdown, kartu, riwayat, export, dan peringatan memakai label
+  baru; URL lama dengan nilai internal tetap berfungsi.
+- **Tabel dirapikan.** Satu baris per material dengan 11 kolom, header lengket,
+  zebra/hover, badge status/aksi, kolom Purchaser/Vendor dan MRP, filter
+  `punya=mrp`, serta panel rincian empat kartu (PR, PO, stok G001, MRP). Kartu
+  tindakan tetap hanya menghitung 149 item REORDER agar sebanding dengan sheet
+  "Daftar Aksi".
+
+Bukti DEV 19/10/2026 (import #16 dari
+`D:\RYAN\Dasboard\EPE\IMPORT`):
+stok 3.328 baris/2.775 material, PR 14.557 baris/1.664 material, PO 14.835
+baris/1.521 material, MRP 566 baris/566 material; 449 material pantau
+diperbarui. Kartu `Kejar Delivery` 25 / `Kejar PO` 51 / `Cek-Buat PR` 45 /
+`Buat PR` 28 — sama dengan dashboard lama 25/51/45/28. `30003838` sekarang
+menampilkan `pr_open_nums=1000004103; 1000004108`. Halaman `/sparepart`,
+`/sparepart/impor`, `/sparepart/riwayat`, dan `/sparepart?punya=mrp` semuanya
+HTTP 200. Uji sparepart: 38 test hijau. Seluruh suite 669 test: 666 hijau,
+3 gagal karena test man hour memakai `now()->subDay()` yang pada 19/10/2026
+jatuh hari Minggu (18/10/2026) — bukan akibat perubahan ini.

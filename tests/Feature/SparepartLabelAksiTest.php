@@ -11,7 +11,7 @@ uses(RefreshDatabase::class);
 // ============================================================
 // MODUL SPARE PART: KETERANGAN KARTU AKSI
 // ============================================================
-// Kartu "Buat PO" mudah tertukar dengan angka "Belum PO" pada dashboard lama:
+// Kartu "Kejar PO" mudah tertukar dengan angka "Belum PO" pada dashboard lama:
 // 12/10/2026 keduanya sempat bernilai 51, padahal artinya berlawanan (di
 // aplikasi 51 = material yang SUDAH punya nomor PO). Keterangan ikut dirender
 // supaya arti tiap kartu tidak perlu ditebak.
@@ -49,9 +49,10 @@ test('setiap nilai kolom aksi punya keterangan tersendiri', function () {
         ->and(SpMaterial::keteranganAksi(null))->toBe('Belum ada keterangan untuk nilai aksi ini.');
 });
 
-test('keterangan buat PO menghubungkan dengan istilah Belum PO dashboard lama', function () {
-    expect(SpMaterial::keteranganAksi(SpMaterial::AKSI_BUAT_PO))->toContain('Belum PO')
-        ->and(SpMaterial::labelAksi(SpMaterial::AKSI_BUAT_PO))->toBe('Buat PO');
+test('label aksi memakai istilah Kejar Delivery dan Kejar PO', function () {
+    expect(SpMaterial::labelAksi(SpMaterial::AKSI_KEJAR))->toBe('Kejar Delivery')
+        ->and(SpMaterial::labelAksi(SpMaterial::AKSI_BUAT_PO))->toBe('Kejar PO')
+        ->and(SpMaterial::keteranganAksi(SpMaterial::AKSI_BUAT_PO))->toContain('PO belum dibuat');
 });
 
 test('halaman sparepart menampilkan keterangan pada kartu aksi', function () {
@@ -86,5 +87,5 @@ test('peringatan cakupan menjelaskan akibatnya pada angka buat PO', function () 
     $this->actingAs($admin)->get(route('sparepart.index'))
         ->assertStatus(200)
         ->assertSee('Cakupan berkas import terakhir belum lengkap')
-        ->assertSee('angka Buat PO bisa tampak nol');
+        ->assertSee('angka Kejar PO bisa tampak nol');
 });

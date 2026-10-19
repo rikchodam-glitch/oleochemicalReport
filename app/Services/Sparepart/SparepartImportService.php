@@ -39,11 +39,15 @@ class SparepartImportService
     /** Kunci berkas sumber EXPORT PO (SAP ME2M). */
     public const SUMBER_PO = 'po';
 
+    /** Kunci berkas sumber EXPORT MRP (SAP MD07). */
+    public const SUMBER_MRP = 'mrp';
+
     /** Nama berkas tiap sumber untuk kalimat catatan analisa. */
     private const LABEL_BERKAS = [
         self::SUMBER_STOK => 'laporan stok gudang',
         self::SUMBER_PR   => 'EXPORT PR',
         self::SUMBER_PO   => 'EXPORT PO',
+        self::SUMBER_MRP  => 'EXPORT MRP',
     ];
 
     /**
@@ -65,9 +69,13 @@ class SparepartImportService
     ];
 
     private const BLOK_PO = [
-        'po_no', 'po_sisa', 'po_line', 'po_uniq', 'po_closed', 'po_open', 'po_sisa_total',
+        'po_no', 'po_sisa', 'po_line', 'po_uniq', 'po_closed', 'po_open', 'po_open_nums', 'po_sisa_total',
         'po_tanggal', 'po_tanggal_teks', 'po_nums', 'purch', 'vendor', 'po_prev', 'vendor_prev',
         'purch_last', 'vendor_last',
+    ];
+
+    private const BLOK_MRP = [
+        'mrp_stock', 'mrp_safety', 'mrp_reorder', 'mrp_unit', 'mrp_type', 'mrp_cmp', 'mrp_diupdate_at',
     ];
 
     /**
@@ -91,7 +99,7 @@ class SparepartImportService
     {
         $dipakai = [];
 
-        foreach ([self::SUMBER_STOK, self::SUMBER_PR, self::SUMBER_PO] as $kunci) {
+        foreach ([self::SUMBER_STOK, self::SUMBER_PR, self::SUMBER_PO, self::SUMBER_MRP] as $kunci) {
             $path = $berkas[$kunci] ?? null;
 
             if (is_string($path) && $path !== '' && is_file($path)) {
@@ -131,6 +139,7 @@ class SparepartImportService
             'jumlah_stok'    => (int) ($analisa['sumber'][self::SUMBER_STOK]['baris'] ?? 0),
             'jumlah_pr'      => (int) ($analisa['sumber'][self::SUMBER_PR]['baris'] ?? 0),
             'jumlah_po'      => (int) ($analisa['sumber'][self::SUMBER_PO]['baris'] ?? 0),
+            'jumlah_mrp'     => (int) ($analisa['sumber'][self::SUMBER_MRP]['baris'] ?? 0),
             'jumlah_keadaan' => (int) ($analisa['keadaan']['baru'] ?? 0) + (int) ($analisa['keadaan']['diperbarui'] ?? 0),
             'selesai_at'     => Carbon::now(),
         ]);
@@ -153,6 +162,7 @@ class SparepartImportService
                 self::SUMBER_STOK => $this->pembaca->bacaStok($path),
                 self::SUMBER_PR   => $this->pembaca->bacaPr($path),
                 self::SUMBER_PO   => $this->pembaca->bacaPo($path),
+                self::SUMBER_MRP  => $this->pembaca->bacaMrp($path),
             };
 
             $baca[$kunci]['nama'] = basename($path);
@@ -177,10 +187,12 @@ class SparepartImportService
         $adaStok = array_key_exists(self::SUMBER_STOK, $baca);
         $adaPr   = array_key_exists(self::SUMBER_PR, $baca);
         $adaPo   = array_key_exists(self::SUMBER_PO, $baca);
+        $adaMrp  = array_key_exists(self::SUMBER_MRP, $baca);
 
         $stok = $adaStok ? (array) $baca[self::SUMBER_STOK]['data'] : [];
         $pr   = $adaPr ? (array) $baca[self::SUMBER_PR]['data'] : [];
         $po   = $adaPo ? (array) $baca[self::SUMBER_PO]['data'] : [];
+        $mrp  = $adaMrp ? (array) $baca[self::SUMBER_MRP]['data'] : [];
 
         $kodePantau = $pantau->keys()->all();
 
@@ -191,6 +203,7 @@ class SparepartImportService
             self::SUMBER_STOK => $this->cakupanSumber($adaStok, $stok, $kodePantau),
             self::SUMBER_PR   => $this->cakupanSumber($adaPr, $pr, $kodePantau),
             self::SUMBER_PO   => $this->cakupanSumber($adaPo, $po, $kodePantau),
+            self::SUMBER_MRP  => $this->cakupanSumber($adaMrp, $mrp, $kodePantau),
         ];
 
         $analisa = [
@@ -212,7 +225,7 @@ class SparepartImportService
             $analisa['aksi'][$nilai] = 0;
         }
 
-        foreach ([self::SUMBER_STOK => $stok, self::SUMBER_PR => $pr, self::SUMBER_PO => $po] as $sumber => $data) {
+        foreach ([self::SUMBER_STOK => $stok, self::SUMBER_PR => $pr, self::SUMBER_PO => $po, self::SUMBER_MRP => $mrp] as $sumber => $data) {
             if (! array_key_exists($sumber, $baca)) {
                 continue;
             }
@@ -256,6 +269,8 @@ class SparepartImportService
                 $adaPr,
                 $adaPo ? (array) ($po[$kode] ?? []) : [],
                 $adaPo,
+                $adaMrp ? ($mrp[$kode] ?? null) : null,
+                $adaMrp,
                 $kini
             );
 
@@ -291,6 +306,8 @@ class SparepartImportService
      * @param  bool                             $adaPr     Apakah berkas PR diunggah
      * @param  array<int, array<string, mixed>> $poBaris   Baris PO material
      * @param  bool                             $adaPo     Apakah berkas PO diunggah
+     * @param  array<string, mixed>|null        $mrp       Baris MRP material
+     * @param  bool                             $adaMrp    Apakah berkas MRP diunggah
      * @param  Carbon                           $kini      Cap waktu import
      * @return array<string, mixed>                        Baris siap upsert
      */
@@ -304,6 +321,8 @@ class SparepartImportService
         bool $adaPr,
         array $poBaris,
         bool $adaPo,
+        ?array $mrp,
+        bool $adaMrp,
         Carbon $kini
     ): array {
         $stokTersedia = $adaStok ? ($g === null ? null : (float) $g['sisa']) : null;
@@ -315,7 +334,8 @@ class SparepartImportService
             $stokTersedia,
             $adaStok ? $g : null,
             $prBaris,
-            $poBaris
+            $poBaris,
+            $mrp
         );
 
         if ($sebelum !== null) {
@@ -336,6 +356,12 @@ class SparepartImportService
 
         if (! $adaPo && $sebelum !== null) {
             foreach (self::BLOK_PO as $kolom) {
+                $payload[$kolom] = $sebelum->getAttribute($kolom);
+            }
+        }
+
+        if (! $adaMrp && $sebelum !== null) {
+            foreach (self::BLOK_MRP as $kolom) {
                 $payload[$kolom] = $sebelum->getAttribute($kolom);
             }
         }
@@ -373,6 +399,7 @@ class SparepartImportService
         $payload['stok_diupdate_at'] = $adaStok ? $kini : $sebelum?->stok_diupdate_at;
         $payload['pr_diupdate_at']   = $adaPr ? $kini : $sebelum?->pr_diupdate_at;
         $payload['po_diupdate_at']   = $adaPo ? $kini : $sebelum?->po_diupdate_at;
+        $payload['mrp_diupdate_at']  = $adaMrp ? $kini : $sebelum?->mrp_diupdate_at;
         $payload['created_at']       = $sebelum?->created_at ?? $kini;
         $payload['updated_at']       = $kini;
 
@@ -448,7 +475,7 @@ class SparepartImportService
     {
         $hasil = [];
 
-        foreach ([self::SUMBER_STOK, self::SUMBER_PR, self::SUMBER_PO] as $kunci) {
+        foreach ([self::SUMBER_STOK, self::SUMBER_PR, self::SUMBER_PO, self::SUMBER_MRP] as $kunci) {
             $ada = array_key_exists($kunci, $baca);
 
             $hasil[$kunci] = [

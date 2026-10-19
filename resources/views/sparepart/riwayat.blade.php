@@ -14,6 +14,7 @@
         'stok' => 'Laporan stok gudang',
         'pr'   => 'EXPORT PR',
         'po'   => 'EXPORT PO',
+        'mrp'  => 'EXPORT MRP',
     ];
 @endphp
 
@@ -50,7 +51,7 @@
                             <th class="px-3 py-3 text-left font-medium">Oleh</th>
                             <th class="px-3 py-3 text-left font-medium">Catatan</th>
                             <th class="px-3 py-3 text-left font-medium">Berkas dipakai</th>
-                            <th class="px-3 py-3 text-right font-medium">Baris stok/PR/PO</th>
+                            <th class="px-3 py-3 text-right font-medium">Baris stok/PR/PO/MRP</th>
                             <th class="px-3 py-3 text-right font-medium">Material berubah</th>
                             <th class="px-3 py-3 text-left font-medium">Status</th>
                             <th class="px-3 py-3 text-right font-medium">Analisa</th>
@@ -79,7 +80,8 @@
                                 <td class="px-3 py-2 text-right text-slate-600">
                                     {{ number_format($impor->jumlah_stok, 0, ',', '.') }} /
                                     {{ number_format($impor->jumlah_pr, 0, ',', '.') }} /
-                                    {{ number_format($impor->jumlah_po, 0, ',', '.') }}
+                                    {{ number_format($impor->jumlah_po, 0, ',', '.') }} /
+                                    {{ number_format($impor->jumlah_mrp, 0, ',', '.') }}
                                 </td>
                                 <td class="px-3 py-2 text-right text-slate-600">{{ number_format($impor->jumlah_keadaan, 0, ',', '.') }}</td>
                                 <td class="px-3 py-2">
@@ -132,7 +134,7 @@
                 </div>
 
                 {{-- Rincian per berkas sumber --}}
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4">
                     @foreach($labelSumber as $kunci => $label)
                         @php
                             $satu  = (array) ($analisa['sumber'][$kunci] ?? []);

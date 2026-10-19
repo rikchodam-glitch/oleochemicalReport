@@ -123,6 +123,7 @@ test('halaman sparepart menampilkan tabel keadaan dan mengikuti saringan', funct
         ->assertStatus(200)
         ->assertSee('data-kode-material="30000002"', false)
         ->assertSee('REORDER')
+        ->assertSee('Kejar Delivery')
         ->assertSee('Kejar PO');
 
     $this->actingAs($this->admin)
