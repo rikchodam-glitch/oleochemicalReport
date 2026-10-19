@@ -3,8 +3,9 @@
 ## Ringkasan
 
 - Menampilkan **semua nomor PR/PO** yang terbaca, bukan hanya satu dokumen
-  terpilih. `sp_material.pr_open_nums` dan `po_open_nums` menyimpan nomor yang
-  masih terbuka; seluruh nomor tetap ada di `pr_nums`/`po_nums`.
+  terpilih. Kolom utama menampilkan seluruh nomor (`pr_nums`/`po_nums`) dan
+  menandai nomor yang masih terbuka (`pr_open_nums`/`po_open_nums`); panel
+  rincian memuat daftar lengkapnya.
 - Menambah **import EXPORT MRP.XLSX** (SAP MD07) lewat form dan perintah
   `sparepart:import --mrp=...`, beserta kolom `Stock by SAP`, `Safety Stk`,
   `Stok Min (MRP)`, `Unit`, `Tipe MRP`, `Min Monitoring vs MRP`, dan

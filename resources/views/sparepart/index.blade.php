@@ -262,8 +262,13 @@
                                             <span class="{{ (int) $satu->m_pr_terbuka > 0 ? 'text-amber-700 font-medium' : '' }}">{{ (int) $satu->m_pr_terbuka }} terbuka</span>
                                         </p>
                                         @if(($satu->m_pr_open_nums ?? '') !== '')
-                                            <div class="mt-1 max-h-12 overflow-y-auto text-[11px] text-amber-700 break-words">
-                                                {{ $satu->m_pr_open_nums }}
+                                            <div class="mt-1 text-[11px] text-amber-700 break-words">
+                                                <span class="font-medium">Terbuka:</span> {{ $satu->m_pr_open_nums }}
+                                            </div>
+                                        @endif
+                                        @if(($satu->m_pr_nums ?? '') !== '')
+                                            <div class="mt-1 max-h-16 overflow-y-auto text-[11px] text-slate-500 break-words">
+                                                <span class="text-slate-400">Semua:</span> {{ $satu->m_pr_nums }}
                                             </div>
                                         @endif
                                     @else
@@ -279,8 +284,13 @@
                                             <span class="{{ (int) $satu->m_po_open > 0 ? 'text-amber-700 font-medium' : '' }}">{{ (int) $satu->m_po_open }} terbuka</span>
                                         </p>
                                         @if(($satu->m_po_open_nums ?? '') !== '')
-                                            <div class="mt-1 max-h-12 overflow-y-auto text-[11px] text-amber-700 break-words">
-                                                {{ $satu->m_po_open_nums }}
+                                            <div class="mt-1 text-[11px] text-amber-700 break-words">
+                                                <span class="font-medium">Terbuka:</span> {{ $satu->m_po_open_nums }}
+                                            </div>
+                                        @endif
+                                        @if(($satu->m_po_nums ?? '') !== '')
+                                            <div class="mt-1 max-h-16 overflow-y-auto text-[11px] text-slate-500 break-words">
+                                                <span class="text-slate-400">Semua:</span> {{ $satu->m_po_nums }}
                                             </div>
                                         @endif
                                     @else
@@ -292,6 +302,11 @@
                                     <p class="text-xs text-slate-500 break-words">{{ $satu->m_vendor ?? '-' }}</p>
                                     @if(($satu->m_po_prev ?? '') !== '')
                                         <p class="text-[11px] text-slate-400 mt-1">Sebelumnya: {{ $satu->m_po_prev }}</p>
+                                    @endif
+                                    @if(($satu->m_purch_last ?? '') !== '')
+                                        <p class="text-[11px] text-slate-400 mt-1 break-words" title="{{ $satu->m_purch_last }} / {{ $satu->m_vendor_last }}">
+                                            Terakhir: {{ \Illuminate\Support\Str::limit($satu->m_purch_last, 18) }} / {{ \Illuminate\Support\Str::limit($satu->m_vendor_last ?? '-', 28) }}
+                                        </p>
                                     @endif
                                 </td>
                                 <td class="px-3 py-3 align-top">
@@ -394,6 +409,7 @@
                                                     <p class="mb-1">Safety Stk: {{ $angkaRapi($satu->m_mrp_safety) }} &middot; Reorder Pt: {{ $angkaRapi($satu->m_mrp_reorder) }}</p>
                                                     <p class="mb-1">Satuan: {{ $satu->m_mrp_unit ?? '-' }} &middot; Tipe MRP: {{ $satu->m_mrp_type ?? '-' }}</p>
                                                     <p class="mb-1">Min Monitoring vs MRP: <span class="font-medium {{ $satu->m_mrp_cmp === 'Beda' ? 'text-amber-700' : 'text-teal-700' }}">{{ $satu->m_mrp_cmp ?? '-' }}</span></p>
+                                                    <p class="mb-1">Max Stock (MRP): - <span class="text-slate-400">(tidak disediakan MD07)</span></p>
                                                     <p class="text-slate-400 mt-2">
                                                         Diperbarui: {{ $satu->m_mrp_diupdate_at !== null ? \Illuminate\Support\Carbon::parse($satu->m_mrp_diupdate_at)->format('d/m/Y H:i') : '-' }}
                                                     </p>

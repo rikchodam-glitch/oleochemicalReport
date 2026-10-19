@@ -280,8 +280,9 @@ Perubahan yang dikerjakan:
 - **Semua nomor PR/PO terbuka disimpan dan ditampilkan.** Migrasi
   `2026_10_19_000001_add_mrp_and_open_numbers_to_sparepart` menambah
   `sp_material.pr_open_nums` dan `po_open_nums`. `pr_nums`/`po_nums` tetap
-  memuat seluruh nomor; `*_open_nums` memuat yang masih terbuka. Halaman
-  menampilkan nomor terbuka di kolom PR/PO dan seluruh nomor di panel rincian.
+  memuat seluruh nomor; `*_open_nums` memuat yang masih terbuka. Kolom utama
+  menampilkan seluruh nomor PR/PO (nomor terbuka ditandai terpisah), dan panel
+  rincian memuat daftar lengkapnya.
 - **Import MRP (SAP MD07).** Berkas `EXPORT MRP.XLSX` sekarang diterima lewat
   form (`mrp`) maupun perintah `sparepart:import --mrp=...`. Nilai yang diambil:
   `Plnt stock` -> `mrp_stock`, `Safety Stk` -> `mrp_safety`, `Reorder Pt` ->
