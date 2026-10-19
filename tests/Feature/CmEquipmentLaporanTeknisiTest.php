@@ -21,12 +21,16 @@ uses(RefreshDatabase::class);
  * TIDAK boleh salah equipment — hanya laporan yang bertag equipment itu yang
  * boleh tampil.
  *
- * Tagging yang dipakai (lihat CmController::equipmentShow(), $laporanTeknisi):
+ * Tagging yang dipakai (lihat CmController::whereLaporanEquipment()):
  *   1. reports.equipment_tag sama persis dengan cm_equipment.equipment_tag;
  *   2. reports.asset_id menunjuk asset yang tech_ident_no-nya sama persis
- *      dengan cm_equipment.equipment_tag (relasi CmEquipment::asset()).
- * Pencocokan lewat deskripsi pekerjaan (LIKE) SENGAJA tidak dipakai supaya
- * laporan equipment lain yang kodenya hanya mirip tidak ikut tampil.
+ *      dengan cm_equipment.equipment_tag (relasi CmEquipment::asset());
+ *   3. laporan LAMA yang belum punya tag & asset, tetapi deskripsinya menyebut
+ *      tag tersebut (EquipmentMentionService — cocok persis di batas kata,
+ *      bukan LIKE wildcard). Aturan tersebut ditambahkan 19/10/2026 karena
+ *      laporan wizard Telegram lama tidak menyimpan equipment_tag sama sekali.
+ * Laporan "2-TEST-LAP01" tetap TIDAK boleh tampil di "TEST-LAP01" karena
+ * penyebutan tag yang lebih panjang mengalahkan tag pendek di dalamnya.
  */
 
 beforeEach(function () {
@@ -108,12 +112,13 @@ beforeEach(function () {
         'status'           => 'completed',
     ]);
 
-    // Laporan pekerjaan area: TIDAK bertag equipment sama sekali.
+    // Laporan pekerjaan area: TIDAK bertag equipment dan TIDAK menyebut kode
+    // equipment mana pun, jadi tidak boleh muncul di halaman equipment.
     $this->laporanArea = Report::create([
         'technician_id'    => $this->teknisi->id,
         'report_date'      => '2026-05-03',
         'report_code'      => 'LAP-AREA-003',
-        'work_description' => 'Bersih-bersih area sekitar TEST-LAP01',
+        'work_description' => 'Bersih-bersih area sekitar pompa laporan',
         'report_type'      => 'area_work',
         'status'           => 'completed',
     ]);
@@ -180,6 +185,52 @@ test('laporan milik equipment lain tidak muncul di halaman equipment yang berbed
     $response->assertSee('Balancing TEST-LAP01 versi BD2', false);
     // ...tetapi laporan milik equipment TEST-LAP01 TIDAK ikut tampil.
     $response->assertDontSee('Ganti bearing pompa laporan', false);
+});
+
+test('laporan lama tanpa tag tetap tampil bila deskripsinya menyebut kode equipment', function () {
+    Report::create([
+        'technician_id'    => $this->teknisi->id,
+        'report_date'      => '2026-05-05',
+        'report_code'      => 'LAP-MENTION-005',
+        'work_description' => 'Cek vibrasi pompa TEST-LAP01 area BD',
+        'report_type'      => 'area_work',
+        'status'           => 'completed',
+    ]);
+
+    $response = $this->actingAs($this->admin)->get('/cm/equipment/TEST-LAP01?range=all');
+
+    $response->assertStatus(200);
+    $response->assertSee('Cek vibrasi pompa TEST-LAP01 area BD', false);
+});
+
+test('penyebutan kode equipment yang lebih panjang tidak dianggap equipment pendek', function () {
+    CmEquipment::create([
+        'equipment_tag'  => '2-TEST-LAP01',
+        'pt_location'    => 'PT-TEST',
+        'plant'          => 'PLANT-1',
+        'tipe_lubrikasi' => 'oli',
+    ]);
+
+    Report::create([
+        'technician_id'    => $this->teknisi->id,
+        'report_date'      => '2026-05-06',
+        'report_code'      => 'LAP-MENTION-006',
+        'work_description' => 'Perbaikan pompa 2-TEST-LAP01',
+        'report_type'      => 'area_work',
+        'status'           => 'completed',
+    ]);
+
+    // Tidak boleh ikut tampil di equipment pendek (TEST-LAP01)...
+    $this->actingAs($this->admin)
+        ->get('/cm/equipment/TEST-LAP01?range=all')
+        ->assertStatus(200)
+        ->assertDontSee('Perbaikan pompa 2-TEST-LAP01', false);
+
+    // ...tetapi tampil di equipment yang kodenya disebut penuh.
+    $this->actingAs($this->admin)
+        ->get('/cm/equipment/2-TEST-LAP01?range=all')
+        ->assertStatus(200)
+        ->assertSee('Perbaikan pompa 2-TEST-LAP01', false);
 });
 
 test('equipment tanpa laporan bertag tetap tampil dengan pesan kosong', function () {

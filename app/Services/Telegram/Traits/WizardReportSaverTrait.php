@@ -181,12 +181,13 @@ trait WizardReportSaverTrait
             $asetId    = $item['asset_id'] ?? null;
             $funclocId = $item['funcloc_id'] ?? null;
 
+            $asetItem = $asetId !== null ? Asset::find($asetId) : null;
+
             // Area dihitung dari alat/lokasi tambahan; fallback ke area induk.
             $areaId = null;
 
-            if ($asetId !== null) {
-                $asetItem = Asset::find($asetId);
-                $areaId   = $asetItem?->area_id ?? $this->areaIdDariKodeFuncLoc($asetItem?->functional_loc);
+            if ($asetItem !== null) {
+                $areaId = $asetItem->area_id ?? $this->areaIdDariKodeFuncLoc($asetItem->functional_loc);
             }
 
             if ($funclocId !== null) {
@@ -202,6 +203,9 @@ trait WizardReportSaverTrait
                 'technician_id'           => $technician->id,
                 'creator_id'              => $technician->id,
                 'asset_id'                => $asetId,
+                // Tiap baris salinan memakai tag alatnya sendiri, jangan ikut
+                // equipment_tag laporan induk.
+                'equipment_tag'           => $asetItem?->tech_ident_no,
                 'funcloc_id'              => $funclocId,
                 'area_id'                 => $areaId,
                 'report_type'             => $asetId !== null ? 'equipment_repair' : 'area_work',
@@ -296,6 +300,11 @@ trait WizardReportSaverTrait
                 'report_date'             => $reportDate,
                 'work_description'        => $state['text'],
                 'asset_id'                => $state['equipment_id'] ?? null,
+                // Kunci equipment untuk Condition Monitoring adalah Tech Ident No
+                // (assets.tech_ident_no), BUKAN equipment_no. Tanpa baris ini
+                // halaman "Laporan Teknisi" pada detail equipment CM kosong
+                // (insiden 19/10/2026).
+                'equipment_tag'           => $state['equipment_ident'] ?? null,
                 'area_id'                 => $state['area_id'] ?? null,
                 'funcloc_id'              => $state['funcloc_id'] ?? null,
                 'report_type'             => $reportType,

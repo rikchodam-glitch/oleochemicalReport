@@ -13,8 +13,10 @@ use App\Models\Report;
 use App\Models\WorkOrder;
 use App\Jobs\ProcessCmExcelImport;
 use App\Jobs\SyncGoogleSheetsJob;
+use App\Services\EquipmentMentionService;
 use App\Services\Telegram\PhotoStorageService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -482,7 +484,7 @@ class CmController extends Controller
             'days_since'     => null,
         ];
 
-        $failureReportsQuery = Report::where('equipment_tag', $equipment->equipment_tag)
+        $failureReportsQuery = $this->whereLaporanEquipment(Report::query(), $equipment)
             ->whereIn('jenis_pekerjaan', ['CM', 'dCM']);
 
         // Terapkan filter rentang waktu
@@ -540,24 +542,20 @@ class CmController extends Controller
         // ini yang diambil, dan dicocokkan PERSIS (bukan pencarian teks):
         //   (1) reports.equipment_tag == cm_equipment.equipment_tag, atau
         //   (2) reports.asset_id menunjuk asset yang tech_ident_no-nya sama
-        //       persis dengan equipment_tag (relasi CmEquipment::asset()).
-        // Pencocokan lewat deskripsi pekerjaan (LIKE) SENGAJA TIDAK dipakai di
-        // sini: laporan equipment lain yang kodenya hanya MIRIP (mis. laporan
-        // "2-6163P8" untuk equipment "6163P8") tidak boleh ikut tampil —
-        // permintaan user 14/10/2026: "jangan sampai salah equipment".
+        //       persis dengan equipment_tag (relasi CmEquipment::asset()), atau
+        //   (3) laporan LAMA yang belum punya tag & asset, tetapi deskripsinya
+        //       menyebut tag ini secara persis (bukan LIKE wildcard).
+        // Pencocokan (3) memakai EquipmentMentionService: batas kata + longest
+        // match, sehingga laporan "2-6163P8" TIDAK ikut tampil di "6163P8"
+        // (permintaan user 14/10/2026: "jangan sampai salah equipment").
         // Salinan laporan kolaborator (collaborator_of terisi) disembunyikan
         // supaya satu pekerjaan tampil sekali, sama seperti halaman detail asset.
-        $laporanTeknisi = Report::query()
-            ->with(['technician', 'collaboratorReports.technician'])
-            ->whereNull('collaborator_of')
-            ->where(function ($q) use ($equipment) {
-                $q->where('equipment_tag', $equipment->equipment_tag)
-                    ->orWhereIn('asset_id', function ($sub) use ($equipment) {
-                        $sub->select('id')
-                            ->from('assets')
-                            ->where('tech_ident_no', $equipment->equipment_tag);
-                    });
-            })
+        $laporanTeknisi = $this->whereLaporanEquipment(
+            Report::query()
+                ->with(['technician', 'collaboratorReports.technician'])
+                ->whereNull('collaborator_of'),
+            $equipment
+        )
             ->orderByDesc('report_date')
             ->orderByDesc('id')
             ->paginate(10, ['*'], 'pageLaporan')
@@ -611,6 +609,45 @@ class CmController extends Controller
             'vibThresholds',
             'tempThreshold'
         ));
+    }
+
+    /**
+     * Batasi query laporan ke satu equipment CM.
+     *
+     * Tiga jalur pencocokan, semuanya PERSIS (tanpa LIKE wildcard):
+     *   1. reports.equipment_tag = cm_equipment.equipment_tag — kunci utama CM;
+     *   2. reports.asset_id menunjuk asset dengan tech_ident_no = equipment_tag;
+     *   3. laporan lama yang BELUM punya tag & asset, tetapi deskripsinya
+     *      menyebut tag tersebut (EquipmentMentionService).
+     *
+     * Jalur 3 diperlukan karena laporan dari wizard Telegram sebelum perbaikan
+     * 19/10/2026 tidak menyimpan equipment_tag sama sekali, padahal teknisi
+     * menuliskan kode equipment di deskripsi pekerjaan.
+     *
+     * @param  Builder      $query      Query laporan yang akan dibatasi
+     * @param  CmEquipment  $equipment  Equipment CM yang dibuka
+     * @return Builder
+     */
+    private function whereLaporanEquipment(Builder $query, CmEquipment $equipment): Builder
+    {
+        $mentions = app(EquipmentMentionService::class);
+
+        return $query->where(function (Builder $q) use ($equipment, $mentions): void {
+            $q->where('equipment_tag', $equipment->equipment_tag)
+                ->orWhereIn('asset_id', function ($sub) use ($equipment): void {
+                    $sub->select('id')
+                        ->from('assets')
+                        ->where('tech_ident_no', $equipment->equipment_tag);
+                })
+                ->orWhere(function (Builder $legacy) use ($equipment, $mentions): void {
+                    // Hanya laporan yang benar-benar belum tertaut ke aset/tag.
+                    $legacy->where(function (Builder $t): void {
+                        $t->whereNull('equipment_tag')->orWhere('equipment_tag', '');
+                    })->whereNull('asset_id');
+
+                    $mentions->whereMentions($legacy, $equipment->equipment_tag);
+                });
+        });
     }
 
     /**

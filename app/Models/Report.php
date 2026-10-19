@@ -369,6 +369,30 @@ class Report extends Model
     {
         parent::boot();
 
+        /*
+         * Lengkapi equipment_tag dari asset yang dipilih.
+         *
+         * Sejak 19/10/2026 laporan yang dibuat wizard Telegram / form web hanya
+         * mengisi asset_id. Akibatnya halaman "Laporan Teknisi" pada detail
+         * equipment CM (yang mencocokkan reports.equipment_tag dengan
+         * cm_equipment.equipment_tag) tidak pernah menemukan laporan tersebut.
+         *
+         * Kunci yang benar adalah assets.tech_ident_no (bukan equipment_no):
+         * CM memakai Tech Ident No sebagai equipment tag. Nilai equipment_tag
+         * yang sudah diisi manual TIDAK ditimpa.
+         */
+        static::saving(function (Report $report): void {
+            if (filled($report->equipment_tag) || $report->asset_id === null) {
+                return;
+            }
+
+            $tag = Asset::query()->whereKey($report->asset_id)->value('tech_ident_no');
+
+            if (filled($tag)) {
+                $report->equipment_tag = trim((string) $tag);
+            }
+        });
+
         static::deleting(function (Report $report) {
             // 1. Baris salinan (kolaborasi & multi alat) milik laporan ini.
             foreach ([$report->collaboratorReports(), $report->multiItems()] as $relasi) {
