@@ -10,8 +10,8 @@
 - [ ] Tidak ada berkas sampah (skrip `tmp-*`, `.bak`, hasil export sekali pakai).
 - [ ] Bila ada migrasi baru: nama berkas memakai stempel waktu `php artisan make:migration`.
 - [ ] Sudah `git rebase origin/main` (bukan merge) sebelum dibuka.
-- [ ] Bagian `AGENTS.md` sudah diperbarui bila perilaku/aturan berubah, DAN
-      ditambahkan entri "Riwayat Insiden" bila ini perbaikan bug.
+- [ ] Peta `AGENTS.md` dan dokumen `docs/` sudah diperbarui bila perilaku/aturan
+      berubah, DAN ditambahkan entri "Riwayat Insiden" bila ini perbaikan bug.
 
 ## Bukti uji
 
