@@ -1,18 +1,15 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-15 17:03 WIB
+Diperbarui: 2026-10-19 09:21 WIB
 
-- Cabang aktif: `tugas/erik/hapus-batas-kolaborator`
-- Mulai: 2026-10-15 17:03
+- Cabang aktif: `tugas/erik/pisahkan-dokumentasi-agents-ke-docs`
+- Mulai: 2026-10-19 09:21
 - Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
-  - `app/Services/CollaborationService.php` (hapus konstanta MAX_KOLABORATOR + pemotongan/pembatasan)
-  - `app/Services/Telegram/Traits/WizardStepHandlerTrait.php` (hapus MAX_COLLABORATORS + guard/slot di Step 8a)
-  - `app/Services/Telegram/Traits/WizardCallbackHandlerTrait.php` (hapus guard batas pada pemilihan kandidat & hierarki)
-  - `app/Http/Controllers/ReportCollaborationController.php` (hapus penolakan batas + kolom `maksimal`)
-  - `resources/views/reports/partials/_kolaborasi.blade.php` (label "x kolaborator")
-  - `tests/Feature/CollaborationTest.php`, `tests/Feature/ReportEditKolaborasiTest.php`
-- Catatan: batas lama = 5 kolaborator per laporan. Tanpa migrasi/perubahan data. Dedup NIK dan pengecualian pelaksana sendiri tetap dijaga.
+  - `AGENTS.md` (dijadikan peta)
+  - `docs/` (20 dokumen pecahan + 6 dokumen pendukung)
+  - `tugas/erik.md`, `tugas/pr-pisahkan-dokumentasi-agents-ke-docs.md`
+- Catatan: hanya dokumentasi; tidak ada perubahan kode.
 
 ## Riwayat
-- tugas/erik/popup-kalender-tidak-terbuka-sendiri (mulai 2026-10-15 13:35) -> dilanjutkan 2026-10-15 17:03
+- tugas/erik/hapus-batas-kolaborator (mulai 2026-10-15 17:03) -> dilanjutkan 2026-10-19 09:21

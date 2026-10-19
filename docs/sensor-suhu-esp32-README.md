@@ -1,7 +1,7 @@
 # Monitoring Suhu & Kelembapan - ESP32 (W5500 Ethernet) ke Server Lokal
 
 Proyek ini adalah implementasi nyata dari rancangan di
-`../rancangan-proyek-sensor-suhu-esp32.md`: ESP32 membaca sensor DHT11, mengirim
+`rancangan-proyek-sensor-suhu-esp32.md`: ESP32 membaca sensor DHT11, mengirim
 data lewat kabel LAN (modul Ethernet W5500) ke server Flask di komputer lokal,
 lalu ditampilkan pada dashboard web dengan nilai terkini dan grafik historis.
 
@@ -9,6 +9,9 @@ Semua komponen (firmware, server, dashboard, alat bantu commissioning) sudah
 ditulis lengkap dan sudah diuji. Bagian yang belum bisa diuji adalah komunikasi
 ke perangkat keras asli, karena pada saat pengerjaan ESP32 belum terhubung
 lewat LAN dan sensor belum terpasang di board.
+
+Catatan lokasi: berkas ini dipindahkan ke `docs/`; path `firmware/...` di bawah
+ini relatif terhadap folder `sensor-suhu-esp32/` di repo.
 
 ## 1. Status verifikasi
 

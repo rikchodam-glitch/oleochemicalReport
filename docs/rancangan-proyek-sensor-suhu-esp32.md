@@ -163,7 +163,7 @@ Poin-poin berikut **belum diimplementasikan** dan bisa jadi task tambahan untuk 
 ## 10. Status Implementasi (diperbarui setelah pengerjaan)
 
 Implementasi lengkap ada di folder `sensor-suhu-esp32/` pada repo ini, dengan
-panduan pemakaian dan troubleshooting di `sensor-suhu-esp32/README.md`.
+panduan pemakaian dan troubleshooting di `sensor-suhu-esp32-README.md`.
 
 Yang sudah diverifikasi jalan:
 
