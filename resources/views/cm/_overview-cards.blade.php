@@ -1,20 +1,29 @@
-<div class="bg-white rounded-xl border border-slate-200 p-4">
-    <p class="text-2xl font-bold text-slate-900">{{ number_format($totalRecords) }}</p>
-    <p class="text-xs text-slate-500 mt-1">Total Records</p>
+<div class="ap-tile">
+    <p class="ap-micro">Total records</p>
+    <p class="ap-num" style="margin-top:8px;">{{ number_format($totalRecords) }}</p>
+    <p class="ap-micro" style="margin-top:4px;">Seluruh reading periode ini</p>
 </div>
-<div class="bg-white rounded-xl border border-green-200 p-4">
-    <p class="text-2xl font-bold text-green-600">{{ number_format($goodCount) }}</p>
-    <p class="text-xs text-slate-500 mt-1">Good ({{ $goodPct }}%)</p>
+<div class="ap-tile">
+    <p class="ap-micro"><span class="ap-dot ap-dot--ok"></span> Good</p>
+    <p class="ap-num" style="margin-top:8px;">{{ number_format($goodCount) }}</p>
+    <p class="ap-micro" style="margin-top:4px;">{{ $goodPct }}% dari total</p>
+    <div class="ap-bar" style="margin-top:12px;"><span style="width:{{ $goodPct }}%;background:#30d158;"></span></div>
 </div>
-<div class="bg-white rounded-xl border border-amber-200 p-4">
-    <p class="text-2xl font-bold text-amber-600">{{ number_format($alarmCount) }}</p>
-    <p class="text-xs text-slate-500 mt-1">Alarm ({{ $alarmPct }}%)</p>
+<div class="ap-tile">
+    <p class="ap-micro"><span class="ap-dot ap-dot--warn"></span> Alarm</p>
+    <p class="ap-num" style="margin-top:8px;">{{ number_format($alarmCount) }}</p>
+    <p class="ap-micro" style="margin-top:4px;">{{ $alarmPct }}% dari total</p>
+    <div class="ap-bar" style="margin-top:12px;"><span style="width:{{ $alarmPct }}%;background:#ff9f0a;"></span></div>
 </div>
-<div class="bg-white rounded-xl border border-red-200 p-4">
-    <p class="text-2xl font-bold text-red-600">{{ number_format($dangerCount) }}</p>
-    <p class="text-xs text-slate-500 mt-1">Danger ({{ $dangerPct }}%)</p>
+<div class="ap-tile">
+    <p class="ap-micro"><span class="ap-dot ap-dot--bad"></span> Danger</p>
+    <p class="ap-num" style="margin-top:8px;">{{ number_format($dangerCount) }}</p>
+    <p class="ap-micro" style="margin-top:4px;">{{ $dangerPct }}% dari total</p>
+    <div class="ap-bar" style="margin-top:12px;"><span style="width:{{ $dangerPct }}%;background:#ff453a;"></span></div>
 </div>
-<div class="bg-white rounded-xl border border-purple-200 p-4">
-    <p class="text-2xl font-bold text-purple-600">{{ number_format($visualBadCount) }}</p>
-    <p class="text-xs text-slate-500 mt-1">Visual Bad ({{ $visualBadPct }}%)</p>
+<div class="ap-tile">
+    <p class="ap-micro"><span class="ap-dot" style="background:#bf5af2;"></span> Visual bad</p>
+    <p class="ap-num" style="margin-top:8px;">{{ number_format($visualBadCount) }}</p>
+    <p class="ap-micro" style="margin-top:4px;">{{ $visualBadPct }}% dari total</p>
+    <div class="ap-bar" style="margin-top:12px;"><span style="width:{{ $visualBadPct }}%;background:#bf5af2;"></span></div>
 </div>

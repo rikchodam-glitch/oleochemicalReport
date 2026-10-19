@@ -2,33 +2,45 @@
 
 @section('title', 'Finding CM — Condition Monitoring')
 @section('breadcrumb')
-    <a href="{{ route('dashboard') }}" class="hover:text-slate-700">Dashboard</a>
-    <span class="text-slate-300">/</span>
-    <a href="{{ route('cm.overview') }}" class="hover:text-slate-700">Condition Monitoring</a>
-    <span class="text-slate-300">/</span>
-    <span class="text-slate-900 font-medium">Finding CM</span>
+    <a href="{{ route('dashboard') }}" class="hover:text-[#1d1d1f]">Dashboard</a>
+    <span class="text-[#d2d2d7]">/</span>
+    <a href="{{ route('cm.overview') }}" class="hover:text-[#1d1d1f]">Condition Monitoring</a>
+    <span class="text-[#d2d2d7]">/</span>
+    <span class="text-[#1d1d1f] font-medium">Finding CM</span>
 @endsection
 
 @section('content')
-    @include('cm._tabs')
+    @include('partials._apple-ui')
+
+    <div class="ap">
+        <div class="ap-wrap">
+            @include('cm._tabs')
+
+            <section class="ap-hero" style="padding:36px 40px;margin-bottom:24px;">
+                <p class="ap-eyebrow">Condition Monitoring</p>
+                <h2 class="ap-display" style="font-size:clamp(26px,3.2vw,40px);margin-top:8px;">Temuan condition monitoring.</h2>
+                <p class="ap-lede" style="margin-top:10px;">
+                    Daftar finding terbuka beserta riwayat penyelesaiannya.
+                </p>
+            </section>
 
     {{-- Summary Cards --}}
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div class="bg-white rounded-xl border border-slate-200 p-4">
-            <p class="text-2xl font-bold text-amber-600">{{ $totalOpen }}</p>
-            <p class="text-xs text-slate-500 mt-1">Finding Open</p>
+        <div class="ap-tile p-4">
+            <p class="ap-micro"><span class="ap-dot ap-dot--warn"></span> Finding Open</p>
+            <p class="ap-num" style="margin-top:8px;color:#bf4800;">{{ $totalOpen }}</p>
         </div>
-        <div class="bg-white rounded-xl border border-red-200 p-4">
-            <p class="text-2xl font-bold text-red-600">{{ $openOver7 }}</p>
-            <p class="text-xs text-slate-500 mt-1">Open &gt; 7 Hari</p>
+        <div class="ap-tile p-4">
+            <p class="ap-micro"><span class="ap-dot ap-dot--bad"></span> Open &gt; 7 Hari</p>
+            <p class="ap-num" style="margin-top:8px;color:#d70015;">{{ $openOver7 }}</p>
         </div>
-        <div class="bg-white rounded-xl border border-green-200 p-4">
-            <p class="text-2xl font-bold text-green-600">{{ $totalClosed }}</p>
-            <p class="text-xs text-slate-500 mt-1">Closed</p>
+        <div class="ap-tile p-4">
+            <p class="ap-micro"><span class="ap-dot ap-dot--ok"></span> Closed</p>
+            <p class="ap-num" style="margin-top:8px;color:#248a3d;">{{ $totalClosed }}</p>
         </div>
-        <div class="bg-white rounded-xl border border-slate-200 p-4">
-            <p class="text-2xl font-bold text-slate-900">{{ $totalFindings }}</p>
-            <p class="text-xs text-slate-500 mt-1">Total Finding</p>
+        <div class="ap-tile p-4">
+            <p class="ap-micro">Total Finding</p>
+            <p class="ap-num" style="margin-top:8px;">{{ $totalFindings }}</p>
         </div>
     </div>
 
@@ -43,39 +55,39 @@
 
 
     {{-- Filters --}}
-    <div class="bg-white rounded-xl border border-slate-200 p-4 mb-6">
-        <form id="findingsFilterForm" class="flex flex-wrap gap-4 items-end">
-            <div class="space-y-1">
-                <label class="text-xs font-medium text-slate-500">PT</label>
-                <select name="pt" class="findings-filter border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+    <div class="ap-card p-4 mb-6">
+        <form id="findingsFilterForm" class="ap-toolbar">
+            <div class="ap-field">
+                <label class="ap-field-label" for="findingsPt">PT</label>
+                <select id="findingsPt" name="pt" class="findings-filter ap-select">
                     <option value="">Semua PT</option>
                     @foreach($ptList as $pt)
                         <option value="{{ $pt }}" {{ $filterPt === $pt ? 'selected' : '' }}>{{ $pt }}</option>
                     @endforeach
                 </select>
             </div>
-            <div class="space-y-1">
-                <label class="text-xs font-medium text-slate-500">Status</label>
-                <select name="status" class="findings-filter border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+            <div class="ap-field">
+                <label class="ap-field-label" for="findingsStatus">Status</label>
+                <select id="findingsStatus" name="status" class="findings-filter ap-select">
                     <option value="">Semua Status</option>
                     <option value="open" {{ $filterStatus === 'open' ? 'selected' : '' }}>Open</option>
                     <option value="closed" {{ $filterStatus === 'closed' ? 'selected' : '' }}>Closed</option>
                 </select>
             </div>
-            <div class="space-y-1 flex-1 min-w-[200px]">
-                <label class="text-xs font-medium text-slate-500">Cari</label>
+            <div class="ap-field ap-field--grow">
+                <label class="ap-field-label" for="findingsSearch">Cari</label>
                 <input type="text" name="search" id="findingsSearch" value="{{ $search }}"
                        placeholder="Cari tag equipment atau deskripsi..."
-                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                       class="ap-input" style="width:100%;">
             </div>
-            <button type="submit" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
+            <button type="submit" class="ap-btn ap-btn--primary">
                 Filter
             </button>
-            <a href="{{ route('cm.findings') }}" class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+            <a href="{{ route('cm.findings') }}" class="ap-btn ap-btn--glass">
                 Reset
             </a>
             <a href="{{ route('cm.export-findings', ['pt' => $filterPt, 'status' => $filterStatus]) }}"
-               class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-1.5">
+               class="ap-btn ap-btn--glass">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                 </svg>
@@ -87,6 +99,8 @@
     {{-- Findings List --}}
     <div id="findingsList" class="space-y-3">
         @include('cm._findings-list', ['findings' => $findings])
+    </div>
+        </div>
     </div>
 
     @push('scripts')

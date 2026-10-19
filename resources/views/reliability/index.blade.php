@@ -2,438 +2,431 @@
 
 @section('title', 'Reliability Dashboard — Corrective Maintenance')
 @section('breadcrumb')
-    <a href="{{ route('dashboard') }}" class="hover:text-slate-700">Dashboard</a>
-    <span class="text-slate-300">/</span>
-    <span class="text-slate-900 font-medium">Reliability Dashboard</span>
+    <a href="{{ route('dashboard') }}" class="text-[#6e6e73] hover:text-[#1d1d1f]">Dashboard</a>
+    <span class="text-[#d2d2d7]">/</span>
+    <span class="text-[#1d1d1f] font-medium">Reliability Dashboard</span>
 @endsection
 
 @section('content')
-    {{-- Filter --}}
-    <div class="bg-white rounded-xl border border-slate-200 p-4 mb-6">
-        <form method="GET" class="flex flex-wrap gap-4 items-end">
-            <div class="space-y-1">
-                <label class="text-xs font-medium text-slate-500">PT</label>
-                <select name="pt" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">Semua PT</option>
-                    @foreach($ptList as $pt)
-                        <option value="{{ $pt }}" {{ $filterPt === $pt ? 'selected' : '' }}>{{ $pt }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="space-y-1">
-                <label class="text-xs font-medium text-slate-500">Tahun</label>
-                <select name="tahun" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    @foreach($tahunList as $th)
-                        <option value="{{ $th }}" {{ $filterTahun == $th ? 'selected' : '' }}>{{ $th }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="space-y-1">
-                <label class="text-xs font-medium text-slate-500">Bulan</label>
-                <select name="bulan" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">Tahunan (semua bulan)</option>
-                    @foreach(range(1, 12) as $b)
-                        <option value="{{ $b }}" {{ $filterBulan == $b ? 'selected' : '' }}>{{ DateTime::createFromFormat('!m', $b)->format('F') }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <button type="submit" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
-                Terapkan
-            </button>
-            <a href="{{ route('reliability.index') }}" class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
-                Reset
-            </a>
-        </form>
+    @include('partials._apple-ui')
+
+    @php
+        $periode = $filterBulan
+            ? \DateTime::createFromFormat('!m', $filterBulan)->format('F') . ' ' . $filterTahun
+            : 'Sepanjang ' . $filterTahun;
+    @endphp
+
+    <div class="ap">
+        <div class="ap-wrap">
+            {{-- ============ HERO: KPI UTAMA + FILTER ============ --}}
+            <section class="ap-hero">
+                <div class="ap-hero-top">
+                    <div>
+                        <p class="ap-eyebrow">Reliability Dashboard &middot; {{ $periode }}</p>
+                        <h2 class="ap-display" style="margin-top:10px;">
+                            @if($fleetMtbf > 0)
+                                Fleet MTBF {{ number_format($fleetMtbf, 1, ',', '.') }}
+                                <span style="font-size:.42em;font-weight:400;color:#6e6e73;letter-spacing:-0.224px;">jam</span>
+                            @else
+                                Belum ada failure.
+                            @endif
+                        </h2>
+                        <p class="ap-lede" style="margin-top:14px;">
+                            {{ $totalEquipment }} equipment &middot; {{ $totalFailures }} failure &middot;
+                            {{ $filterPt ?: 'Semua PT' }}
+                        </p>
+                    </div>
+
+                    <form method="GET" class="ap-hero-tools" style="align-items:flex-end;">
+                        <label class="ap-field">
+                            <span class="ap-hero-label">PT</span>
+                            <select name="pt" class="ap-select">
+                                <option value="">Semua PT</option>
+                                @foreach($ptList as $pt)
+                                    <option value="{{ $pt }}" {{ $filterPt === $pt ? 'selected' : '' }}>{{ $pt }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                        <label class="ap-field">
+                            <span class="ap-hero-label">Tahun</span>
+                            <select name="tahun" class="ap-select">
+                                @foreach($tahunList as $th)
+                                    <option value="{{ $th }}" {{ $filterTahun == $th ? 'selected' : '' }}>{{ $th }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                        <label class="ap-field">
+                            <span class="ap-hero-label">Bulan</span>
+                            <select name="bulan" class="ap-select">
+                                <option value="">Tahunan</option>
+                                @foreach(range(1, 12) as $b)
+                                    <option value="{{ $b }}" {{ $filterBulan == $b ? 'selected' : '' }}>{{ DateTime::createFromFormat('!m', $b)->format('F') }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                        <button type="submit" class="ap-btn ap-btn--primary">Terapkan</button>
+                        <a href="{{ route('reliability.index') }}" class="ap-btn ap-btn--glass">Reset</a>
+                    </form>
+                </div>
+
+                <div class="ap-stats ap-stats--4">
+                    <div class="ap-stat ap-stat--static">
+                        <span class="ap-stat-num ap-stat-num--sm">
+                            {{ $fleetMtbf > 0 ? number_format($fleetMtbf, 1, ',', '.') : '—' }}<small> jam</small>
+                        </span>
+                        <span class="ap-stat-label">Fleet MTBF &mdash; {{ $totalEquipment }} equipment, {{ $totalFailures }} failure</span>
+                    </div>
+                    <div class="ap-stat ap-stat--static">
+                        <span class="ap-stat-num ap-stat-num--sm">{{ $countCM }} : {{ $countDCM }} : {{ $countPM }}</span>
+                        <span class="ap-stat-label">CM : dCM : PM &mdash; {{ $countCM + $countDCM + $countPM }} work order</span>
+                    </div>
+                    <div class="ap-stat ap-stat--static">
+                        <span class="ap-stat-num ap-stat-num--sm">
+                            {{ $dcmTotal > 0 ? number_format($deferSuccessRate, 1, ',', '.') : '—' }}<small>%</small>
+                        </span>
+                        <span class="ap-stat-label">Defer success rate &mdash; {{ $dcmSuccess }} dari {{ $dcmTotal }} dCM sesuai rencana</span>
+                    </div>
+                    <div class="ap-stat ap-stat--static">
+                        <span class="ap-stat-num ap-stat-num--sm">
+                            {{ $cmTotal > 0 ? number_format($undetectedRate, 1, ',', '.') : '—' }}<small>%</small>
+                        </span>
+                        <span class="ap-stat-label">Undetected failure &mdash; {{ $cmUndetected }} dari {{ $cmTotal }} CM tanpa peringatan dini</span>
+                    </div>
+                </div>
+            </section>
+
+            {{-- ============ CHARTS ============ --}}
+            <section class="ap-section">
+                <div class="ap-grid-2">
+                    <div class="ap-card">
+                        <h3 class="ap-h3">Trend MTBF bulanan</h3>
+                        <p class="ap-caption" style="margin-top:4px;">Rolling window 3 bulan, dalam jam.</p>
+                        <div class="ap-chart" style="margin-top:20px;">
+                            <canvas id="mtbfChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="ap-card">
+                        <h3 class="ap-h3">Distribusi CM / dCM / PM</h3>
+                        <p class="ap-caption" style="margin-top:4px;">Jumlah work order per bulan.</p>
+                        <div class="ap-chart" style="margin-top:20px;">
+                            <canvas id="distributionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="ap-section" style="margin-top:16px;">
+                <div class="ap-grid-2">
+                    <div class="ap-card">
+                        <h3 class="ap-h3">Failure mode Pareto</h3>
+                        <p class="ap-caption" style="margin-top:4px;">Root cause dengan kejadian terbanyak.</p>
+                        @if(count($paretoData) > 0)
+                            <div class="ap-chart" style="margin-top:20px;">
+                                <canvas id="paretoChart"></canvas>
+                            </div>
+                        @else
+                            <div class="ap-empty" style="height:280px;display:flex;align-items:center;justify-content:center;">
+                                Belum ada data root cause untuk ditampilkan.
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="ap-card ap-card--flush">
+                        <div style="padding:24px 24px 12px;">
+                            <h3 class="ap-h3">Top 10 equipment &mdash; MTBF terendah</h3>
+                            <p class="ap-caption" style="margin-top:4px;">Paling sering failure pada periode ini.</p>
+                        </div>
+                        <div class="ap-table-wrap">
+                            <table class="ap-table">
+                                <thead>
+                                    <tr>
+                                        <th style="padding-left:24px;width:40px;">#</th>
+                                        <th>Equipment</th>
+                                        <th style="text-align:right;">Failures</th>
+                                        <th style="text-align:right;">MTBF (jam)</th>
+                                        <th style="padding-right:24px;">Last failure</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @forelse($worstMtbf as $i => $item)
+                                        <tr>
+                                            <td style="padding-left:24px;"><span class="ap-micro">{{ $i + 1 }}</span></td>
+                                            <td>
+                                                <p class="ap-tag ap-mono">{{ $item['equipment_tag'] }}</p>
+                                                <p class="ap-micro" style="margin-top:2px;">{{ $item['pt_location'] }}</p>
+                                            </td>
+                                            <td style="text-align:right;">
+                                                <span class="ap-num-sm" style="font-size:14px;color:#d70015;">{{ $item['total_failures'] }}</span>
+                                            </td>
+                                            <td style="text-align:right;">
+                                                <span class="ap-mono" style="font-size:13px;">{{ number_format($item['mtbf'], 1, ',', '.') }}</span>
+                                            </td>
+                                            <td style="padding-right:24px;"><span class="ap-micro">{{ $item['last_failure'] }}</span></td>
+                                        </tr>
+                                    @empty
+                                        <tr>
+                                            <td colspan="5" class="ap-empty">Belum ada data failure untuk ditampilkan.</td>
+                                        </tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
     </div>
+@endsection
 
-    {{-- Cards Ringkasan Atas --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {{-- Fleet MTBF --}}
-        <div class="bg-white rounded-xl border border-slate-200 p-5">
-            <p class="text-xs text-slate-400 uppercase tracking-wide font-medium">Fleet MTBF</p>
-            <p class="text-3xl font-bold mt-1" style="color: #0E9E8E;">
-                {{ $fleetMtbf > 0 ? number_format($fleetMtbf, 1) : '-' }}
-                <span class="text-sm font-normal text-slate-400">jam</span>
-            </p>
-            <p class="text-xs text-slate-500 mt-1">{{ $totalEquipment }} equipment, {{ $totalFailures }} failure(s)</p>
-        </div>
+@push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+var mtbfTrend    = @json($mtbfTrend);
+var distribution = @json($distribution);
+var paretoData   = @json($paretoData);
 
-        {{-- CM : dCM : PM Ratio --}}
-        <div class="bg-white rounded-xl border border-slate-200 p-5">
-            <p class="text-xs text-slate-400 uppercase tracking-wide font-medium">CM : dCM : PM</p>
-            <div class="flex items-end gap-3 mt-1">
-                <div>
-                    <p class="text-2xl font-bold text-red-600">{{ $countCM }}</p>
-                    <p class="text-xs text-slate-500">CM</p>
-                </div>
-                <div>
-                    <p class="text-2xl font-bold text-amber-600">{{ $countDCM }}</p>
-                    <p class="text-xs text-slate-500">dCM</p>
-                </div>
-                <div>
-                    <p class="text-2xl font-bold text-blue-600">{{ $countPM }}</p>
-                    <p class="text-xs text-slate-500">PM</p>
-                </div>
-            </div>
-            <p class="text-xs text-slate-400 mt-1">Total: {{ $countCM + $countDCM + $countPM }} work orders</p>
-        </div>
+var AP = {
+    ink: '#1d1d1f',
+    muted: '#6e6e73',
+    grid: 'rgba(0, 0, 0, .06)',
+    blue: '#0071e3',
+    green: '#30d158',
+    amber: '#ff9f0a',
+    red: '#ff453a',
+    font: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif"
+};
 
-        {{-- Defer Success Rate --}}
-        <div class="bg-white rounded-xl border border-slate-200 p-5">
-            <p class="text-xs text-slate-400 uppercase tracking-wide font-medium">Defer Success Rate</p>
-            <p class="text-3xl font-bold mt-1 {{ $deferSuccessRate >= 80 ? 'text-green-600' : ($deferSuccessRate >= 50 ? 'text-amber-600' : 'text-red-600') }}">
-                {{ $dcmTotal > 0 ? number_format($deferSuccessRate, 1) : '-' }}<span class="text-sm font-normal text-slate-400">%</span>
-            </p>
-            <p class="text-xs text-slate-500 mt-1">{{ $dcmSuccess }} dari {{ $dcmTotal }} dCM sesuai rencana</p>
-        </div>
+Chart.defaults.font.family = AP.font;
+Chart.defaults.font.size = 11;
+Chart.defaults.color = AP.muted;
 
-        {{-- Undetected Failure Rate --}}
-        <div class="bg-white rounded-xl border border-slate-200 p-5">
-            <p class="text-xs text-slate-400 uppercase tracking-wide font-medium">Undetected Failure Rate</p>
-            <p class="text-3xl font-bold mt-1 {{ $undetectedRate > 50 ? 'text-red-600' : ($undetectedRate > 20 ? 'text-amber-600' : 'text-green-600') }}">
-                {{ $cmTotal > 0 ? number_format($undetectedRate, 1) : '-' }}<span class="text-sm font-normal text-slate-400">%</span>
-            </p>
-            <p class="text-xs text-slate-500 mt-1">{{ $cmUndetected }} dari {{ $cmTotal }} CM tanpa peringatan dini</p>
-        </div>
-    </div>
+document.addEventListener('DOMContentLoaded', function() {
+    renderMtbfChart();
+    renderDistributionChart();
+    renderParetoChart();
+});
 
-    {{-- Chart Row 1: Trend MTBF + CM/dCM/PM Distribution --}}
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {{-- Trend MTBF Bulanan --}}
-        <div class="bg-white rounded-xl border border-slate-200 p-5">
-            <h3 class="text-sm font-semibold text-slate-900 mb-4">Trend MTBF Bulanan (Rolling 3 Bulan)</h3>
-            <div class="relative" style="height: 280px;">
-                <canvas id="mtbfChart"></canvas>
-            </div>
-            <p class="text-xs text-slate-400 mt-2">Nilai MTBF fleet dalam jam, dihitung per rolling window 3 bulan.</p>
-        </div>
+function emptyNote(canvas) {
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#6e6e73';
+    ctx.font = '13px ' + AP.font;
+    ctx.textAlign = 'center';
+    ctx.fillText('Belum ada data', canvas.width / 2, 140);
+}
 
-        {{-- CM/dCM/PM Distribution --}}
-        <div class="bg-white rounded-xl border border-slate-200 p-5">
-            <h3 class="text-sm font-semibold text-slate-900 mb-4">Distribusi CM / dCM / PM per Bulan</h3>
-            <div class="relative" style="height: 280px;">
-                <canvas id="distributionChart"></canvas>
-            </div>
-        </div>
-    </div>
+function baseScales(yTitle, y1Title) {
+    var scales = {
+        x: { grid: { display: false }, ticks: { font: { size: 10 }, color: AP.muted } },
+        y: {
+            beginAtZero: true,
+            grid: { color: AP.grid },
+            border: { display: false },
+            ticks: { font: { size: 10 }, color: AP.muted }
+        }
+    };
+    if (yTitle) scales.y.title = { display: true, text: yTitle, color: AP.muted, font: { size: 10 } };
+    if (y1Title) {
+        scales.y1 = {
+            beginAtZero: true,
+            position: 'right',
+            grid: { display: false },
+            border: { display: false },
+            ticks: { font: { size: 10 }, color: AP.muted, callback: function(v) { return v + '%'; } },
+            title: { display: true, text: y1Title, color: AP.muted, font: { size: 10 } }
+        };
+    }
+    return scales;
+}
 
-    {{-- Chart Row 2: Pareto --}}
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {{-- Failure Mode Pareto --}}
-        <div class="bg-white rounded-xl border border-slate-200 p-5">
-            <h3 class="text-sm font-semibold text-slate-900 mb-4">Failure Mode Pareto (Root Cause)</h3>
-            @if(count($paretoData) > 0)
-                <div class="relative" style="height: 280px;">
-                    <canvas id="paretoChart"></canvas>
-                </div>
-            @else
-                <div class="flex items-center justify-center h-[280px] text-sm text-slate-400">
-                    Belum ada data root cause untuk ditampilkan.
-                </div>
-            @endif
-        </div>
+function tooltipStyle() {
+    return {
+        backgroundColor: '#ffffff',
+        titleColor: AP.ink,
+        bodyColor: AP.ink,
+        borderColor: 'rgba(0, 0, 0, .12)',
+        borderWidth: 1,
+        titleFont: { size: 12, weight: '600' },
+        bodyFont: { size: 12 },
+        padding: 10,
+        cornerRadius: 8,
+        displayColors: false
+    };
+}
 
-        {{-- Top 10 Worst MTBF Equipment --}}
-        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-slate-900">Top 10 Equipment — MTBF Terendah</h3>
-                <span class="text-xs text-slate-400">Paling sering failure</span>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="bg-slate-50 border-b border-slate-100">
-                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">#</th>
-                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Equipment Tag</th>
-                            <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Failures</th>
-                            <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">MTBF (jam)</th>
-                            <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Last Failure</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-50">
-                        @forelse($worstMtbf as $i => $item)
-                            <tr class="hover:bg-slate-50 transition-colors">
-                                <td class="px-4 py-3 text-xs text-slate-400">{{ $i + 1 }}</td>
-                                <td class="px-4 py-3">
-                                    <span class="font-mono text-sm font-medium text-slate-900">{{ $item['equipment_tag'] }}</span>
-                                    <p class="text-xs text-slate-400">{{ $item['pt_location'] }}</p>
-                                </td>
-                                <td class="px-4 py-3 text-right text-sm font-semibold text-red-600">{{ $item['total_failures'] }}</td>
-                                <td class="px-4 py-3 text-right text-sm font-semibold text-slate-800">{{ number_format($item['mtbf'], 1) }}</td>
-                                <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{{ $item['last_failure'] }}</td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="5" class="px-5 py-8 text-center text-slate-400 text-sm">
-                                    Belum ada data failure untuk ditampilkan.
-                                </td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+function renderMtbfChart() {
+    var canvas = document.getElementById('mtbfChart');
+    if (!canvas) return;
 
-    @push('scripts')
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script>
-    var mtbfTrend = @json($mtbfTrend);
-    var distribution = @json($distribution);
-    var paretoData = @json($paretoData);
+    if (!mtbfTrend || mtbfTrend.length === 0) {
+        emptyNote(canvas);
+        return;
+    }
 
-    document.addEventListener('DOMContentLoaded', function() {
-        renderMtbfChart();
-        renderDistributionChart();
-        renderParetoChart();
+    var labels        = mtbfTrend.map(function(d) { return d.label; });
+    var mtbfData      = mtbfTrend.map(function(d) { return d.mtbf; });
+    var failureCounts = mtbfTrend.map(function(d) { return d.failures; });
+
+    new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'MTBF (jam)',
+                    data: mtbfData,
+                    borderColor: AP.blue,
+                    backgroundColor: 'rgba(0, 113, 227, .08)',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: AP.blue,
+                    tension: 0.35,
+                    fill: true,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Jumlah failure',
+                    data: failureCounts,
+                    borderColor: AP.red,
+                    borderWidth: 1.5,
+                    borderDash: [5, 3],
+                    pointRadius: 2.5,
+                    pointHoverRadius: 4,
+                    tension: 0.35,
+                    fill: false,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: {
+                legend: { position: 'top', align: 'end', labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true, padding: 16 } },
+                tooltip: Object.assign(tooltipStyle(), {
+                    callbacks: {
+                        afterBody: function(items) {
+                            var d = mtbfTrend[items[0].dataIndex];
+                            return 'Periode: ' + d.periode;
+                        }
+                    }
+                })
+            },
+            scales: baseScales('MTBF (jam)', 'Failure')
+        }
+    });
+}
+
+function renderDistributionChart() {
+    var canvas = document.getElementById('distributionChart');
+    if (!canvas) return;
+
+    if (!distribution || distribution.length === 0) {
+        emptyNote(canvas);
+        return;
+    }
+
+    var labels  = distribution.map(function(d) { return d.label; });
+    var cmData  = distribution.map(function(d) { return d.CM; });
+    var dcmData = distribution.map(function(d) { return d.dCM; });
+    var pmData  = distribution.map(function(d) { return d.PM; });
+
+    new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                { label: 'CM',  data: cmData,  backgroundColor: AP.red,   borderRadius: 4, maxBarThickness: 22 },
+                { label: 'dCM', data: dcmData, backgroundColor: AP.amber, borderRadius: 4, maxBarThickness: 22 },
+                { label: 'PM',  data: pmData,  backgroundColor: AP.blue,  borderRadius: 4, maxBarThickness: 22 }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: {
+                legend: { position: 'top', align: 'end', labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true, padding: 16 } },
+                tooltip: tooltipStyle()
+            },
+            scales: baseScales('Work order')
+        }
+    });
+}
+
+function renderParetoChart() {
+    var canvas = document.getElementById('paretoChart');
+    if (!canvas) return;
+
+    if (!paretoData || paretoData.length === 0) return;
+
+    var labels = paretoData.map(function(d) { return d.cause.length > 20 ? d.cause.substring(0, 20) + '...' : d.cause; });
+    var values = paretoData.map(function(d) { return d.total; });
+    var pcts   = paretoData.map(function(d) { return d.pct; });
+
+    // Kumulatif persen
+    var cumulative = [];
+    var running = 0;
+    pcts.forEach(function(p) {
+        running += p;
+        cumulative.push(parseFloat(running.toFixed(1)));
     });
 
-    function renderMtbfChart() {
-        var canvas = document.getElementById('mtbfChart');
-        if (!canvas) return;
-
-        if (!mtbfTrend || mtbfTrend.length === 0) {
-            var ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#94A3B8';
-            ctx.font = '14px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('Belum ada data', canvas.width/2, 140);
-            return;
-        }
-
-        var labels = mtbfTrend.map(function(d) { return d.label; });
-        var mtbfData = mtbfTrend.map(function(d) { return d.mtbf; });
-        var failureCounts = mtbfTrend.map(function(d) { return d.failures; });
-
-        new Chart(canvas, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'MTBF (jam)',
-                        data: mtbfData,
-                        borderColor: '#0E9E8E',
-                        backgroundColor: 'rgba(14,158,142,0.1)',
-                        borderWidth: 2,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        tension: 0.3,
-                        fill: true,
-                        yAxisID: 'y',
-                    },
-                    {
-                        label: 'Jumlah Failure',
-                        data: failureCounts,
-                        borderColor: '#EF4444',
-                        backgroundColor: 'rgba(239,68,68,0.1)',
-                        borderWidth: 1.5,
-                        borderDash: [5, 3],
-                        pointRadius: 3,
-                        pointHoverRadius: 5,
-                        tension: 0.3,
-                        fill: false,
-                        yAxisID: 'y1',
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: { intersect: false, mode: 'index' },
-                plugins: {
-                    legend: {
-                        position: 'top',
-                        labels: { font: { size: 11 }, color: '#475569', boxWidth: 15, padding: 15 }
-                    },
-                    tooltip: {
-                        backgroundColor: '#1E293B',
-                        titleFont: { size: 12 },
-                        bodyFont: { size: 12 },
-                        padding: 10,
-                        cornerRadius: 8,
-                        callbacks: {
-                            afterBody: function(items) {
-                                var idx = items[0].dataIndex;
-                                var d = mtbfTrend[idx];
-                                return 'Periode: ' + d.periode;
+    new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Jumlah kejadian',
+                    data: values,
+                    backgroundColor: AP.ink,
+                    borderRadius: 4,
+                    maxBarThickness: 26,
+                    order: 2,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Kumulatif %',
+                    data: cumulative,
+                    type: 'line',
+                    borderColor: AP.blue,
+                    backgroundColor: 'rgba(0, 113, 227, .08)',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: AP.blue,
+                    tension: 0.3,
+                    fill: false,
+                    order: 1,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: {
+                legend: { position: 'top', align: 'end', labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true, padding: 16 } },
+                tooltip: Object.assign(tooltipStyle(), {
+                    callbacks: {
+                        label: function(context) {
+                            var val = context.raw;
+                            if (context.dataset.label === 'Jumlah kejadian') {
+                                return context.dataset.label + ': ' + val + ' (' + pcts[context.dataIndex] + '%)';
                             }
+                            return context.dataset.label + ': ' + val + '%';
                         }
                     }
-                },
-                scales: {
-                    x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#94A3B8' } },
-                    y: {
-                        beginAtZero: true,
-                        grid: { color: 'rgba(148,163,184,0.15)' },
-                        ticks: { font: { size: 10 }, color: '#94A3B8' },
-                        title: { display: true, text: 'MTBF (jam)', color: '#94A3B8', font: { size: 11 } }
-                    },
-                    y1: {
-                        beginAtZero: true,
-                        position: 'right',
-                        grid: { display: false },
-                        ticks: { font: { size: 10 }, color: '#94A3B8' },
-                        title: { display: true, text: 'Jumlah Failure', color: '#94A3B8', font: { size: 11 } }
-                    }
-                }
-            }
-        });
-    }
-
-    function renderDistributionChart() {
-        var canvas = document.getElementById('distributionChart');
-        if (!canvas) return;
-
-        if (!distribution || distribution.length === 0) {
-            var ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#94A3B8';
-            ctx.font = '14px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('Belum ada data', canvas.width/2, 140);
-            return;
+                })
+            },
+            scales: baseScales('Kejadian', 'Kumulatif')
         }
-
-        var labels = distribution.map(function(d) { return d.label; });
-        var cmData = distribution.map(function(d) { return d.CM; });
-        var dcmData = distribution.map(function(d) { return d.dCM; });
-        var pmData = distribution.map(function(d) { return d.PM; });
-
-        new Chart(canvas, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [
-                    { label: 'CM', data: cmData, backgroundColor: '#EF4444', borderRadius: 2 },
-                    { label: 'dCM', data: dcmData, backgroundColor: '#F59E0B', borderRadius: 2 },
-                    { label: 'PM', data: pmData, backgroundColor: '#3B82F6', borderRadius: 2 },
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: { intersect: false, mode: 'index' },
-                plugins: {
-                    legend: {
-                        position: 'top',
-                        labels: { font: { size: 11 }, color: '#475569', boxWidth: 15, padding: 15 }
-                    },
-                    tooltip: {
-                        backgroundColor: '#1E293B',
-                        titleFont: { size: 12 },
-                        bodyFont: { size: 12 },
-                        padding: 10,
-                        cornerRadius: 8
-                    }
-                },
-                scales: {
-                    x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#94A3B8' } },
-                    y: {
-                        beginAtZero: true,
-                        grid: { color: 'rgba(148,163,184,0.15)' },
-                        ticks: { font: { size: 10 }, color: '#94A3B8', stepSize: 1 },
-                        title: { display: true, text: 'Jumlah Work Order', color: '#94A3B8', font: { size: 11 } }
-                    }
-                }
-            }
-        });
-    }
-
-    function renderParetoChart() {
-        var canvas = document.getElementById('paretoChart');
-        if (!canvas) return;
-
-        if (!paretoData || paretoData.length === 0) return;
-
-        var labels = paretoData.map(function(d) { return d.cause.length > 20 ? d.cause.substring(0, 20) + '...' : d.cause; });
-        var values = paretoData.map(function(d) { return d.total; });
-        var pcts = paretoData.map(function(d) { return d.pct; });
-
-        // Cumulative percentage
-        var cumulative = [];
-        var running = 0;
-        pcts.forEach(function(p) {
-            running += p;
-            cumulative.push(parseFloat(running.toFixed(1)));
-        });
-
-        new Chart(canvas, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'Jumlah Kejadian',
-                        data: values,
-                        backgroundColor: '#0E9E8E',
-                        borderRadius: 2,
-                        order: 2,
-                        yAxisID: 'y',
-                    },
-                    {
-                        label: 'Kumulatif %',
-                        data: cumulative,
-                        type: 'line',
-                        borderColor: '#EF4444',
-                        backgroundColor: 'rgba(239,68,68,0.1)',
-                        borderWidth: 2,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        tension: 0.3,
-                        fill: false,
-                        order: 1,
-                        yAxisID: 'y1',
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: { intersect: false, mode: 'index' },
-                plugins: {
-                    legend: {
-                        position: 'top',
-                        labels: { font: { size: 11 }, color: '#475569', boxWidth: 15, padding: 15 }
-                    },
-                    tooltip: {
-                        backgroundColor: '#1E293B',
-                        titleFont: { size: 12 },
-                        bodyFont: { size: 12 },
-                        padding: 10,
-                        cornerRadius: 8,
-                        callbacks: {
-                            label: function(context) {
-                                var label = context.dataset.label || '';
-                                var val = context.raw;
-                                if (context.dataset.label === 'Jumlah Kejadian') {
-                                    var idx = context.dataIndex;
-                                    return label + ': ' + val + ' (' + pcts[idx] + '%)';
-                                }
-                                return label + ': ' + val + '%';
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#94A3B8' } },
-                    y: {
-                        beginAtZero: true,
-                        grid: { color: 'rgba(148,163,184,0.15)' },
-                        ticks: { font: { size: 10 }, color: '#94A3B8', stepSize: 1 },
-                        title: { display: true, text: 'Jumlah Kejadian', color: '#94A3B8', font: { size: 11 } }
-                    },
-                    y1: {
-                        beginAtZero: true,
-                        max: 100,
-                        position: 'right',
-                        grid: { display: false },
-                        ticks: { font: { size: 10 }, color: '#94A3B8', callback: function(v) { return v + '%'; } },
-                        title: { display: true, text: 'Kumulatif %', color: '#94A3B8', font: { size: 11 } }
-                    }
-                }
-            }
-        });
-    }
-    </script>
-    @endpush
-@endsection
+    });
+}
+</script>
+@endpush

@@ -2,170 +2,209 @@
 
 @section('title', 'Overview — Condition Monitoring')
 @section('breadcrumb')
-    <a href="{{ route('dashboard') }}" class="hover:text-slate-700">Dashboard</a>
-    <span class="text-slate-300">/</span>
-    <a href="{{ route('cm.overview') }}" class="hover:text-slate-700">Condition Monitoring</a>
-    <span class="text-slate-300">/</span>
-    <span class="text-slate-900 font-medium">Overview</span>
+    <a href="{{ route('dashboard') }}" class="text-[#6e6e73] hover:text-[#1d1d1f]">Dashboard</a>
+    <span class="text-[#d2d2d7]">/</span>
+    <a href="{{ route('cm.overview') }}" class="text-[#6e6e73] hover:text-[#1d1d1f]">Condition Monitoring</a>
+    <span class="text-[#d2d2d7]">/</span>
+    <span class="text-[#1d1d1f] font-medium">Overview</span>
 @endsection
 
 @section('content')
-    {{-- Tab Navigasi --}}
-    @include('cm._tabs')
+    @include('partials._apple-ui')
 
-    {{-- Info periode aktif. Bila parameter ?bulan tidak dikirim, controller
-         (CmController::overview) otomatis memakai bulan terakhir yang punya
-         data pada tahun & PT yang sedang difilter. Keterangan tambahan
-         "(bulan terakhir yang ada datanya)" DIHAPUS atas permintaan user
-         14/10/2026 supaya layar tidak lagi memuat tulisan itu; yang tampil
-         cukup "Periode: <bulan> <tahun>". --}}
-    <p class="text-xs text-slate-500 mb-2">
-        Periode:
-        <span class="font-medium text-slate-700">
-            {{ $filterBulan ? \DateTime::createFromFormat('!m', $filterBulan)->format('F') . ' ' . $filterTahun : 'Semua Bulan ' . $filterTahun }}
-        </span>
-    </p>
+    @php
+        $periodeOverview = $filterBulan
+            ? \DateTime::createFromFormat('!m', $filterBulan)->format('F') . ' ' . $filterTahun
+            : 'Semua bulan ' . $filterTahun;
+        $perluPerhatian = $alarmCount + $dangerCount + $visualBadCount;
+    @endphp
 
-    {{-- Summary Cards --}}
-    <div id="summaryCards" class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        @include('cm._overview-cards', [
-            'totalRecords' => $totalRecords,
-            'goodCount' => $goodCount, 'goodPct' => $goodPct,
-            'alarmCount' => $alarmCount, 'alarmPct' => $alarmPct,
-            'dangerCount' => $dangerCount, 'dangerPct' => $dangerPct,
-            'visualBadCount' => $visualBadCount, 'visualBadPct' => $visualBadPct,
-        ])
-    </div>
+    <div class="ap">
+        <div class="ap-wrap">
+            @include('cm._tabs')
 
-    {{-- Filters --}}
-    <div class="bg-white rounded-xl border border-slate-200 p-4 mb-6">
-        <form id="filterForm" class="flex flex-wrap gap-4 items-end">
-            <div class="space-y-1">
-                <label class="text-xs font-medium text-slate-500">PT</label>
-                <select name="pt" class="filter-select border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">Semua PT</option>
-                    @foreach($ptList as $pt)
-                        <option value="{{ $pt }}" {{ $filterPt === $pt ? 'selected' : '' }}>{{ $pt }}</option>
-                    @endforeach
-                </select>
+            {{-- ============ HERO: RINGKASAN PERIODE ============ --}}
+            <section class="ap-hero">
+                <div class="ap-hero-top">
+                    <div>
+                        <p class="ap-eyebrow">Condition Monitoring &middot; {{ $periodeOverview }}</p>
+                        <h2 class="ap-display" style="margin-top:10px;">{{ $goodPct }}% kondisi good.</h2>
+                        <p class="ap-lede" style="margin-top:14px;">
+                            {{ number_format($totalRecords) }} reading tercatat &mdash;
+                            {{ number_format($alarmCount) }} alarm, {{ number_format($dangerCount) }} danger,
+                            {{ number_format($visualBadCount) }} visual bad.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="ap-stats">
+                    <div class="ap-stat ap-stat--static">
+                        <span class="ap-stat-num">{{ number_format($totalRecords) }}</span>
+                        <span class="ap-stat-label">Total reading pada periode ini</span>
+                    </div>
+                    <div class="ap-stat ap-stat--static">
+                        <span class="ap-stat-num">{{ $goodPct }}<small>%</small></span>
+                        <span class="ap-stat-label">{{ number_format($goodCount) }} reading berstatus good</span>
+                    </div>
+                    <div class="ap-stat ap-stat--static">
+                        <span class="ap-stat-num">{{ number_format($perluPerhatian) }}</span>
+                        <span class="ap-stat-label">Perlu perhatian &mdash; alarm, danger, visual bad</span>
+                    </div>
+                </div>
+            </section>
+
+            {{-- ============ FILTER ============ --}}
+            <div class="ap-section" style="margin-top:24px;">
+                <div class="ap-card">
+                    <form id="filterForm" class="ap-toolbar">
+                        <label class="ap-field">
+                            <span class="ap-field-label">PT</span>
+                            <select name="pt" class="ap-select filter-select">
+                                <option value="">Semua PT</option>
+                                @foreach($ptList as $pt)
+                                    <option value="{{ $pt }}" {{ $filterPt === $pt ? 'selected' : '' }}>{{ $pt }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                        <label class="ap-field">
+                            <span class="ap-field-label">Tahun</span>
+                            <select name="tahun" class="ap-select filter-select">
+                                @foreach($tahunList as $th)
+                                    <option value="{{ $th }}" {{ $filterTahun == $th ? 'selected' : '' }}>{{ $th }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                        <label class="ap-field">
+                            <span class="ap-field-label">Bulan</span>
+                            <select name="bulan" class="ap-select filter-select">
+                                <option value="all" {{ $filterBulan === null ? 'selected' : '' }}>Semua bulan</option>
+                                @foreach(range(1, 12) as $b)
+                                    <option value="{{ $b }}" {{ $filterBulan == $b ? 'selected' : '' }}>{{ DateTime::createFromFormat('!m', $b)->format('F') }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                        <label class="ap-field">
+                            <span class="ap-field-label">Status</span>
+                            <select name="status" class="ap-select filter-select">
+                                <option value="">Semua status</option>
+                                <option value="good" {{ $filterStatus === 'good' ? 'selected' : '' }}>Good</option>
+                                <option value="alarm" {{ $filterStatus === 'alarm' ? 'selected' : '' }}>Alarm</option>
+                                <option value="danger" {{ $filterStatus === 'danger' ? 'selected' : '' }}>Danger</option>
+                                <option value="visual_bad" {{ $filterStatus === 'visual_bad' ? 'selected' : '' }}>Visual Bad</option>
+                            </select>
+                        </label>
+
+                        <a href="{{ route('cm.overview') }}" class="ap-btn ap-btn--quiet">Reset</a>
+
+                        <button type="button" id="syncSheetsBtn" onclick="syncGoogleSheets()"
+                                class="ap-btn ap-btn--primary" style="margin-left:auto;">
+                            Sync Google Sheets
+                        </button>
+                    </form>
+                </div>
             </div>
-            <div class="space-y-1">
-                <label class="text-xs font-medium text-slate-500">Tahun</label>
-                <select name="tahun" class="filter-select border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    @foreach($tahunList as $th)
-                        <option value="{{ $th }}" {{ $filterTahun == $th ? 'selected' : '' }}>{{ $th }}</option>
-                    @endforeach
-                </select>
+
+            {{-- ============ KARTU RINGKASAN ============ --}}
+            <div id="summaryCards" class="ap-grid-5" style="margin-top:16px;">
+                @include('cm._overview-cards', [
+                    'totalRecords' => $totalRecords,
+                    'goodCount' => $goodCount, 'goodPct' => $goodPct,
+                    'alarmCount' => $alarmCount, 'alarmPct' => $alarmPct,
+                    'dangerCount' => $dangerCount, 'dangerPct' => $dangerPct,
+                    'visualBadCount' => $visualBadCount, 'visualBadPct' => $visualBadPct,
+                ])
             </div>
-            <div class="space-y-1">
-                <label class="text-xs font-medium text-slate-500">Bulan</label>
-                <select name="bulan" class="filter-select border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="all" {{ $filterBulan === null ? 'selected' : '' }}>Semua Bulan</option>
-                    @foreach(range(1, 12) as $b)
-                        <option value="{{ $b }}" {{ $filterBulan == $b ? 'selected' : '' }}>{{ DateTime::createFromFormat('!m', $b)->format('F') }}</option>
-                    @endforeach
-                </select>
+
+            {{-- Loading indicator --}}
+            <div id="loadingIndicator" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/10">
+                <div class="ap-card" style="display:flex;align-items:center;gap:12px;">
+                    <svg class="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0071e3" stroke-width="2" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" opacity=".25"/>
+                        <path d="M21 12a9 9 0 00-9-9" stroke-linecap="round"/>
+                    </svg>
+                    <span class="ap-caption" style="color:#1d1d1f;">Memuat data...</span>
+                </div>
             </div>
-            <div class="space-y-1">
-                <label class="text-xs font-medium text-slate-500">Status</label>
-                <select name="status" class="filter-select border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">Semua Status</option>
-                    <option value="good" {{ $filterStatus === 'good' ? 'selected' : '' }}>Good</option>
-                    <option value="alarm" {{ $filterStatus === 'alarm' ? 'selected' : '' }}>Alarm</option>
-                    <option value="danger" {{ $filterStatus === 'danger' ? 'selected' : '' }}>Danger</option>
-                    <option value="visual_bad" {{ $filterStatus === 'visual_bad' ? 'selected' : '' }}>Visual Bad</option>
-                </select>
-            </div>
-            <a href="{{ route('cm.overview') }}" class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
-                Reset
-            </a>
-            <button type="button" id="syncSheetsBtn" onclick="syncGoogleSheets()"
-                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                </svg>
-                Sync Google Sheets
-            </button>
-        </form>
-    </div>
 
-    {{-- Loading indicator --}}
-    <div id="loadingIndicator" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/10">
-        <div class="bg-white rounded-xl p-6 shadow-xl flex items-center gap-3">
-            <svg class="animate-spin w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-            </svg>
-            <span class="text-sm text-slate-700">Memuat data...</span>
-        </div>
-    </div>
+            {{-- ============ CHART ============ --}}
+            <section class="ap-section">
+                <div class="ap-section-head">
+                    <div>
+                        <h3 class="ap-h2">Status &amp; tren</h3>
+                        <p class="ap-caption" style="margin-top:6px;">Breakdown status per PT dan pergerakan bulanan.</p>
+                    </div>
+                    <p class="ap-micro">Periode: {{ $periodeOverview }}</p>
+                </div>
 
-    {{-- Charts Row --}}
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {{-- Donut Chart: Breakdown per PT --}}
-        <div class="bg-white rounded-xl border border-slate-200 p-5">
-            <h3 class="font-medium text-slate-900 mb-4">Breakdown Status per PT</h3>
-            <canvas id="donutChart" height="250"></canvas>
-        </div>
+                <div class="ap-grid-2">
+                    <div class="ap-card">
+                        <h3 class="ap-h3">Breakdown status per PT</h3>
+                        <div style="margin-top:16px;">
+                            <canvas id="donutChart" height="250"></canvas>
+                        </div>
+                    </div>
+                    <div class="ap-card">
+                        <h3 class="ap-h3">Trend status bulanan</h3>
+                        <div style="margin-top:16px;">
+                            <canvas id="trendChart" height="250"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
-        {{-- Bar Chart: Trend Bulanan --}}
-        <div class="bg-white rounded-xl border border-slate-200 p-5">
-            <h3 class="font-medium text-slate-900 mb-4">Trend Status Bulanan</h3>
-            <canvas id="trendChart" height="250"></canvas>
-        </div>
-    </div>
+            {{-- ============ TOP 10 VIBRASI ============ --}}
+            <section class="ap-section">
+                <div class="ap-card ap-card--flush">
+                    <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 24px;padding:24px 24px 12px;">
+                        <div>
+                            <h3 class="ap-h3">Top 10 vibrasi tertinggi</h3>
+                            <p class="ap-caption" style="margin-top:4px;">Reading berstatus danger pada periode ini.</p>
+                        </div>
+                        <p class="ap-micro">Klik tag untuk detail equipment</p>
+                    </div>
 
-    {{-- Top 10 Vibrasi Tertinggi --}}
-    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
-        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 class="font-medium text-slate-900">Top 10 Vibrasi Tertinggi (Danger)</h3>
-            <span class="text-xs text-slate-400">Berdasarkan nilai vibrasi tertinggi</span>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="bg-slate-50 border-b border-slate-100">
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Equipment Tag</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">PT</th>
-                        <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Motor</th>
-                        <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Mesin</th>
-                        <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Temp Motor</th>
-                        <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Temp Mesin</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Tanggal</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Status</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-50">
-                    @forelse($topVibrasi as $r)
-                        <tr class="hover:bg-slate-50 transition-colors">
-                            <td class="px-5 py-3">
-                                <a href="{{ route('cm.equipment-show', $r->equipment_tag) }}"
-                                   class="font-mono text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline transition-colors">
-                                    {{ $r->equipment_tag }}
-                                </a>
-                            </td>
-                            <td class="px-5 py-3 text-slate-600">{{ $r->pt_location }}</td>
-                            <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold">{{ $r->max_motor }}</td>
-                            <td class="px-5 py-3 text-right font-mono text-red-600 font-semibold">{{ $r->max_mesin }}</td>
-                            <td class="px-5 py-3 text-right font-mono text-slate-700">{{ $r->max_temp_motor }}°C</td>
-                            <td class="px-5 py-3 text-right font-mono text-slate-700">{{ $r->max_temp_mesin }}°C</td>
-                            <td class="px-5 py-3 text-slate-500">{{ $r->tanggal->format('d M Y') }}</td>
-                            <td class="px-5 py-3">
-                                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
-                                    <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                                    Danger
-                                </span>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="8" class="px-5 py-8 text-center text-slate-400 text-sm">
-                                Tidak ada data vibrasi danger.
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
+                    <div class="ap-table-wrap">
+                        <table class="ap-table">
+                            <thead>
+                                <tr>
+                                    <th style="padding-left:24px;min-width:150px;">Equipment</th>
+                                    <th>PT</th>
+                                    <th style="text-align:right;">Motor</th>
+                                    <th style="text-align:right;">Mesin</th>
+                                    <th style="text-align:right;">Temp motor</th>
+                                    <th style="text-align:right;">Temp mesin</th>
+                                    <th>Tanggal</th>
+                                    <th style="padding-right:24px;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse($topVibrasi as $r)
+                                    <tr>
+                                        <td style="padding-left:24px;">
+                                            <a href="{{ route('cm.equipment-show', $r->equipment_tag) }}" class="ap-tag ap-mono">
+                                                {{ $r->equipment_tag }}
+                                            </a>
+                                        </td>
+                                        <td><span class="ap-micro">{{ $r->pt_location }}</span></td>
+                                        <td style="text-align:right;"><span class="ap-mono" style="font-size:13px;font-weight:600;color:#d70015;">{{ $r->max_motor }}</span></td>
+                                        <td style="text-align:right;"><span class="ap-mono" style="font-size:13px;font-weight:600;color:#d70015;">{{ $r->max_mesin }}</span></td>
+                                        <td style="text-align:right;"><span class="ap-mono" style="font-size:13px;">{{ $r->max_temp_motor }}&deg;C</span></td>
+                                        <td style="text-align:right;"><span class="ap-mono" style="font-size:13px;">{{ $r->max_temp_mesin }}&deg;C</span></td>
+                                        <td><span class="ap-micro">{{ $r->tanggal->format('d M Y') }}</span></td>
+                                        <td style="padding-right:24px;">
+                                            <span class="ap-badge"><span class="ap-dot ap-dot--bad"></span>Danger</span>
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="8" class="ap-empty">Tidak ada data vibrasi danger.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
         </div>
     </div>
 @endsection
@@ -173,7 +212,7 @@
 @push('scripts')
 <script>
 var kondisiLabels = {'good': 'Good', 'alarm': 'Alarm', 'danger': 'Danger', 'visual_bad': 'Visual Bad'};
-var kondisiColors = {'good': '#10B981', 'alarm': '#F59E0B', 'danger': '#EF4444', 'visual_bad': '#8B5CF6'};
+var kondisiColors = {'good': '#30d158', 'alarm': '#ff9f0a', 'danger': '#ff453a', 'visual_bad': '#bf5af2'};
 var kondisiOrder = ['good', 'alarm', 'danger', 'visual_bad'];
 
 document.addEventListener('DOMContentLoaded', function() {
