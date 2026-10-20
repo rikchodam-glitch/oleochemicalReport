@@ -72,6 +72,19 @@ beforeEach(function () {
         'jenis_pekerjaan'  => 'PM',
         'status'           => 'submitted',
     ]);
+
+    // Pekerjaan reguler TANPA kolaborator shift: tetap tampil di tab Reguler.
+    // Dipakai untuk menguji tabel Reguler setelah laporan berkolaborasi shift
+    // dipindahkan ke tab Shift.
+    $this->laporanRegulerBiasa = Report::create([
+        'technician_id'    => $this->teknisiReguler->id,
+        'creator_id'       => $this->teknisiReguler->id,
+        'report_date'      => $this->tanggal,
+        'report_code'      => 'REG-BIASA-01',
+        'work_description' => 'Pekerjaan reguler tanpa kolaborasi shift',
+        'jenis_pekerjaan'  => 'PM',
+        'status'           => 'submitted',
+    ]);
 });
 
 // ============================================================
@@ -84,7 +97,7 @@ test('halaman laporan menampilkan pekerjaan di depan dan teknisi di sampingnya',
     $respons->assertStatus(200)
         ->assertSee('Pekerjaan', false)
         ->assertSee('Teknisi', false)
-        ->assertSee('Ganti bearing pompa reguler uji', false)
+        ->assertSee('Pekerjaan reguler tanpa kolaborasi shift', false)
         ->assertSee('Teknisi Reguler Uji', false)
         // Navigasi tanggal
         ->assertSee('Buka', false)
@@ -98,7 +111,9 @@ test('tampilan reguler hanya memuat pekerjaan teknisi reguler', function () {
     $respons = $this->actingAs($this->admin)->get('/reports?tanggal=' . $this->tanggal . '&tampilan=reguler');
 
     $respons->assertStatus(200)
-        ->assertSee('Ganti bearing pompa reguler uji', false)
+        ->assertSee('Pekerjaan reguler tanpa kolaborasi shift', false)
+        // Laporan reguler yang berkolaborasi dengan Grub D pindah ke tab Shift.
+        ->assertDontSee('Ganti bearing pompa reguler uji', false)
         ->assertDontSee('Pengecekan motor grub D uji', false);
 });
 
@@ -109,8 +124,9 @@ test('tampilan shift bisa dipersempit ke satu grub', function () {
     $respons->assertStatus(200)
         ->assertSee('Pengecekan motor grub D uji', false)
         ->assertSee('Grub D', false)
-        // Pekerjaan teknisi reguler tidak muncul di tampilan shift
-        ->assertDontSee('Ganti bearing pompa reguler uji', false);
+        // Laporan reguler yang berkolaborasi dengan Grub D ikut tampil di Shift.
+        ->assertSee('Ganti bearing pompa reguler uji', false)
+        ->assertSee('Kolaborasi Grub D', false);
 });
 
 test('tampilan reguler memuat reguler staff, tampilan shift tidak', function () {
@@ -138,13 +154,16 @@ test('tampilan reguler memuat reguler staff, tampilan shift tidak', function () 
         ->get('/reports?tanggal=' . $this->tanggal . '&tampilan=reguler')
         ->assertStatus(200)
         ->assertSee('Administrasi jadwal reguler staff uji', false)
-        ->assertSee('Ganti bearing pompa reguler uji', false);
+        ->assertSee('Pekerjaan reguler tanpa kolaborasi shift', false)
+        ->assertDontSee('Ganti bearing pompa reguler uji', false);
 
     // Dan tidak boleh muncul di tampilan Shift, juga tidak menjadi pilihan grub.
     $this->actingAs($this->admin)
         ->get('/reports?tanggal=' . $this->tanggal . '&tampilan=shift')
         ->assertStatus(200)
         ->assertSee('Pengecekan motor grub D uji', false)
+        // Laporan reguler dengan kolaborator Grub D ikut Shift.
+        ->assertSee('Ganti bearing pompa reguler uji', false)
         ->assertDontSee('Administrasi jadwal reguler staff uji', false)
         ->assertDontSee('Reguler Staff</option>', false);
 });
@@ -167,8 +186,9 @@ test('grub yang tidak dikenal diabaikan tanpa error', function () {
 // KOLABORASI: SATU BARIS + DAFTAR KOLABORATOR
 // ============================================================
 
-test('laporan kolaborasi tampil satu baris dengan daftar kolaborator', function () {
-    $respons = $this->actingAs($this->admin)->get('/reports?tanggal=' . $this->tanggal);
+test('laporan kolaborasi tampil satu baris dengan daftar kolaborator di tab Shift', function () {
+    $respons = $this->actingAs($this->admin)
+        ->get('/reports?tanggal=' . $this->tanggal . '&tampilan=shift&grub=grub_d');
 
     $respons->assertStatus(200)
         // Satu baris pekerjaan untuk laporan induk (kode laporan tidak lagi
@@ -178,6 +198,10 @@ test('laporan kolaborasi tampil satu baris dengan daftar kolaborator', function 
         ->assertSee('Teknisi Grub D Uji', false)
         // Salinan kolaborasi TIDAK dirender sebagai baris sendiri
         ->assertDontSee('data-laporan-id="' . $this->laporanAnak->id . '"', false);
+
+    $html = $respons->getContent();
+
+    expect(substr_count($html, 'data-laporan-id="' . $this->laporanInduk->id . '"'))->toBe(1);
 });
 
 test('pekerjaan milik teknisi grub D tetap muncul sebagai baris tersendiri', function () {
@@ -254,6 +278,9 @@ test('export csv memakai filter tampilan dan tanggal yang sama', function () {
 
     expect($isiCsv)->toContain('GRUPD-KERJA-01')
         ->and($isiCsv)->toContain('Kolaborator')
-        ->and($isiCsv)->not->toContain('REG-INDUK-01');
+        // Laporan reguler dengan kolaborator Grub D ikut Shift, satu baris.
+        ->and($isiCsv)->toContain('REG-INDUK-01')
+        ->and(substr_count($isiCsv, 'REG-INDUK-01'))->toBe(1)
+        ->and($isiCsv)->not->toContain('SALINAN-KOLAB-01');
 });
 

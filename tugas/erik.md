@@ -1,16 +1,16 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-19 11:35 WIB
+Diperbarui: 2026-10-20 08:30 WIB
 
-- Cabang aktif: `tugas/erik/rekonstruksi-dashboard-utama`
-- Mulai: 2026-10-19 11:35
+- Cabang aktif: `tugas/erik/laporan-kolaborasi-shift-tampil-di-tab-shift`
+- Mulai: 2026-10-20 08:30
 - Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
-  - `app/Http/Controllers/DashboardController.php`
-  - `resources/views/dashboard/index.blade.php`
-  - `tests/Feature/DashboardRingkasanTest.php`
-  - `docs/21-dashboard-utama.md`, `AGENTS.md` (peta dokumen)
-- Catatan: dashboard utama memuat indikator lintas modul + grafik Chart.js.
+  - `app/Http/Controllers/ReportController.php`
+  - `resources/views/reports/index.blade.php`
+  - `tests/Feature/ReportGroupKolaborasiShiftTest.php`
+  - `docs/22-laporan-kolaborasi-shift.md`, `AGENTS.md` (peta dokumen)
+- Catatan: laporan non-shift yang berkolaborasi dengan shift/staff grub tampil di Shift saja.
 
 ## Riwayat
-- tugas/erik/perbaiki-dashboard-sparepart-pr-dan-mrp (mulai 2026-10-19 09:37) -> dilanjutkan 2026-10-19 11:35
+- tugas/erik/rekonstruksi-dashboard-utama (mulai 2026-10-19 11:35) -> dilanjutkan 2026-10-20 08:30

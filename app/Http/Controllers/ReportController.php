@@ -133,9 +133,13 @@ class ReportController extends Controller
      *     sama dengan kolom "Pekerjaan" pada Rincian Man Hour Harian teknisi
      *     tersebut (baris "N laporan" di sana membuka halaman ini).
      *   - Tampilan "reguler" memuat laporan teknisi non-shift: grup 'reguler'
-     *     dan 'reguler_staff' (termasuk teknisi yang grupnya belum diisi);
-     *     tampilan "shift" memuat laporan teknisi grub (A/B/C/D) saja dan bisa
-     *     dipersempit ke satu grub.
+     *     dan 'reguler_staff' (termasuk teknisi yang grupnya belum diisi).
+     *   - Tampilan "shift" memuat laporan teknisi grub/staff grub (A-D) dan
+     *     laporan non-shift yang MENCANTUMKAN kolaborator shift/staff grub.
+     *     Laporan seperti itu dipindahkan dari Reguler ke Shift supaya tetap
+     *     satu baris dan tidak muncul di dua tab. Bila daftar disaring ke satu
+     *     teknisi, laporan tetap muncul pada grup teknisi yang difilter agar
+     *     jumlah di halaman teknisi/man hour tidak berubah.
      *
      * @param  Request      $request
      * @param  string       $tampilan             'reguler', 'shift', atau 'semua' (keduanya)
@@ -157,7 +161,7 @@ class ReportController extends Controller
             $query->whereNull('collaborator_of');
         }
 
-        $this->applyGroupFilter($query, $tampilan, $grubAktif);
+        $this->applyGroupFilter($query, $tampilan, $grubAktif, $request->filled('technician_id'));
 
         if ($request->filled('report_type')) {
             $query->where('report_type', $request->report_type);
@@ -254,11 +258,12 @@ class ReportController extends Controller
      * Terapkan filter grup teknisi sesuai tampilan yang dipilih.
      *
      * @param  \Illuminate\Database\Eloquent\Builder<Report>  $query
-     * @param  string       $tampilan  'reguler', 'shift', atau 'semua'
-     * @param  string|null  $grubAktif
+     * @param  string       $tampilan       'reguler', 'shift', atau 'semua'
+     * @param  string|null  $grubAktif      Kunci grub terpilih (khusus shift)
+     * @param  bool         $saringTeknisi  True bila daftar difilter ke satu teknisi
      * @return void
      */
-    private function applyGroupFilter($query, string $tampilan, ?string $grubAktif): void
+    private function applyGroupFilter($query, string $tampilan, ?string $grubAktif, bool $saringTeknisi = false): void
     {
         // Tampilan 'semua' (diputuskan user 08/10/2026) = pilihan "Keduanya"
         // pada popup export: pekerja reguler DAN shift ikut, jadi tidak ada
@@ -269,23 +274,43 @@ class ReportController extends Controller
         }
 
         if ($tampilan === 'shift') {
-            // Tampilan Shift memuat pekerja shift (Grub A-D) DAN Staff Grub
-            // yang menaungi grub itu (keputusan user 15/10/2026). Reguler dan
-            // Reguler Staff BUKAN shift, jadi tidak boleh ikut di sini.
+            // Tampilan Shift memuat pekerja shift (Grub A-D), Staff Grub yang
+            // menaungi grub itu (keputusan user 15/10/2026), DAN laporan
+            // non-shift yang mencantumkan kolaborator shift/staff grub.
+            // Laporan non-shift itu dipindahkan dari Reguler, bukan diduplikasi.
             $kelompok = Technician::grupTampilanShift($grubAktif);
 
-            $query->whereHas('technician', function ($q) use ($kelompok) {
-                $q->whereIn('group', $kelompok);
+            $query->where(function ($q) use ($kelompok) {
+                $q->whereHas('technician', function ($sub) use ($kelompok) {
+                    $sub->whereIn('group', $kelompok);
+                })->orWhere(function ($sub) use ($kelompok) {
+                    $sub->whereHas('technician', function ($pelapor) {
+                        $pelapor->whereIn('group', Technician::GRUP_NON_SHIFT)
+                            ->orWhereNull('group');
+                    })->whereHas('collaboratorReports.technician', function ($kolaborator) use ($kelompok) {
+                        $kolaborator->whereIn('group', $kelompok);
+                    });
+                });
             });
 
             return;
         }
 
         // Reguler: grup 'reguler' DAN 'reguler_staff' (keduanya non-shift),
-        // termasuk teknisi yang grupnya belum diisi.
+        // termasuk teknisi yang grupnya belum diisi. Laporan yang punya
+        // kolaborator shift/staff grub TIDAK ditampilkan di Reguler umum.
+        // Pengecualian: saat daftar difilter ke satu teknisi, laporan tetap
+        // tampil pada grup teknisi itu supaya jumlah di halaman teknisi/man
+        // hour tidak berubah.
         $query->whereHas('technician', function ($q) {
             $q->whereIn('group', Technician::GRUP_NON_SHIFT)->orWhereNull('group');
         });
+
+        if (! $saringTeknisi) {
+            $query->whereDoesntHave('collaboratorReports.technician', function ($q) {
+                $q->whereIn('group', array_merge(Technician::GRUP_SHIFT, Technician::GRUP_STAFF));
+            });
+        }
     }
 
     /**
