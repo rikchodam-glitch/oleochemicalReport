@@ -1,4 +1,4 @@
-# Riwayat Insiden 33-46
+# Riwayat Insiden 33-47
 
 > Bagian dari dokumentasi proyek di folder `docs`.
 > Peta dokumen: `AGENTS.md` di akar repo.
@@ -609,3 +609,36 @@
     ter-commit saat deploy: ubah hanya berkas yang menghalangi, cadangkan dulu,
     kembalikan sebagai perubahan belum di-commit (jangan pernah membuat commit
     atas nama orang lain, dan jangan memakai `git reset --hard`/`git checkout -- .`).**
+
+47. **Deploy tertahan karena DEV masih di cabang tugas yang punya commit
+    catatan PR setelah fitur di-merge (20/10/2026).** Gejala: `Deploy-Laporan.bat`
+    dibatalkan penjaga dengan `commit DEV 350a24c` (cabang
+    `tugas/erik/laporan-kolaborasi-shift-tampil-di-tab-shift`) sedangkan
+    `commit GitHub main 05be5ce`; pesan menyebut "copy DEV tidak berada pada
+    commit main GitHub". Fitur sebenarnya SUDAH masuk main lewat PR #25
+    (`82830c6`), dan PR #22 (Sparepart), #23/#24 (Dashboard) juga sudah di-merge.
+    Satu-satunya commit yang belum masuk main adalah `350a24c` yang HANYA
+    mengganti nama catatan PR menjadi
+    `tugas/pr-laporan-kolaborasi-shift-tampil-di-tab-shift.md` — bukan kode.
+    Penyebab: setelah PR di-merge, masih dibuat commit tambahan di cabang tugas
+    (berkas catatan PR), lalu deploy dijalankan dari cabang itu. Penjaga
+    bertindak benar: deploy hanya boleh dari `main` yang tepat sejajar GitHub.
+    Penutup: `tools\kembalikan-ke-main.ps1` memindahkan DEV ke `main` `05be5ce`;
+    penjaga melaporkan `SEJAJAR=1`, `CARA=sejajar`. PROD tidak disentuh dan
+    backup DB sudah dibuat
+    (`C:\laragon\backup-oleochemical\db\oleochemical-20261020-084447.sql`).
+    Skrip itu tetap mencetak `KEMBALI_MAIN=BELUM` karena ujung cabang tugas
+    (commit catatan) belum di-merge; penentu siap deploy adalah penjaga
+    (`SEJAJAR=1`), bukan status ujung cabang tugas.
+    **Pelajaran: (1) semua catatan PR, termasuk berkas `tugas/pr-*.md`, WAJIB
+    di-commit SEBELUM PR dibuat/di-merge; jangan menambah commit ke cabang tugas
+    setelah PR-nya di-merge. (2) Deploy hanya dari `main`; jangan pernah
+    menjalankan `Deploy-Laporan.bat` dari cabang tugas. (3) Bila
+    `kembalikan-ke-main.ps1` mengatakan `KEMBALI_MAIN=BELUM` tetapi penjaga
+    `SEJAJAR=1` dan commit fitur sudah ada di `origin/main`, periksa dulu apakah
+    commit yang tertinggal hanya administratif (mis. catatan PR) — jangan
+    reset/hapus commit atau branch. Periksa dengan
+    `git log --oneline origin/main -5` dan
+    `git merge-base --is-ancestor <commit-fitur> origin/main`. (4) Setelah DEV
+    kembali ke main, deploy boleh diulang; berkas kotor sesi lain tidak ikut
+    di-deploy karena deploy memakai commit main, bukan working tree.**

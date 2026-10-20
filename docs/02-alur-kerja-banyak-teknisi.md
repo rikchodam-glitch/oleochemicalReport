@@ -192,6 +192,30 @@ Merge Pull Request -> `Kembali-Ke-Main-Laporan.bat` (bila copy DEV masih di
 cabang tugas) -> `tools\siapkan-deploy.ps1` (bila penjaga menolak karena berkas
 belum di-commit) -> `Deploy-Laporan.bat`.
 
+### 6c. Jangan menambah commit ke cabang tugas setelah PR di-merge (20/10/2026)
+
+Kejadian 20/10/2026: fitur laporan kolaborasi shift sudah di-merge lewat PR #25
+(`82830c6`), tetapi di cabang tugas masih dibuat satu commit tambahan
+(`350a24c`) yang hanya mengganti nama catatan PR. `Deploy-Laporan.bat`
+kemudian dijalankan dari cabang tugas itu, sehingga penjaga membatalkan deploy
+walau SEMUA kode fitur sudah ada di `main`.
+
+Aturan yang berlaku sekarang:
+
+1. **Semua berkas PR — termasuk `tugas/pr-*.md` — di-commit sebelum PR dibuat
+   atau di-merge.** Jangan menambah commit ke cabang tugas setelah PR-nya
+   di-merge.
+2. **Deploy hanya dari `main`.** Bila copy DEV masih di cabang tugas, jalankan
+   `Kembali-Ke-Main-Laporan.bat` / `tools\kembalikan-ke-main.ps1` lebih dulu.
+3. Bila `kembalikan-ke-main.ps1` mencetak `KEMBALI_MAIN=BELUM` tetapi penjaga
+   mencetak `SEJAJAR=1`, periksa commit yang tertinggal:
+   `git log --oneline origin/main -5` dan
+   `git merge-base --is-ancestor <commit-fitur> origin/main`.
+   Bila yang tertinggal hanya commit administratif (catatan PR), jangan
+   reset/hapus branch; penjaga `SEJAJAR=1` adalah penentu siap deploy.
+4. Berkas kotor sesi lain tidak ikut di-deploy; deploy memakai commit `main`,
+   bukan working tree.
+
 ### 7. Setelan GitHub yang harus dipasang integrator (sekali, manual di web)
 
 Repo ini PUBLIK (dibuktikan `git ls-remote` tanpa kredensial, 13/10/2026), jadi
