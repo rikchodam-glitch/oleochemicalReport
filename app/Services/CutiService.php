@@ -28,8 +28,10 @@ class CutiService
     /**
      * Membuat tautan form cuti sekali pakai untuk satu teknisi.
      *
-     * Token lama yang belum dipakai otomatis ditandai digunakan supaya hanya
-     * tautan terbaru yang berlaku.
+     * Tautan lama yang BELUM PERNAH DIBUKA otomatis dibatalkan supaya tidak
+     * menumpuk. Tautan yang sudah dibuka TIDAK dibatalkan: teknisi mungkin
+     * sedang mengisi form, dan permintaan tautan baru tidak boleh membuat form
+     * yang sudah terbuka menjadi "tautan tidak berlaku".
      *
      * @param  Technician   $teknisi Teknisi pemilik tautan
      * @param  string|null  $alasan  Alasan awal dari perintah /cuti (opsional)
@@ -40,6 +42,7 @@ class CutiService
         CutiToken::query()
             ->where('technician_id', $teknisi->id)
             ->whereNull('used_at')
+            ->whereNull('opened_at')
             ->update(['used_at' => now()]);
 
         $plain = Str::random(64);

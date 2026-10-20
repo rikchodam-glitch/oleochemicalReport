@@ -96,6 +96,25 @@ test('tautan kedaluwarsa dan tautan yang sudah dipakai ditolak', function () {
         ->assertStatus(410);
 });
 
+test('tautan yang sudah dibuka tetap berlaku saat teknisi meminta tautan baru', function () {
+    $pertama = app(CutiService::class)->buatTautan($this->teknisi, 'alasan pertama');
+    $this->get(route('cuti.form', ['token' => $pertama['plain']]))->assertOk();
+
+    $kedua = app(CutiService::class)->buatTautan($this->teknisi, 'alasan kedua');
+
+    // Form pertama yang sudah dibuka tidak boleh mati karena /cuti berikutnya.
+    $this->get(route('cuti.form', ['token' => $pertama['plain']]))->assertOk();
+    $this->get(route('cuti.form', ['token' => $kedua['plain']]))->assertOk();
+});
+
+test('tautan lama yang belum dibuka dibatalkan saat tautan baru dibuat', function () {
+    $lama = app(CutiService::class)->buatTautan($this->teknisi, 'lama');
+    $baru = app(CutiService::class)->buatTautan($this->teknisi, 'baru');
+
+    $this->get(route('cuti.form', ['token' => $lama['plain']]))->assertStatus(410);
+    $this->get(route('cuti.form', ['token' => $baru['plain']]))->assertOk();
+});
+
 test('tautan yang sudah dibuka di perangkat lain tidak bisa dipakai lagi', function () {
     $hasil = app(CutiService::class)->buatTautan($this->teknisi);
 
