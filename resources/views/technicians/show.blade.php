@@ -298,7 +298,10 @@
                         {{ $manHourRingkasan['hari_kurang'] ?? 0 }}
                     </p>
                     <p class="text-xs text-slate-500 mt-1">Hari kurang dari 8 jam</p>
-                    <p class="text-xs text-slate-400 mt-1">{{ $manHourRingkasan['hari_libur'] ?? 0 }} hari OFF</p>
+                    <p class="text-xs text-slate-400 mt-1">
+                        {{ $manHourRingkasan['hari_libur'] ?? 0 }} hari OFF ·
+                        {{ $manHourRingkasan['hari_cuti'] ?? 0 }} hari cuti
+                    </p>
                 </div>
                 <div class="rounded-xl border {{ (($manHourRingkasan['hari_kerja_off'] ?? 0) + ($manHourRingkasan['laporan_luar_shift'] ?? 0)) > 0 ? 'border-rose-200 bg-rose-50/40' : 'border-slate-200' }} p-3 text-center">
                     <p class="text-2xl font-bold {{ (($manHourRingkasan['hari_kerja_off'] ?? 0) + ($manHourRingkasan['laporan_luar_shift'] ?? 0)) > 0 ? 'text-rose-600' : 'text-slate-400' }}">
@@ -383,6 +386,7 @@
                                     'lebih'     => 'text-indigo-600',
                                     'kurang'    => 'text-amber-600',
                                     'libur'     => 'text-slate-400',
+                                    'cuti'      => 'text-sky-600',
                                 ][$hari['status']] ?? 'text-slate-500';
 
                                 $warnaBar = [
@@ -390,6 +394,7 @@
                                     'lebih'     => 'bg-indigo-500',
                                     'kurang'    => 'bg-amber-400',
                                     'libur'     => 'bg-slate-300',
+                                    'cuti'      => 'bg-sky-400',
                                 ][$hari['status']] ?? 'bg-slate-300';
 
                                 $warnaBadge = $hari['kode'] === 'x'
@@ -433,8 +438,8 @@
                                             </div>
                                         @endif
                                     @else
-                                        <span class="text-xs text-slate-400">
-                                            {{ $hari['status'] === 'libur' ? 'Libur' : 'Tanpa target' }}
+                                        <span class="text-xs {{ $hari['status'] === 'cuti' ? 'text-sky-600 font-medium' : 'text-slate-400' }}">
+                                            {{ $hari['status'] === 'libur' ? 'Libur' : ($hari['status'] === 'cuti' ? 'Cuti' : 'Tanpa target') }}
                                         </span>
                                     @endif
                                 </td>

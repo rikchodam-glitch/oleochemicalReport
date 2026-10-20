@@ -18,6 +18,7 @@ use App\Http\Controllers\LocationController;
 use App\Http\Controllers\PanelRuanganController;
 use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\CollaborationController;
+use App\Http\Controllers\CutiController;
 use App\Http\Controllers\ReportCollaborationController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReportMultiItemController;
@@ -39,6 +40,14 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
 // Telegram webhook (no auth, called by Telegram)
 Route::post('/telegram/webhook', [TelegramWebhookController::class, 'handle'])->name('telegram.webhook');
+
+// Form cuti publik dari token Telegram (tanpa login panel admin).
+// Token sekali pakai + session browser; route admin ada di grup di bawah.
+Route::middleware('throttle:30,1')->group(function () {
+    Route::get('/cuti/form/{token}', [CutiController::class, 'form'])->name('cuti.form');
+    Route::post('/cuti/form/{token}', [CutiController::class, 'simpan'])->name('cuti.simpan');
+    Route::get('/cuti/selesai', [CutiController::class, 'selesai'])->name('cuti.selesai');
+});
 
 // DEBUG ONLY — auto-login untuk pengembangan lokal (hapus sebelum production!)
 if (app()->environment('local')) {
@@ -211,6 +220,11 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
 
     // Work Orders
     Route::resource('work-orders', WorkOrderController::class);
+
+    // Cuti teknisi: pengajuan dari Telegram + persetujuan admin.
+    Route::get('/cuti-admin', [CutiController::class, 'adminIndex'])->name('cuti.admin.index');
+    Route::post('/cuti-admin/{cuti}/setujui', [CutiController::class, 'setujui'])->name('cuti.admin.setujui');
+    Route::post('/cuti-admin/{cuti}/tolak', [CutiController::class, 'tolak'])->name('cuti.admin.tolak');
 
     // IT Assets
     Route::get('/it-assets', [ItAssetController::class, 'index'])->name('it-assets.index');
