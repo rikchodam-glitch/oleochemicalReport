@@ -230,6 +230,51 @@ test('perintah /cuti dengan alasan membuat token berisi alasan tanpa membuat lap
         ->and(\App\Models\Report::count())->toBe(0);
 });
 
+test('poller Telegram memproses /cuti sebagai tautan cuti, bukan klasifikasi pekerjaan', function () {
+    $handler = new class {
+        use \App\Console\Commands\Traits\TelegramMessageHandlerTrait;
+
+        /** @var array<int, string> */
+        public array $terkirim = [];
+
+        /**
+         * @param array<string, mixed> $update
+         */
+        public function proses(array $update): void
+        {
+            $this->processUpdate($update);
+        }
+
+        private function line(string $pesan): void
+        {
+        }
+
+        private function sendMessage(int|string $chatId, string $text): void
+        {
+            $this->terkirim[] = $text;
+        }
+    };
+
+    $handler->proses([
+        'message' => [
+            'chat' => ['id' => 12345],
+            'text' => '/cuti mesin rusak',
+            'from' => [
+                'id'         => (int) $this->teknisi->telegram_id,
+                'username'   => 'teknisi_uji',
+                'first_name' => 'Teknisi',
+            ],
+        ],
+    ]);
+
+    $token = CutiToken::latest('id')->first();
+
+    expect($token)->not->toBeNull()
+        ->and($token->alasan)->toBe('mesin rusak')
+        ->and($handler->terkirim[0] ?? '')->toContain('/cuti/form/')
+        ->and(\App\Models\Report::count())->toBe(0);
+});
+
 test('halaman cuti admin hanya untuk administrator', function () {
     $this->actingAs($this->admin)
         ->get(route('cuti.admin.index'))

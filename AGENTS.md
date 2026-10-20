@@ -54,7 +54,7 @@ Semua berkas di bawah ini ada di `docs/`.
 | [09-aturan-wajib-edit-file.md](docs/09-aturan-wajib-edit-file.md) | Aturan edit berkas, overwrite blade, recovery | Sebelum mengedit berkas apa pun |
 | [10-riwayat-insiden-01-15.md](docs/10-riwayat-insiden-01-15.md) | Insiden 1-15 dan pelajarannya | Melakukan diagnosis/refactor berisiko |
 | [11-riwayat-insiden-16-32.md](docs/11-riwayat-insiden-16-32.md) | Insiden 16-32 dan pelajarannya | Melakukan diagnosis/refactor berisiko |
-| [12-riwayat-insiden-33-46.md](docs/12-riwayat-insiden-33-46.md) | Insiden 33-47 dan pelajarannya | Melakukan diagnosis/refactor berisiko |
+| [12-riwayat-insiden-33-46.md](docs/12-riwayat-insiden-33-46.md) | Insiden 33-48 dan pelajarannya | Melakukan diagnosis/refactor berisiko |
 | [13-nama-sistem-kode-alur-sesi-kebersihan.md](docs/13-nama-sistem-kode-alur-sesi-kebersihan.md) | Branding, aturan kode, alur sesi baru, kebersihan repo | Mengubah teks tampilan atau menutup sesi |
 | [14-verifikasi-db-dan-tinker.md](docs/14-verifikasi-db-dan-tinker.md) | Verifikasi struktur DB dan perintah tinker/PowerShell yang aman | Menulis query/migration atau memakai tinker |
 | [15-modul-spare-part.md](docs/15-modul-spare-part.md) | Modul Spare Part (PR/PO, stok, aksi, export) | Menyentuh halaman Spare Part |

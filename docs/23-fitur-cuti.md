@@ -58,8 +58,12 @@ Dokumen ini menjelaskan fitur cuti yang terhubung ke bot Telegram dan man hour
 
 ## Bot
 
-- Perintah dicek SEBELUM `handleReport()`, sehingga `/cuti ...` tidak pernah
-  dibuat sebagai laporan.
+- **PENTING:** bot PROD memakai `php artisan telegram:poll` ->
+  `TelegramMessageHandlerTrait`, bukan `TelegramWebhookController`. Karena itu
+  penanganan `/cuti` WAJIB ada di trait tersebut. Webhook controller juga
+  disiapkan untuk deployment yang memakai webhook.
+- Perintah dicek SEBELUM wizard/`handleReport()`, sehingga `/cuti ...` tidak
+  pernah masuk ke klasifikasi pekerjaan atau dibuat sebagai laporan.
 - `/cuti` tanpa alasan tetap membuat tautan; alasan diisi di form.
 - `/cuti mesin rusak` menyimpan `mesin rusak` pada token dan form.
 - Ada pembatas 10 detik agar teknisi tidak membanjiri bot dengan tautan.
@@ -88,5 +92,6 @@ Dokumen ini menjelaskan fitur cuti yang terhubung ke bot Telegram dan man hour
 
 ## Uji
 
-`php artisan test --filter=CutiTest`: 10 test hijau, 56 assertion.
-Seluruh suite dijalankan lewat gerbang pre-push.
+`php artisan test --filter=CutiTest`: 11 test hijau, 60 assertion
+(termasuk jalur poller Telegram). Seluruh suite: 687 test hijau, 3.400
+assertion.
