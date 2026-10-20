@@ -186,7 +186,7 @@ test('total dan chip tanggal menghitung kolaborasi serta salinan multi alat seka
     ]);
 
     $respons = $this->actingAs($this->admin)
-        ->get('/reports?tanggal=' . $this->tanggal)
+        ->get('/reports?tanggal=' . $this->tanggal . '&tampilan=shift&grub=grub_d')
         ->assertStatus(200)
         ->assertSee('Berkolaborasi dengan:', false)
         ->assertDontSee('UJI-KOLAB-01', false)

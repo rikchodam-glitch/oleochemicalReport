@@ -198,6 +198,12 @@
                         </button>
                     </form>
                 @endif
+
+                @if($tampilan === 'shift')
+                    <p class="w-full text-[11px] text-slate-500">
+                        Termasuk laporan Reguler/Reguler Staff yang mencantumkan kolaborator shift atau Staff Grub A-D.
+                    </p>
+                @endif
             </div>
 
             {{-- Kartu total pekerjaan + kartu status pekerjaan: kartu status
@@ -505,6 +511,29 @@
                             ->filter()
                             ->values();
 
+                        // Laporan non-shift yang mencantumkan kolaborator shift /
+                        // Staff Grub ikut tampil di tab Shift. Baris tetap satu
+                        // (laporan induk), bukan salinan kolaboratornya.
+                        $grupPelapor = $report->technician?->group;
+                        $pelaporNonShift = $grupPelapor === null
+                            || in_array($grupPelapor, \App\Models\Technician::GRUP_NON_SHIFT, true);
+                        $grupKolabShift = $report->collaboratorReports
+                            ->map(fn ($baris) => $baris->technician?->group)
+                            ->filter(fn ($grup) => in_array($grup, array_merge(
+                                \App\Models\Technician::GRUP_SHIFT,
+                                \App\Models\Technician::GRUP_STAFF
+                            ), true))
+                            ->unique()
+                            ->values();
+                        $tampilKarenaKolaborasi = $tampilan === 'shift'
+                            && $pelaporNonShift
+                            && $grupKolabShift->isNotEmpty();
+                        $labelKolaborasi = $grubAktif !== null
+                            ? 'Kolaborasi ' . (\App\Models\Technician::GROUPS[$grubAktif] ?? $grubAktif)
+                            : ($grupKolabShift->count() === 1
+                                ? 'Kolaborasi ' . (\App\Models\Technician::GROUPS[$grupKolabShift->first()] ?? $grupKolabShift->first())
+                                : 'Kolaborasi Shift');
+
                         // Data alat/lokasi kolaborasi (multi equipment) untuk daftar singkat
                         // dan popup "Lihat": cukup keterangan + tautan ke detail lokasi/alat,
                         // bukan halaman laporan terpisah karena pekerjaan ini satu kesatuan.
@@ -564,10 +593,17 @@
                                 {{ $report->technician?->name ?? '-' }}
                             </p>
 
-                            @if($tampilan === 'shift' && $report->technician?->group)
-                                <span class="inline-flex mt-1 px-2 py-0.5 rounded-md text-xs font-medium bg-teal-50 text-teal-700 border border-teal-100">
-                                    {{ \App\Models\Technician::GROUPS[$report->technician->group] ?? $report->technician->group }}
-                                </span>
+                            @if($tampilan === 'shift' && ($report->technician?->group || $tampilKarenaKolaborasi))
+                                @if($tampilKarenaKolaborasi)
+                                    <span class="inline-flex mt-1 px-2 py-0.5 rounded-md text-xs font-medium bg-violet-50 text-violet-700 border border-violet-100"
+                                          title="Pelapor non-shift; laporan masuk tab Shift karena mencantumkan kolaborator shift/Staff Grub.">
+                                        {{ $labelKolaborasi }}
+                                    </span>
+                                @else
+                                    <span class="inline-flex mt-1 px-2 py-0.5 rounded-md text-xs font-medium bg-teal-50 text-teal-700 border border-teal-100">
+                                        {{ \App\Models\Technician::GROUPS[$report->technician->group] ?? $report->technician->group }}
+                                    </span>
+                                @endif
                             @endif
 
                             @if($kolaborator->isNotEmpty())
