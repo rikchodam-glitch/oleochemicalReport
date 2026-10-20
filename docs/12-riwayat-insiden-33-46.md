@@ -1,4 +1,4 @@
-# Riwayat Insiden 33-48
+# Riwayat Insiden 33-49
 
 > Bagian dari dokumentasi proyek di folder `docs`.
 > Peta dokumen: `AGENTS.md` di akar repo.
@@ -660,3 +660,20 @@
     jalur yang benar-benar dipakai PROD, bukan hanya endpoint webhook; (3)
     perintah seperti `/cuti` wajib dicek SEBELUM wizard, karena wizard aktif
     akan menelan teks apa pun sebagai jawaban langkah.**
+
+49. **Tautan cuti langsung "tidak berlaku" setelah `/cuti` (20/10/2026).**
+    Gejala: teknisi baru mengetik `/cuti`, membuka tautan, tetapi halaman
+    menyatakan tautan kedaluwarsa/dipakai. Bukti PROD `cuti_tokens`:
+    token id=1 dibuat 09:44:38, dibuka 09:44:39, lalu `used_at` 09:44:53 —
+    tepat saat token id=2 dibuat. Artinya `/cuti` kedua (atau pemrosesan
+    ganda) membatalkan token pertama yang sedang dibuka. Penyebab:
+    `CutiService::buatTautan()` menandai SEMUA token lama yang belum dipakai
+    sebagai `used_at`, termasuk token yang sudah `opened_at`. Perbaikan:
+    hanya token lama yang **belum pernah dibuka** yang dibatalkan; token yang
+    sudah dibuka tetap berlaku sampai kedaluwarsa. Uji baru memastikan form
+    pertama tetap bisa dibuka setelah tautan kedua dibuat.
+    **Pelajaran: (1) jangan membatalkan tautan yang sedang diisi hanya karena
+    ada permintaan tautan baru; (2) bedakan "belum dipakai" dan "belum pernah
+    dibuka"; (3) saat tautan dilaporkan tidak berlaku, periksa timestamp
+    created/opened/used di `cuti_tokens` — selisih detik menunjukkan token
+    baru membatalkan token lama.**

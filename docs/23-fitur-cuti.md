@@ -28,8 +28,9 @@ Dokumen ini menjelaskan fitur cuti yang terhubung ke bot Telegram dan man hour
   dashboard/admin.
 - Route form memakai throttle 30 permintaan/menit. Route admin dijaga
   `pastikanAdmin()` (hanya akun yang boleh mengelola user).
-- Token lama yang belum dipakai otomatis dibatalkan saat teknisi meminta tautan
-  baru.
+- Permintaan tautan baru hanya membatalkan tautan lama yang **belum pernah
+  dibuka**. Tautan yang sudah dibuka tetap berlaku sampai kedaluwarsa agar form
+  yang sedang diisi tidak berubah menjadi "tautan tidak berlaku".
 - Alasan dibatasi 1.000 karakter dan dinormalisasi spasinya.
 
 ## Data
@@ -92,6 +93,6 @@ Dokumen ini menjelaskan fitur cuti yang terhubung ke bot Telegram dan man hour
 
 ## Uji
 
-`php artisan test --filter=CutiTest`: 11 test hijau, 60 assertion
-(termasuk jalur poller Telegram). Seluruh suite: 687 test hijau, 3.400
-assertion.
+`php artisan test --filter=CutiTest`: 13 test hijau, 65 assertion
+(termasuk jalur poller Telegram dan tautan yang sudah dibuka). Seluruh suite:
+689 test hijau, 3.405 assertion.
