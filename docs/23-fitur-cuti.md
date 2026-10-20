@@ -21,9 +21,11 @@ Dokumen ini menjelaskan fitur cuti yang terhubung ke bot Telegram dan man hour
 ## Keamanan tautan
 
 - Token berlaku **30 menit**, sekali pakai, dan hanya hash yang disimpan.
-- Saat tautan pertama dibuka, token diikat ke session browser
-  (`cuti_token_id` + `cuti_technician_id`). Browser/perangkat lain yang membuka
-  tautan yang sama ditolak.
+- Saat tautan dibuka, session browser menyimpan `cuti_token_id` +
+  `cuti_technician_id`. Token **boleh dibuka ulang dari browser/perangkat lain
+  selama belum dipakai/kedaluwarsa**; submission memakai session dari GET
+  terakhir. Ini penting karena pratinjau tautan Telegram membuka URL lebih dulu
+  tanpa cookie.
 - Form publik tidak memakai `Auth::login()`; teknisi tidak mendapat akses ke
   dashboard/admin.
 - Route form memakai throttle 30 permintaan/menit. Route admin dijaga
@@ -68,6 +70,8 @@ Dokumen ini menjelaskan fitur cuti yang terhubung ke bot Telegram dan man hour
 - `/cuti` tanpa alasan tetap membuat tautan; alasan diisi di form.
 - `/cuti mesin rusak` menyimpan `mesin rusak` pada token dan form.
 - Ada pembatas 10 detik agar teknisi tidak membanjiri bot dengan tautan.
+- Pratinjau tautan dimatikan (`disable_web_page_preview`) agar Telegram tidak
+  membuka form lebih dulu dan menandai `opened_at`.
 - Notifikasi persetujuan/penolakan dikirim ke Telegram teknisi bila
   `telegram_id` tersedia.
 

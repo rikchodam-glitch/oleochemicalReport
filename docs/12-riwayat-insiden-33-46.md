@@ -1,4 +1,4 @@
-# Riwayat Insiden 33-49
+# Riwayat Insiden 33-50
 
 > Bagian dari dokumentasi proyek di folder `docs`.
 > Peta dokumen: `AGENTS.md` di akar repo.
@@ -677,3 +677,20 @@
     dibuka"; (3) saat tautan dilaporkan tidak berlaku, periksa timestamp
     created/opened/used di `cuti_tokens` — selisih detik menunjukkan token
     baru membatalkan token lama.**
+
+50. **Tautan cuti tetap "tidak berlaku" di PROD karena pratinjau tautan
+    Telegram (20/10/2026).** Gejala: setelah `/cuti`, tautan dibuka tetapi
+    halaman menyatakan tidak berlaku. Bukti PROD: token id=3 dibuat 09:54:01,
+    `opened_at` 09:54:03, `used_at` kosong; tabel `sessions` **tidak memiliki**
+    session dengan `cuti_token_id`. Artinya URL dibuka oleh pratinjau
+    Telegram (tanpa cookie), bukan browser teknisi. `opened_at` sudah terisi,
+    lalu GET dari browser teknisi dianggap "dibuka di perangkat lain" dan
+    ditolak. Perbaikan: (1) GET form tidak lagi menolak session baru hanya
+    karena `opened_at` terisi — tautan boleh dibuka ulang sampai
+    `used_at`/kedaluwarsa; (2) submission tetap membutuhkan session dari GET
+    terakhir; (3) pesan bot mematikan `disable_web_page_preview`. Uji
+    menambahkan skenario pratinjau tanpa cookie lalu membuka dari browser lain.
+    **Pelajaran: (1) `opened_at` BUKAN bukti user session — crawler/pratinjau
+    aplikasi juga membuka URL; (2) binding session sebaiknya divalidasi saat
+    submit, bukan saat GET; (3) matikan preview untuk tautan form berisi data
+    pribadi.**

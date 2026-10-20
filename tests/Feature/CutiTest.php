@@ -115,15 +115,17 @@ test('tautan lama yang belum dibuka dibatalkan saat tautan baru dibuat', functio
     $this->get(route('cuti.form', ['token' => $baru['plain']]))->assertOk();
 });
 
-test('tautan yang sudah dibuka di perangkat lain tidak bisa dipakai lagi', function () {
+test('tautan yang sudah dibuka tetap bisa dibuka dari browser lain sampai dipakai', function () {
     $hasil = app(CutiService::class)->buatTautan($this->teknisi);
 
+    // Simulasi pratinjau Telegram yang membuka URL tanpa cookie, lalu
+    // pengguna asli membuka tautan yang sama dari browsernya.
     $this->get(route('cuti.form', ['token' => $hasil['plain']]))->assertOk();
     $this->flushSession();
 
     $this->get(route('cuti.form', ['token' => $hasil['plain']]))
-        ->assertStatus(410)
-        ->assertSee('perangkat lain');
+        ->assertOk()
+        ->assertSee('Form Cuti Teknisi');
 });
 
 test('pengajuan yang beririsan ditolak dan tidak membuat baris baru', function () {

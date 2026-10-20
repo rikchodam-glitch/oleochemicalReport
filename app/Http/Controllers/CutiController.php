@@ -38,14 +38,11 @@ class CutiController extends Controller
             ], 410);
         }
 
-        $sesiToken = $request->session()->get('cuti_token_id');
-
-        if ($tokenModel->opened_at !== null && (int) $sesiToken !== (int) $tokenModel->id) {
-            return response()->view('cuti.kadaluarsa', [
-                'pesan' => 'Tautan ini sudah dibuka di perangkat lain. Minta tautan baru dengan mengirim /cuti di Telegram.',
-            ], 410);
-        }
-
+        // Jangan menolak tautan yang sudah "opened_at". Telegram (dan aplikasi
+        // lain) sering membuka URL lebih dulu untuk pratinjau, sehingga
+        // opened_at terisi sebelum teknisi benar-benar mengklik. Session baru
+        // tetap boleh membuka form selama token belum dipakai/kedaluwarsa;
+        // submission tetap membutuhkan session dari GET terakhir.
         $this->cutiService->tandaiDibuka($tokenModel);
 
         $request->session()->put('cuti_token_id', $tokenModel->id);

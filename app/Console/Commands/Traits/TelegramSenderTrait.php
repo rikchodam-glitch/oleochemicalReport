@@ -25,20 +25,21 @@ trait TelegramSenderTrait
     /**
      * Kirim pesan teks ke chat.
      *
-     * @param int|string $chatId ID chat tujuan
-     * @param string     $text   Teks pesan (mendukung Markdown)
+     * @param int|string           $chatId ID chat tujuan
+     * @param string               $text   Teks pesan (mendukung Markdown)
+     * @param array<string, mixed> $extra  Parameter tambahan Telegram (mis. matikan preview)
      * @return void
      */
-    private function sendMessage(int|string $chatId, string $text): void
+    private function sendMessage(int|string $chatId, string $text, array $extra = []): void
     {
         $token = config('services.telegram.bot_token');
 
         try {
-            Http::timeout(10)->post("https://api.telegram.org/bot{$token}/sendMessage", [
+            Http::timeout(10)->post("https://api.telegram.org/bot{$token}/sendMessage", array_merge([
                 'chat_id'    => $chatId,
                 'text'       => $text,
                 'parse_mode' => 'Markdown',
-            ]);
+            ], $extra));
         } catch (\Exception $e) {
             Log::error("Poll sendMessage error: " . $e->getMessage());
         }
