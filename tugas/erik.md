@@ -1,16 +1,16 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-20 08:30 WIB
+Diperbarui: 2026-10-20 08:50 WIB
 
-- Cabang aktif: `tugas/erik/laporan-kolaborasi-shift-tampil-di-tab-shift`
-- Mulai: 2026-10-20 08:30
+- Cabang aktif: `tugas/erik/catat-insiden-deploy-dari-cabang-tugas`
+- Mulai: 2026-10-20 08:50
 - Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
-  - `app/Http/Controllers/ReportController.php`
-  - `resources/views/reports/index.blade.php`
-  - `tests/Feature/ReportGroupKolaborasiShiftTest.php`
-  - `docs/22-laporan-kolaborasi-shift.md`, `AGENTS.md` (peta dokumen)
-- Catatan: laporan non-shift yang berkolaborasi dengan shift/staff grub tampil di Shift saja.
+  - `docs/02-alur-kerja-banyak-teknisi.md` (aturan pencegahan)
+  - `docs/12-riwayat-insiden-33-46.md` (insiden #47)
+  - `AGENTS.md` (peta dokumen)
+  - `tugas/pr-catat-insiden-deploy-dari-cabang-tugas.md`
+- Catatan: mendokumentasikan deploy yang tertahan karena DEV masih di cabang tugas dengan commit catatan PR setelah fitur di-merge.
 
 ## Riwayat
-- tugas/erik/rekonstruksi-dashboard-utama (mulai 2026-10-19 11:35) -> dilanjutkan 2026-10-20 08:30
+- tugas/erik/laporan-kolaborasi-shift-tampil-di-tab-shift (mulai 2026-10-20 08:30) -> dilanjutkan 2026-10-20 08:50
