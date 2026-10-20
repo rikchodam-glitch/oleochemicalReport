@@ -130,7 +130,7 @@ class TelegramWebhookController extends Controller
             $pesan .= "\nAlasan dari pesan Anda sudah diisi otomatis di form.";
         }
 
-        return $this->sendMessage($chatId, $pesan);
+        return $this->sendMessage($chatId, $pesan, ['disable_web_page_preview' => true]);
     }
 
     protected function handleReport($chatId, Technician $technician, string $text)
@@ -290,7 +290,7 @@ class TelegramWebhookController extends Controller
         return $this->sendMessage($chatId, $response);
     }
 
-    protected function sendMessage($chatId, string $text)
+    protected function sendMessage($chatId, string $text, array $extra = [])
     {
         $token = config('services.telegram.bot_token');
 
@@ -300,11 +300,11 @@ class TelegramWebhookController extends Controller
         }
 
         try {
-            $response = Http::timeout(10)->post("https://api.telegram.org/bot{$token}/sendMessage", [
+            $response = Http::timeout(10)->post("https://api.telegram.org/bot{$token}/sendMessage", array_merge([
                 'chat_id'    => $chatId,
                 'text'       => $text,
                 'parse_mode' => 'Markdown',
-            ]);
+            ], $extra));
 
             if (!$response->successful()) {
                 Log::warning("Telegram sendMessage failed: " . $response->body());

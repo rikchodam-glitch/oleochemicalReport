@@ -222,7 +222,9 @@ trait TelegramMessageHandlerTrait
             $pesan .= "\nAlasan dari pesan Anda sudah diisi otomatis di form.";
         }
 
-        $this->sendMessage($chatId, $pesan);
+        // Matikan pratinjau tautan: Telegram dapat membuka URL lebih dulu dan
+        // menandai opened_at sebelum teknisi benar-benar mengklik.
+        $this->sendMessage($chatId, $pesan, ['disable_web_page_preview' => true]);
     }
 
     /**
