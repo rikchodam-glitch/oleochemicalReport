@@ -561,7 +561,8 @@
         <div>
             <h3 class="text-sm font-semibold text-slate-900">Laporan Teknisi (Daftar Perbaikan)</h3>
             <p class="text-xs text-slate-400 mt-0.5">
-                Hasil laporan teknisi yang bertag equipment <span class="font-mono">{{ $equipment->equipment_tag }}</span>.
+                Hasil laporan teknisi yang bertag equipment <span class="font-mono">{{ $equipment->equipment_tag }}</span>
+                (termasuk laporan lama yang menyebut kode ini di deskripsi pekerjaan).
                 Tekan Detail untuk membuka isi laporannya.
                 @if($equipment->asset)
                     <a href="{{ route('assets.show', $equipment->asset) }}"

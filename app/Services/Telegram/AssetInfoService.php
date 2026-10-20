@@ -11,6 +11,7 @@ use App\Models\Department;
 use App\Models\ItAsset;
 use App\Models\Report;
 use App\Models\SubArea;
+use App\Services\EquipmentMentionService;
 use App\Services\FuncLocParser;
 use App\Services\TechIdentSearchService;
 use Illuminate\Support\Collection;
@@ -999,14 +1000,26 @@ class AssetInfoService
      */
     protected function laporanAsset(Asset $asset, int $limit): Collection
     {
-        $tag = (string) ($asset->tech_ident_no ?? '');
+        $tag      = (string) ($asset->tech_ident_no ?? '');
+        $mentions = app(EquipmentMentionService::class);
 
         return Report::with('technician')
-            ->where(function ($query) use ($asset, $tag) {
+            ->where(function ($query) use ($asset, $tag, $mentions) {
                 $query->where('asset_id', $asset->id);
 
                 if ($tag !== '') {
                     $query->orWhere('equipment_tag', $tag);
+
+                    // Laporan lama yang belum punya asset_id & equipment_tag tetap
+                    // terbaca bila deskripsinya menyebut kode alat ini (bukan LIKE
+                    // wildcard — lihat EquipmentMentionService).
+                    $query->orWhere(function ($legacy) use ($tag, $mentions) {
+                        $legacy->where(function ($t) {
+                            $t->whereNull('equipment_tag')->orWhere('equipment_tag', '');
+                        })->whereNull('asset_id');
+
+                        $mentions->whereMentions($legacy, $tag);
+                    });
                 }
             })
             ->orderByDesc('report_date')

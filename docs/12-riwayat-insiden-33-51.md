@@ -1,4 +1,4 @@
-# Riwayat Insiden 33-50
+# Riwayat Insiden 33-51
 
 > Bagian dari dokumentasi proyek di folder `docs`.
 > Peta dokumen: `AGENTS.md` di akar repo.
@@ -33,11 +33,11 @@
     Uji: 17 test di `tests/Feature/ReportMultiEquipmentTest.php` (termasuk uji mutasi: menetralkan
     perbaikan membuat 2-6 test GAGAL), dan seluruh suite 265 test hijau.
     **Pelajaran: (1) nilai fallback/penanda yang dipakai untuk membandingkan identitas WAJIB dibedakan
-    per JENIS item (alat vs lokasi) — membandingkan kolom lokasi untuk item alat membuat seluruh alat
+    per JENIS item (alat vs lokasi) ΓÇö membandingkan kolom lokasi untuk item alat membuat seluruh alat
     satu lokasi dianggap duplikat, dan kegagalan itu SENYAP karena pesan sukses tetap muncul; (2) fitur
     yang "kadang tidak bisa" wajib diuji dengan DATA ASLI, karena data uji yang mengosongkan kolom
     (di sini `funcloc_id` pada fixture lama) menyembunyikan bug selama berbulan-bulan; (3) jangan pernah
-    menutup/menghapus layar pilihan sebelum pengguna memutuskan selesai — bila layar lama terhapus dari
+    menutup/menghapus layar pilihan sebelum pengguna memutuskan selesai ΓÇö bila layar lama terhapus dari
     chat dan tidak ada tombol kembali, satu-satunya jalan keluar adalah membatalkan laporan.**
 
 34. **Tanda plus BERLEBIH di rangkaian penggabungan teks JavaScript menghasilkan
@@ -46,7 +46,7 @@
     `/panel` mencetak `24.4NaN` (satuan " C" hilang), sedangkan halaman detail
     ruangan mencetak `24.4 C`. Penyebab: satu baris penyusun kartu
     (`resources/views/panel/index.blade.php` baris 453 sebelum diperbaiki) berbunyi
-    `+          + '<span class="text-sm font-semibold text-slate-400"> C</span>'` —
+    `+          + '<span class="text-sm font-semibold text-slate-400"> C</span>'` ΓÇö
     tanda plus ganda: operator gabung, lalu unary plus. Unary plus memaksa teks
     span dikonversi ke angka menjadi `NaN`, sehingga `"24.4" + NaN` = `24.4NaN`.
     Seluruh pemeriksaan statis GAGAL menemukannya: kolom `suhu` decimal(5,2), cast
@@ -54,26 +54,26 @@
     lewat `curl` + `ConvertFrom-Json` = Decimal 24.5), berkas DEV dan PROD identik,
     dan blok `<script>` lolos `node --check`. Yang menemukan: RENDER NYATA memakai
     Chrome headless (`chrome.exe --headless=new --dump-dom` dengan profil
-    `--user-data-dir` yang sama setelah membuka `/debug-login`) →
+    `--user-data-dir` yang sama setelah membuka `/debug-login`) ΓåÆ
     `<p class="text-3xl ...">24.5NaN      </p>` tanpa span. Sesudah perbaikan:
     `24.4<span ...> C</span>` dan tidak ada `NaN`. **Pelajaran: (1) `NaN` pada
     tampilan hampir selalu berasal dari operasi aritmetika atas teks (unary plus,
-    `-`, `*`, `Number()`), bukan dari data server — cari operator ganda di
+    `-`, `*`, `Number()`), bukan dari data server ΓÇö cari operator ganda di
     rangkaian penggabungan string; (2) `node --check` hanya membuktikan SINTAKS,
     bukan nilai hasil, jadi bug seperti ini lolos; (3) untuk bug tampilan yang
     tidak bisa disimpulkan dari data, WAJIB buktikan dengan render browser nyata
     (headless `--dump-dom`) sebelum menyatakan sebabnya; (4) pencarian `NaN` pada
-    HTML hasil dump wajib PEKA huruf besar-kecil — kata "Maintenance" memuat
+    HTML hasil dump wajib PEKA huruf besar-kecil ΓÇö kata "Maintenance" memuat
     "nan".** Uji penjaga: 2 test di `tests/Feature/PanelDashboardRingkasTest.php`
     (menolak pola baris `^\s*\+\s*\+` dan memastikan satuan C tetap ada); uji
-    mutasi: tanda plus ganda dikembalikan → KEDUA test GAGAL.
+    mutasi: tanda plus ganda dikembalikan ΓåÆ KEDUA test GAGAL.
 
 35. **Satu laporan dari form web membuat SELURUH tombol Done/Continue wizard
     Telegram gagal menyimpan (07/10/2026).** Keluhan user: "report telegram di
     produksi tidak bisa menyelesaikan report; tekan Done/Continue tidak
     merespon". Semua service PROD memang jalan (queue:work, schedule:work,
     telegram:poll, serve:8000, tunnel) dan log poller justru memuat
-    `Callback: wizard:confirm:save_done` berulang kali — jadi tombolnya
+    `Callback: wizard:confirm:save_done` berulang kali ΓÇö jadi tombolnya
     DIKIRIM, bukan tidak sampai. Akar masalahnya di
     `PROD\storage\logs\laravel.log`: `production.ERROR: WizardService: Failed
     to save report for chat ... {"error":"SQLSTATE[23000] ... 1062 Duplicate
@@ -86,7 +86,7 @@
     `(int) substr($kode, -4) + 1`. Begitu satu laporan dari form web dibuat
     (`RPT-20261007-Q5UW`, id 1676, 10:30), kode itu menjadi nilai terbesar hari
     itu (huruf diurutkan setelah angka) sehingga `(int) 'Q5UW'` = 0 dan kode
-    berikutnya selalu `0001` yang sudah terpakai → semua penyimpanan wizard
+    berikutnya selalu `0001` yang sudah terpakai ΓåÆ semua penyimpanan wizard
     gagal 1062 sejak 12:50 (20 kegagalan tercatat sampai 13:07) dan teknisi
     hanya melihat pesan galat.
     Perbaikan di DEV (satu generator): `Report::generateReportCode()` kini
@@ -102,12 +102,12 @@
     Uji: `tests/Feature/ReportKodeUnikTest.php` (6 test, 18 assertions; uji
     mutasi 07/10/2026: mengembalikan logika lama `orderByDesc` + `substr`
     membuat 4 test GAGAL). Seluruh suite 446 test hijau (1955 assertions).
-    **Pelajaran: (1) generator kode yang dipakai bersama WAJIB satu saja —
+    **Pelajaran: (1) generator kode yang dipakai bersama WAJIB satu saja ΓÇö
     format berbeda (angka vs acak) membuat satu jalur merusak jalur lain;
     (2) nilai "terbesar" pada kolom kode berbasis TEKS tidak boleh dipakai apa
     adanya untuk urutan numerik: kode berhuruf selalu menang dan cast `(int)`
     atas huruf = 0; (3) gejala "tombol tidak merespon" pada Telegram hampir
-    selalu berarti handler-nya melempar galat — periksa `laravel.log` PROD
+    selalu berarti handler-nya melempar galat ΓÇö periksa `laravel.log` PROD
     lebih dulu, jangan hanya melihat daftar proses/service; (4) pesan galat ke
     pengguna jangan memuat pesan SQL mentah, simpan detailnya di log saja.**
 
@@ -118,7 +118,7 @@
     745-752) berbunyi "Sync Google Sheets: Data CM: URL belum dikonfigurasi di
     .env | Finding CM: URL belum dikonfigurasi di .env". Penyebabnya: di
     `C:\laragon\www\oleochemicalReport\config\cm.php` hanya tinggal JUDUL
-    KOMENTAR "Google Sheets — Sumber Data Sync" (baris 67-77), sedangkan array
+    KOMENTAR "Google Sheets ΓÇö Sumber Data Sync" (baris 67-77), sedangkan array
     `'google_sheets' => ['data_cm_url' => env('GOOGLE_SHEETS_DATA_CM_URL'),
     'finding_cm_url' => env('GOOGLE_SHEETS_FINDING_CM_URL')]` sudah TIDAK ADA,
     jadi `config('cm.google_sheets.data_cm_url')` bernilai null. Kedua `.env`
@@ -138,17 +138,17 @@
     CM HTTP 200 (6.794.360 byte, sheet "Finding CM" lengkap).
     Uji: `tests/Feature/CmGoogleSheetsConfigTest.php` (3 test, 12 assertions;
     uji mutasi 08/10/2026: mengganti nama kunci `google_sheets` membuat test
-    "config cm memuat kunci google sheets..." GAGAL — 1 failed, 2 passed).
+    "config cm memuat kunci google sheets..." GAGAL ΓÇö 1 failed, 2 passed).
     Seluruh suite 449 test hijau (1967 assertions).
-    **Pelajaran: (1) pesan galat yang menyuruh "isi .env" belum tentu benar —
+    **Pelajaran: (1) pesan galat yang menyuruh "isi .env" belum tentu benar ΓÇö
     periksa dulu apakah kunci `config()`-nya memang ada di folder `config/`,
     karena `config('x.y')` yang tidak terdefinisi mengembalikan null tanpa
     error apa pun (blok komentar yang tertinggal adalah jejaknya);
     (2) audit "kunci config dipakai vs terdefinisi" murah dilakukan: regex
     `config\('cm\.` atas `app/`, `resources/`, `tests/` lalu bandingkan dengan
-    `Config::has()` — jalankan setiap habis menyunting berkas di `config/`;
+    `Config::has()` ΓÇö jalankan setiap habis menyunting berkas di `config/`;
     (3) `.env` boleh memakai kutip dan spasi setelah tanda `=`
-    (`KEY= "https://..."`) — terbukti dibaca utuh oleh phpdotenv, jadi jangan
+    (`KEY= "https://..."`) ΓÇö terbukti dibaca utuh oleh phpdotenv, jadi jangan
     buru-buru menyalahkan format `.env`; (4) untuk integrasi luar, uji unduhnya
     dulu lewat skrip sementara tanpa menulis database supaya kegagalan
     izin/berkas privat ketahuan sebelum menyentuh data.**
@@ -176,7 +176,7 @@
     sendiri TIDAK pernah mati (proses httpd hidup sejak 07:06:37 WIB, 2,8 jam
     saat diperiksa).
     Perbaikan 08/10/2026 (DEV): ketiga tempat yang menyalakan cloudflared
-    memakai `--protocol http2` — `tools\jaga-service-prod.ps1` baris 143 (mode
+    memakai `--protocol http2` ΓÇö `tools\jaga-service-prod.ps1` baris 143 (mode
     token) dan baris 173 (mode config), `tools\pasang-token-tunnel-prod.ps1`
     baris 351, ditambah petunjuk manual di `tools\siapkan-tunnel-prod.ps1`
     baris 77. Flag itu TIDAK muncul di `cloudflared tunnel run --help` versi
@@ -193,7 +193,7 @@
     `*tunnel run*` milik `cek-status-prod.ps1`, `hentikan-service-prod.ps1`,
     dan `jaga-service-prod.ps1` tetap cocok.
     **Pelajaran: (1) 502 dari Cloudflare = connector ADA tetapi dial ke
-    origin/edge gagal, sedangkan 530/1033 = connector TIDAK ada — bedakan
+    origin/edge gagal, sedangkan 530/1033 = connector TIDAK ada ΓÇö bedakan
     keduanya sebelum menyalahkan Apache; (2) waktu kejadian user wajib
     disandingkan dengan cap waktu UTC di log (WIB = UTC+7) supaya jendela
     insiden cocok; (3) kata "manual:" pada `jaga-service.log` adalah penanda
@@ -373,12 +373,12 @@
     (bukan dibaca utuh) juga bisa kena, dan bila agent menganggap "hasil kosong
     = isi tidak diketahui = berkas bermasalah", pekerjaan berhenti padahal
     berkasnya utuh. Jalan keluar yang TERBUKTI berhasil, pakai yang pertama:
-    (1) baca ULANG berkasnya TANPA rentang (baca utuh) — isinya keluar normal;
+    (1) baca ULANG berkasnya TANPA rentang (baca utuh) ΓÇö isinya keluar normal;
     (2) cetak rentangnya lewat PowerShell sebagai BACAAN SAJA
     (`(Get-Content -LiteralPath <berkas>)[a..b]` + nomor baris). JANGAN menulis
     berkas lewat PowerShell (Aturan Wajib Edit File poin 7 tetap berlaku).
     (b) **Hasil `run_commands` kadang kembali sebagai
-    `[migration] Tool result missing in legacy conversation history.`** —
+    `[migration] Tool result missing in legacy conversation history.`** ΓÇö
     SELURUH keluaran perintah hilang, jadi tidak ada bukti apa pun (bukan
     berarti perintahnya gagal, bukan berarti perintahnya tidak dijalankan).
     Bila agent lalu berasumsi "perintahnya diam = berkas tidak ada / kode tidak
@@ -388,7 +388,7 @@
     supaya hasil yang hilang bisa dibedakan dari hasil yang benar-benar kosong;
     (2) begitu hasilnya hilang, ULANGI perintahnya (boleh dipecah lebih kecil)
     sebelum menyimpulkan apa pun; (3) jangan pernah menyimpulkan "berkas tidak
-    ada/kosong" dari keluaran yang HILANG — buktikan dengan panggilan kedua
+    ada/kosong" dari keluaran yang HILANG ΓÇö buktikan dengan panggilan kedua
     yang memuat penanda.
     **Pelajaran: hasil tool yang kosong/hilang adalah masalah PENGAMATAN, bukan
     bukti tentang keadaan repo. Sebelum melaporkan "tidak ada kendala" atau
@@ -419,12 +419,12 @@
     modul CM/Google Drive yang belum di-commit,
     `storage/app/private/shift-schedules` (74 xlsx, dirujuk
     `ShiftScheduleController`), `database.sqlite`, `export.ps1`, dan `.kilo/`.
-    **Pelajaran: (1) sampah berkas tidak pernah ketahuan dari test — hanya dari
+    **Pelajaran: (1) sampah berkas tidak pernah ketahuan dari test ΓÇö hanya dari
     `git status --short` dan pemeriksaan view terkompilasi; (2) setiap kali
     berkas blade dihapus, `php artisan view:clear` WAJIB dijalankan karena view
     lama tetap tersimpan dan tetap bisa melayani rutenya; (3) sebelum menghapus
     apa pun, pastikan dulu berkas itu memang yatim/sekali pakai
-    (`search_codebase` untuk blade, pemeriksaan rujukan kode untuk berkas data) —
+    (`search_codebase` untuk blade, pemeriksaan rujukan kode untuk berkas data) ΓÇö
     `storage/app/private/shift-schedules` terlihat seperti tumpukan berkas
     sampai terbukti dirujuk `ShiftScheduleController`. Aturan lengkapnya ada di
     bagian "ATURAN WAJIB: JANGAN TINGGALKAN SAMPAH BERKAS".**
@@ -489,7 +489,7 @@
     commit belum di-merge akan memasang pekerjaan itu ke production tanpa review;
     (b) bila push-nya ditolak (non-fast-forward), yang terpasang malah commit
     orang lain tanpa pemberitahuan yang jelas. Penutupnya: (i) langkah push
-    diganti penjaga baru `tools\penjaga-main-dev.ps1` — copy DEV wajib berada pada
+    diganti penjaga baru `tools\penjaga-main-dev.ps1` ΓÇö copy DEV wajib berada pada
     commit `main` GitHub, hanya tertinggal = dimajukan fast-forward, sedangkan
     berbeda/bercabang = deploy DIBATALKAN; (ii) alur kerja bercabang diperkenalkan
     (`tugas/<nama>/<ringkas>` + Pull Request + papan klaim `tugas/<nama>.md` +
@@ -497,7 +497,7 @@
     `cek-sebelum-push`); (iii) aturan lengkapnya ada di bagian "ALUR KERJA BANYAK
     TEKNISI" di atas.
     **Pelajaran: (1) perintah yang mengubah keadaan bersama (push/deploy) WAJIB
-    DIBATALKAN saat keadaan tidak seperti yang diharapkan — mencatat "PERINGATAN"
+    DIBATALKAN saat keadaan tidak seperti yang diharapkan ΓÇö mencatat "PERINGATAN"
     lalu lanjut adalah cara paling halus untuk memasang versi yang salah;
     (2) skrip deploy harus membuktikan sumber commit-nya lewat `ls-remote` (bukan
     ref remote-tracking lokal yang bisa basi) dan memperlakukan perbedaan sebagai
@@ -514,17 +514,17 @@
     `reports.work_duration_minutes` sebagai jam kerja NORMAL, PADAHAL kolom itu
     pada laporan lama masih memuat durasi PENUH (angka dari sebelum aturan
     istirahat/lembur dipasang), dan pada saat yang sama method itu menghitung
-    LEMBUR dari jam laporan — menit yang sama muncul di kedua angka (contoh
+    LEMBUR dari jam laporan ΓÇö menit yang sama muncul di kedua angka (contoh
     nyata PROD `id=251`: rentang 30 menit tampil 30 menit normal + 30 menit
     lembur). Pemeriksaan data membuktikan 391 laporan PROD terpengaruh (172 di
     antaranya benar-benar tampil berlebih = 33.190 menit), sedangkan DEV
     `oleochemical_dev` bersih (0 baris) karena durasinya sudah pernah dipangkas.
-    Perbaikan: satu sumber angka — man hour SELALU dihitung dari jam laporan
+    Perbaikan: satu sumber angka ΓÇö man hour SELALU dihitung dari jam laporan
     (`JamKerjaService::ringkasJamKerja()`), kolom durasi hanya cadangan bila
     laporan tidak punya jam mulai/selesai; sekaligus jam istirahat tidak lagi
     dihitung lembur (`lembur = total - dalamJendela`).
     **Pelajaran: (1) JANGAN mencampur satu angka yang dibaca dari kolom
-    tersimpan dengan angka lain yang dihitung dari data mentah — keduanya
+    tersimpan dengan angka lain yang dihitung dari data mentah ΓÇö keduanya
     berbeda begitu aturannya berubah, dan selisihnya muncul sebagai angka dobel
     TANPA error apa pun; hitung keduanya dari sumber yang sama; (2) periksa data
     NYATA di setiap database sebelum menyimpulkan luasnya dampak: "DEV bersih"
@@ -543,13 +543,13 @@
     `ProcessCmExcelImport` ke queue, sedangkan DEV memang TIDAK menjalankan
     service `queue:work` (bagian service di atas). Akibatnya job menumpuk di
     tabel `jobs`, baris `import_logs` tertinggal berstatus 'processing', dan
-    data tidak pernah masuk — tanpa satu pun pesan error di layar.
+    data tidak pernah masuk ΓÇö tanpa satu pun pesan error di layar.
     Bukti: `oleochemical_dev.jobs` masih berisi job CM yang belum diambil dan
     `import_logs` terakhir 'processing'; setelah job dijalankan, 15 baris
     tanggal 13/10/2026 masuk (insert_baru=15, log #71) dan halaman menampilkan
     Total Finding 466.
     Penutupnya: (i) kunci config baru `cm.google_sheets.import_mode`
-    (`CM_SYNC_IMPORT_MODE`) — bawaan 'inline' bila `APP_ENV=local` (import
+    (`CM_SYNC_IMPORT_MODE`) ΓÇö bawaan 'inline' bila `APP_ENV=local` (import
     dijalankan langsung di proses yang sama, tanpa `queue:work`) dan 'queue'
     di luar local sehingga perilaku PROD TIDAK berubah; (ii) opsi
     `php artisan cm:sync-sheets --langsung` untuk memaksa import langsung
@@ -557,7 +557,7 @@
     `SyncGoogleSheetsJob::runImportNow()` supaya baris `import_logs` tidak
     pernah tertinggal 'processing' bila import langsung melempar error;
     (iv) penjaga uji `tests/Feature/CmSyncImportModeTest.php`.
-    **Pelajaran: (1) "sudah dijadwalkan" bukan berarti "sudah jalan" — pada
+    **Pelajaran: (1) "sudah dijadwalkan" bukan berarti "sudah jalan" ΓÇö pada
     mesin tanpa worker, sync yang dilaporkan sukses hanya memindahkan masalah
     ke tabel `jobs`; (2) setiap alur ber-queue wajib punya mode/pengaman untuk
     lingkungan tanpa `queue:work`, jangan mengandalkan ingatan operator;
@@ -619,7 +619,7 @@
     (`82830c6`), dan PR #22 (Sparepart), #23/#24 (Dashboard) juga sudah di-merge.
     Satu-satunya commit yang belum masuk main adalah `350a24c` yang HANYA
     mengganti nama catatan PR menjadi
-    `tugas/pr-laporan-kolaborasi-shift-tampil-di-tab-shift.md` — bukan kode.
+    `tugas/pr-laporan-kolaborasi-shift-tampil-di-tab-shift.md` ΓÇö bukan kode.
     Penyebab: setelah PR di-merge, masih dibuat commit tambahan di cabang tugas
     (berkas catatan PR), lalu deploy dijalankan dari cabang itu. Penjaga
     bertindak benar: deploy hanya boleh dari `main` yang tepat sejajar GitHub.
@@ -636,7 +636,7 @@
     menjalankan `Deploy-Laporan.bat` dari cabang tugas. (3) Bila
     `kembalikan-ke-main.ps1` mengatakan `KEMBALI_MAIN=BELUM` tetapi penjaga
     `SEJAJAR=1` dan commit fitur sudah ada di `origin/main`, periksa dulu apakah
-    commit yang tertinggal hanya administratif (mis. catatan PR) — jangan
+    commit yang tertinggal hanya administratif (mis. catatan PR) ΓÇö jangan
     reset/hapus commit atau branch. Periksa dengan
     `git log --oneline origin/main -5` dan
     `git merge-base --is-ancestor <commit-fitur> origin/main`. (4) Setelah DEV
@@ -664,7 +664,7 @@
 49. **Tautan cuti langsung "tidak berlaku" setelah `/cuti` (20/10/2026).**
     Gejala: teknisi baru mengetik `/cuti`, membuka tautan, tetapi halaman
     menyatakan tautan kedaluwarsa/dipakai. Bukti PROD `cuti_tokens`:
-    token id=1 dibuat 09:44:38, dibuka 09:44:39, lalu `used_at` 09:44:53 —
+    token id=1 dibuat 09:44:38, dibuka 09:44:39, lalu `used_at` 09:44:53 ΓÇö
     tepat saat token id=2 dibuat. Artinya `/cuti` kedua (atau pemrosesan
     ganda) membatalkan token pertama yang sedang dibuka. Penyebab:
     `CutiService::buatTautan()` menandai SEMUA token lama yang belum dipakai
@@ -675,7 +675,7 @@
     **Pelajaran: (1) jangan membatalkan tautan yang sedang diisi hanya karena
     ada permintaan tautan baru; (2) bedakan "belum dipakai" dan "belum pernah
     dibuka"; (3) saat tautan dilaporkan tidak berlaku, periksa timestamp
-    created/opened/used di `cuti_tokens` — selisih detik menunjukkan token
+    created/opened/used di `cuti_tokens` ΓÇö selisih detik menunjukkan token
     baru membatalkan token lama.**
 
 50. **Tautan cuti tetap "tidak berlaku" di PROD karena pratinjau tautan
@@ -686,11 +686,42 @@
     Telegram (tanpa cookie), bukan browser teknisi. `opened_at` sudah terisi,
     lalu GET dari browser teknisi dianggap "dibuka di perangkat lain" dan
     ditolak. Perbaikan: (1) GET form tidak lagi menolak session baru hanya
-    karena `opened_at` terisi — tautan boleh dibuka ulang sampai
+    karena `opened_at` terisi ΓÇö tautan boleh dibuka ulang sampai
     `used_at`/kedaluwarsa; (2) submission tetap membutuhkan session dari GET
     terakhir; (3) pesan bot mematikan `disable_web_page_preview`. Uji
     menambahkan skenario pratinjau tanpa cookie lalu membuka dari browser lain.
-    **Pelajaran: (1) `opened_at` BUKAN bukti user session — crawler/pratinjau
+    **Pelajaran: (1) `opened_at` BUKAN bukti user session ΓÇö crawler/pratinjau
     aplikasi juga membuka URL; (2) binding session sebaiknya divalidasi saat
     submit, bukan saat GET; (3) matikan preview untuk tautan form berisi data
     pribadi.**
+
+51. **"Laporan Teknisi" di detail equipment CM selalu kosong padahal laporannya
+    ada (19/10/2026).** Gejala: user membuka equipment CM dan card "Laporan
+    Teknisi (Daftar Perbaikan)" menampilkan 0 laporan, walau teknisi sudah
+    mengirim laporan untuk alat itu lewat bot Telegram. Penyelidikan: aturan
+    tampilnya sudah benar (hanya laporan BERTAG, lihat `docs/19`), tetapi datanya
+    tidak pernah bertag ΓÇö wizard Telegram hanya menyimpan `asset_id` sehingga
+    `reports.equipment_tag` selalu NULL, dan backfill lama mengisi kolom itu
+    dengan `assets.equipment_no` (mis. `10002840`), padahal CM memakai
+    `assets.tech_ident_no` (mis. `6400P5`). Perbaikan: `Report::saving()` dan
+    `WizardReportSaverTrait` mengisi `equipment_tag` dari Tech Ident No (tag
+    yang sudah diisi manual tidak ditimpa);
+    `CmController::whereLaporanEquipment()` dan `AssetInfoService::laporanAsset()`
+    memakai tiga jalur pencocokan; laporan lama tanpa tag/asset dicocokkan lewat
+    `EquipmentMentionService` (batas kata + longest match, bukan `LIKE`),
+    sehingga `2-6163P8` tidak muncul di `6163P8`; command
+    `reports:tag-equipment` merapikan data lama (simulasi dulu, `--apply` untuk
+    menyimpan) dan melewati laporan yang menyebut lebih dari satu equipment.
+    Uji: `ReportEquipmentTagTest` (5 test) + tambahan pada
+    `CmEquipmentLaporanTeknisiTest`; seluruh `php artisan test` hijau
+    (701 test, 3440 assertions saat PR dibuat). Tidak ada migrasi.
+    **Pelajaran: (1) "tampilan kosong" belum tentu bug tampilan ΓÇö periksa dulu
+    kolom yang dipakai untuk mencocokkan, di sini `equipment_tag` memang tidak
+    pernah terisi; (2) satu kunci equipment harus konsisten di SEMUA penulis
+    data: backfill yang memakai `equipment_no` membuat halaman CM mustahil cocok
+    walaupun datanya "ada"; (3) pencocokan teks untuk data lama harus PERSIS
+    (batas kata + longest match), karena `LIKE '%tag%'` diam-diam menampilkan
+    equipment lain dan justru melanggar permintaan "jangan sampai salah
+    equipment"; (4) perbaikan data lama WAJIB punya mode simulasi sebelum
+    `--apply`, dan jangan menebak saat satu laporan menyebut beberapa
+    equipment.**

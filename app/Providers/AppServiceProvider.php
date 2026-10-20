@@ -8,6 +8,7 @@ use App\Models\SubArea;
 use App\Observers\AreaObserver;
 use App\Observers\FunctionalLocationObserver;
 use App\Observers\SubAreaObserver;
+use App\Services\EquipmentMentionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
 
@@ -18,7 +19,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Satu instance per request/command: daftar tag equipment (ribuan baris)
+        // cukup dibaca sekali walau halaman CM memakai service ini beberapa kali.
+        $this->app->singleton(EquipmentMentionService::class);
     }
 
     /**
@@ -61,5 +64,17 @@ class AppServiceProvider extends ServiceProvider
             $numbers = array_map(fn ($v) => is_numeric($v) ? (float) $v : 0.0, $values);
             return empty($numbers) ? null : max($numbers);
         }, -1);
+
+        // REGEXP: dipakai EquipmentMentionService untuk mencocokkan penyebutan
+        // kode equipment pada deskripsi laporan. SQLite tidak punya operator
+        // REGEXP bawaan; daftarkan padanan berbasis PCRE (dengan delimiter '#')
+        // supaya query yang sama tetap jalan saat test memakai SQLite.
+        $pdo->sqliteCreateFunction('regexp', function ($pattern, $value) {
+            if ($value === null || $pattern === null) {
+                return 0;
+            }
+
+            return preg_match('#' . str_replace('#', '\#', (string) $pattern) . '#i', (string) $value) ? 1 : 0;
+        }, 2);
     }
 }
