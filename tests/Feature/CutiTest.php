@@ -3,7 +3,6 @@
 use App\Models\CutiTeknisi;
 use App\Models\CutiToken;
 use App\Models\Technician;
-use App\Models\User;
 use App\Services\CutiService;
 use App\Services\Shift\ManHourService;
 use Carbon\Carbon;
@@ -18,8 +17,6 @@ uses(RefreshDatabase::class);
 beforeEach(function () {
     $this->travelTo(Carbon::parse('2026-10-15 09:00:00'));
     $this->seed();
-
-    $this->admin = User::where('email', 'admin@oleochemical.pro')->firstOrFail();
 
     $this->teknisi = Technician::create([
         'name'        => 'Teknisi Cuti Uji',
@@ -52,7 +49,7 @@ test('token cuti menyimpan hash, alasan, dan form menampilkan identitas teknisi'
         ->assertSee('mesin rusak');
 });
 
-test('pengajuan cuti tersimpan pending dan token menjadi sekali pakai', function () {
+test('pengajuan cuti langsung disetujui dan token menjadi sekali pakai', function () {
     $hasil = app(CutiService::class)->buatTautan($this->teknisi, 'keperluan keluarga');
 
     $this->get(route('cuti.form', ['token' => $hasil['plain']]))->assertOk();
@@ -69,7 +66,8 @@ test('pengajuan cuti tersimpan pending dan token menjadi sekali pakai', function
     expect($tersimpan->technician_id)->toBe($this->teknisi->id)
         ->and($tersimpan->tanggal_mulai->toDateString())->toBe($this->tanggal)
         ->and($tersimpan->tanggal_selesai->toDateString())->toBe($this->tanggal)
-        ->and($tersimpan->status)->toBe(CutiTeknisi::STATUS_PENDING)
+        ->and($tersimpan->status)->toBe(CutiTeknisi::STATUS_DISETUJUI)
+        ->and($tersimpan->disetujui_at)->not->toBeNull()
         ->and($tersimpan->diajukan_via)->toBe('telegram')
         ->and($tersimpan->alasan)->toBe('keperluan keluarga');
 
@@ -77,7 +75,7 @@ test('pengajuan cuti tersimpan pending dan token menjadi sekali pakai', function
 
     $this->get(route('cuti.selesai'))
         ->assertOk()
-        ->assertSee('Pengajuan cuti terkirim')
+        ->assertSee('Cuti tercatat')
         ->assertSee('Teknisi Cuti Uji');
 });
 
@@ -150,25 +148,18 @@ test('pengajuan yang beririsan ditolak dan tidak membuat baris baru', function (
     expect(CutiTeknisi::count())->toBe(1);
 });
 
-test('admin menyetujui cuti dan target man hour hari itu menjadi nol', function () {
+test('cuti yang berlaku langsung membuat target man hour hari itu nol', function () {
     $cuti = CutiTeknisi::create([
         'technician_id'   => $this->teknisi->id,
         'tanggal_mulai'   => $this->tanggal,
         'tanggal_selesai' => $this->tanggal,
         'jenis'           => 'tahunan',
         'alasan'          => 'izin keluarga',
-        'status'          => CutiTeknisi::STATUS_PENDING,
+        'status'          => CutiTeknisi::STATUS_DISETUJUI,
+        'disetujui_at'    => now(),
     ]);
 
-    $this->actingAs($this->admin)
-        ->post(route('cuti.admin.setujui', $cuti), ['catatan' => 'Disetujui'])
-        ->assertRedirect();
-
-    $cuti->refresh();
-
-    expect($cuti->status)->toBe(CutiTeknisi::STATUS_DISETUJUI)
-        ->and($cuti->disetujui_oleh)->toBe($this->admin->id)
-        ->and($cuti->catatan_approver)->toBe('Disetujui');
+    expect($cuti->status)->toBe(CutiTeknisi::STATUS_DISETUJUI);
 
     $manHour = app(ManHourService::class);
     $harian  = $manHour->harian($this->teknisi, Carbon::parse($this->tanggal), Carbon::parse($this->tanggal));
@@ -296,21 +287,4 @@ test('poller Telegram memproses /cuti sebagai tautan cuti, bukan klasifikasi pek
         ->and(\App\Models\Report::count())->toBe(0);
 });
 
-test('halaman cuti admin hanya untuk administrator', function () {
-    $this->actingAs($this->admin)
-        ->get(route('cuti.admin.index'))
-        ->assertOk()
-        ->assertSee('Cuti Teknisi');
 
-    $bagian = User::create([
-        'name'     => 'Akun Bagian Uji',
-        'username' => 'akun-cuti-bagian',
-        'email'    => 'akun-cuti-bagian@oleochemical.pro',
-        'password' => bcrypt('rahasia123'),
-        'role'     => 'mekanik',
-    ]);
-
-    $this->actingAs($bagian)
-        ->get(route('cuti.admin.index'))
-        ->assertForbidden();
-});

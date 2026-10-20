@@ -13,18 +13,18 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
             </svg>
         </div>
-        <h1 class="text-lg font-bold text-slate-900 mt-3">Pengajuan cuti terkirim</h1>
+        <h1 class="text-lg font-bold text-slate-900 mt-3">Cuti tercatat</h1>
         <p class="text-sm text-slate-500 mt-1">Terima kasih, {{ $hasil['nama'] ?? 'Teknisi' }}.</p>
 
         <div class="mt-5 rounded-lg bg-slate-50 border border-slate-100 p-4 text-left text-xs space-y-1.5">
             <div class="flex justify-between gap-3"><span class="text-slate-500">Periode</span><span class="font-medium text-slate-800">{{ $hasil['tanggal_mulai'] }} – {{ $hasil['tanggal_selesai'] }}</span></div>
             <div class="flex justify-between gap-3"><span class="text-slate-500">Jenis</span><span class="font-medium text-slate-800">{{ $hasil['jenis'] }}</span></div>
-            <div class="flex justify-between gap-3"><span class="text-slate-500">Status</span><span class="font-semibold text-amber-700">{{ $hasil['status'] }}</span></div>
+            <div class="flex justify-between gap-3"><span class="text-slate-500">Status</span><span class="font-semibold text-emerald-700">{{ $hasil['status'] }}</span></div>
         </div>
 
         <p class="text-xs text-slate-500 mt-4 leading-relaxed">
-            Admin akan memeriksa pengajuan ini. Anda akan menerima kabar melalui Telegram
-            setelah disetujui atau ditolak.
+            Cuti langsung berlaku. Setelah login, Anda dapat mengubah atau menghapus cuti ini
+            di menu <span class="font-semibold text-slate-700">Cuti Saya</span>.
         </p>
 
         <a href="{{ url('/') }}" class="inline-block mt-5 text-xs font-semibold text-teal-700 hover:text-teal-800">

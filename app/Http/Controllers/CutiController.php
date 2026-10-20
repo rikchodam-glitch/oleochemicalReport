@@ -4,16 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\CutiTeknisi;
 use App\Services\CutiService;
-use App\Services\TelegramService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 
 /**
- * Form cuti publik (via token Telegram) dan halaman persetujuan admin.
+ * Form cuti publik dari token Telegram.
  *
  * Form publik tidak memakai login penuh. Identitas diambil dari token yang
- * dibuat bot dan diikat ke session browser saat tautan pertama dibuka.
+ * dibuat bot. Cuti langsung berlaku tanpa persetujuan admin; pengelolaan
+ * (edit/hapus) dilakukan pemilik akun di halaman Cuti Saya.
  */
 class CutiController extends Controller
 {
@@ -123,145 +122,4 @@ class CutiController extends Controller
         return view('cuti.selesai', ['hasil' => $hasil]);
     }
 
-    /**
-     * Daftar pengajuan cuti untuk admin.
-     *
-     * @param  Request $request Request filter
-     * @return \Illuminate\View\View
-     */
-    public function adminIndex(Request $request)
-    {
-        $this->pastikanAdmin();
-
-        $status = (string) $request->query('status', CutiTeknisi::STATUS_PENDING);
-
-        if (! in_array($status, [
-            CutiTeknisi::STATUS_PENDING,
-            CutiTeknisi::STATUS_DISETUJUI,
-            CutiTeknisi::STATUS_DITOLAK,
-            'semua',
-        ], true)) {
-            $status = CutiTeknisi::STATUS_PENDING;
-        }
-
-        $cari = trim((string) $request->query('q', ''));
-
-        $daftar = CutiTeknisi::query()
-            ->with(['technician:id,name,nik,group', 'penyetuju:id,name'])
-            ->when($status !== 'semua', fn ($query) => $query->where('status', $status))
-            ->when($cari !== '', function ($query) use ($cari): void {
-                $query->whereHas('technician', function ($teknisi) use ($cari): void {
-                    $teknisi->where('name', 'like', '%' . $cari . '%')
-                        ->orWhere('nik', 'like', '%' . $cari . '%');
-                });
-            })
-            ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
-            ->latest('tanggal_mulai')
-            ->paginate(20)
-            ->withQueryString();
-
-        $ringkasan = [
-            'pending'   => CutiTeknisi::where('status', CutiTeknisi::STATUS_PENDING)->count(),
-            'disetujui' => CutiTeknisi::where('status', CutiTeknisi::STATUS_DISETUJUI)->count(),
-            'ditolak'   => CutiTeknisi::where('status', CutiTeknisi::STATUS_DITOLAK)->count(),
-        ];
-
-        return view('cuti.admin-index', [
-            'daftar'    => $daftar,
-            'ringkasan' => $ringkasan,
-            'status'    => $status,
-            'cari'      => $cari,
-        ]);
-    }
-
-    /**
-     * Menyetujui pengajuan cuti.
-     *
-     * @param  Request     $request Request admin
-     * @param  CutiTeknisi $cuti    Pengajuan
-     * @return \Illuminate\Http\RedirectResponse
-     */
-    public function setujui(Request $request, CutiTeknisi $cuti)
-    {
-        $this->pastikanAdmin();
-
-        try {
-            $cuti = $this->cutiService->setujui(
-                $cuti,
-                $request->user(),
-                (string) $request->input('catatan', '')
-            );
-        } catch (ValidationException $e) {
-            return back()->with('error', $e->getMessage());
-        }
-
-        $this->kirimKabar($cuti, true);
-
-        return back()->with('status', 'Cuti ' . $cuti->technician?->name . ' disetujui.');
-    }
-
-    /**
-     * Menolak pengajuan cuti.
-     *
-     * @param  Request     $request Request admin
-     * @param  CutiTeknisi $cuti    Pengajuan
-     * @return \Illuminate\Http\RedirectResponse
-     */
-    public function tolak(Request $request, CutiTeknisi $cuti)
-    {
-        $this->pastikanAdmin();
-
-        try {
-            $cuti = $this->cutiService->tolak(
-                $cuti,
-                $request->user(),
-                (string) $request->input('catatan', '')
-            );
-        } catch (ValidationException $e) {
-            return back()->with('error', $e->getMessage());
-        }
-
-        $this->kirimKabar($cuti, false);
-
-        return back()->with('status', 'Cuti ' . $cuti->technician?->name . ' ditolak.');
-    }
-
-    /**
-     * Mengirim kabar persetujuan/penolakan ke Telegram teknisi.
-     *
-     * @param  CutiTeknisi $cuti     Pengajuan
-     * @param  bool        $disetujui True bila disetujui
-     * @return void
-     */
-    private function kirimKabar(CutiTeknisi $cuti, bool $disetujui): void
-    {
-        $telegramId = $cuti->technician?->telegram_id;
-
-        if ($telegramId === null || $telegramId === '') {
-            return;
-        }
-
-        $status = $disetujui ? 'DISETUJUI' : 'DITOLAK';
-        $pesan  = "Cuti Anda {$status}.\n"
-            . 'Periode: ' . $cuti->tanggal_mulai->format('d/m/Y') . ' - ' . $cuti->tanggal_selesai->format('d/m/Y') . "\n"
-            . 'Jenis: ' . $cuti->labelJenis();
-
-        if (($cuti->catatan_approver ?? '') !== '') {
-            $pesan .= "\nCatatan: " . htmlspecialchars((string) $cuti->catatan_approver, ENT_QUOTES, 'UTF-8');
-        }
-
-        app(TelegramService::class)->sendMessage($telegramId, $pesan);
-    }
-
-    /**
-     * Memastikan hanya administrator yang boleh mengelola cuti.
-     *
-     * @return void
-     */
-    private function pastikanAdmin(): void
-    {
-        if (! auth()->user()?->bolehKelolaUser()) {
-            abort(403, 'Halaman cuti hanya bisa diakses administrator.');
-        }
-    }
 }

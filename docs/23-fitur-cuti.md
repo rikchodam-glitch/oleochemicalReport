@@ -13,10 +13,13 @@ Dokumen ini menjelaskan fitur cuti yang terhubung ke bot Telegram dan man hour
    dari token; form menampilkan nama, NIK, dan group teknisi.
 5. Alasan yang ditulis setelah `/cuti` disimpan pada token dan otomatis mengisi
    kolom alasan di form (tetap bisa diedit).
-6. Teknisi memilih tanggal, jenis cuti, dan mengirim. Pengajuan berstatus
-   `pending`.
-7. Admin membuka **Cuti Teknisi** di sidebar, menyetujui/menolak dengan catatan.
-8. Setelah disetujui, target man hour teknisi pada hari kerja tersebut menjadi 0.
+6. Teknisi memilih tanggal, jenis cuti, dan mengirim. Cuti **langsung
+   disetujui** (tanpa persetujuan admin) dan target man hour hari kerja
+   terkait menjadi 0.
+7. Teknisi login ke aplikasi, membuka menu **Cuti Saya**, lalu bisa
+   **mengedit atau menghapus** cuti miliknya sendiri.
+8. Setiap perubahan/hapus langsung mengubah target man hour pada tanggal
+   terkait.
 
 ## Keamanan tautan
 
@@ -28,8 +31,9 @@ Dokumen ini menjelaskan fitur cuti yang terhubung ke bot Telegram dan man hour
   tanpa cookie.
 - Form publik tidak memakai `Auth::login()`; teknisi tidak mendapat akses ke
   dashboard/admin.
-- Route form memakai throttle 30 permintaan/menit. Route admin dijaga
-  `pastikanAdmin()` (hanya akun yang boleh mengelola user).
+- Route form memakai throttle 30 permintaan/menit. Halaman **Cuti Saya**
+  hanya bisa dibuka akun yang punya `users.technician_id`; kepemilikan cuti
+  diperiksa di `CutiSayaController` (tidak bisa mengubah cuti teknisi lain).
 - Permintaan tautan baru hanya membatalkan tautan lama yang **belum pernah
   dibuka**. Tautan yang sudah dibuka tetap berlaku sampai kedaluwarsa agar form
   yang sedang diisi tidak berubah menjadi "tautan tidak berlaku".
@@ -42,8 +46,9 @@ Dokumen ini menjelaskan fitur cuti yang terhubung ke bot Telegram dan man hour
 - `cuti_tokens`: teknisi, token_hash, telegram_id, alasan, expires_at,
   opened_at, used_at.
 - Jenis: `tahunan`, `sakit`, `izin`, `dinas`, `lainnya`.
-- Status: `pending`, `disetujui`, `ditolak`, `dibatalkan` (pembatalan belum
-  memiliki UI; disiapkan untuk pengembangan berikutnya).
+- Status utama sekarang `disetujui` (otomatis saat disimpan). Nilai
+  `pending`/`ditolak`/`dibatalkan` dipertahankan untuk kompatibilitas data
+  lama; man hour hanya membaca `disetujui`.
 
 ## Dampak man hour
 
@@ -72,14 +77,25 @@ Dokumen ini menjelaskan fitur cuti yang terhubung ke bot Telegram dan man hour
 - Ada pembatas 10 detik agar teknisi tidak membanjiri bot dengan tautan.
 - Pratinjau tautan dimatikan (`disable_web_page_preview`) agar Telegram tidak
   membuka form lebih dulu dan menandai `opened_at`.
-- Notifikasi persetujuan/penolakan dikirim ke Telegram teknisi bila
-  `telegram_id` tersedia.
+- Tidak ada notifikasi persetujuan karena cuti langsung berlaku.
+
+## Halaman Cuti Saya
+
+- Hanya untuk akun login yang terhubung ke teknisi (`users.technician_id`).
+- Menampilkan seluruh cuti milik teknisi tersebut, terbaru di atas.
+- **Edit**: tanggal mulai/selesai, jenis, dan alasan. Validasi bentrok tetap
+  berlaku; tanggal lampau boleh dikoreksi.
+- **Hapus**: hard delete setelah konfirmasi; target man hour kembali seperti
+  sebelum cuti.
+- Akun tanpa `technician_id` mendapat 403. Akun tidak bisa mengedit/menghapus
+  cuti teknisi lain.
 
 ## Batasan versi ini
 
 - Cuti penuh hari. Setengah hari, kuota cuti tahunan, lampiran surat sakit,
   kalender tim, dan pembatalan oleh teknisi belum termasuk.
-- Persetujuan hanya administrator; belum ada alur supervisor/HR terpisah.
+- Tidak ada persetujuan admin/supervisor/HR; cuti langsung berlaku.
+- Penghapusan bersifat permanen (belum soft delete/audit trail khusus).
 - Tautan memakai `APP_URL`; pastikan domain publik PROD benar agar tombol di
   Telegram dapat dibuka.
 
@@ -89,14 +105,14 @@ Dokumen ini menjelaskan fitur cuti yang terhubung ke bot Telegram dan man hour
 - `app/Models/CutiTeknisi.php`, `app/Models/CutiToken.php`
 - `app/Services/CutiService.php`
 - `app/Http/Controllers/CutiController.php`
+- `app/Http/Controllers/CutiSayaController.php`
 - `app/Http/Controllers/TelegramWebhookController.php`
 - `app/Services/Shift/ManHourService.php`
 - `resources/views/cuti/*`, `resources/views/technicians/show.blade.php`
 - `routes/web.php`, `config/akses.php`
-- `tests/Feature/CutiTest.php`
+- `tests/Feature/CutiTest.php`, `tests/Feature/CutiSayaTest.php`
 
 ## Uji
 
-`php artisan test --filter=CutiTest`: 13 test hijau, 65 assertion
-(termasuk jalur poller Telegram dan tautan yang sudah dibuka). Seluruh suite:
-689 test hijau, 3.405 assertion.
+`php artisan test --filter="CutiTest|CutiSayaTest"`: 17 test hijau,
+80 assertion. Seluruh suite: 693 test hijau, 3.420 assertion.
