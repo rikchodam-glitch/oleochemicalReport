@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\KirimBroadcastKolaborasi;
 use App\Models\Report;
 use App\Models\Technician;
 use App\Services\ReportCopyService;
@@ -62,6 +63,10 @@ class ReportCollaborationController extends Controller
         }
 
         $this->salinan->buatSalinanKolaborasi($report, $teknisi);
+
+        // Kolaborator baru langsung mendapat broadcast detail pekerjaan.
+        // Kolaborator lama tidak dikirimi ulang agar tidak spam.
+        KirimBroadcastKolaborasi::dispatch($report->id, [(int) $teknisi->id]);
 
         return $this->balas(
             $request,

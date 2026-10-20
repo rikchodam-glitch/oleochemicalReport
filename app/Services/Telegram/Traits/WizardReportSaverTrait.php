@@ -2,6 +2,7 @@
 
 namespace App\Services\Telegram\Traits;
 
+use App\Jobs\KirimBroadcastKolaborasi;
 use App\Models\Asset;
 use App\Models\FunctionalLocation;
 use App\Models\Report;
@@ -396,6 +397,13 @@ trait WizardReportSaverTrait
             // hanya memuat identitas alat/lokasi (agar riwayat alat & halaman lokasi
             // ikut menampilkan pekerjaan ini) dan menunjuk balik lewat multi_of.
             $jumlahMulti = $this->buatSalinanMultiEquipment($report, $dataLaporan, $technician, $state);
+
+            // Broadcast detail pekerjaan ke SEMUA kolaborator (bukan pelaksana)
+            // setelah salinan kolaborasi dibuat. Queue agar wizard tidak
+            // tertahan saat mengirim ke beberapa teknisi.
+            if ($jumlahKolaborator > 0) {
+                KirimBroadcastKolaborasi::dispatch($report->id);
+            }
 
             $this->destroyWizard($chatId);
 

@@ -1,21 +1,19 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-20 10:07 WIB
+Diperbarui: 2026-10-20 10:38 WIB
 
-- Cabang aktif: `tugas/erik/cuti-otomatis-dan-halaman-cuti-saya`
-- Mulai: 2026-10-20 10:07
+- Cabang aktif: `tugas/erik/broadcast-kolaborasi-laporan`
+- Mulai: 2026-10-20 10:38
 - Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
-  - `app/Services/CutiService.php`
-  - `app/Http/Controllers/CutiController.php`
-  - `app/Http/Controllers/CutiSayaController.php` (baru)
-  - `routes/web.php`, `config/akses.php`
-  - `resources/views/cuti/*`, `resources/views/layouts/app.blade.php`
-  - `resources/views/layouts/partials/sidebar-pengaturan.blade.php`
-  - `tests/Feature/CutiTest.php`, `tests/Feature/CutiSayaTest.php`
-  - `docs/23-fitur-cuti.md`, `AGENTS.md`
-  - `tugas/pr-cuti-otomatis-dan-halaman-cuti-saya.md`
-- Catatan: cuti otomatis disetujui; halaman Cuti Saya untuk akun teknisi mengedit/menghapus cuti sendiri.
+  - `app/Services/ReportCollaborationNotifier.php` (baru)
+  - `app/Jobs/KirimBroadcastKolaborasi.php` (baru)
+  - `app/Services/Telegram/Traits/WizardReportSaverTrait.php`
+  - `app/Http/Controllers/ReportCollaborationController.php`
+  - `tests/Feature/ReportCollaborationBroadcastTest.php` (baru)
+  - `docs/24-broadcast-kolaborasi.md`, `AGENTS.md`
+  - `tugas/pr-broadcast-kolaborasi-laporan.md`
+- Catatan: broadcast detail pekerjaan ke seluruh kolaborator saat laporan dibuat dan ke kolaborator baru saat ditambahkan lewat web.
 
 ## Riwayat
-- tugas/erik/perbaiki-tautan-cuti-pratinjau-telegram (mulai 2026-10-20 09:55) -> dilanjutkan 2026-10-20 10:07
+- tugas/erik/cuti-otomatis-dan-halaman-cuti-saya (mulai 2026-10-20 10:07) -> dilanjutkan 2026-10-20 10:38

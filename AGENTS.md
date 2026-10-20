@@ -66,6 +66,7 @@ Semua berkas di bawah ini ada di `docs/`.
 | [21-dashboard-utama.md](docs/21-dashboard-utama.md) | Dashboard lintas modul: KPI, grafik, akses per Bagian, aturan query | Mengubah `/dashboard`, menambah modul, atau grafik |
 | [22-laporan-kolaborasi-shift.md](docs/22-laporan-kolaborasi-shift.md) | Laporan Reguler/Reguler Staff yang berkolaborasi shift/Staff Grub tampil di tab Shift saja | Mengubah tab Reguler/Shift, filter grup, atau kolaborasi |
 | [23-fitur-cuti.md](docs/23-fitur-cuti.md) | Cuti lewat `/cuti` Telegram, token form tanpa login, approval admin, dampak man hour | Mengubah cuti, token, bot, atau target man hour |
+| [24-broadcast-kolaborasi.md](docs/24-broadcast-kolaborasi.md) | Broadcast Telegram detail pekerjaan ke seluruh kolaborator | Mengubah kolaborasi laporan atau notifikasi Telegram |
 
 ## Dokumen pendukung di `docs/`
 
