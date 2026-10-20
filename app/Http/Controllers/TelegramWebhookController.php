@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\AiService;
+use App\Services\CutiService;
 use App\Models\BotRegistration;
 use App\Models\Report;
 use App\Models\Technician;
@@ -10,16 +11,19 @@ use App\Models\BotUnknownAsset;
 use App\Models\Asset;
 use App\Models\Area;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class TelegramWebhookController extends Controller
 {
     protected AiService $aiService;
+    protected CutiService $cutiService;
 
-    public function __construct(AiService $aiService)
+    public function __construct(AiService $aiService, CutiService $cutiService)
     {
-        $this->aiService = $aiService;
+        $this->aiService  = $aiService;
+        $this->cutiService = $cutiService;
     }
 
     public function handle(Request $request)
@@ -49,6 +53,12 @@ class TelegramWebhookController extends Controller
                 }
 
                 $technician->update(['last_active_at' => now()]);
+
+                // /cuti atau /cuti <alasan>: buat tautan form sekali pakai.
+                // Dicek SEBELUM handleReport supaya tidak dibuat sebagai laporan.
+                if (preg_match('/^\/cuti(?:@\w+)?(?:\s+(.+))?$/isu', $text, $cocok)) {
+                    return $this->handleCuti($chatId, $technician, trim((string) ($cocok[1] ?? '')));
+                }
 
                 return $this->handleReport($chatId, $technician, $text);
             }
@@ -89,6 +99,38 @@ class TelegramWebhookController extends Controller
             $chatId,
             "Halo $firstName! Untuk mendaftar sebagai teknisi, silakan kirim NIK kamu.\n\nContoh: NIK 123456"
         );
+    }
+
+    /**
+     * Membuat tautan form cuti sekali pakai dan mengirimkannya ke teknisi.
+     *
+     * Alasan yang ditulis setelah /cuti ikut disimpan pada token sehingga
+     * form terbuka dengan kolom alasan sudah terisi.
+     *
+     * @param  int|string $chatId     ID chat Telegram
+     * @param  Technician $technician Teknisi pengirim
+     * @param  string     $alasan     Alasan dari pesan (boleh kosong)
+     * @return \Illuminate\Http\Response
+     */
+    protected function handleCuti($chatId, Technician $technician, string $alasan)
+    {
+        $kunci = 'cuti-tautan:' . $technician->id;
+
+        if (! Cache::add($kunci, true, now()->addSeconds(10))) {
+            return $this->sendMessage($chatId, 'Tunggu sebentar sebelum meminta tautan cuti lagi.');
+        }
+
+        $tautan = $this->cutiService->buatTautan($technician, $alasan);
+
+        $pesan = "Form cuti untuk {$technician->name}:\n"
+            . $tautan['url'] . "\n\n"
+            . 'Tautan berlaku ' . CutiService::MASA_BERLAKU_MENIT . ' menit dan hanya bisa dipakai sekali.';
+
+        if (trim($alasan) !== '') {
+            $pesan .= "\nAlasan dari pesan Anda sudah diisi otomatis di form.";
+        }
+
+        return $this->sendMessage($chatId, $pesan);
     }
 
     protected function handleReport($chatId, Technician $technician, string $text)

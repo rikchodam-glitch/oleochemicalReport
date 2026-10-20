@@ -142,6 +142,14 @@ return [
         'logout',
         'telegram.webhook',
         'debug.login',
+        // Form cuti publik memakai token, bukan login panel. Halaman admin
+        // cuti dijaga khusus administrator di CutiController.
+        'cuti.form',
+        'cuti.simpan',
+        'cuti.selesai',
+        'cuti.admin.index',
+        'cuti.admin.setujui',
+        'cuti.admin.tolak',
     ],
 
     'pesan_tolak' => 'Bagian Anda tidak memiliki akses ke halaman ini.',

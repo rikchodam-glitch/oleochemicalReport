@@ -2,6 +2,7 @@
 
 namespace App\Services\Shift;
 
+use App\Models\CutiTeknisi;
 use App\Models\Report;
 use App\Models\Technician;
 use App\Models\TechnicianShift;
@@ -61,6 +62,11 @@ class ManHourService
 
         $grup = (string) ($technician->group ?? 'reguler');
 
+        // Cuti yang sudah disetujui menghapus target hari itu. Jika teknisi
+        // tetap melapor pada hari cuti, jamnya dipindahkan ke lembur dan
+        // ditandai sebagai anomali (bukan man hour normal).
+        $cutiPerTanggal = $this->petaCuti([$technician->id], $awal, $akhir)[$technician->id] ?? [];
+
         $rincian = [];
 
         for ($tanggal = $awal->copy(); $tanggal->lte($akhir); $tanggal->addDay()) {
@@ -68,6 +74,7 @@ class ManHourService
             $shift       = $jadwal[$kunci] ?? null;
             $laporanHari = $perHari[$kunci] ?? [];
             $namaLibur   = $jamKerja->namaHariLibur($tanggal);
+            $cuti        = $cutiPerTanggal[$kunci] ?? null;
             $menit       = 0;
             $lembur      = 0;
             $catatan     = [];
@@ -98,8 +105,24 @@ class ManHourService
                 $lembur += $menitBaris['lembur'];
             }
 
-            $target      = $this->targetHari($jamKerja, $shift, $tanggal, $grup);
-            $jumlahKerja = count($laporanHari);
+            $targetNormal = $this->targetHari($jamKerja, $shift, $tanggal, $grup);
+            $jumlahKerja  = count($laporanHari);
+
+            // Cuti hanya berlaku pada hari yang sebenarnya punya target kerja.
+            // Cuti yang jatuh pada hari OFF/libur nasional tidak mengubah apa pun.
+            $cutiBerlaku = $cuti !== null && $targetNormal > 0;
+            $target      = $cutiBerlaku ? 0 : $targetNormal;
+
+            if ($cutiBerlaku) {
+                $catatan[] = 'Cuti disetujui: ' . $cuti->labelJenis()
+                    . ' (' . $cuti->tanggal_mulai->format('d/m/Y') . ' - ' . $cuti->tanggal_selesai->format('d/m/Y') . ')';
+
+                if ($menit > 0) {
+                    $catatan[] = $jumlahKerja . ' laporan pada hari cuti dihitung lembur';
+                    $lembur += $menit;
+                    $menit = 0;
+                }
+            }
 
             // Hari libur nasional: seluruh pekerjaan dihitung lembur, ditandai
             // dengan nama liburnya supaya teknisi tahu sebabnya.
@@ -135,7 +158,11 @@ class ManHourService
                 'lembur'           => $lembur,
                 'persen'           => $target > 0 ? (int) round($menit / $target * 100) : null,
                 'jumlah_pekerjaan' => $jumlahKerja,
-                'status'           => $this->statusHari($target, $menit, $lembur),
+                'status'           => $cutiBerlaku
+                    ? (($menit + $lembur) > 0 ? 'lebih' : 'cuti')
+                    : $this->statusHari($target, $menit, $lembur),
+                'cuti'             => $cutiBerlaku,
+                'label_cuti'       => $cutiBerlaku ? $cuti->labelJenis() : null,
                 'catatan'          => $catatan,
                 'laporan'          => $laporanHari,
             ];
@@ -242,6 +269,7 @@ class ManHourService
         $totalTarget = 0;
         $hariKerja   = 0;
         $hariLibur   = 0;
+        $hariCuti    = 0;
         $terpenuhi   = 0;
         $kurang      = 0;
         $lebih       = 0;
@@ -252,10 +280,14 @@ class ManHourService
             $totalMenit += $baris['menit'];
             $totalLembur += (int) ($baris['lembur'] ?? 0);
 
+            if (! empty($baris['cuti'])) {
+                $hariCuti++;
+            }
+
             if ($baris['target_menit'] > 0) {
                 $hariKerja++;
                 $totalTarget += $baris['target_menit'];
-            } else {
+            } elseif (empty($baris['cuti'])) {
                 $hariLibur++;
             }
 
@@ -287,6 +319,7 @@ class ManHourService
         return [
             'hari_kerja'                => $hariKerja,
             'hari_libur'                => $hariLibur,
+            'hari_cuti'                 => $hariCuti,
             'jumlah_hari'               => $jumlahHari,
             'total_menit'               => $totalMenit,
             'total_lembur_menit'        => $totalLembur,
@@ -442,18 +475,27 @@ class ManHourService
 
         $hasil         = [];
         $tanggalTerisi = [];
+        $cuti          = $this->petaCuti($teknisiIds, $mulai, $selesai);
 
         TechnicianShift::query()
             ->whereIn('technician_id', $teknisiIds)
             ->antara($mulai->toDateString(), $selesai->toDateString())
             ->get(['technician_id', 'shift_date', 'shift_code'])
-            ->each(function (TechnicianShift $shift) use (&$hasil, &$tanggalTerisi, $teknisi): void {
-                $id   = (int) $shift->technician_id;
-                $grup = (string) ($teknisi[$id]->group ?? 'reguler');
+            ->each(function (TechnicianShift $shift) use (&$hasil, &$tanggalTerisi, $teknisi, $cuti): void {
+                $id    = (int) $shift->technician_id;
+                $grup  = (string) ($teknisi[$id]->group ?? 'reguler');
+                $kunci = $shift->shift_date->toDateString();
+
+                $tanggalTerisi[$id][$kunci] = true;
+
+                // Cuti disetujui: target hari itu 0 (tidak ditambahkan).
+                if (isset($cuti[$id][$kunci])) {
+                    $hasil[$id] = $hasil[$id] ?? 0;
+
+                    return;
+                }
 
                 $hasil[$id] = ($hasil[$id] ?? 0) + $shift->targetMenit($grup);
-
-                $tanggalTerisi[$id][$shift->shift_date->toDateString()] = true;
             });
 
         $pola = app(ShiftPatternService::class);
@@ -466,6 +508,13 @@ class ManHourService
                 $kunci = $tanggal->toDateString();
 
                 if (isset($tanggalTerisi[$id][$kunci])) {
+                    continue;
+                }
+
+                // Cuti disetujui: target hari itu 0.
+                if (isset($cuti[$id][$kunci])) {
+                    $hasil[$id] = $hasil[$id] ?? 0;
+
                     continue;
                 }
 
@@ -482,6 +531,52 @@ class ManHourService
                     : $jam->targetMenit($grup, $tanggal);
 
                 $hasil[$id] = ($hasil[$id] ?? 0) + $menit;
+            }
+        }
+
+        return $hasil;
+    }
+
+    /**
+     * Peta tanggal cuti disetujui per teknisi pada satu rentang.
+     *
+     * @param  array<int, int> $teknisiIds Daftar ID teknisi
+     * @param  CarbonInterface $mulai      Tanggal awal (inklusif)
+     * @param  CarbonInterface $selesai    Tanggal akhir (inklusif)
+     * @return array<int, array<string, CutiTeknisi>> Peta ID teknisi => tanggal => cuti
+     */
+    private function petaCuti(array $teknisiIds, CarbonInterface $mulai, CarbonInterface $selesai): array
+    {
+        if ($teknisiIds === []) {
+            return [];
+        }
+
+        $hasil = [];
+        $awal  = $mulai->copy()->startOfDay();
+        $akhir = $selesai->copy()->startOfDay();
+
+        $daftar = CutiTeknisi::query()
+            ->disetujui()
+            ->whereIn('technician_id', $teknisiIds)
+            ->whereDate('tanggal_mulai', '<=', $akhir->toDateString())
+            ->whereDate('tanggal_selesai', '>=', $awal->toDateString())
+            ->get();
+
+        foreach ($daftar as $cuti) {
+            $tanggal = $cuti->tanggal_mulai->copy()->startOfDay();
+
+            if ($tanggal->lt($awal)) {
+                $tanggal = $awal->copy();
+            }
+
+            $selesaiCuti = $cuti->tanggal_selesai->copy()->startOfDay();
+
+            if ($selesaiCuti->gt($akhir)) {
+                $selesaiCuti = $akhir->copy();
+            }
+
+            for (; $tanggal->lte($selesaiCuti); $tanggal->addDay()) {
+                $hasil[(int) $cuti->technician_id][$tanggal->toDateString()] = $cuti;
             }
         }
 
