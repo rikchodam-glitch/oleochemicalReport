@@ -27,6 +27,12 @@
             di menu <span class="font-semibold text-slate-700">Cuti Saya</span>.
         </p>
 
+        @if($hasil['notif'] ?? false)
+            <p class="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 mt-3">
+                Notifikasi dan tautan halaman Cuti Saya sudah dikirim ke Telegram Anda.
+            </p>
+        @endif
+
         <a href="{{ url('/') }}" class="inline-block mt-5 text-xs font-semibold text-teal-700 hover:text-teal-800">
             Tutup halaman
         </a>

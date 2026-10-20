@@ -77,7 +77,9 @@ Dokumen ini menjelaskan fitur cuti yang terhubung ke bot Telegram dan man hour
 - Ada pembatas 10 detik agar teknisi tidak membanjiri bot dengan tautan.
 - Pratinjau tautan dimatikan (`disable_web_page_preview`) agar Telegram tidak
   membuka form lebih dulu dan menandai `opened_at`.
-- Tidak ada notifikasi persetujuan karena cuti langsung berlaku.
+- Setelah form dikirim, bot mengirim notifikasi **"Cuti tercatat"** beserta
+  tautan halaman **Cuti Saya** ke Telegram teknisi (bukan notifikasi
+  persetujuan, karena cuti langsung berlaku).
 
 ## Halaman Cuti Saya
 
@@ -114,5 +116,5 @@ Dokumen ini menjelaskan fitur cuti yang terhubung ke bot Telegram dan man hour
 
 ## Uji
 
-`php artisan test --filter="CutiTest|CutiSayaTest"`: 17 test hijau,
-80 assertion. Seluruh suite: 693 test hijau, 3.420 assertion.
+`php artisan test --filter="CutiTest|CutiSayaTest"`: 18 test hijau,
+84 assertion. Seluruh suite: 694 test hijau, 3.424 assertion.

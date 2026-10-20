@@ -4,6 +4,8 @@
 
 - Menghapus alur pengajuan/persetujuan admin. Cuti yang dikirim dari form
   Telegram **langsung disetujui** dan langsung memengaruhi target man hour.
+- Setelah form cuti dikirim, bot Telegram mengirim notifikasi **"Cuti tercatat"**
+  beserta tautan halaman **Cuti Saya**.
 - Menambahkan halaman **Cuti Saya** untuk akun login yang terhubung ke teknisi
   (`users.technician_id`).
 - Pemilik akun dapat **mengedit** dan **menghapus** cuti miliknya sendiri.
@@ -43,7 +45,7 @@ kompatibilitas, tetapi alur baru tidak membuat status pending.
 
 ## Uji
 
-- `php artisan test --filter="CutiTest|CutiSayaTest"`: 17 test hijau,
-  80 assertion.
-- Seluruh suite: 693 test hijau, 3.420 assertion.
+- `php artisan test --filter="CutiTest|CutiSayaTest"`: 18 test hijau,
+  84 assertion.
+- Seluruh suite: 694 test hijau, 3.424 assertion.
 - `view:cache` sukses.
