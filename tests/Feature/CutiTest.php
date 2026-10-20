@@ -7,6 +7,7 @@ use App\Services\CutiService;
 use App\Services\Shift\ManHourService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
 
@@ -77,6 +78,30 @@ test('pengajuan cuti langsung disetujui dan token menjadi sekali pakai', functio
         ->assertOk()
         ->assertSee('Cuti tercatat')
         ->assertSee('Teknisi Cuti Uji');
+});
+
+test('setelah form cuti dikirim, bot mengirim tautan Cuti Saya ke Telegram', function () {
+    config(['services.telegram.bot_token' => '123:token-uji']);
+    Http::fake([
+        'api.telegram.org/*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $hasil = app(CutiService::class)->buatTautan($this->teknisi, 'keperluan keluarga');
+    $this->get(route('cuti.form', ['token' => $hasil['plain']]))->assertOk();
+
+    $this->post(route('cuti.simpan', ['token' => $hasil['plain']]), [
+        'tanggal_mulai'   => $this->tanggal,
+        'tanggal_selesai' => $this->tanggal,
+        'jenis'           => 'tahunan',
+        'alasan'          => 'keperluan keluarga',
+    ])->assertRedirect(route('cuti.selesai'));
+
+    Http::assertSent(function ($request) {
+        return str_contains($request->url(), '/sendMessage')
+            && (string) $request['chat_id'] === (string) $this->teknisi->telegram_id
+            && str_contains((string) $request['text'], 'Cuti Saya')
+            && str_contains((string) $request['text'], '/cuti-saya');
+    });
 });
 
 test('tautan kedaluwarsa dan tautan yang sudah dipakai ditolak', function () {

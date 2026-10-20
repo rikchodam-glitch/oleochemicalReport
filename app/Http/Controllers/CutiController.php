@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\CutiTeknisi;
+use App\Models\CutiToken;
 use App\Services\CutiService;
+use App\Services\TelegramService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -91,6 +93,7 @@ class CutiController extends Controller
         ]);
 
         $cuti = $this->cutiService->ajukan($tokenModel, $data);
+        $notifTerkirim = $this->kirimNotifikasiCuti($tokenModel, $cuti);
 
         $request->session()->forget(['cuti_token_id', 'cuti_technician_id']);
 
@@ -102,6 +105,7 @@ class CutiController extends Controller
                 'tanggal_selesai' => $cuti->tanggal_selesai->format('d/m/Y'),
                 'jenis'           => $cuti->labelJenis(),
                 'status'          => $cuti->labelStatus(),
+                'notif'           => $notifTerkirim,
             ]);
     }
 
@@ -122,4 +126,32 @@ class CutiController extends Controller
         return view('cuti.selesai', ['hasil' => $hasil]);
     }
 
+    /**
+     * Mengirim notifikasi bahwa cuti tercatat beserta akses ke halaman Cuti Saya.
+     *
+     * @param  CutiToken  $token Token form (sumber telegram_id)
+     * @param  CutiTeknisi $cuti Cuti yang baru dibuat
+     * @return bool              True bila pesan Telegram berhasil dikirim
+     */
+    private function kirimNotifikasiCuti(CutiToken $token, CutiTeknisi $cuti): bool
+    {
+        $telegramId = $token->telegram_id ?: $token->technician?->telegram_id;
+
+        if ($telegramId === null || $telegramId === '') {
+            return false;
+        }
+
+        $pesan = "<b>Cuti tercatat</b>\n"
+            . 'Periode: ' . $cuti->tanggal_mulai->format('d/m/Y') . ' - ' . $cuti->tanggal_selesai->format('d/m/Y') . "\n"
+            . 'Jenis: ' . e($cuti->labelJenis()) . "\n"
+            . 'Status: ' . e($cuti->labelStatus()) . "\n\n"
+            . "Akses halaman Cuti Saya (login dengan akun Anda):\n"
+            . route('cuti.saya');
+
+        return app(TelegramService::class)->sendMessage(
+            $telegramId,
+            $pesan,
+            ['disable_web_page_preview' => true]
+        );
+    }
 }
