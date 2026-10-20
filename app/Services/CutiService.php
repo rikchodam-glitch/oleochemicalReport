@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\CutiTeknisi;
 use App\Models\CutiToken;
 use App\Models\Technician;
-use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -162,7 +161,10 @@ class CutiService
                 'tanggal_selesai'  => $selesai->toDateString(),
                 'jenis'            => $jenis,
                 'alasan'           => $this->rapikanAlasan($data['alasan'] ?? $token->alasan),
-                'status'           => CutiTeknisi::STATUS_PENDING,
+                // Tanpa alur persetujuan admin: cuti langsung berlaku dan
+                // langsung mengurangi target man hour.
+                'status'           => CutiTeknisi::STATUS_DISETUJUI,
+                'disetujui_at'     => now(),
                 'diajukan_via'     => $token->telegram_id !== null ? 'telegram' : 'web',
             ]);
 
@@ -173,56 +175,64 @@ class CutiService
     }
 
     /**
-     * Menyetujui pengajuan cuti.
+     * Memperbarui cuti milik teknisi dari halaman Cuti Saya.
      *
-     * @param  CutiTeknisi $cuti   Pengajuan
-     * @param  User        $oleh   Admin penyetuju
-     * @param  string|null $catatan Catatan persetujuan
+     * Perubahan langsung berlaku (status tetap disetujui) dan memengaruhi
+     * target man hour. Tanggal lampau boleh diedit untuk koreksi; validasi
+     * bentrok tetap dijalankan.
+     *
+     * @param  CutiTeknisi          $cuti Cuti yang diubah
+     * @param  array<string, mixed> $data Data tervalidasi dari form
      * @return CutiTeknisi
      *
-     * @throws ValidationException Bila pengajuan bukan status pending
+     * @throws ValidationException Bila tanggal/jenis/rentang tidak valid atau bentrok
      */
-    public function setujui(CutiTeknisi $cuti, User $oleh, ?string $catatan = null): CutiTeknisi
+    public function perbarui(CutiTeknisi $cuti, array $data): CutiTeknisi
     {
-        if ($cuti->status !== CutiTeknisi::STATUS_PENDING) {
+        $mulai   = Carbon::parse((string) $data['tanggal_mulai'])->startOfDay();
+        $selesai = Carbon::parse((string) $data['tanggal_selesai'])->startOfDay();
+
+        if ($selesai->lt($mulai)) {
             throw ValidationException::withMessages([
-                'status' => 'Hanya pengajuan yang menunggu yang bisa disetujui.',
+                'tanggal_selesai' => 'Tanggal selesai tidak boleh sebelum tanggal mulai.',
+            ]);
+        }
+
+        if ($mulai->diffInDays($selesai) + 1 > self::MAKS_HARI) {
+            throw ValidationException::withMessages([
+                'tanggal_selesai' => 'Satu cuti maksimal ' . self::MAKS_HARI . ' hari.',
+            ]);
+        }
+
+        $jenis = (string) ($data['jenis'] ?? 'tahunan');
+
+        if (! array_key_exists($jenis, CutiTeknisi::JENIS)) {
+            throw ValidationException::withMessages([
+                'jenis' => 'Jenis cuti tidak dikenal.',
+            ]);
+        }
+
+        $bentrok = CutiTeknisi::query()
+            ->where('technician_id', $cuti->technician_id)
+            ->where('id', '!=', $cuti->id)
+            ->whereIn('status', [CutiTeknisi::STATUS_PENDING, CutiTeknisi::STATUS_DISETUJUI])
+            ->whereDate('tanggal_mulai', '<=', $selesai->toDateString())
+            ->whereDate('tanggal_selesai', '>=', $mulai->toDateString())
+            ->exists();
+
+        if ($bentrok) {
+            throw ValidationException::withMessages([
+                'tanggal_mulai' => 'Perubahan ini beririsan dengan cuti lain milik teknisi.',
             ]);
         }
 
         $cuti->update([
-            'status'           => CutiTeknisi::STATUS_DISETUJUI,
-            'disetujui_oleh'   => $oleh->id,
-            'disetujui_at'     => now(),
-            'catatan_approver' => $this->rapikanAlasan($catatan),
-        ]);
-
-        return $cuti->refresh();
-    }
-
-    /**
-     * Menolak pengajuan cuti.
-     *
-     * @param  CutiTeknisi $cuti    Pengajuan
-     * @param  User        $oleh    Admin penolak
-     * @param  string|null $catatan Alasan penolakan
-     * @return CutiTeknisi
-     *
-     * @throws ValidationException Bila pengajuan bukan status pending
-     */
-    public function tolak(CutiTeknisi $cuti, User $oleh, ?string $catatan = null): CutiTeknisi
-    {
-        if ($cuti->status !== CutiTeknisi::STATUS_PENDING) {
-            throw ValidationException::withMessages([
-                'status' => 'Hanya pengajuan yang menunggu yang bisa ditolak.',
-            ]);
-        }
-
-        $cuti->update([
-            'status'           => CutiTeknisi::STATUS_DITOLAK,
-            'disetujui_oleh'   => $oleh->id,
-            'disetujui_at'     => now(),
-            'catatan_approver' => $this->rapikanAlasan($catatan),
+            'tanggal_mulai'   => $mulai->toDateString(),
+            'tanggal_selesai' => $selesai->toDateString(),
+            'jenis'           => $jenis,
+            'alasan'          => $this->rapikanAlasan($data['alasan'] ?? null),
+            'status'          => CutiTeknisi::STATUS_DISETUJUI,
+            'disetujui_at'    => $cuti->disetujui_at ?? now(),
         ]);
 
         return $cuti->refresh();

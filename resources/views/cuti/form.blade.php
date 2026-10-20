@@ -86,9 +86,10 @@
                 </div>
 
                 <div class="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-[11px] text-slate-500 leading-relaxed">
-                    Pengajuan akan berstatus <span class="font-semibold text-amber-700">Menunggu</span>
-                    sampai disetujui admin. Target man hour baru dikurangi setelah cuti disetujui.
-                    Cuti yang beririsan dengan pengajuan lain akan ditolak sistem.
+                    Cuti langsung tercatat dan berlaku tanpa persetujuan admin. Target man hour
+                    pada tanggal tersebut langsung disesuaikan. Setelah login, Anda dapat
+                    mengubah atau menghapus cuti di menu <span class="font-semibold text-slate-700">Cuti Saya</span>.
+                    Cuti yang beririsan dengan cuti lain akan ditolak sistem.
                 </div>
 
                 <button type="submit"

@@ -19,6 +19,7 @@ use App\Http\Controllers\PanelRuanganController;
 use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\CollaborationController;
 use App\Http\Controllers\CutiController;
+use App\Http\Controllers\CutiSayaController;
 use App\Http\Controllers\ReportCollaborationController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReportMultiItemController;
@@ -47,6 +48,16 @@ Route::middleware('throttle:30,1')->group(function () {
     Route::get('/cuti/form/{token}', [CutiController::class, 'form'])->name('cuti.form');
     Route::post('/cuti/form/{token}', [CutiController::class, 'simpan'])->name('cuti.simpan');
     Route::get('/cuti/selesai', [CutiController::class, 'selesai'])->name('cuti.selesai');
+});
+
+// Cuti milik teknisi yang sudah login. Sengaja di luar middleware hanya_baca:
+// pemilik akun boleh mengubah/menghapus cutinya sendiri. Kepemilikan data
+// diperiksa di CutiSayaController.
+Route::middleware('admin')->group(function () {
+    Route::get('/cuti-saya', [CutiSayaController::class, 'index'])->name('cuti.saya');
+    Route::get('/cuti-saya/{cuti}/edit', [CutiSayaController::class, 'edit'])->name('cuti.saya.edit');
+    Route::put('/cuti-saya/{cuti}', [CutiSayaController::class, 'update'])->name('cuti.saya.update');
+    Route::delete('/cuti-saya/{cuti}', [CutiSayaController::class, 'destroy'])->name('cuti.saya.destroy');
 });
 
 // DEBUG ONLY — auto-login untuk pengembangan lokal (hapus sebelum production!)
@@ -220,11 +231,6 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
 
     // Work Orders
     Route::resource('work-orders', WorkOrderController::class);
-
-    // Cuti teknisi: pengajuan dari Telegram + persetujuan admin.
-    Route::get('/cuti-admin', [CutiController::class, 'adminIndex'])->name('cuti.admin.index');
-    Route::post('/cuti-admin/{cuti}/setujui', [CutiController::class, 'setujui'])->name('cuti.admin.setujui');
-    Route::post('/cuti-admin/{cuti}/tolak', [CutiController::class, 'tolak'])->name('cuti.admin.tolak');
 
     // IT Assets
     Route::get('/it-assets', [ItAssetController::class, 'index'])->name('it-assets.index');

@@ -1,19 +1,21 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-20 09:55 WIB
+Diperbarui: 2026-10-20 10:07 WIB
 
-- Cabang aktif: `tugas/erik/perbaiki-tautan-cuti-pratinjau-telegram`
-- Mulai: 2026-10-20 09:55
+- Cabang aktif: `tugas/erik/cuti-otomatis-dan-halaman-cuti-saya`
+- Mulai: 2026-10-20 10:07
 - Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
+  - `app/Services/CutiService.php`
   - `app/Http/Controllers/CutiController.php`
-  - `app/Console/Commands/Traits/TelegramSenderTrait.php`
-  - `app/Console/Commands/Traits/TelegramMessageHandlerTrait.php`
-  - `app/Http/Controllers/TelegramWebhookController.php`
-  - `tests/Feature/CutiTest.php`
-  - `docs/23-fitur-cuti.md`, `docs/12-riwayat-insiden-33-46.md`
-  - `AGENTS.md`, `tugas/pr-perbaiki-tautan-cuti-pratinjau-telegram.md`
-- Catatan: preview tautan Telegram membuka form lebih dulu, sehingga session pengguna asli dianggap perangkat lain; perbaiki binding + matikan preview.
+  - `app/Http/Controllers/CutiSayaController.php` (baru)
+  - `routes/web.php`, `config/akses.php`
+  - `resources/views/cuti/*`, `resources/views/layouts/app.blade.php`
+  - `resources/views/layouts/partials/sidebar-pengaturan.blade.php`
+  - `tests/Feature/CutiTest.php`, `tests/Feature/CutiSayaTest.php`
+  - `docs/23-fitur-cuti.md`, `AGENTS.md`
+  - `tugas/pr-cuti-otomatis-dan-halaman-cuti-saya.md`
+- Catatan: cuti otomatis disetujui; halaman Cuti Saya untuk akun teknisi mengedit/menghapus cuti sendiri.
 
 ## Riwayat
-- tugas/erik/perbaiki-cuti-di-poller-telegram (mulai 2026-10-20 09:40) -> dilanjutkan 2026-10-20 09:55
+- tugas/erik/perbaiki-tautan-cuti-pratinjau-telegram (mulai 2026-10-20 09:55) -> dilanjutkan 2026-10-20 10:07
