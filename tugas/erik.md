@@ -1,22 +1,16 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-20 09:20 WIB
+Diperbarui: 2026-10-20 09:40 WIB
 
-- Cabang aktif: `tugas/erik/fitur-cuti-telegram-dan-man-hour`
-- Mulai: 2026-10-20 09:20
+- Cabang aktif: `tugas/erik/perbaiki-cuti-di-poller-telegram`
+- Mulai: 2026-10-20 09:40
 - Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
-  - `database/migrations/2026_10_20_000001_create_cuti_tables.php`
-  - `app/Models/CutiTeknisi.php`, `app/Models/CutiToken.php`
-  - `app/Services/CutiService.php`
-  - `app/Http/Controllers/CutiController.php`
-  - `app/Http/Controllers/TelegramWebhookController.php`
-  - `app/Services/Shift/ManHourService.php`
-  - `resources/views/cuti/*`, `resources/views/technicians/show.blade.php`
-  - `resources/views/layouts/partials/sidebar-pengaturan.blade.php`
-  - `routes/web.php`, `tests/Feature/CutiTest.php`
-  - `docs/23-fitur-cuti.md`, `AGENTS.md`
-- Catatan: `/cuti <alasan>` dari Telegram menghasilkan link token sekali pakai; cuti disetujui mengurangi target man hour.
+  - `app/Console/Commands/Traits/TelegramMessageHandlerTrait.php`
+  - `tests/Feature/CutiTest.php`
+  - `docs/23-fitur-cuti.md`, `docs/12-riwayat-insiden-33-46.md`
+  - `AGENTS.md`, `tugas/pr-fitur-cuti-telegram-dan-man-hour.md`
+- Catatan: memperbaiki `/cuti` yang hanya ditangani webhook; bot PROD memakai poller.
 
 ## Riwayat
-- tugas/erik/catat-insiden-deploy-dari-cabang-tugas (mulai 2026-10-20 08:50) -> dilanjutkan 2026-10-20 09:20
+- tugas/erik/fitur-cuti-telegram-dan-man-hour (mulai 2026-10-20 09:20) -> dilanjutkan 2026-10-20 09:40

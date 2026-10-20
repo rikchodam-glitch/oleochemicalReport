@@ -1,4 +1,4 @@
-# Riwayat Insiden 33-47
+# Riwayat Insiden 33-48
 
 > Bagian dari dokumentasi proyek di folder `docs`.
 > Peta dokumen: `AGENTS.md` di akar repo.
@@ -642,3 +642,21 @@
     `git merge-base --is-ancestor <commit-fitur> origin/main`. (4) Setelah DEV
     kembali ke main, deploy boleh diulang; berkas kotor sesi lain tidak ikut
     di-deploy karena deploy memakai commit main, bukan working tree.**
+
+48. **`/cuti` tetap memunculkan klasifikasi pekerjaan karena hanya dipasang di
+    webhook, sedangkan bot PROD memakai poller (20/10/2026).** Gejala: teknisi
+    mengetik `/cuti`, tetapi bot membalas pilihan klasifikasi pekerjaan seperti
+    laporan biasa. Penyebab: fitur cuti ditambahkan ke
+    `TelegramWebhookController`, padahal bot PROD dijalankan lewat
+    `php artisan telegram:poll` -> `TelegramMessageHandlerTrait`
+    (`PollTelegramUpdates`). Webhook tidak dipakai pada alur PROD, sehingga
+    perintah jatuh ke `handleReport()` dan masuk wizard klasifikasi. Perbaikan:
+    `handleCutiCommand()` ditambahkan ke trait, tepat sebelum routing wizard/
+    `handleReport()`, dengan alasan setelah `/cuti` disimpan ke token. Uji
+    `CutiTest` menambah jalur poller (anonymous class memakai trait) dan
+    memastikan tidak ada laporan/klasifikasi yang dibuat. **Pelajaran: (1) satu
+    bot bisa punya DUA pintu masuk (webhook dan poller); perubahan perintah
+    harus dipasang di keduanya atau dijadikan satu router bersama; (2) uji
+    jalur yang benar-benar dipakai PROD, bukan hanya endpoint webhook; (3)
+    perintah seperti `/cuti` wajib dicek SEBELUM wizard, karena wizard aktif
+    akan menelan teks apa pun sebagai jawaban langkah.**

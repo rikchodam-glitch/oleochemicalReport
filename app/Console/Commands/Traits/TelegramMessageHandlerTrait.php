@@ -4,8 +4,10 @@ namespace App\Console\Commands\Traits;
 
 use App\Models\BotRegistration;
 use App\Models\Technician;
+use App\Services\CutiService;
 use App\Services\Telegram\AssetInfoService;
 use App\Services\Telegram\PhotoNotificationBuffer;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -110,6 +112,14 @@ trait TelegramMessageHandlerTrait
             return;
         }
 
+        // Perintah /cuti: buat tautan form cuti sekali pakai. Dicek SEBELUM
+        // wizard/laporan supaya /cuti tidak pernah masuk ke klasifikasi
+        // pekerjaan. Alasan setelah /cuti ikut disimpan ke form.
+        if (preg_match('/^\/cuti(?:@\S+)?(?:\s+(.+))?$/isu', $text, $cocokCuti)) {
+            $this->handleCutiCommand($chatId, $technician, trim((string) ($cocokCuti[1] ?? '')));
+            return;
+        }
+
         // Routing foto
         if ($hasPhoto) {
             $this->handlePhotoMessage($chatId, $message, $technician, $caption, $message['media_group_id'] ?? null);
@@ -182,6 +192,37 @@ trait TelegramMessageHandlerTrait
         ]);
 
         $this->sendMessage($chatId, 'Sesi laporan dibatalkan. Kirim pesan atau foto untuk memulai laporan baru.');
+    }
+
+    /**
+     * Membuat tautan form cuti sekali pakai dan mengirimkannya ke teknisi.
+     *
+     * @param  int|string $chatId     ID chat Telegram
+     * @param  Technician $technician Teknisi pengirim
+     * @param  string     $alasan     Alasan dari pesan setelah /cuti
+     * @return void
+     */
+    private function handleCutiCommand(int|string $chatId, Technician $technician, string $alasan): void
+    {
+        $kunci = 'cuti-tautan:' . $technician->id;
+
+        if (! Cache::add($kunci, true, now()->addSeconds(10))) {
+            $this->sendMessage($chatId, 'Tunggu sebentar sebelum meminta tautan cuti lagi.');
+
+            return;
+        }
+
+        $tautan = app(CutiService::class)->buatTautan($technician, $alasan);
+
+        $pesan = "Form cuti untuk {$technician->name}:\n"
+            . $tautan['url'] . "\n\n"
+            . 'Tautan berlaku ' . CutiService::MASA_BERLAKU_MENIT . ' menit dan hanya bisa dipakai sekali.';
+
+        if (trim($alasan) !== '') {
+            $pesan .= "\nAlasan dari pesan Anda sudah diisi otomatis di form.";
+        }
+
+        $this->sendMessage($chatId, $pesan);
     }
 
     /**
