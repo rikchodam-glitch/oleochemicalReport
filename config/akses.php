@@ -159,7 +159,12 @@ return [
         'cuti.saya',
         // Form laporan web milik teknisi: login + users.technician_id.
         'laporan.saya.create',
-        'laporan.saya.store',
+        // Form token publik + API pencarian lokasi/alat.
+        'laporan.form',
+        'laporan.simpan',
+        'laporan.selesai',
+        'laporan.api.tipe',
+        'laporan.api.alat',
     ],
 
     'pesan_tolak' => 'Bagian Anda tidak memiliki akses ke halaman ini.',

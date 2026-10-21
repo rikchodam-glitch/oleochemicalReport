@@ -44,6 +44,15 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 // Telegram webhook (no auth, called by Telegram)
 Route::post('/telegram/webhook', [TelegramWebhookController::class, 'handle'])->name('telegram.webhook');
 
+// Form laporan publik dari token /laporan (tanpa login panel).
+Route::middleware('throttle:60,1')->group(function () {
+    Route::get('/laporan/form/{token}', [ReportFormController::class, 'form'])->name('laporan.form');
+    Route::post('/laporan/form/{token}', [ReportFormController::class, 'simpan'])->name('laporan.simpan');
+    Route::get('/laporan/selesai', [ReportFormController::class, 'selesai'])->name('laporan.selesai');
+    Route::get('/laporan/{token}/tipe-alat', [ReportFormController::class, 'tipeAlat'])->name('laporan.api.tipe');
+    Route::get('/laporan/{token}/cari-alat', [ReportFormController::class, 'cariAlat'])->name('laporan.api.alat');
+});
+
 // Cuti teknisi:
 // - teknisi login hanya MELIHAT cuti miliknya;
 // - Admin Reguler/Administrator mencatat cuti dari halaman teknisi.
@@ -54,7 +63,6 @@ Route::middleware('admin')->group(function () {
     // Form laporan web untuk teknisi login (di luar hanya_baca & akses modul;
     // controller memastikan akun terhubung ke teknisi aktif).
     Route::get('/laporan-saya/buat', [ReportFormController::class, 'create'])->name('laporan.saya.create');
-    Route::post('/laporan-saya/buat', [ReportFormController::class, 'store'])->name('laporan.saya.store');
 
     Route::get('/cuti-kelola', [CutiAdminController::class, 'index'])->name('cuti.kelola.index');
     Route::post('/cuti-kelola', [CutiAdminController::class, 'store'])->name('cuti.kelola.store');

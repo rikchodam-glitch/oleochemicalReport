@@ -67,7 +67,7 @@ Semua berkas di bawah ini ada di `docs/`.
 | [22-laporan-kolaborasi-shift.md](docs/22-laporan-kolaborasi-shift.md) | Laporan Reguler/Reguler Staff yang berkolaborasi shift/Staff Grub tampil di tab Shift saja | Mengubah tab Reguler/Shift, filter grup, atau kolaborasi |
 | [23-fitur-cuti.md](docs/23-fitur-cuti.md) | Cuti diinput Admin Reguler, teknisi hanya melihat, dampak man hour | Mengubah cuti, role Admin Reguler, atau target man hour |
 | [24-broadcast-kolaborasi.md](docs/24-broadcast-kolaborasi.md) | Broadcast Telegram detail pekerjaan ke seluruh kolaborator | Mengubah kolaborasi laporan atau notifikasi Telegram |
-| [25-form-laporan-teknisi.md](docs/25-form-laporan-teknisi.md) | Form laporan web MVP untuk teknisi login (bukan bot) | Mengubah form laporan, foto, kolaborator, atau akses teknisi |
+| [25-form-laporan-teknisi.md](docs/25-form-laporan-teknisi.md) | Form laporan web token `/laporan`, multi-laporan, hierarki, multi-alat, foto, kolaborator | Mengubah form laporan, token, foto, kolaborator, atau akses teknisi |
 | [26-halaman-semua-cuti.md](docs/26-halaman-semua-cuti.md) | Halaman read-only semua cuti untuk admin, supervisor, admin_general, admin_reguler | Mengubah akses atau tampilan seluruh cuti |
 
 ## Dokumen pendukung di `docs/`

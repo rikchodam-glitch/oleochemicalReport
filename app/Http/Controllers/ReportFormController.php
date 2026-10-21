@@ -2,190 +2,179 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Area;
-use App\Models\Asset;
-use App\Models\Report;
+use App\Models\ReportToken;
 use App\Models\Technician;
-use App\Services\ReportCopyService;
+use App\Services\ReportFormService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 /**
- * Form laporan web untuk teknisi yang sudah login.
+ * Form laporan web berbasis token Telegram.
  *
- * Ini adalah alternatif MVP dari wizard Telegram: teknisi membuat laporan
- * atas namanya sendiri, memilih area/alat, mengisi detail pekerjaan, foto,
- * dan kolaborator. Salinan kolaborasi tetap dibuat seperti jalur Telegram.
+ * Teknisi membuka tautan dari /laporan tanpa login. Form mendukung beberapa
+ * laporan sekaligus, hierarki lokasi, multi-alat, kolaborator, foto, dan
+ * status Done/Continue.
  */
 class ReportFormController extends Controller
 {
+    public function __construct(private readonly ReportFormService $formService)
+    {
+    }
+
     /**
-     * Tampilkan form laporan teknisi.
+     * Route login: buat token baru lalu arahkan ke form token.
      *
-     * @return \Illuminate\View\View
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function create()
     {
         $teknisi = $this->teknisi();
+        $token   = $this->formService->buatToken($teknisi);
 
-        return view('reports.form-teknisi', [
-            'teknisi'      => $teknisi,
-            'areas'        => Area::orderBy('code')->get(['id', 'code', 'name']),
-            'kolaborator'  => Technician::query()
-                ->where('status', 'active')
-                ->where('id', '!=', $teknisi->id)
-                ->orderBy('name')
-                ->get(['id', 'name', 'nik', 'group']),
-        ]);
+        return redirect()->route('laporan.form', ['token' => $token['plain']]);
     }
 
     /**
-     * Simpan laporan yang dibuat dari form web.
+     * Tampilkan form laporan dari token.
+     *
+     * @param  string $token Token mentah
+     * @return \Illuminate\View\View|\Illuminate\Http\Response
+     */
+    public function form(string $token)
+    {
+        $tokenModel = $this->formService->tokenValid($token);
+
+        if ($tokenModel === null) {
+            return response()->view('reports.form-kadaluarsa', [
+                'pesan' => 'Tautan laporan sudah kedaluwarsa atau sudah dipakai. Kirim /laporan lagi di Telegram.',
+            ], 410);
+        }
+
+        $this->formService->tandaiDibuka($tokenModel);
+
+        return view('reports.form-teknisi', array_merge(
+            ['token' => $token, 'tokenModel' => $tokenModel],
+            $this->formService->dataForm($tokenModel)
+        ));
+    }
+
+    /**
+     * Simpan semua laporan pada form.
      *
      * @param  Request $request Request form
-     * @return \Illuminate\Http\RedirectResponse
+     * @param  string  $token   Token mentah
+     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function simpan(Request $request, string $token)
     {
-        $teknisi = $this->teknisi();
+        $tokenModel = $this->formService->tokenValid($token);
+
+        if ($tokenModel === null) {
+            return response()->view('reports.form-kadaluarsa', [
+                'pesan' => 'Tautan laporan sudah kedaluwarsa atau sudah dipakai. Kirim /laporan lagi di Telegram.',
+            ], 410);
+        }
 
         $maxKb = (int) (config('telegram.photo_max_bytes', 20 * 1024 * 1024) / 1024);
 
-        $data = $request->validate([
-            'report_date'             => ['required', 'date'],
-            'report_type'             => ['required', Rule::in(['equipment_repair', 'area_work', 'general'])],
-            'work_classification'     => ['nullable', Rule::in(['zpm1', 'zpm3', 'zpm6', 'zpm5', 'zpm7', 'zpm8'])],
-            'jenis_pekerjaan'         => ['nullable', Rule::in(['CM', 'dCM', 'PM', 'EI', 'Mekanik', 'CM/PM', 'Fabrikasi', 'Sipil', 'IT', 'Project', 'UMUM'])],
-            'sesuai_rencana'          => ['nullable', Rule::in(['ya', 'tidak'])],
-            'area_id'                 => ['nullable', 'exists:areas,id'],
-            'asset_id'                => ['nullable', 'exists:assets,id'],
-            'equipment_tag'           => ['nullable', 'string', 'max:100'],
-            'tanggal_kejadian'        => ['nullable', 'date'],
-            'work_description'        => ['required', 'string'],
-            'work_duration_minutes'   => ['required', 'integer', 'min:0', 'max:1440'],
-            'root_cause'              => ['nullable', 'string'],
-            'finding'                 => ['nullable', 'string'],
-            'final_status'            => ['required', Rule::in(['completed', 'continue'])],
-            'collaborator_ids'        => ['nullable', 'array'],
-            'collaborator_ids.*'      => ['integer', 'exists:technicians,id'],
-            'photos_documentation'    => ['nullable', 'array'],
-            'photos_documentation.*'  => ['image', 'mimes:jpg,jpeg,png,webp', 'max:' . $maxKb],
-            'photos_hygiene'          => ['nullable', 'array'],
-            'photos_hygiene.*'        => ['image', 'mimes:jpg,jpeg,png,webp', 'max:' . $maxKb],
+        $request->validate([
+            'reports'                                  => ['required', 'array', 'min:1', 'max:' . ReportFormService::MAKS_LAPORAN],
+            'reports.*.report_date'                    => ['required', 'date'],
+            'reports.*.work_classification'            => ['required', Rule::in(['zpm1', 'zpm3', 'zpm6', 'zpm5', 'zpm7', 'zpm8', 'umum'])],
+            'reports.*.jenis_pekerjaan'                => ['required', 'string', 'max:30'],
+            'reports.*.work_description'               => ['required', 'string', 'max:5000'],
+            'reports.*.start_time'                     => ['required', 'date_format:H:i'],
+            'reports.*.end_time'                       => ['required', 'date_format:H:i'],
+            'reports.*.root_cause'                     => ['nullable', 'string', 'max:2000'],
+            'reports.*.finding'                        => ['nullable', 'string', 'max:2000'],
+            'reports.*.tanggal_kejadian'               => ['nullable', 'date'],
+            'reports.*.final_status'                   => ['required', Rule::in(['completed', 'continue'])],
+            'reports.*.items'                          => ['required', 'array', 'min:1', 'max:' . ReportFormService::MAKS_ITEM],
+            'reports.*.items.*.funcloc_id'             => ['required', 'integer', 'exists:functional_locations,id'],
+            'reports.*.items.*.asset_id'               => ['nullable', 'integer', 'exists:assets,id'],
+            'reports.*.items.*.equipment_type'         => ['nullable', 'string', 'max:100'],
+            'reports.*.collaborator_ids'               => ['nullable', 'array'],
+            'reports.*.collaborator_ids.*'             => ['integer', 'exists:technicians,id'],
+            'reports.*.photos_documentation'           => ['nullable', 'array', 'max:10'],
+            'reports.*.photos_documentation.*'         => ['image', 'mimes:jpg,jpeg,png,webp', 'max:' . $maxKb],
+            'reports.*.photos_hygiene'                 => ['nullable', 'array', 'max:10'],
+            'reports.*.photos_hygiene.*'               => ['image', 'mimes:jpg,jpeg,png,webp', 'max:' . $maxKb],
         ]);
 
-        if (($data['jenis_pekerjaan'] ?? '') === 'dCM' && empty($data['sesuai_rencana'])) {
-            return back()->withErrors(['sesuai_rencana' => 'Untuk pekerjaan dCM, "Sesuai Rencana" wajib diisi.'])
-                ->withInput();
-        }
-
-        if (($data['jenis_pekerjaan'] ?? '') !== 'dCM') {
-            $data['sesuai_rencana'] = null;
-        }
-
-        if ($data['report_type'] === 'equipment_repair' && empty($data['asset_id'])) {
-            return back()->withErrors(['asset_id' => 'Pilih alat/equipment untuk laporan perbaikan equipment.'])
-                ->withInput();
-        }
-
-        if ($data['report_type'] === 'area_work' && empty($data['area_id'])) {
-            return back()->withErrors(['area_id' => 'Pilih area untuk laporan pekerjaan area.'])
-                ->withInput();
-        }
-
-        $aset = ! empty($data['asset_id']) ? Asset::find($data['asset_id']) : null;
-        $areaId = $aset?->area_id ?? ($data['area_id'] ?? null);
-
-        $report = Report::create([
-            'technician_id'         => $teknisi->id,
-            'creator_id'            => $teknisi->id,
-            'report_date'           => $data['report_date'],
-            'report_code'           => Report::generateReportCode(),
-            'work_description'      => $data['work_description'],
-            'work_duration_minutes' => $data['work_duration_minutes'],
-            'root_cause'            => $data['root_cause'] ?? null,
-            'finding'               => $data['finding'] ?? null,
-            'report_type'           => $data['report_type'],
-            'work_classification'   => $data['work_classification'] ?? null,
-            'jenis_pekerjaan'       => $data['jenis_pekerjaan'] ?? null,
-            'sesuai_rencana'        => $data['sesuai_rencana'] ?? null,
-            'tanggal_kejadian'      => $data['tanggal_kejadian'] ?? null,
-            'equipment_tag'         => $aset?->tech_ident_no ?? ($data['equipment_tag'] ?? null),
-            'asset_id'              => $aset?->id,
-            'funcloc_id'            => $aset?->funcloc_id,
-            'area_id'               => $areaId,
-            'status'                => $data['final_status'],
-            'completed_at'          => $data['final_status'] === 'completed' ? now() : null,
-            'submitted_at'          => now(),
-            'wizard_started_at'     => now(),
-            'is_manually_edited'    => true,
-            'ai_analyzed'           => false,
-            'photo_documentation'   => [],
-            'photo_hygiene_clearance' => [],
-        ]);
-
-        $this->simpanFoto($report, $request, 'photos_documentation', 'photo_documentation');
-        $this->simpanFoto($report, $request, 'photos_hygiene', 'photo_hygiene_clearance');
-
-        $kolaboratorIds = collect($data['collaborator_ids'] ?? [])
-            ->map(fn ($id) => (int) $id)
-            ->reject(fn ($id) => $id === (int) $teknisi->id)
-            ->unique()
-            ->values();
-
-        if ($kolaboratorIds->isNotEmpty()) {
-            $salinan = app(ReportCopyService::class);
-
-            Technician::query()
-                ->whereIn('id', $kolaboratorIds)
-                ->where('status', 'active')
-                ->get()
-                ->each(fn (Technician $rekan) => $salinan->buatSalinanKolaborasi($report, $rekan));
-
-            // Broadcast kolaborasi tersedia setelah modul broadcast di-merge.
-            if (class_exists(\App\Jobs\KirimBroadcastKolaborasi::class)) {
-                \App\Jobs\KirimBroadcastKolaborasi::dispatch($report->id);
-            }
-        }
+        $jumlah = $this->formService->simpanBanyak($tokenModel, $request->input('reports', []), $request);
 
         return redirect()
-            ->route('reports.show', $report)
-            ->with('success', 'Laporan berhasil dibuat dari form teknisi.');
+            ->route('laporan.selesai')
+            ->with('laporan_hasil', ['jumlah' => $jumlah]);
     }
 
     /**
-     * Simpan foto dari form ke disk yang sama dengan foto Telegram.
+     * Halaman sukses setelah laporan dikirim.
      *
-     * @param  Report  $report Laporan
-     * @param  Request $request Request
-     * @param  string  $input  Nama input file
-     * @param  string  $kolom  Kolom JSON pada reports
-     * @return void
+     * @return \Illuminate\View\View|\Illuminate\Http\RedirectResponse
      */
-    private function simpanFoto(Report $report, Request $request, string $input, string $kolom): void
+    public function selesai()
     {
-        $berkas = $request->file($input, []);
+        $hasil = session('laporan_hasil');
 
-        if (! is_array($berkas) || $berkas === []) {
-            return;
+        if (! is_array($hasil)) {
+            return redirect()->route('login');
         }
 
-        $disk   = config('telegram.photo_disk', 'public');
-        $folder = config('telegram.photo_folder', 'reports');
-        $paths  = [];
-
-        foreach ($berkas as $file) {
-            $paths[] = $file->store(
-                "{$folder}/" . now()->format('Y/m/d') . "/{$report->id}",
-                $disk
-            );
-        }
-
-        $report->update([$kolom => array_values($paths)]);
+        return view('reports.form-selesai', ['hasil' => $hasil]);
     }
 
     /**
-     * Teknisi pemilik akun yang sedang login.
+     * Tipe equipment pada subtree lokasi.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function tipeAlat(Request $request, string $token)
+    {
+        $tokenModel = $this->formService->tokenValid($token);
+
+        if ($tokenModel === null) {
+            return response()->json(['message' => 'Token tidak berlaku.'], 410);
+        }
+
+        $funclocId = (int) $request->query('funcloc_id', 0);
+
+        return response()->json([
+            'data' => $funclocId > 0 ? $this->formService->tipeAlat($tokenModel, $funclocId) : [],
+        ]);
+    }
+
+    /**
+     * Pencarian alat pada subtree lokasi.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function cariAlat(Request $request, string $token)
+    {
+        $tokenModel = $this->formService->tokenValid($token);
+
+        if ($tokenModel === null) {
+            return response()->json(['message' => 'Token tidak berlaku.'], 410);
+        }
+
+        $funclocId = (int) $request->query('funcloc_id', 0);
+
+        if ($funclocId <= 0) {
+            return response()->json(['data' => []]);
+        }
+
+        return response()->json([
+            'data' => $this->formService->cariAlat(
+                $tokenModel,
+                $funclocId,
+                (string) $request->query('q', ''),
+                (string) $request->query('type', '')
+            ),
+        ]);
+    }
+
+    /**
+     * Teknisi pemilik akun login.
      *
      * @return Technician
      */

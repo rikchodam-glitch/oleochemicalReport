@@ -4,8 +4,10 @@ namespace App\Console\Commands\Traits;
 
 use App\Models\BotRegistration;
 use App\Models\Technician;
+use App\Services\ReportFormService;
 use App\Services\Telegram\AssetInfoService;
 use App\Services\Telegram\PhotoNotificationBuffer;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -110,6 +112,12 @@ trait TelegramMessageHandlerTrait
             return;
         }
 
+        // /laporan atau /laporan <deskripsi>: buat tautan form web.
+        if (preg_match('/^\/laporan(?:@\S+)?(?:\s+(.+))?$/isu', $text, $cocokLaporan)) {
+            $this->handleLaporanCommand($chatId, $technician, trim((string) ($cocokLaporan[1] ?? '')));
+            return;
+        }
+
         // Cuti tidak lagi dibuat lewat bot. Cegah perintah ini masuk ke
         // wizard laporan; arahkan teknisi ke Admin Reguler.
         if (preg_match('/^\/cuti(?:@\S+)?\b/i', $text)) {
@@ -189,6 +197,38 @@ trait TelegramMessageHandlerTrait
         ]);
 
         $this->sendMessage($chatId, 'Sesi laporan dibatalkan. Kirim pesan atau foto untuk memulai laporan baru.');
+    }
+
+    /**
+     * Membuat tautan form laporan web dari /laporan.
+     *
+     * @param  int|string $chatId     ID chat Telegram
+     * @param  Technician $technician Teknisi pengirim
+     * @param  string     $deskripsi  Deskripsi awal (opsional)
+     * @return void
+     */
+    private function handleLaporanCommand(int|string $chatId, Technician $technician, string $deskripsi): void
+    {
+        $kunci = 'laporan-tautan:' . $technician->id;
+
+        if (! Cache::add($kunci, true, now()->addSeconds(10))) {
+            $this->sendMessage($chatId, 'Tunggu sebentar sebelum meminta tautan laporan lagi.');
+
+            return;
+        }
+
+        $tautan = app(ReportFormService::class)->buatToken($technician, $deskripsi);
+
+        $pesan = "Form laporan untuk {$technician->name}:\n"
+            . $tautan['url'] . "\n\n"
+            . 'Tautan berlaku ' . ReportFormService::MASA_BERLAKU_MENIT
+            . ' menit dan hanya bisa dipakai sekali.';
+
+        if (trim($deskripsi) !== '') {
+            $pesan .= "\nDeskripsi dari pesan Anda sudah diisi otomatis.";
+        }
+
+        $this->sendMessage($chatId, $pesan, ['disable_web_page_preview' => true]);
     }
 
     /**

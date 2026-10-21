@@ -1,20 +1,22 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-21 14:39 WIB
+Diperbarui: 2026-10-21 15:44 WIB
 
-- Cabang aktif: `tugas/erik/perbaiki-input-cuti-admin-reguler`
-- Mulai: 2026-10-21 14:39
+- Cabang aktif: `tugas/erik/form-laporan-web-lengkap`
+- Mulai: 2026-10-21 15:44
 - Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
-  - `app/Http/Controllers/CutiAdminController.php`
-  - `resources/views/cuti/kelola.blade.php`
-  - `resources/views/technicians/show.blade.php`
-  - `resources/views/layouts/app.blade.php`
+  - migration `report_tokens`, model `ReportToken`
+  - `app/Services/ReportFormService.php`
+  - `app/Http/Controllers/ReportFormController.php`
+  - `app/Console/Commands/Traits/TelegramMessageHandlerTrait.php`,
+    `app/Http/Controllers/TelegramWebhookController.php`
+  - `resources/views/reports/form-teknisi.blade.php`, `resources/views/reports/selesai-form.blade.php`
   - `routes/web.php`, `config/akses.php`
-  - `tests/Feature/CutiAdminTest.php`
-  - `docs/23-fitur-cuti.md`, `AGENTS.md`
-  - `tugas/pr-perbaiki-input-cuti-admin-reguler.md`
-- Catatan: halaman kelola cuti dibuat global dengan pilihan nama teknisi; Admin Reguler mendapat menu langsung.
+  - `tests/Feature/ReportFormTest.php`, `tests/Feature/ReportFormTokenTest.php`
+  - `docs/25-form-laporan-teknisi.md`, `AGENTS.md`
+  - `tugas/pr-form-laporan-web-lengkap.md`
+- Catatan: `/laporan` + token, form multi-laporan atomik, hierarki PT-Dept-Area-Section, multi-alat, foto preview.
 
 ## Riwayat
-- tugas/erik/halaman-semua-cuti-karyawan (mulai 2026-10-21 14:07) -> dilanjutkan 2026-10-21 14:39
+- tugas/erik/perbaiki-input-cuti-admin-reguler (mulai 2026-10-21 14:39) -> dilanjutkan 2026-10-21 15:44

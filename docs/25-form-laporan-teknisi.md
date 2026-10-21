@@ -1,67 +1,83 @@
-# Form Laporan Web untuk Teknisi
+# Form Laporan Web Teknisi
 
-Dokumen ini menjelaskan alternatif MVP pembuatan laporan tanpa bot Telegram
-(21/10/2026).
+Dokumen ini menjelaskan form laporan web berbasis token Telegram (21/10/2026).
 
-## Akses
+## Alur `/laporan`
 
-- Route `/laporan-saya/buat` (GET/POST), hanya untuk akun login yang punya
-  `users.technician_id` dan teknisi berstatus `active`.
-- Route berada di luar middleware hanya-baca dan di luar pemetaan modul;
-  controller memeriksa pemilik teknisi.
-- Menu **Buat Laporan** muncul di sidebar untuk akun teknisi.
+1. Teknisi mengirim `/laporan` atau `/laporan <deskripsi>`.
+2. Bot membuat token 30 menit, sekali pakai, terikat `technician_id` dan
+   `telegram_id`; deskripsi disimpan sebagai prefill.
+3. Bot membalas tautan form dengan preview dimatikan.
+4. Form terbuka tanpa login; identitas dari token.
+5. Teknisi mengisi satu atau beberapa laporan lalu menekan **Kirim semua**.
+6. Semua laporan disimpan dalam satu transaksi; token ditandai terpakai.
 
-## Isi form (MVP)
+Perintah `/laporan` ditangani di dua jalur: poller
+(`TelegramMessageHandlerTrait`) dan `TelegramWebhookController`. Jalur login
+`/laporan-saya/buat` membuat token lalu mengarahkan ke form yang sama.
 
-- Tanggal laporan, tipe laporan: equipment repair / area work / umum.
-- Klasifikasi ZPM dan jenis pekerjaan (CM, dCM, PM, EI, Mekanik, CM/PM,
-  Fabrikasi, Sipil, IT, Project, UMUM).
-- Sesuai rencana (wajib untuk dCM), tanggal kejadian.
-- Area dan pencarian alat/equipment lintas area (mengisi `asset_id`,
-  `area_id`, `equipment_tag`).
-- Deskripsi pekerjaan, durasi menit, root cause, temuan.
-- Status selesai (`completed`) atau lanjut (`continue`).
-- Foto dokumentasi dan hygiene clearance.
-- Kolaborator (teknisi aktif selain pembuat).
+## Form
 
-## Perilaku simpan
+- Klasifikasi wajib lebih dulu; pilihan jenis mengikuti klasifikasi:
+  - ZPM 1/6 → EI, Mekanik, IT
+  - ZPM 3 → CM/PM
+  - ZPM 5 → Fabrikasi
+  - ZPM 7 → Sipil
+  - ZPM 8 → Project
+  - UMUM → UMUM
+- Server memvalidasi ulang pasangan klasifikasi-jenis.
+- Lokasi: PT → Dept → Area → Section (dari `functional_locations` aktif).
+- Equipment type wajib dipilih sebelum alat; tipe berasal dari
+  `assets.equipment_type` pada subtree lokasi.
+- Pencarian alat memakai exact/prefix/LIKE + skor `similar_text`.
+- Tanpa alat = pekerjaan area; dengan alat = perbaikan equipment.
+- `[+Tambah]` menambah alat/lokasi tambahan; dibuat salinan `multi_of`.
+- Durasi memakai jam mulai/selesai dan dihitung server menjadi menit.
+- Kolaborator otomatis dari group + pencarian manual per Bagian.
+- Foto dokumentasi/hygiene bisa lebih dari satu, dengan preview dan hapus
+  sebelum kirim.
+- Status on/off: on = `completed`, off = `continue`.
+- **Tambah laporan** membuat kartu baru; **Kirim** mengirim maksimal 5 laporan
+  dalam satu POST atomik.
 
-1. Laporan induk dibuat dengan `technician_id` = akun login, `creator_id` =
-   akun login, kode laporan baru, `submitted_at` sekarang, dan status sesuai
-   pilihan.
-2. Jika equipment repair: `asset_id` wajib; area/funcloc/equipment tag
-   mengikuti data aset.
-3. Jika area work: area wajib.
-4. dCM wajib memiliki `sesuai_rencana`.
-5. Foto disimpan ke disk `telegram.photo_disk` di folder
-   `reports/YYYY/MM/DD/{report_id}`.
-6. Setiap kolaborator dibuatkan salinan `collaborator_of` melalui
-   `ReportCopyService`, sama seperti jalur Telegram.
-7. Jika modul broadcast kolaborasi sudah tersedia, job
-   `KirimBroadcastKolaborasi` dikirim setelah salinan dibuat. Saat ini
-   pemanggilan memakai `class_exists` agar tetap kompatibel sebelum PR
-   broadcast di-merge.
-8. Pengguna diarahkan ke halaman detail laporan.
+## Keamanan dan konsistensi
 
-## Perbedaan dengan wizard Telegram
+- Token hanya disimpan sebagai hash SHA-256.
+- Tautan lama yang belum dibuka dibatalkan saat token baru dibuat; tautan yang
+  sudah dibuka tetap berlaku sampai kedaluwarsa.
+- Token dikunci selama transaksi agar double-submit tidak membuat laporan ganda.
+- Validasi server memeriksa: jenis sesuai klasifikasi, alat berada dalam subtree
+  lokasi, tipe alat sesuai, jam selesai > mulai, minimal satu item, maksimal
+  item/laporan, dan file image.
+- Foto disimpan ke disk/folder yang sama dengan Telegram; file dibersihkan bila
+  transaksi gagal.
+- Salinan kolaborator dan multi-alat memakai `ReportCopyService`; man hour hanya
+  menghitung laporan induk (baris `multi_of` dikecualikan).
+- Broadcast kolaborasi dikirim sekali per laporan induk bila class job tersedia.
+
+## Batasan
 
 - Belum ada AI classification/klarifikasi bertahap.
-- Belum ada wizard multi-equipment dan lanjutan laporan berbasis state.
-- Kolaborator dipilih manual; belum menggabungkan auto-group kolaborasi.
-- Foto diunggah langsung, bukan lewat alur foto Telegram.
-- Kolom klasifikasi/jenis diisi manual, bukan hasil AI.
+- Belum ada wizard lanjutan laporan (`continue` dari laporan lama).
+- Multi-item memakai pilihan lokasi/alat manual; belum ada pencarian global
+  lintas PT.
+- Maksimal 5 laporan dan 5 item per laporan per sesi.
 
 ## Berkas
 
+- `database/migrations/2026_10_21_000002_create_report_tokens_table.php`
+- `app/Models/ReportToken.php`
+- `app/Services/ReportFormService.php`
 - `app/Http/Controllers/ReportFormController.php`
-- `resources/views/reports/form-teknisi.blade.php`
+- `app/Console/Commands/Traits/TelegramMessageHandlerTrait.php`
+- `app/Http/Controllers/TelegramWebhookController.php`
+- `resources/views/reports/form-teknisi.blade.php`,
+  `form-selesai.blade.php`, `form-kadaluarsa.blade.php`
 - `routes/web.php`, `config/akses.php`
-- `resources/views/layouts/app.blade.php`
 - `tests/Feature/ReportFormTest.php`
 
 ## Uji
 
-- `ReportFormTest` 6 test hijau: akses form, simpan area + salinan kolaborator,
-  validasi equipment, validasi dCM, foto, akun tanpa teknisi.
-- Seluruh suite: 699 test hijau, 3.419 assertion.
+- `ReportFormTest`: 9 test hijau, 34 assertion.
+- Seluruh suite: 707 test hijau, 3.482 assertion.
 - `view:cache` sukses.

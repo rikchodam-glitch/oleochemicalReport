@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\AiService;
+use App\Services\ReportFormService;
 use App\Models\BotRegistration;
 use App\Models\Report;
 use App\Models\Technician;
@@ -10,6 +11,7 @@ use App\Models\BotUnknownAsset;
 use App\Models\Asset;
 use App\Models\Area;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -49,6 +51,10 @@ class TelegramWebhookController extends Controller
                 }
 
                 $technician->update(['last_active_at' => now()]);
+
+                if (preg_match('/^\/laporan(?:@\S+)?(?:\s+(.+))?$/isu', $text, $cocokLaporan)) {
+                    return $this->handleLaporan($chatId, $technician, trim((string) ($cocokLaporan[1] ?? '')));
+                }
 
                 if (preg_match('/^\/cuti(?:@\S+)?\b/i', $text)) {
                     return $this->sendMessage($chatId, 'Cuti tidak lagi diajukan lewat bot. Hubungi Admin Reguler untuk mencatat cuti Anda.');
@@ -93,6 +99,31 @@ class TelegramWebhookController extends Controller
             $chatId,
             "Halo $firstName! Untuk mendaftar sebagai teknisi, silakan kirim NIK kamu.\n\nContoh: NIK 123456"
         );
+    }
+
+    /**
+     * Kirim tautan form laporan web dari /laporan.
+     */
+    protected function handleLaporan($chatId, Technician $technician, string $deskripsi)
+    {
+        $kunci = 'laporan-tautan:' . $technician->id;
+
+        if (! Cache::add($kunci, true, now()->addSeconds(10))) {
+            return $this->sendMessage($chatId, 'Tunggu sebentar sebelum meminta tautan laporan lagi.');
+        }
+
+        $tautan = app(ReportFormService::class)->buatToken($technician, $deskripsi);
+
+        $pesan = "Form laporan untuk {$technician->name}:\n"
+            . $tautan['url'] . "\n\n"
+            . 'Tautan berlaku ' . ReportFormService::MASA_BERLAKU_MENIT
+            . ' menit dan hanya bisa dipakai sekali.';
+
+        if (trim($deskripsi) !== '') {
+            $pesan .= "\nDeskripsi dari pesan Anda sudah diisi otomatis.";
+        }
+
+        return $this->sendMessage($chatId, $pesan, ['disable_web_page_preview' => true]);
     }
 
     protected function handleReport($chatId, Technician $technician, string $text)
