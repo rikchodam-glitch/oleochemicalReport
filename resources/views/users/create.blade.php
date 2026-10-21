@@ -73,6 +73,9 @@
                             <option value="{{ \App\Models\User::ROLE_ADMIN_REGULER }}" {{ old('role') === \App\Models\User::ROLE_ADMIN_REGULER ? 'selected' : '' }}>
                                 Admin Reguler (input cuti)
                             </option>
+                            <option value="{{ \App\Models\User::ROLE_ADMIN_GENERAL }}" {{ old('role') === \App\Models\User::ROLE_ADMIN_GENERAL ? 'selected' : '' }}>
+                                Admin General (lihat semua cuti)
+                            </option>
                         </optgroup>
                         <optgroup label="Bagian (dibatasi hak akses)">
                             @foreach($bagian as $kode => $label)

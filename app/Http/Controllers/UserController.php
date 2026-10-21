@@ -296,7 +296,7 @@ class UserController extends Controller
     {
         $daftarRole = array_merge(
             User::ROLE_AKSES_PENUH,
-            [User::ROLE_ADMIN_REGULER],
+            [User::ROLE_ADMIN_REGULER, User::ROLE_ADMIN_GENERAL],
             array_keys(Technician::SECTIONS)
         );
 

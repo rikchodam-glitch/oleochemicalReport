@@ -1,20 +1,19 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-21 13:56 WIB
+Diperbarui: 2026-10-21 14:07 WIB
 
-- Cabang aktif: `tugas/erik/hapus-status-pada-fitur-cuti`
-- Mulai: 2026-10-21 13:56
+- Cabang aktif: `tugas/erik/halaman-semua-cuti-karyawan`
+- Mulai: 2026-10-21 14:07
 - Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
-  - `app/Models/CutiTeknisi.php`, `app/Services/CutiService.php`
-  - `app/Services/Shift/ManHourService.php`
-  - `app/Http/Controllers/CutiAdminController.php`, `CutiSayaController.php`
-  - `resources/views/cuti/kelola*.blade.php`, `saya-index.blade.php`
-  - `database/migrations/2026_10_21_000001_drop_status_from_cuti_teknisis.php`
-  - `tests/Feature/CutiAdminTest.php`, `CutiSayaTest.php`
-  - `docs/23-fitur-cuti.md`, `AGENTS.md`
-  - `tugas/pr-hapus-status-pada-fitur-cuti.md`
-- Catatan: cuti tidak memakai status; semua cuti yang dicatat langsung efektif.
+  - `app/Models/User.php`, `app/Http/Controllers/UserController.php`, `resources/views/users/*`
+  - `app/Http/Controllers/CutiSemuaController.php` (baru)
+  - `resources/views/cuti/semua.blade.php` (baru)
+  - `resources/views/layouts/app.blade.php`, `routes/web.php`, `config/akses.php`
+  - `tests/Feature/CutiSemuaTest.php` (baru)
+  - `docs/26-halaman-semua-cuti.md`, `AGENTS.md`
+  - `tugas/pr-halaman-semua-cuti-karyawan.md`
+- Catatan: halaman read-only seluruh cuti untuk admin, supervisor, dan role admin_general.
 
 ## Riwayat
-- tugas/erik/cuti-admin-reguler-dan-form-laporan-teknisi (mulai 2026-10-21 08:34) -> dilanjutkan 2026-10-21 13:56
+- tugas/erik/hapus-status-pada-fitur-cuti (mulai 2026-10-21 13:56) -> dilanjutkan 2026-10-21 14:07

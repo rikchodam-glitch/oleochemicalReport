@@ -31,6 +31,11 @@ class User extends Authenticatable
      */
     public const ROLE_ADMIN_REGULER = 'admin_reguler';
 
+    /**
+     * Role khusus untuk melihat seluruh cuti karyawan (read-only).
+     */
+    public const ROLE_ADMIN_GENERAL = 'admin_general';
+
     protected $fillable = [
         'name',
         'email',
@@ -114,6 +119,20 @@ class User extends Authenticatable
     public function bolehKelolaCuti(): bool
     {
         return in_array((string) $this->role, [self::ROLE_ADMIN, self::ROLE_ADMIN_REGULER], true);
+    }
+
+    /**
+     * Apakah akun ini boleh melihat seluruh cuti karyawan.
+     *
+     * @return bool
+     */
+    public function bolehLihatSemuaCuti(): bool
+    {
+        return in_array((string) $this->role, [
+            self::ROLE_ADMIN,
+            'supervisor',
+            self::ROLE_ADMIN_GENERAL,
+        ], true);
     }
 
     /**
@@ -305,6 +324,10 @@ class User extends Authenticatable
             return 'Admin Reguler';
         }
 
+        if ((string) $this->role === self::ROLE_ADMIN_GENERAL) {
+            return 'Admin General';
+        }
+
         $kode  = (string) $this->kodeBagian();
         $label = Technician::SECTIONS[$kode] ?? ucfirst($kode);
         $grup  = $this->grupBagian();
@@ -328,6 +351,11 @@ class User extends Authenticatable
         // cuti. Tidak mendapat modul lain dan bukan administrator penuh.
         if ((string) $this->role === self::ROLE_ADMIN_REGULER) {
             return ['dashboard', 'technicians', 'cuti'];
+        }
+
+        // Admin General hanya melihat seluruh cuti (read-only).
+        if ((string) $this->role === self::ROLE_ADMIN_GENERAL) {
+            return ['dashboard', 'cuti_semua'];
         }
 
         $bagian = $this->kodeBagian();
