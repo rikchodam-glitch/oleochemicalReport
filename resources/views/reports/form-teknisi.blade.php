@@ -223,11 +223,12 @@ document.addEventListener('DOMContentLoaded', function () {
     function setupFoto(input, preview) {
         input.addEventListener('change', function () {
             const files = Array.from(input.files || []);
-            const dt = new DataTransfer();
-            files.forEach(f => dt.items.add(f));
-            input.files = dt.files;
             preview.innerHTML = '';
-            files.forEach(function (file, idx) {
+
+            // Jangan menyalin ulang input.files lewat DataTransfer: pada
+            // beberapa browser/WebView Telegram hal itu membuat file yang
+            // dipilih hilang. Cukup tampilkan semua file yang dipilih.
+            files.forEach(function (file) {
                 const wrap = document.createElement('div');
                 wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 bg-slate-100';
                 const img = document.createElement('img');
@@ -235,20 +236,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 img.className = 'w-full h-full object-cover';
                 img.onload = () => URL.revokeObjectURL(img.src);
                 wrap.appendChild(img);
-                const hapus = document.createElement('button');
-                hapus.type = 'button';
-                hapus.textContent = '×';
-                hapus.className = 'absolute top-0 right-0 bg-rose-600 text-white text-xs w-5 h-5';
-                hapus.addEventListener('click', function () {
-                    const sisa = files.filter((_, i) => i !== idx);
-                    const baru = new DataTransfer();
-                    sisa.forEach(f => baru.items.add(f));
-                    input.files = baru.files;
-                    input.dispatchEvent(new Event('change'));
-                });
-                wrap.appendChild(hapus);
                 preview.appendChild(wrap);
             });
+
+            if (files.length > 1) {
+                const info = document.createElement('p');
+                info.className = 'w-full text-[10px] text-emerald-700';
+                info.textContent = files.length + ' foto dipilih.';
+                preview.appendChild(info);
+            }
         });
     }
 
@@ -362,8 +358,13 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         tipe.addEventListener('change', function () {
             kosongkanAlat();
-            if (tipe.value) cari.disabled = false;
-            cari.focus();
+            cari.disabled = tipe.value === '';
+            cari.value = '';
+            if (tipe.value) {
+                // Langsung tampilkan daftar alat untuk tipe terpilih, tanpa
+                // menunggu teknisi mengetik.
+                cariAlat();
+            }
         });
         cari.addEventListener('input', function () {
             clearTimeout(timer);
