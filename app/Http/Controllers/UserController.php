@@ -294,7 +294,11 @@ class UserController extends Controller
      */
     private function aturanValidasi(?User $user = null): array
     {
-        $daftarRole = array_merge(User::ROLE_AKSES_PENUH, array_keys(Technician::SECTIONS));
+        $daftarRole = array_merge(
+            User::ROLE_AKSES_PENUH,
+            [User::ROLE_ADMIN_REGULER],
+            array_keys(Technician::SECTIONS)
+        );
 
         return [
             'name'          => 'required|string|max:255',
