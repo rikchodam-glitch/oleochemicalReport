@@ -15,12 +15,15 @@ cuti dari halaman teknisi; teknisi hanya melihat riwayat cutinya.
 
 ## Alur admin
 
-1. Buka detail teknisi di `/technicians/{id}`.
-2. Klik **Kelola Cuti**.
-3. Isi tanggal mulai/selesai, jenis, dan alasan; simpan.
-4. Cuti langsung berlaku, tanpa status/approval, dan langsung memengaruhi
-   target man hour.
-5. Admin Reguler dapat mengedit/menghapus cuti dari halaman yang sama.
+1. Buka menu **Kelola Cuti** di sidebar (atau tombol Kelola Cuti dari profil
+   teknisi).
+2. Pilih teknisi pada form (nama/NIK/group), lalu isi tanggal mulai/selesai,
+   jenis, dan alasan.
+3. Simpan; cuti langsung berlaku, tanpa status/approval, dan langsung
+   memengaruhi target man hour.
+4. Admin Reguler dapat mengedit/menghapus cuti dari daftar pada halaman yang
+   sama. Halaman ini global, jadi tidak perlu membuka profil teknisi satu per
+   satu.
 
 ## Alur teknisi
 
@@ -59,6 +62,13 @@ cuti dari halaman teknisi; teknisi hanya melihat riwayat cutinya.
 - Modul `cuti` ditambahkan ke `config/akses.php` untuk pemetaan route.
 - Role `admin_reguler` mendapat daftar akses khusus di `User::daftarAkses()`.
 
+## Route
+
+- `/cuti-kelola` — daftar + form input global (pilih teknisi).
+- `/cuti-kelola/{cuti}/edit` — edit cuti.
+- `/cuti-saya` — teknisi melihat cuti sendiri.
+- `/cuti-semua` — admin/supervisor/admin_general melihat seluruh cuti.
+
 ## Berkas
 
 - `app/Models/User.php`, `app/Http/Controllers/UserController.php`,
@@ -75,6 +85,6 @@ cuti dari halaman teknisi; teknisi hanya melihat riwayat cutinya.
 
 ## Uji
 
-- `CutiAdminTest` 5 test, `CutiSayaTest` 2 test: total 7 test hijau.
-- Seluruh suite: 699 test hijau, 3.418 assertion.
+- `CutiAdminTest` 6 test, `CutiSayaTest` 2 test: total 8 test hijau.
+- Seluruh suite: 704 test hijau, 3.458 assertion.
 - `php artisan view:cache` sukses.

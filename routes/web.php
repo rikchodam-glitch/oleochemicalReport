@@ -56,8 +56,8 @@ Route::middleware('admin')->group(function () {
     Route::get('/laporan-saya/buat', [ReportFormController::class, 'create'])->name('laporan.saya.create');
     Route::post('/laporan-saya/buat', [ReportFormController::class, 'store'])->name('laporan.saya.store');
 
-    Route::get('/technicians/{technician}/cuti', [CutiAdminController::class, 'index'])->name('cuti.kelola.index');
-    Route::post('/technicians/{technician}/cuti', [CutiAdminController::class, 'store'])->name('cuti.kelola.store');
+    Route::get('/cuti-kelola', [CutiAdminController::class, 'index'])->name('cuti.kelola.index');
+    Route::post('/cuti-kelola', [CutiAdminController::class, 'store'])->name('cuti.kelola.store');
     Route::get('/cuti-kelola/{cuti}/edit', [CutiAdminController::class, 'edit'])->name('cuti.kelola.edit');
     Route::put('/cuti-kelola/{cuti}', [CutiAdminController::class, 'update'])->name('cuti.kelola.update');
     Route::delete('/cuti-kelola/{cuti}', [CutiAdminController::class, 'destroy'])->name('cuti.kelola.destroy');

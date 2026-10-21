@@ -6,26 +6,24 @@
     <span class="text-slate-300">/</span>
     <a href="{{ route('technicians.index') }}" class="hover:text-slate-700">Teknisi</a>
     <span class="text-slate-300">/</span>
-    <a href="{{ route('technicians.show', $teknisi) }}" class="hover:text-slate-700">{{ $teknisi->name }}</a>
-    <span class="text-slate-300">/</span>
-    <span class="text-slate-900 font-medium">Cuti</span>
+    <span class="text-slate-900 font-medium">Kelola Cuti</span>
 @endsection
 
 @section('content')
     <div class="space-y-5">
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-                <h2 class="text-2xl font-bold text-slate-900">Kelola Cuti — {{ $teknisi->name }}</h2>
+                <h2 class="text-2xl font-bold text-slate-900">Kelola Cuti Teknisi</h2>
                 <p class="text-sm text-slate-500 mt-1">
-                    NIK {{ $teknisi->nik ?? '-' }} ·
-                    {{ \App\Models\Technician::GROUPS[$teknisi->group] ?? ($teknisi->group ?? '-') }} ·
-                    {{ \App\Models\Technician::SECTIONS[$teknisi->section] ?? ($teknisi->section ?? '-') }}
+                    Pilih teknisi pada form, lalu catat cutinya. Cuti langsung berlaku dan mengubah target man hour.
                 </p>
-                <p class="text-xs text-slate-400 mt-1">
-                    Cuti yang dicatat langsung berlaku dan langsung mengubah target man hour. Teknisi hanya bisa melihat.
-                </p>
+                @if($teknisiTerpilih !== null)
+                    <p class="text-xs font-medium text-teal-700 mt-1">
+                        Menampilkan cuti: {{ $teknisiTerpilih->name }} ({{ $teknisiTerpilih->nik ?? '-' }})
+                    </p>
+                @endif
             </div>
-            <a href="{{ route('technicians.show', $teknisi) }}" class="text-xs font-semibold text-teal-700 hover:text-teal-800">Kembali ke profil teknisi</a>
+            <a href="{{ route('dashboard') }}" class="text-xs font-semibold text-teal-700 hover:text-teal-800">Kembali ke dashboard</a>
         </div>
 
         @if(session('status'))
@@ -35,12 +33,28 @@
             <div class="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-800">{{ $errors->first() }}</div>
         @endif
 
-        <form method="POST" action="{{ route('cuti.kelola.store', $teknisi) }}"
+        <form method="POST" action="{{ route('cuti.kelola.store') }}"
               class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
             @csrf
             <div class="flex items-center justify-between gap-2">
                 <h3 class="font-semibold text-slate-900">Catat cuti baru</h3>
-                <span class="text-[11px] text-slate-400">Langsung disetujui</span>
+                <span class="text-[11px] text-slate-400">Langsung berlaku</span>
+            </div>
+
+            <div>
+                <label for="technician_id" class="block text-xs font-medium text-slate-600 mb-1">Teknisi <span class="text-rose-500">*</span></label>
+                <select name="technician_id" id="technician_id" required
+                        class="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500">
+                    <option value="">- Pilih teknisi -</option>
+                    @foreach($daftarTeknisi as $pilihan)
+                        <option value="{{ $pilihan->id }}"
+                                @selected((int) old('technician_id', $teknisiTerpilih?->id) === (int) $pilihan->id)>
+                            {{ $pilihan->name }} — {{ $pilihan->nik ?? '-' }} ·
+                            {{ \App\Models\Technician::GROUPS[$pilihan->group] ?? ($pilihan->group ?? '-') }}
+                            @if($pilihan->status !== 'active') ({{ $pilihan->status }}) @endif
+                        </option>
+                    @endforeach
+                </select>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -79,6 +93,7 @@
                 <table class="w-full text-sm">
                     <thead class="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
                         <tr>
+                            <th class="px-4 py-3 text-left font-semibold">Teknisi</th>
                             <th class="px-4 py-3 text-left font-semibold">Periode</th>
                             <th class="px-4 py-3 text-left font-semibold">Jenis</th>
                             <th class="px-4 py-3 text-left font-semibold">Alasan</th>
@@ -89,6 +104,13 @@
                     <tbody class="divide-y divide-slate-100">
                         @forelse($daftar as $cuti)
                             <tr class="hover:bg-slate-50/70">
+                                <td class="px-4 py-3">
+                                    <p class="font-medium text-slate-800">{{ $cuti->technician?->name ?? '-' }}</p>
+                                    <p class="text-xs text-slate-500">
+                                        NIK {{ $cuti->technician?->nik ?? '-' }} ·
+                                        {{ \App\Models\Technician::GROUPS[$cuti->technician?->group] ?? ($cuti->technician?->group ?? '-') }}
+                                    </p>
+                                </td>
                                 <td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
                                     {{ $cuti->tanggal_mulai->format('d/m/Y') }} – {{ $cuti->tanggal_selesai->format('d/m/Y') }}
                                     <p class="text-slate-400">{{ $cuti->jumlahHari() }} hari</p>
@@ -109,7 +131,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="5" class="px-4 py-10 text-center text-sm text-slate-400">Belum ada cuti untuk teknisi ini.</td>
+                                <td colspan="6" class="px-4 py-10 text-center text-sm text-slate-400">Belum ada cuti.</td>
                             </tr>
                         @endforelse
                     </tbody>
