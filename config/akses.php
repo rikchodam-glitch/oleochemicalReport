@@ -51,6 +51,12 @@ return [
             'pola'  => ['cuti.kelola.*'],
             'link'  => null,
         ],
+        'cuti_semua' => [
+            'label' => 'Semua Cuti Karyawan',
+            'grup'  => 'Menu Utama',
+            'pola'  => ['cuti.semua'],
+            'link'  => null,
+        ],
         'reports' => [
             'label' => 'Laporan',
             'grup'  => 'Menu Utama',

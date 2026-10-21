@@ -20,6 +20,7 @@ use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\CollaborationController;
 use App\Http\Controllers\CutiAdminController;
 use App\Http\Controllers\CutiSayaController;
+use App\Http\Controllers\CutiSemuaController;
 use App\Http\Controllers\ReportCollaborationController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReportFormController;
@@ -48,6 +49,7 @@ Route::post('/telegram/webhook', [TelegramWebhookController::class, 'handle'])->
 // - Admin Reguler/Administrator mencatat cuti dari halaman teknisi.
 Route::middleware('admin')->group(function () {
     Route::get('/cuti-saya', [CutiSayaController::class, 'index'])->name('cuti.saya');
+    Route::get('/cuti-semua', [CutiSemuaController::class, 'index'])->name('cuti.semua');
 
     // Form laporan web untuk teknisi login (di luar hanya_baca & akses modul;
     // controller memastikan akun terhubung ke teknisi aktif).
