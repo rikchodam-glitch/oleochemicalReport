@@ -63,10 +63,18 @@ beforeEach(function () {
         'password' => bcrypt('rahasia123'),
         'role'     => User::ROLE_ADMIN_GENERAL,
     ]);
+
+    $this->adminReguler = User::create([
+        'name'     => 'Admin Reguler Cuti Uji',
+        'username' => 'admin-reguler-cuti-semua',
+        'email'    => 'admin-reguler-cuti-semua@oleochemical.pro',
+        'password' => bcrypt('rahasia123'),
+        'role'     => User::ROLE_ADMIN_REGULER,
+    ]);
 });
 
-test('administrator, supervisor, dan admin general melihat seluruh cuti', function () {
-    foreach ([$this->admin, $this->supervisor, $this->adminGeneral] as $akun) {
+test('administrator, supervisor, admin general, dan admin reguler melihat seluruh cuti', function () {
+    foreach ([$this->admin, $this->supervisor, $this->adminGeneral, $this->adminReguler] as $akun) {
         $this->actingAs($akun)
             ->get(route('cuti.semua'))
             ->assertOk()

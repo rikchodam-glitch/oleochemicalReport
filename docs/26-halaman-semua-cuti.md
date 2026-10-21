@@ -1,15 +1,16 @@
 # Halaman Semua Cuti Karyawan
 
 Dokumen ini menjelaskan halaman read-only seluruh cuti untuk Administrator,
-Supervisor, dan Admin General (21/10/2026).
+Supervisor, Admin General, dan Admin Reguler (21/10/2026).
 
 ## Akses
 
 - Route `/cuti-semua`, nama `cuti.semua`.
-- Boleh dibuka role `admin`, `supervisor`, dan `admin_general`
+- Boleh dibuka role `admin`, `supervisor`, `admin_general`, dan `admin_reguler`
   (`User::bolehLihatSemuaCuti()`).
-- Teknisi biasa dan Admin Reguler tidak mendapat halaman ini; Admin Reguler
-  tetap mencatat cuti dari halaman teknisi.
+- Admin Reguler memakai halaman ini untuk melihat seluruh cuti; input/edit
+  tetap melalui **Kelola Cuti**.
+- Teknisi biasa tidak mendapat halaman ini.
 - Halaman hanya membaca; tidak ada tombol tambah/edit/hapus.
 
 ## Role Admin General
@@ -46,6 +47,6 @@ melewati batas filter tetap muncul.
 
 ## Uji
 
-- `CutiSemuaTest`: 4 test hijau, 36 assertion.
-- Seluruh suite: 703 test hijau, 3.454 assertion.
+- `CutiSemuaTest`: 4 test hijau, 41 assertion.
+- Seluruh suite: 704 test hijau, 3.466 assertion.
 - `view:cache` sukses.

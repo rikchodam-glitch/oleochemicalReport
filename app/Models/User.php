@@ -131,6 +131,7 @@ class User extends Authenticatable
         return in_array((string) $this->role, [
             self::ROLE_ADMIN,
             'supervisor',
+            self::ROLE_ADMIN_REGULER,
             self::ROLE_ADMIN_GENERAL,
         ], true);
     }
@@ -350,7 +351,7 @@ class User extends Authenticatable
         // melihat dashboard dan halaman teknisi (read-only), serta mengelola
         // cuti. Tidak mendapat modul lain dan bukan administrator penuh.
         if ((string) $this->role === self::ROLE_ADMIN_REGULER) {
-            return ['dashboard', 'technicians', 'cuti'];
+            return ['dashboard', 'technicians', 'cuti', 'cuti_semua'];
         }
 
         // Admin General hanya melihat seluruh cuti (read-only).
