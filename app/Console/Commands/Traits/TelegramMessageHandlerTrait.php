@@ -110,6 +110,13 @@ trait TelegramMessageHandlerTrait
             return;
         }
 
+        // Cuti tidak lagi dibuat lewat bot. Cegah perintah ini masuk ke
+        // wizard laporan; arahkan teknisi ke Admin Reguler.
+        if (preg_match('/^\/cuti(?:@\S+)?\b/i', $text)) {
+            $this->sendMessage($chatId, 'Cuti tidak lagi diajukan lewat bot. Hubungi Admin Reguler untuk mencatat cuti Anda.');
+            return;
+        }
+
         // Routing foto
         if ($hasPhoto) {
             $this->handlePhotoMessage($chatId, $message, $technician, $caption, $message['media_group_id'] ?? null);

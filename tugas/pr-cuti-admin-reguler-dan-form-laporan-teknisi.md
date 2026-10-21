@@ -3,6 +3,8 @@
 ## Ringkasan
 
 - Cuti tidak lagi diisi teknisi. Form token Telegram dan command `/cuti` dihapus.
+  Jika `/cuti` dikirim, bot hanya membalas agar menghubungi Admin Reguler dan
+  tidak memasukkannya ke wizard laporan.
 - Role baru **Admin Reguler** (`admin_reguler`): hanya dashboard, halaman
   teknisi (read-only), dan kelola cuti; bukan administrator penuh.
 - Admin Reguler mencatat cuti dari tombol **Kelola Cuti** di detail teknisi,

@@ -50,6 +50,10 @@ class TelegramWebhookController extends Controller
 
                 $technician->update(['last_active_at' => now()]);
 
+                if (preg_match('/^\/cuti(?:@\S+)?\b/i', $text)) {
+                    return $this->sendMessage($chatId, 'Cuti tidak lagi diajukan lewat bot. Hubungi Admin Reguler untuk mencatat cuti Anda.');
+                }
+
                 return $this->handleReport($chatId, $technician, $text);
             }
 

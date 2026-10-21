@@ -41,7 +41,8 @@ cuti dari halaman teknisi; teknisi hanya melihat riwayat cutinya.
 ## Telegram
 
 - Perintah `/cuti` dan form token publik **dihapus**.
-- Bot tidak lagi membuat tautan form cuti.
+- Bot tidak lagi membuat tautan form cuti; jika `/cuti` dikirim, bot hanya
+  membalas agar teknisi menghubungi Admin Reguler (tidak masuk wizard laporan).
 - Pengajuan cuti sepenuhnya melalui Admin Reguler.
 - Tabel `cuti_tokens` lama tidak dipakai lagi oleh kode; dibiarkan agar
   riwayat migrasi tidak destruktif.
