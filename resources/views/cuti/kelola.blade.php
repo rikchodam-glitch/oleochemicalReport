@@ -11,14 +11,6 @@
     <span class="text-slate-900 font-medium">Cuti</span>
 @endsection
 
-@php
-    $warnaStatus = [
-        \App\Models\CutiTeknisi::STATUS_DISETUJUI => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-        \App\Models\CutiTeknisi::STATUS_PENDING   => 'bg-amber-50 text-amber-700 ring-amber-200',
-        \App\Models\CutiTeknisi::STATUS_DITOLAK   => 'bg-rose-50 text-rose-700 ring-rose-200',
-    ];
-@endphp
-
 @section('content')
     <div class="space-y-5">
         <div class="flex flex-wrap items-start justify-between gap-3">
@@ -90,7 +82,6 @@
                             <th class="px-4 py-3 text-left font-semibold">Periode</th>
                             <th class="px-4 py-3 text-left font-semibold">Jenis</th>
                             <th class="px-4 py-3 text-left font-semibold">Alasan</th>
-                            <th class="px-4 py-3 text-left font-semibold">Status</th>
                             <th class="px-4 py-3 text-left font-semibold">Dicatat</th>
                             <th class="px-4 py-3 text-right font-semibold">Aksi</th>
                         </tr>
@@ -104,11 +95,6 @@
                                 </td>
                                 <td class="px-4 py-3 text-xs font-medium text-slate-700">{{ $cuti->labelJenis() }}</td>
                                 <td class="px-4 py-3 text-xs text-slate-500 max-w-sm">{{ $cuti->alasan ?: '-' }}</td>
-                                <td class="px-4 py-3">
-                                    <span class="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold ring-1 {{ $warnaStatus[$cuti->status] ?? 'bg-slate-100 text-slate-600 ring-slate-200' }}">
-                                        {{ $cuti->labelStatus() }}
-                                    </span>
-                                </td>
                                 <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{{ $cuti->created_at?->format('d/m/Y H:i') ?? '-' }}</td>
                                 <td class="px-4 py-3 text-right whitespace-nowrap">
                                     <a href="{{ route('cuti.kelola.edit', $cuti) }}"
@@ -123,7 +109,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="px-4 py-10 text-center text-sm text-slate-400">Belum ada cuti untuk teknisi ini.</td>
+                                <td colspan="5" class="px-4 py-10 text-center text-sm text-slate-400">Belum ada cuti untuk teknisi ini.</td>
                             </tr>
                         @endforelse
                     </tbody>

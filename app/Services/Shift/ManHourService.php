@@ -556,7 +556,6 @@ class ManHourService
         $akhir = $selesai->copy()->startOfDay();
 
         $daftar = CutiTeknisi::query()
-            ->disetujui()
             ->whereIn('technician_id', $teknisiIds)
             ->whereDate('tanggal_mulai', '<=', $akhir->toDateString())
             ->whereDate('tanggal_selesai', '>=', $awal->toDateString())

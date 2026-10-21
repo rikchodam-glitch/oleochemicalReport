@@ -37,8 +37,6 @@ beforeEach(function () {
         'tanggal_selesai' => '2026-10-21',
         'jenis'           => 'tahunan',
         'alasan'          => 'Cuti milik sendiri',
-        'status'          => CutiTeknisi::STATUS_DISETUJUI,
-        'disetujui_at'    => now(),
     ]);
 });
 
@@ -56,7 +54,6 @@ test('teknisi melihat cuti miliknya sendiri di halaman Cuti Saya', function () {
         'tanggal_selesai' => '2026-10-22',
         'jenis'           => 'izin',
         'alasan'          => 'Cuti teknisi lain',
-        'status'          => CutiTeknisi::STATUS_DISETUJUI,
     ]);
 
     $this->actingAs($this->akun)

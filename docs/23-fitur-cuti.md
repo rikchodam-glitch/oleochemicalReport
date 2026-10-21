@@ -18,23 +18,24 @@ cuti dari halaman teknisi; teknisi hanya melihat riwayat cutinya.
 1. Buka detail teknisi di `/technicians/{id}`.
 2. Klik **Kelola Cuti**.
 3. Isi tanggal mulai/selesai, jenis, dan alasan; simpan.
-4. Cuti langsung berstatus `disetujui`, tanpa approval, dan langsung
-   memengaruhi target man hour.
+4. Cuti langsung berlaku, tanpa status/approval, dan langsung memengaruhi
+   target man hour.
 5. Admin Reguler dapat mengedit/menghapus cuti dari halaman yang sama.
 
 ## Alur teknisi
 
 - Login ke aplikasi, buka menu **Cuti Saya**.
-- Hanya melihat periode, jenis, alasan, status, dan waktu dicatat.
+- Hanya melihat periode, jenis, alasan, dan waktu dicatat.
 - Tidak ada tombol edit/hapus dan tidak ada form pengajuan.
 
 ## Man hour
 
-`ManHourService` membaca cuti berstatus `disetujui`:
+`ManHourService` membaca **seluruh** cuti yang tersimpan:
 
-- Cuti pada hari kerja: target hari itu 0, status `cuti`, dan masuk `hari_cuti`.
+- Cuti pada hari kerja: target hari itu 0, status harian `cuti`, dan masuk
+  `hari_cuti`.
 - Cuti pada hari OFF/libur nasional: tidak mengubah target.
-- Cuti `pending`/`ditolak` tidak mengurangi target.
+- Tidak ada status cuti; semua baris cuti efektif.
 - Jika ada laporan pada hari cuti, menit normal dipindahkan ke lembur dan
   ditandai anomali.
 
@@ -46,6 +47,8 @@ cuti dari halaman teknisi; teknisi hanya melihat riwayat cutinya.
 - Pengajuan cuti sepenuhnya melalui Admin Reguler.
 - Tabel `cuti_tokens` lama tidak dipakai lagi oleh kode; dibiarkan agar
   riwayat migrasi tidak destruktif.
+- Migrasi `2026_10_21_000001_drop_status_from_cuti_teknisis` membuang kolom
+  `status` (dan index-nya) karena cuti tidak lagi memakai status.
 
 ## Akses dan route
 
@@ -73,5 +76,5 @@ cuti dari halaman teknisi; teknisi hanya melihat riwayat cutinya.
 ## Uji
 
 - `CutiAdminTest` 5 test, `CutiSayaTest` 2 test: total 7 test hijau.
-- Seluruh suite: 699 test hijau, 3.419 assertion.
+- Seluruh suite: 699 test hijau, 3.418 assertion.
 - `php artisan view:cache` sukses.
