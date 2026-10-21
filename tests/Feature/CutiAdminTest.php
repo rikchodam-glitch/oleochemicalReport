@@ -40,6 +40,8 @@ test('admin reguler hanya mendapat akses dashboard, teknisi, dan cuti', function
         ->and($this->adminReguler->punyaAkses('dashboard'))->toBeTrue()
         ->and($this->adminReguler->punyaAkses('technicians'))->toBeTrue()
         ->and($this->adminReguler->punyaAkses('cuti'))->toBeTrue()
+        ->and($this->adminReguler->punyaAkses('cuti_semua'))->toBeTrue()
+        ->and($this->adminReguler->bolehLihatSemuaCuti())->toBeTrue()
         ->and($this->adminReguler->punyaAkses('reports'))->toBeFalse();
 });
 

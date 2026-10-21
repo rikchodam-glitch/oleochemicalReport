@@ -10,7 +10,8 @@
 - Tombol **Kelola Cuti** di profil teknisi tetap ada dan membuka halaman global
   dengan teknisi tersebut sudah terpilih.
 - Daftar cuti menampilkan kolom teknisi; edit/hapus tetap tersedia.
-- Akses Admin Reguler: dashboard, teknisi (read-only), dan kelola cuti.
+- Akses Admin Reguler: dashboard, teknisi (read-only), kelola cuti, dan halaman
+  **Semua Cuti** (read-only).
 
 ## Perbaikan akses
 
@@ -32,6 +33,7 @@ ada menu langsung. Sekarang route `cuti.kelola.index/store` berada di
 ## Uji
 
 - `CutiAdminTest` + `CutiSayaTest`: 8 test hijau, 37 assertion.
-- Seluruh suite: 704 test hijau, 3.458 assertion.
+- `CutiSemuaTest`: 4 test hijau, 41 assertion (termasuk Admin Reguler).
+- Seluruh suite: 704 test hijau, 3.466 assertion.
 - `view:cache` sukses.
 - Tidak ada migrasi baru.
