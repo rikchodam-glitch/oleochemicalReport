@@ -25,20 +25,14 @@
                     {{ \App\Models\Technician::GROUPS[$teknisi->group] ?? ($teknisi->group ?? '-') }}
                 </p>
                 <p class="text-xs text-slate-400 mt-1">
-                    Cuti langsung berlaku tanpa persetujuan admin. Perubahan dan penghapusan langsung memengaruhi target man hour.
+                    Cuti dicatat oleh Admin Reguler. Halaman ini hanya untuk melihat riwayat cuti Anda.
                 </p>
             </div>
             <a href="{{ route('dashboard') }}" class="text-xs font-semibold text-teal-700 hover:text-teal-800">Kembali ke dashboard</a>
         </div>
 
-        @if(session('status'))
-            <div class="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800">{{ session('status') }}</div>
-        @endif
-
         <div class="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 text-xs text-blue-800">
-            Pengajuan cuti baru dilakukan lewat bot Telegram: kirim
-            <span class="font-semibold">/cuti</span> atau <span class="font-semibold">/cuti alasan</span>.
-            Daftar di bawah adalah cuti yang sudah tercatat.
+            Untuk mengajukan atau mengubah cuti, hubungi Admin Reguler. Perubahan cuti akan langsung memengaruhi target man hour.
         </div>
 
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -50,8 +44,7 @@
                             <th class="px-4 py-3 text-left font-semibold">Jenis</th>
                             <th class="px-4 py-3 text-left font-semibold">Alasan</th>
                             <th class="px-4 py-3 text-left font-semibold">Status</th>
-                            <th class="px-4 py-3 text-left font-semibold">Diperbarui</th>
-                            <th class="px-4 py-3 text-right font-semibold">Aksi</th>
+                            <th class="px-4 py-3 text-left font-semibold">Dicatat</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
@@ -68,27 +61,11 @@
                                         {{ $cuti->labelStatus() }}
                                     </span>
                                 </td>
-                                <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{{ $cuti->updated_at?->format('d/m/Y H:i') ?? '-' }}</td>
-                                <td class="px-4 py-3 text-right whitespace-nowrap">
-                                    <a href="{{ route('cuti.saya.edit', $cuti) }}"
-                                       class="inline-flex px-2.5 py-1 rounded-md border border-slate-200 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">
-                                        Edit
-                                    </a>
-                                    <form method="POST" action="{{ route('cuti.saya.destroy', $cuti) }}" class="inline"
-                                          onsubmit="return confirm('Hapus cuti {{ $cuti->tanggal_mulai->format('d/m/Y') }} - {{ $cuti->tanggal_selesai->format('d/m/Y') }}? Target man hour akan berubah.')">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="px-2.5 py-1 rounded-md bg-rose-50 border border-rose-200 text-[11px] font-semibold text-rose-700 hover:bg-rose-100">
-                                            Hapus
-                                        </button>
-                                    </form>
-                                </td>
+                                <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{{ $cuti->created_at?->format('d/m/Y H:i') ?? '-' }}</td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="px-4 py-10 text-center text-sm text-slate-400">
-                                    Belum ada cuti tercatat. Kirim <span class="font-semibold">/cuti</span> di Telegram untuk mengajukan.
-                                </td>
+                                <td colspan="5" class="px-4 py-10 text-center text-sm text-slate-400">Belum ada cuti tercatat.</td>
                             </tr>
                         @endforelse
                     </tbody>

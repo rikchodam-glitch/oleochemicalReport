@@ -69,6 +69,11 @@
                                 </option>
                             @endforeach
                         </optgroup>
+                        <optgroup label="Khusus">
+                            <option value="{{ \App\Models\User::ROLE_ADMIN_REGULER }}" {{ old('role', $user->role) === \App\Models\User::ROLE_ADMIN_REGULER ? 'selected' : '' }}>
+                                Admin Reguler (input cuti)
+                            </option>
+                        </optgroup>
                         <optgroup label="Bagian (dibatasi hak akses)">
                             @foreach($bagian as $kode => $label)
                                 <option value="{{ $kode }}" {{ old('role', $user->role) === $kode ? 'selected' : '' }}>{{ $label }}</option>

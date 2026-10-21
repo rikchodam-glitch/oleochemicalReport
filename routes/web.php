@@ -18,10 +18,11 @@ use App\Http\Controllers\LocationController;
 use App\Http\Controllers\PanelRuanganController;
 use App\Http\Controllers\ReliabilityController;
 use App\Http\Controllers\CollaborationController;
-use App\Http\Controllers\CutiController;
+use App\Http\Controllers\CutiAdminController;
 use App\Http\Controllers\CutiSayaController;
 use App\Http\Controllers\ReportCollaborationController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\ReportFormController;
 use App\Http\Controllers\ReportMultiItemController;
 use App\Http\Controllers\SparepartController;
 use App\Http\Controllers\SparepartPantauController;
@@ -42,22 +43,22 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 // Telegram webhook (no auth, called by Telegram)
 Route::post('/telegram/webhook', [TelegramWebhookController::class, 'handle'])->name('telegram.webhook');
 
-// Form cuti publik dari token Telegram (tanpa login panel admin).
-// Token sekali pakai + session browser; route admin ada di grup di bawah.
-Route::middleware('throttle:30,1')->group(function () {
-    Route::get('/cuti/form/{token}', [CutiController::class, 'form'])->name('cuti.form');
-    Route::post('/cuti/form/{token}', [CutiController::class, 'simpan'])->name('cuti.simpan');
-    Route::get('/cuti/selesai', [CutiController::class, 'selesai'])->name('cuti.selesai');
-});
-
-// Cuti milik teknisi yang sudah login. Sengaja di luar middleware hanya_baca:
-// pemilik akun boleh mengubah/menghapus cutinya sendiri. Kepemilikan data
-// diperiksa di CutiSayaController.
+// Cuti teknisi:
+// - teknisi login hanya MELIHAT cuti miliknya;
+// - Admin Reguler/Administrator mencatat cuti dari halaman teknisi.
 Route::middleware('admin')->group(function () {
     Route::get('/cuti-saya', [CutiSayaController::class, 'index'])->name('cuti.saya');
-    Route::get('/cuti-saya/{cuti}/edit', [CutiSayaController::class, 'edit'])->name('cuti.saya.edit');
-    Route::put('/cuti-saya/{cuti}', [CutiSayaController::class, 'update'])->name('cuti.saya.update');
-    Route::delete('/cuti-saya/{cuti}', [CutiSayaController::class, 'destroy'])->name('cuti.saya.destroy');
+
+    // Form laporan web untuk teknisi login (di luar hanya_baca & akses modul;
+    // controller memastikan akun terhubung ke teknisi aktif).
+    Route::get('/laporan-saya/buat', [ReportFormController::class, 'create'])->name('laporan.saya.create');
+    Route::post('/laporan-saya/buat', [ReportFormController::class, 'store'])->name('laporan.saya.store');
+
+    Route::get('/technicians/{technician}/cuti', [CutiAdminController::class, 'index'])->name('cuti.kelola.index');
+    Route::post('/technicians/{technician}/cuti', [CutiAdminController::class, 'store'])->name('cuti.kelola.store');
+    Route::get('/cuti-kelola/{cuti}/edit', [CutiAdminController::class, 'edit'])->name('cuti.kelola.edit');
+    Route::put('/cuti-kelola/{cuti}', [CutiAdminController::class, 'update'])->name('cuti.kelola.update');
+    Route::delete('/cuti-kelola/{cuti}', [CutiAdminController::class, 'destroy'])->name('cuti.kelola.destroy');
 });
 
 // DEBUG ONLY — auto-login untuk pengembangan lokal (hapus sebelum production!)

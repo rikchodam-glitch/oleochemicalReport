@@ -26,6 +26,11 @@ class User extends Authenticatable
      */
     public const ROLE_ADMIN = 'admin';
 
+    /**
+     * Role khusus untuk menginput cuti teknisi (bukan administrator penuh).
+     */
+    public const ROLE_ADMIN_REGULER = 'admin_reguler';
+
     protected $fillable = [
         'name',
         'email',
@@ -99,6 +104,16 @@ class User extends Authenticatable
     public function bolehKelolaUser(): bool
     {
         return (string) $this->role === self::ROLE_ADMIN;
+    }
+
+    /**
+     * Apakah akun ini boleh mencatat/mengubah cuti teknisi.
+     *
+     * @return bool
+     */
+    public function bolehKelolaCuti(): bool
+    {
+        return in_array((string) $this->role, [self::ROLE_ADMIN, self::ROLE_ADMIN_REGULER], true);
     }
 
     /**
@@ -286,6 +301,10 @@ class User extends Authenticatable
             return 'Supervisor';
         }
 
+        if ((string) $this->role === self::ROLE_ADMIN_REGULER) {
+            return 'Admin Reguler';
+        }
+
         $kode  = (string) $this->kodeBagian();
         $label = Technician::SECTIONS[$kode] ?? ucfirst($kode);
         $grup  = $this->grupBagian();
@@ -302,6 +321,13 @@ class User extends Authenticatable
     {
         if ($this->aksesPenuh()) {
             return array_keys(AksesModul::semua());
+        }
+
+        // Admin Reguler adalah role khusus untuk pencatatan cuti: boleh
+        // melihat dashboard dan halaman teknisi (read-only), serta mengelola
+        // cuti. Tidak mendapat modul lain dan bukan administrator penuh.
+        if ((string) $this->role === self::ROLE_ADMIN_REGULER) {
+            return ['dashboard', 'technicians', 'cuti'];
         }
 
         $bagian = $this->kodeBagian();

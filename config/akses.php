@@ -45,6 +45,12 @@ return [
             'pola'  => ['technicians.*'],
             'link'  => 'technicians.index',
         ],
+        'cuti' => [
+            'label' => 'Kelola Cuti Teknisi',
+            'grup'  => 'Menu Utama',
+            'pola'  => ['cuti.kelola.*'],
+            'link'  => null,
+        ],
         'reports' => [
             'label' => 'Laporan',
             'grup'  => 'Menu Utama',
@@ -142,16 +148,12 @@ return [
         'logout',
         'telegram.webhook',
         'debug.login',
-        // Form cuti publik memakai token, bukan login panel.
-        'cuti.form',
-        'cuti.simpan',
-        'cuti.selesai',
-        // Halaman cuti milik teknisi: hanya butuh login + users.technician_id;
-        // kepemilikan data diperiksa CutiSayaController.
+        // Halaman cuti milik teknisi: hanya butuh login + users.technician_id.
+        // Teknisi hanya melihat; pencatatan oleh Admin Reguler.
         'cuti.saya',
-        'cuti.saya.edit',
-        'cuti.saya.update',
-        'cuti.saya.destroy',
+        // Form laporan web milik teknisi: login + users.technician_id.
+        'laporan.saya.create',
+        'laporan.saya.store',
     ],
 
     'pesan_tolak' => 'Bagian Anda tidak memiliki akses ke halaman ini.',
