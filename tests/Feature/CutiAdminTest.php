@@ -43,15 +43,25 @@ test('admin reguler hanya mendapat akses dashboard, teknisi, dan cuti', function
         ->and($this->adminReguler->punyaAkses('reports'))->toBeFalse();
 });
 
+test('admin reguler bisa membuka halaman kelola cuti dan memilih teknisi', function () {
+    $this->actingAs($this->adminReguler)
+        ->get(route('cuti.kelola.index'))
+        ->assertOk()
+        ->assertSee('Kelola Cuti Teknisi')
+        ->assertSee('Teknisi Cuti Admin')
+        ->assertSee('name="technician_id"', false);
+});
+
 test('admin reguler mencatat cuti dan target man hour langsung menjadi nol', function () {
     $this->actingAs($this->adminReguler)
-        ->post(route('cuti.kelola.store', $this->teknisi), [
+        ->post(route('cuti.kelola.store'), [
+            'technician_id'   => $this->teknisi->id,
             'tanggal_mulai'   => '2026-10-15',
             'tanggal_selesai' => '2026-10-15',
             'jenis'           => 'tahunan',
             'alasan'          => 'Keperluan keluarga',
         ])
-        ->assertRedirect(route('cuti.kelola.index', $this->teknisi));
+        ->assertRedirect(route('cuti.kelola.index', ['technician_id' => $this->teknisi->id]));
 
     $cuti = CutiTeknisi::query()->firstOrFail();
 
@@ -70,16 +80,17 @@ test('admin reguler mencatat cuti dan target man hour langsung menjadi nol', fun
 
 test('pengajuan cuti yang beririsan ditolak', function () {
     $payload = [
+        'technician_id'   => $this->teknisi->id,
         'tanggal_mulai'   => '2026-10-15',
         'tanggal_selesai' => '2026-10-15',
         'jenis'           => 'tahunan',
     ];
 
     $this->actingAs($this->adminReguler)
-        ->post(route('cuti.kelola.store', $this->teknisi), $payload);
+        ->post(route('cuti.kelola.store'), $payload);
 
     $this->actingAs($this->adminReguler)
-        ->post(route('cuti.kelola.store', $this->teknisi), $payload)
+        ->post(route('cuti.kelola.store'), $payload)
         ->assertSessionHasErrors('tanggal_mulai');
 
     expect(CutiTeknisi::count())->toBe(1);
@@ -101,14 +112,14 @@ test('admin reguler dapat mengedit dan menghapus cuti', function () {
             'jenis'           => 'sakit',
             'alasan'          => 'Demam',
         ])
-        ->assertRedirect(route('cuti.kelola.index', $this->teknisi));
+        ->assertRedirect(route('cuti.kelola.index', ['technician_id' => $this->teknisi->id]));
 
     expect($cuti->refresh()->jenis)->toBe('sakit')
         ->and($cuti->tanggal_selesai->toDateString())->toBe('2026-10-16');
 
     $this->actingAs($this->adminReguler)
         ->delete(route('cuti.kelola.destroy', $cuti))
-        ->assertRedirect(route('cuti.kelola.index', $this->teknisi));
+        ->assertRedirect(route('cuti.kelola.index', ['technician_id' => $this->teknisi->id]));
 
     expect(CutiTeknisi::find($cuti->id))->toBeNull();
 });
@@ -124,6 +135,6 @@ test('teknisi biasa tidak bisa membuka kelola cuti', function () {
     ]);
 
     $this->actingAs($akunTeknisi)
-        ->get(route('cuti.kelola.index', $this->teknisi))
+        ->get(route('cuti.kelola.index'))
         ->assertForbidden();
 });

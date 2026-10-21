@@ -10,10 +10,10 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Pencatatan cuti oleh Admin Reguler dari halaman teknisi.
+ * Pencatatan cuti oleh Admin Reguler/Administrator.
  *
- * Admin Reguler hanya boleh mengelola cuti; bukan administrator penuh dan
- * bukan pengelola data teknisi. Teknisi sendiri hanya melihat cuti (Cuti Saya).
+ * Halaman ini global: admin memilih teknisi langsung pada form, tanpa harus
+ * membuka profil teknisi satu per satu. Teknisi sendiri hanya melihat cuti.
  */
 class CutiAdminController extends Controller
 {
@@ -22,54 +22,66 @@ class CutiAdminController extends Controller
     }
 
     /**
-     * Halaman kelola cuti satu teknisi.
+     * Halaman kelola cuti seluruh teknisi.
      *
-     * @param  Technician $technician Teknisi yang dipilih
+     * @param  Request $request Request filter teknisi
      * @return \Illuminate\View\View
      */
-    public function index(Technician $technician)
+    public function index(Request $request)
     {
         $this->pastikanBolehKelola();
 
+        $teknisiId = (int) $request->query('technician_id', 0);
+        $teknisiTerpilih = $teknisiId > 0 ? Technician::find($teknisiId) : null;
+
         $daftar = CutiTeknisi::query()
-            ->where('technician_id', $technician->id)
+            ->with('technician:id,name,nik,group,section')
+            ->when($teknisiTerpilih !== null, fn ($query) => $query->where('technician_id', $teknisiTerpilih->id))
             ->orderByDesc('tanggal_mulai')
-            ->paginate(20);
+            ->paginate(20)
+            ->withQueryString();
+
+        $daftarTeknisi = Technician::query()
+            ->orderBy('name')
+            ->get(['id', 'name', 'nik', 'group', 'section', 'status']);
 
         return view('cuti.kelola', [
-            'teknisi'   => $technician,
-            'daftar'    => $daftar,
-            'jenisCuti' => CutiTeknisi::JENIS,
+            'daftar'           => $daftar,
+            'daftarTeknisi'    => $daftarTeknisi,
+            'teknisiTerpilih'  => $teknisiTerpilih,
+            'jenisCuti'        => CutiTeknisi::JENIS,
         ]);
     }
 
     /**
-     * Mencatat cuti baru untuk teknisi.
+     * Mencatat cuti baru untuk teknisi yang dipilih pada form.
      *
-     * @param  Request    $request    Request form
-     * @param  Technician $technician Teknisi pemilik cuti
+     * @param  Request $request Request form
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function store(Request $request, Technician $technician)
+    public function store(Request $request)
     {
         $this->pastikanBolehKelola();
 
         $data = $request->validate([
+            'technician_id'   => ['required', 'integer', 'exists:technicians,id'],
             'tanggal_mulai'   => ['required', 'date'],
             'tanggal_selesai' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
             'jenis'           => ['required', Rule::in(array_keys(CutiTeknisi::JENIS))],
             'alasan'          => ['nullable', 'string', 'max:1000'],
         ]);
 
+        $teknisi = Technician::findOrFail($data['technician_id']);
+
         try {
-            $this->cutiService->catatOlehAdmin($technician, $data);
+            $this->cutiService->catatOlehAdmin($teknisi, $data);
         } catch (ValidationException $e) {
             return back()->withErrors($e->errors())->withInput();
         }
 
         return redirect()
-            ->route('cuti.kelola.index', $technician)
-            ->with('status', 'Cuti ' . $technician->name . ' berhasil dicatat.');
+            ->route('cuti.kelola.index', ['technician_id' => $teknisi->id])
+            ->with('status', 'Cuti ' . $teknisi->name . ' berhasil dicatat.');
     }
 
     /**
@@ -113,7 +125,7 @@ class CutiAdminController extends Controller
         }
 
         return redirect()
-            ->route('cuti.kelola.index', $cuti->technician_id)
+            ->route('cuti.kelola.index', ['technician_id' => $cuti->technician_id])
             ->with('status', 'Cuti berhasil diperbarui.');
     }
 
@@ -131,7 +143,7 @@ class CutiAdminController extends Controller
         $cuti->delete();
 
         return redirect()
-            ->route('cuti.kelola.index', $technicianId)
+            ->route('cuti.kelola.index', ['technician_id' => $technicianId])
             ->with('status', 'Cuti berhasil dihapus. Target man hour mengikuti perubahan ini.');
     }
 
