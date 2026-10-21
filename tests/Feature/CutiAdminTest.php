@@ -56,7 +56,6 @@ test('admin reguler mencatat cuti dan target man hour langsung menjadi nol', fun
     $cuti = CutiTeknisi::query()->firstOrFail();
 
     expect($cuti->technician_id)->toBe($this->teknisi->id)
-        ->and($cuti->status)->toBe(CutiTeknisi::STATUS_DISETUJUI)
         ->and($cuti->diajukan_via)->toBe('admin')
         ->and($cuti->alasan)->toBe('Keperluan keluarga');
 
@@ -92,8 +91,6 @@ test('admin reguler dapat mengedit dan menghapus cuti', function () {
         'tanggal_mulai'   => '2026-10-15',
         'tanggal_selesai' => '2026-10-15',
         'jenis'           => 'tahunan',
-        'status'          => CutiTeknisi::STATUS_DISETUJUI,
-        'disetujui_at'    => now(),
         'diajukan_via'    => 'admin',
     ]);
 

@@ -2,23 +2,17 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Pengajuan cuti satu teknisi.
+ * Cuti satu teknisi.
  *
- * Cuti hanya mengurangi target man hour setelah berstatus "disetujui".
- * Pengajuan "pending" tetap disimpan agar admin dapat memeriksa/menyetujui.
+ * Cuti yang dicatat Admin Reguler langsung berlaku dan langsung memengaruhi
+ * target man hour; tidak ada status pengajuan/persetujuan.
  */
 class CutiTeknisi extends Model
 {
-    public const STATUS_PENDING    = 'pending';
-    public const STATUS_DISETUJUI  = 'disetujui';
-    public const STATUS_DITOLAK    = 'ditolak';
-    public const STATUS_DIBATALKAN = 'dibatalkan';
-
     public const JENIS = [
         'tahunan' => 'Cuti Tahunan',
         'sakit'   => 'Sakit',
@@ -38,7 +32,6 @@ class CutiTeknisi extends Model
         'tanggal_selesai',
         'jenis',
         'alasan',
-        'status',
         'diajukan_via',
         'disetujui_oleh',
         'disetujui_at',
@@ -80,28 +73,6 @@ class CutiTeknisi extends Model
     }
 
     /**
-     * Scope cuti yang sudah disetujui.
-     *
-     * @param  Builder<CutiTeknisi> $query
-     * @return Builder<CutiTeknisi>
-     */
-    public function scopeDisetujui(Builder $query): Builder
-    {
-        return $query->where('status', self::STATUS_DISETUJUI);
-    }
-
-    /**
-     * Scope cuti yang masih menunggu persetujuan.
-     *
-     * @param  Builder<CutiTeknisi> $query
-     * @return Builder<CutiTeknisi>
-     */
-    public function scopePending(Builder $query): Builder
-    {
-        return $query->where('status', self::STATUS_PENDING);
-    }
-
-    /**
      * Label jenis cuti.
      *
      * @return string
@@ -112,22 +83,7 @@ class CutiTeknisi extends Model
     }
 
     /**
-     * Label status pengajuan.
-     *
-     * @return string
-     */
-    public function labelStatus(): string
-    {
-        return match ($this->status) {
-            self::STATUS_DISETUJUI  => 'Disetujui',
-            self::STATUS_DITOLAK    => 'Ditolak',
-            self::STATUS_DIBATALKAN => 'Dibatalkan',
-            default                 => 'Menunggu',
-        };
-    }
-
-    /**
-     * Jumlah hari kalender pada pengajuan.
+     * Jumlah hari kalender pada cuti.
      *
      * @return int
      */

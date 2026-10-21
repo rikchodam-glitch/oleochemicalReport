@@ -10,8 +10,9 @@ use Illuminate\Validation\ValidationException;
 /**
  * Pencatatan cuti teknisi oleh Admin Reguler.
  *
- * Cuti yang dicatat langsung berstatus disetujui dan langsung memengaruhi
- * target man hour. Teknisi hanya dapat melihat cuti miliknya (Cuti Saya).
+ * Cuti yang dicatat langsung berlaku dan langsung memengaruhi target man hour.
+ * Tidak ada status pengajuan/persetujuan. Teknisi hanya dapat melihat cuti
+ * miliknya (Cuti Saya).
  */
 class CutiService
 {
@@ -37,8 +38,6 @@ class CutiService
             'tanggal_selesai' => $selesai->toDateString(),
             'jenis'           => $jenis,
             'alasan'          => $this->rapikanAlasan($data['alasan'] ?? null),
-            'status'          => CutiTeknisi::STATUS_DISETUJUI,
-            'disetujui_at'    => now(),
             'diajukan_via'    => 'admin',
         ]);
     }
@@ -61,8 +60,6 @@ class CutiService
             'tanggal_selesai' => $selesai->toDateString(),
             'jenis'           => $jenis,
             'alasan'          => $this->rapikanAlasan($data['alasan'] ?? null),
-            'status'          => CutiTeknisi::STATUS_DISETUJUI,
-            'disetujui_at'    => $cuti->disetujui_at ?? now(),
         ]);
 
         return $cuti->refresh();
@@ -106,7 +103,6 @@ class CutiService
         $bentrok = CutiTeknisi::query()
             ->where('technician_id', $technicianId)
             ->when($kecualiId !== null, fn ($query) => $query->where('id', '!=', $kecualiId))
-            ->whereIn('status', [CutiTeknisi::STATUS_PENDING, CutiTeknisi::STATUS_DISETUJUI])
             ->whereDate('tanggal_mulai', '<=', $selesai->toDateString())
             ->whereDate('tanggal_selesai', '>=', $mulai->toDateString())
             ->exists();
