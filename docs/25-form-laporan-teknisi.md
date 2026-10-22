@@ -27,6 +27,7 @@ Perintah `/laporan` ditangani di dua jalur: poller
   - UMUM → UMUM
 - Server memvalidasi ulang pasangan klasifikasi-jenis.
 - Lokasi: PT → Dept → Area → Section (dari `functional_locations` aktif).
+  Pengguna boleh berhenti di level mana pun; tanpa alat dianggap pekerjaan area.
 - Equipment type wajib dipilih sebelum alat; tipe berasal dari
   `assets.equipment_type` pada subtree lokasi. Memilih tipe langsung
   menampilkan daftar alat pada tipe/lokasi tersebut.
@@ -80,6 +81,6 @@ Perintah `/laporan` ditangani di dua jalur: poller
 
 ## Uji
 
-- `ReportFormTest`: 13 test hijau, 50 assertion.
-- Seluruh suite: 711 test hijau, 3.498 assertion.
+- `ReportFormTest`: 14 test hijau, 55 assertion.
+- Seluruh suite: 715 test hijau, 3.510 assertion.
 - `view:cache` sukses.
