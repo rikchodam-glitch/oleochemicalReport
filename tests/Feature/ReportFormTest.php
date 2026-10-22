@@ -203,6 +203,25 @@ test('kolaborator otomatis dari group ikut dibuatkan salinan', function () {
     expect(Report::where('collaborator_of', $induk->id)->where('technician_id', $this->rekan->id)->exists())->toBeTrue();
 });
 
+test('lokasi yang berhenti di PT tetap tersimpan sebagai pekerjaan area', function () {
+    $pt = FunctionalLocation::where('code', 'FORM-PT')->firstOrFail();
+
+    $this->post(route('laporan.simpan', ['token' => $this->token]), [
+        'reports' => [[
+            'report_date' => '2026-10-20', 'work_classification' => 'umum',
+            'jenis_pekerjaan' => 'UMUM', 'work_description' => 'Pekerjaan area level PT',
+            'start_time' => '08:00', 'end_time' => '09:00', 'final_status' => 'completed',
+            'items' => [['funcloc_id' => $pt->id]],
+        ]],
+    ])->assertRedirect(route('laporan.selesai'));
+
+    $laporan = Report::firstOrFail();
+
+    expect($laporan->report_type)->toBe('area_work')
+        ->and($laporan->funcloc_id)->toBe($pt->id)
+        ->and($laporan->asset_id)->toBeNull();
+});
+
 test('alat di luar lokasi yang dipilih ditolak', function () {
     $lain = FunctionalLocation::create([
         'code' => 'FORM-LAIN', 'segment' => 'FORM-LAIN', 'name' => 'Lokasi Lain',

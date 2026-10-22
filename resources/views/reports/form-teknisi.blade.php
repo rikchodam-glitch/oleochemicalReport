@@ -309,13 +309,19 @@ document.addEventListener('DOMContentLoaded', function () {
             hasil.classList.add('hidden');
         }
 
+        function lokasiTerpilih() {
+            return section.value || area.value || dept.value || pt.value || '';
+        }
+
         function isiTipe() {
             tipe.innerHTML = '';
             tipe.disabled = true;
             cari.disabled = true;
             kosongkanAlat();
-            if (!section.value) return;
-            fetch('{{ url('/laporan') }}/' + token + '/tipe-alat?funcloc_id=' + encodeURIComponent(section.value), { headers: { 'Accept': 'application/json' } })
+            const lokasi = lokasiTerpilih();
+            funclocId.value = lokasi;
+            if (!lokasi) return;
+            fetch('{{ url('/laporan') }}/' + token + '/tipe-alat?funcloc_id=' + encodeURIComponent(lokasi), { headers: { 'Accept': 'application/json' } })
                 .then(r => r.json())
                 .then(function (res) {
                     const data = res.data || [];
@@ -337,9 +343,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         function cariAlat() {
             const q = cari.value.trim();
-            if (!section.value) return;
+            const lokasi = lokasiTerpilih();
+            if (!lokasi) return;
             if (q.length > 0 && q.length < 2) return;
-            fetch('{{ url('/laporan') }}/' + token + '/cari-alat?funcloc_id=' + encodeURIComponent(section.value) + '&type=' + encodeURIComponent(tipe.value) + '&q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } })
+            fetch('{{ url('/laporan') }}/' + token + '/cari-alat?funcloc_id=' + encodeURIComponent(lokasi) + '&type=' + encodeURIComponent(tipe.value) + '&q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } })
                 .then(r => r.json())
                 .then(function (res) {
                     const data = res.data || [];
@@ -377,22 +384,24 @@ document.addEventListener('DOMContentLoaded', function () {
             isiSelect(dept, nodeAnak(Number(pt.value), 1), '- Pilih Dept -');
             isiSelect(area, [], '- Pilih Area -');
             isiSelect(section, [], '- Pilih Section -');
-            funclocId.value = '';
-            kosongkanAlat();
+            funclocId.value = pt.value;
+            isiTipe();
         });
         dept.addEventListener('change', function () {
             isiSelect(area, nodeAnak(Number(dept.value), 2), '- Pilih Area -');
             isiSelect(section, [], '- Pilih Section -');
-            funclocId.value = '';
-            kosongkanAlat();
+            funclocId.value = dept.value || pt.value;
+            isiTipe();
         });
         area.addEventListener('change', function () {
             isiSelect(section, nodeAnak(Number(area.value), 3), '- Pilih Section -');
-            funclocId.value = '';
-            kosongkanAlat();
+            funclocId.value = area.value || dept.value || pt.value;
+            isiTipe();
         });
         section.addEventListener('change', function () {
-            funclocId.value = section.value;
+            if (section.value) {
+                funclocId.value = section.value;
+            }
             isiTipe();
         });
         tipe.addEventListener('change', function () {
