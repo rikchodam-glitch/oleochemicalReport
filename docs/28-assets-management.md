@@ -63,6 +63,7 @@ ada.
 - `resources/views/assets/edit.blade.php`
 - `resources/views/assets/partials/_cm-ringkasan.blade.php`
 - `database/migrations/2026_10_22_000002_add_photos_to_assets_table.php`
+- `database/migrations/2026_10_22_000003_add_cm_sync_to_assets_data_source.php`
 - `routes/web.php`
 - `tests/Feature/AssetManagementTest.php`
 
