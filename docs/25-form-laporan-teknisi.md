@@ -81,6 +81,6 @@ Perintah `/laporan` ditangani di dua jalur: poller
 
 ## Uji
 
-- `ReportFormTest`: 14 test hijau, 55 assertion.
-- Seluruh suite: 715 test hijau, 3.510 assertion.
+- `ReportFormTest`: 14 test hijau, 57 assertion.
+- Seluruh suite: 715 test hijau, 3.512 assertion.
 - `view:cache` sukses.
