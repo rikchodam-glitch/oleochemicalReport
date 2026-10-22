@@ -69,6 +69,7 @@ Semua berkas di bawah ini ada di `docs/`.
 | [24-broadcast-kolaborasi.md](docs/24-broadcast-kolaborasi.md) | Broadcast Telegram detail pekerjaan ke seluruh kolaborator | Mengubah kolaborasi laporan atau notifikasi Telegram |
 | [25-form-laporan-teknisi.md](docs/25-form-laporan-teknisi.md) | Form laporan web token `/laporan`, multi-laporan, hierarki, multi-alat, foto, kolaborator | Mengubah form laporan, token, foto, kolaborator, atau akses teknisi |
 | [26-halaman-semua-cuti.md](docs/26-halaman-semua-cuti.md) | Halaman read-only semua cuti untuk admin, supervisor, admin_general, admin_reguler | Mengubah akses atau tampilan seluruh cuti |
+| [27-menu-perintah-bot-telegram.md](docs/27-menu-perintah-bot-telegram.md) | Menu command native bot (`/start`, `/laporan`, `/info`, `/cuti`, `/reset`) | Mengubah daftar command atau tombol menu bot |
 
 ## Dokumen pendukung di `docs/`
 

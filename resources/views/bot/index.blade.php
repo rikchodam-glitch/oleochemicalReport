@@ -149,6 +149,10 @@
                                 class="px-4 py-2 border border-green-500 hover:bg-green-50 text-green-600 text-sm font-medium rounded-lg transition-colors">
                             Test Koneksi
                         </button>
+                        <button type="submit" formaction="{{ route('bot.menu.sync') }}"
+                                class="px-4 py-2 border border-teal-300 hover:bg-teal-50 text-teal-700 text-sm font-medium rounded-lg transition-colors">
+                            Sinkronkan Menu Bot
+                        </button>
                         <form method="POST" action="{{ route('bot.set-webhook') }}" class="inline">
                             @csrf
                             <button type="submit" class="px-4 py-2 border border-blue-300 hover:bg-blue-50 text-blue-600 text-sm font-medium rounded-lg transition-colors">
