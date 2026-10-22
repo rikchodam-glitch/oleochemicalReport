@@ -16,29 +16,29 @@
         <div class="ap-wrap">
             @include('cm._tabs')
 
-            <section class="ap-hero" style="padding:36px 40px;margin-bottom:24px;">
+            <section class="ap-hero" style="margin-bottom:24px;">
                 <p class="ap-eyebrow">Condition Monitoring</p>
-                <h2 class="ap-display" style="font-size:clamp(26px,3.2vw,40px);margin-top:8px;">Temuan condition monitoring.</h2>
-                <p class="ap-lede" style="margin-top:10px;">
+                <h2 class="ap-display" style="margin-top:10px;">Temuan condition monitoring.</h2>
+                <p class="ap-lede" style="margin-top:14px;">
                     Daftar finding terbuka beserta riwayat penyelesaiannya.
                 </p>
             </section>
 
     {{-- Summary Cards --}}
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div class="ap-tile p-4">
-            <p class="ap-micro"><span class="ap-dot ap-dot--warn"></span> Finding Open</p>
-            <p class="ap-num" style="margin-top:8px;color:#bf4800;">{{ $totalOpen }}</p>
+    <div class="ap-grid-4" style="margin-bottom:24px;">
+        <div class="ap-tile ap-tile--warn">
+            <p class="ap-micro"><span class="ap-dot"></span> Finding Open</p>
+            <p class="ap-num" style="margin-top:8px;">{{ $totalOpen }}</p>
         </div>
-        <div class="ap-tile p-4">
-            <p class="ap-micro"><span class="ap-dot ap-dot--bad"></span> Open &gt; 7 Hari</p>
-            <p class="ap-num" style="margin-top:8px;color:#d70015;">{{ $openOver7 }}</p>
+        <div class="ap-tile ap-tile--bad">
+            <p class="ap-micro"><span class="ap-dot"></span> Open &gt; 7 Hari</p>
+            <p class="ap-num" style="margin-top:8px;">{{ $openOver7 }}</p>
         </div>
-        <div class="ap-tile p-4">
-            <p class="ap-micro"><span class="ap-dot ap-dot--ok"></span> Closed</p>
-            <p class="ap-num" style="margin-top:8px;color:#248a3d;">{{ $totalClosed }}</p>
+        <div class="ap-tile ap-tile--ok">
+            <p class="ap-micro"><span class="ap-dot"></span> Closed</p>
+            <p class="ap-num" style="margin-top:8px;">{{ $totalClosed }}</p>
         </div>
-        <div class="ap-tile p-4">
+        <div class="ap-tile ap-tile--neutral">
             <p class="ap-micro">Total Finding</p>
             <p class="ap-num" style="margin-top:8px;">{{ $totalFindings }}</p>
         </div>

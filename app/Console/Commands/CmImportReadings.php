@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\CmEquipment;
 use App\Models\CmMonthlyTracking;
 use App\Models\CmReading;
+use App\Services\CmMasterEquipmentSyncService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -293,6 +294,10 @@ class CmImportReadings extends Command
                         'pt_location'    => $rd['pt_location'] ?? 'Unknown',
                         'plant'          => $rd['plant'] ?? 'Unknown',
                         'tipe_lubrikasi' => $rd['tipe_lubrikasi'] ?? null,
+                        // Tag ini baru muncul dari baris reading; belum tentu
+                        // ada di sheet Master Equipment -> jangan ditandai
+                        // sebagai anggota master sebelum user menambahkannya.
+                        'in_master'      => false,
                     ]);
                     $eqCache[$eqTag] = $eq->id;
                     $existingEq[$eqTag] = $eq->id;
@@ -376,21 +381,20 @@ class CmImportReadings extends Command
 
     private function processMasterEquipment(array $rows): void
     {
-        $h = [];
-        foreach (($rows[0] ?? []) as $i => $v) $h[trim((string) $v)] = $i;
-        if (!isset($h['Equipment Tag'])) { $this->error('Kolom Equipment Tag tdk ditemukan'); return; }
-        $c = 0;
-        for ($r = 1; $r < count($rows); $r++) {
-            $tag = trim((string) ($rows[$r][$h['Equipment Tag']] ?? ''));
-            if (empty($tag)) continue;
-            CmEquipment::updateOrCreate(['equipment_tag' => $tag], [
-                'pt_location' => $this->c(($h['PT Location'] ?? null) !== null ? ($rows[$r][$h['PT Location']] ?? null) : null) ?? 'Unknown',
-                'plant' => $this->c(($h['Plant'] ?? null) !== null ? ($rows[$r][$h['Plant']] ?? null) : null) ?? 'Unknown',
-            ]);
-            $c++;
+        $summary = app(CmMasterEquipmentSyncService::class)->syncRows($rows);
+
+        $this->successEquipment += $summary['dibuat'] + $summary['diperbarui'];
+
+        $this->line(
+            '  Master Equipment: ' . $summary['total_master'] . ' tag, '
+            . $summary['dibuat'] . ' baru, '
+            . $summary['diperbarui'] . ' diperbarui, '
+            . $summary['dinonaktifkan'] . ' dinonaktifkan.'
+        );
+
+        if ($summary['dinonaktifkan'] > 0) {
+            $this->line('    Tidak dimonitoring lagi: ' . implode(', ', $summary['tags_dinonaktifkan']));
         }
-        $this->successEquipment += $c;
-        $this->line('  Master Equipment: ' . $c . ' records.');
     }
 
     private function processMonitoringBulanan(array $rows): void
@@ -405,6 +409,7 @@ class CmImportReadings extends Command
             $eq = CmEquipment::firstOrCreate(['equipment_tag' => $tag], [
                 'pt_location' => $rows[$r][$idxPt] ?? 'Unknown',
                 'plant' => $rows[$r][$idxPlant] ?? 'Unknown',
+                'in_master' => false,
             ]);
             foreach ($bulanCols as $bi => $ci) {
                 $v = trim((string) ($rows[$r][$ci] ?? ''));

@@ -17,6 +17,7 @@ class CmMonitoringExport
     public function export(?string $filterTahun = null, ?string $filterPt = null)
     {
         $query = CmMonthlyTracking::with('equipment')
+            ->whereHas('equipment', fn($q) => $q->active())
             ->orderBy('tahun', 'desc')
             ->orderBy('bulan', 'desc');
 

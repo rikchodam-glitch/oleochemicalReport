@@ -43,7 +43,7 @@
     /* ---------- Tipografi ---------- */
     .ap-eyebrow {
         font-size: 12px; line-height: 1.33; letter-spacing: -0.12px;
-        color: var(--ap-ink-48); font-weight: 400;
+        color: rgba(0, 0, 0, .55); font-weight: 400;
     }
     .ap-display {
         font-size: clamp(30px, 4.2vw, 56px); line-height: 1.07; letter-spacing: -0.28px;
@@ -59,7 +59,7 @@
     }
     .ap-h3 { font-size: 21px; line-height: 1.19; letter-spacing: 0.231px; font-weight: 600; }
     .ap-caption { font-size: 14px; line-height: 1.29; letter-spacing: -0.224px; color: var(--ap-ink-48); }
-    .ap-micro { font-size: 12px; line-height: 1.33; letter-spacing: -0.12px; color: var(--ap-ink-48); }
+    .ap-micro { font-size: 12px; line-height: 1.33; letter-spacing: -0.12px; color: rgba(0, 0, 0, .55); }
     .ap-micro .ap-dot { vertical-align: middle; margin-right: 2px; }
     .ap-num {
         font-size: 34px; line-height: 1.1; letter-spacing: -0.374px; font-weight: 600;
@@ -75,20 +75,28 @@
     .ap-link:hover { text-decoration: underline; text-underline-offset: 2px; }
     .ap-nowrap { white-space: nowrap; }
 
-    /* ---------- Tile hero (abu terang di atas kanvas putih, gaya apple.com) ---------- */
+    /* ---------- Tile hero ----------
+       Sebelumnya #f5f5f7 nyaris sama dengan kanvas putih sehingga mata cepat
+       lelah (masukan user 20/10/2026: "mirip-mirip putih, gelapin dikit").
+       Sekarang memakai permukaan pastel biru-abu yang tenang: tetap terang,
+       tetapi jelas terpisah dari kanvas dan senada dengan kartu pastel. */
     .ap-hero {
-        background: #f5f5f7; color: var(--ap-ink); border-radius: 18px;
+        background: linear-gradient(180deg, #edf1f7 0%, #e2e8f1 100%);
+        color: var(--ap-ink); border-radius: 18px;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .045);
         padding: clamp(28px, 4vw, 56px) clamp(20px, 4vw, 48px) clamp(24px, 3vw, 40px);
         overflow: hidden;
     }
-    .ap-hero .ap-eyebrow { color: var(--ap-ink-48); }
+    .ap-hero .ap-eyebrow { color: rgba(0, 0, 0, .58); }
     .ap-hero .ap-lede { color: var(--ap-ink-80); }
+    .ap-hero .ap-stats { border-top-color: rgba(0, 0, 0, .10); }
+    .ap-hero .ap-stat + .ap-stat { border-left-color: rgba(0, 0, 0, .10); }
     .ap-hero-top {
         display: flex; flex-wrap: wrap; gap: 24px 40px;
         align-items: flex-end; justify-content: space-between;
     }
     .ap-hero-tools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
-    .ap-hero-label { display: block; margin-bottom: 6px; font-size: 12px; letter-spacing: -0.12px; color: var(--ap-ink-48); }
+    .ap-hero-label { display: block; margin-bottom: 6px; font-size: 12px; letter-spacing: -0.12px; color: rgba(0, 0, 0, .55); }
     .ap-hero .ap-select, .ap-hero .ap-input { background: #fff; border-color: transparent; }
 
     .ap-stats {
@@ -106,16 +114,16 @@
         letter-spacing: -0.374px; font-weight: 600; font-variant-numeric: tabular-nums;
         transition: color .2s ease;
     }
-    .ap-stat-num small { font-size: 17px; font-weight: 400; color: var(--ap-ink-48); letter-spacing: -0.374px; }
+    .ap-stat-num small { font-size: 17px; font-weight: 400; color: rgba(0, 0, 0, .55); letter-spacing: -0.374px; }
     .ap-stat-label {
         display: block; margin-top: 8px; font-size: 14px; line-height: 1.29;
-        letter-spacing: -0.224px; color: var(--ap-ink-48); transition: color .2s ease;
+        letter-spacing: -0.224px; color: rgba(0, 0, 0, .55); transition: color .2s ease;
     }
     .ap-stat:hover .ap-stat-num { color: var(--ap-blue); }
     .ap-stat:hover .ap-stat-label { color: var(--ap-ink); }
     .ap-stat--static { cursor: default; }
     .ap-stat--static:hover .ap-stat-num { color: inherit; }
-    .ap-stat--static:hover .ap-stat-label { color: var(--ap-ink-48); }
+    .ap-stat--static:hover .ap-stat-label { color: rgba(0, 0, 0, .55); }
     .ap-stats--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .ap-stat-num--sm { font-size: clamp(22px, 2.4vw, 32px); }
 
@@ -126,7 +134,7 @@
     .ap-hero-bar span { display: block; height: 100%; }
     .ap-hero-legend {
         display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px;
-        margin-top: 12px; font-size: 12px; letter-spacing: -0.12px; color: var(--ap-ink-48);
+        margin-top: 12px; font-size: 12px; letter-spacing: -0.12px; color: rgba(0, 0, 0, .58);
     }
     .ap-hero-legend .ap-hero-pct { margin-left: auto; color: var(--ap-ink); font-weight: 600; }
     .ap-legend-item { display: inline-flex; align-items: center; gap: 7px; }
@@ -157,8 +165,48 @@
     .ap-tile {
         background: #f5f5f7; border-radius: 18px; padding: 20px; border: 0;
     }
+    /* Varian pastel kartu ringkasan (permintaan user 19/10/2026: "kurang
+       kontras, gelapin dikit tapi jangan terlalu gelap, pakai warna pastel").
+       Latar tetap pastel lembut, tetapi satu tingkat lebih pekat dari
+       #f5f5f7 supaya tiap kategori terbaca; angka memakai tinta pekat
+       (bukan warna menyala) agar tetap enak dipandang. */
+    .ap-tile--neutral { background: #edeff2; }
+    .ap-tile--blue {
+        background: #dfe9f7; --ap-tile-ink: #143f6b; --ap-tile-accent: #2f6fbf;
+    }
+    .ap-tile--ok {
+        background: #dcefe2; --ap-tile-ink: #14663a; --ap-tile-accent: #2f9e57;
+    }
+    .ap-tile--warn {
+        background: #fae9c9; --ap-tile-ink: #6f4402; --ap-tile-accent: #c07f06;
+    }
+    .ap-tile--bad {
+        background: #f9dcd8; --ap-tile-ink: #8a1f16; --ap-tile-accent: #cf3327;
+    }
+    .ap-tile--info {
+        background: #ece0f9; --ap-tile-ink: #562680; --ap-tile-accent: #8447bd;
+    }
+    .ap-tile--neutral, .ap-tile--blue, .ap-tile--ok, .ap-tile--warn,
+    .ap-tile--bad, .ap-tile--info {
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .03);
+    }
+    .ap-tile--neutral .ap-micro, .ap-tile--blue .ap-micro, .ap-tile--ok .ap-micro,
+    .ap-tile--warn .ap-micro, .ap-tile--bad .ap-micro, .ap-tile--info .ap-micro { color: rgba(0, 0, 0, .62); }
+    .ap-tile--blue .ap-num, .ap-tile--ok .ap-num, .ap-tile--warn .ap-num,
+    .ap-tile--bad .ap-num, .ap-tile--info .ap-num { color: var(--ap-tile-ink); }
+    .ap-tile--blue .ap-faint, .ap-tile--ok .ap-faint, .ap-tile--warn .ap-faint,
+    .ap-tile--bad .ap-faint, .ap-tile--info .ap-faint {
+        color: var(--ap-tile-ink); opacity: .7; font-weight: 400;
+    }
+    .ap-tile--blue .ap-dot, .ap-tile--ok .ap-dot, .ap-tile--warn .ap-dot,
+    .ap-tile--bad .ap-dot, .ap-tile--info .ap-dot { background: var(--ap-tile-accent); }
+    .ap-tile--blue .ap-bar, .ap-tile--ok .ap-bar, .ap-tile--warn .ap-bar,
+    .ap-tile--bad .ap-bar, .ap-tile--info .ap-bar { background: rgba(0, 0, 0, .12); }
+    .ap-tile--blue .ap-bar span, .ap-tile--ok .ap-bar span, .ap-tile--warn .ap-bar span,
+    .ap-tile--bad .ap-bar span, .ap-tile--info .ap-bar span { background: var(--ap-tile-accent); }
     .ap-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
     .ap-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .ap-grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
     .ap-grid-5 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
 
     /* ---------- Bar komposisi ---------- */
@@ -214,7 +262,7 @@
     }
     .ap-field { display: block; }
     .ap-field--grow { flex: 1 1 240px; min-width: 200px; }
-    .ap-field-label { display: block; margin-bottom: 6px; font-size: 12px; letter-spacing: -0.12px; color: var(--ap-ink-48); }
+    .ap-field-label { display: block; margin-bottom: 6px; font-size: 12px; letter-spacing: -0.12px; color: rgba(0, 0, 0, .55); }
     .ap-search { position: relative; }
     .ap-search svg {
         position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
@@ -250,7 +298,7 @@
     .ap-table { width: 100%; border-collapse: collapse; font-size: 14px; letter-spacing: -0.224px; }
     .ap-table th {
         text-align: left; font-weight: 400; font-size: 12px; letter-spacing: -0.12px;
-        color: var(--ap-ink-48); padding: 11px 12px; white-space: nowrap;
+        color: rgba(0, 0, 0, .55); padding: 11px 12px; white-space: nowrap;
         border-bottom: 1px solid var(--ap-line); text-transform: none;
     }
     .ap-table td {
@@ -277,6 +325,31 @@
         font-size: 12px; line-height: 1.33; letter-spacing: -0.12px; color: var(--ap-ink-80);
     }
     .ap-badge--muted { color: var(--ap-ink-48); }
+
+    /* ---------- Pil status & chip filter ---------- */
+    .ap-status {
+        display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+        padding: 4px 11px; border-radius: 980px;
+        font-size: 12px; line-height: 1.33; letter-spacing: -0.12px; font-weight: 500;
+        background: #edeff2; color: rgba(0, 0, 0, .62);
+    }
+    .ap-status .ap-dot { width: 6px; height: 6px; background: var(--ap-gray); }
+    .ap-status--ok { background: #dcefe2; color: #14663a; }
+    .ap-status--ok .ap-dot { background: #2f9e57; }
+    .ap-status--warn { background: #fae9c9; color: #6f4402; }
+    .ap-status--warn .ap-dot { background: #c07f06; }
+    .ap-status--bad { background: #f9dcd8; color: #8a1f16; }
+    .ap-status--bad .ap-dot { background: #cf3327; }
+    .ap-status--info { background: #ece0f9; color: #562680; }
+    .ap-status--info .ap-dot { background: #8447bd; }
+    .ap-filter-chip {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 5px 12px; border-radius: 980px;
+        background: #dfe9f7; color: #143f6b;
+        font-size: 12px; line-height: 1.33; letter-spacing: -0.12px; font-weight: 500;
+    }
+    .ap-filter-chip a { color: #143f6b; opacity: .6; display: inline-flex; }
+    .ap-filter-chip a:hover { opacity: 1; }
 
     /* ---------- Tabs ---------- */
     .ap-tabs { margin-bottom: 20px; }
@@ -347,12 +420,15 @@
     /* ---------- Detail kecil ---------- */
     .ap-pt-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     .ap-pt-pct { font-size: 21px; letter-spacing: 0.231px; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .ap-pt-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; margin-top: 18px; border-radius: 8px; background: #f5f5f7; overflow: hidden; }
+    .ap-pt-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; margin-top: 18px; border-radius: 8px; background: #edeff2; overflow: hidden; }
     .ap-pt-cell {
         appearance: none; border: 0; background: transparent; cursor: pointer;
         padding: 12px 8px; text-align: left; transition: background .15s ease;
     }
-    .ap-pt-cell:hover { background: #e8e8ed; }
+    .ap-pt-grid .ap-pt-cell[data-open="sudah"] { background: #e3f2e8; }
+    .ap-pt-grid .ap-pt-cell[data-open="belum"] { background: #fbeed2; }
+    .ap-pt-grid .ap-pt-cell[data-open="free"] { background: #eceef2; }
+    .ap-pt-grid .ap-pt-cell:hover { background: #e3e6ea; }
     .ap-pt-cell .ap-caption { display: block; margin-top: 2px; }
     .ap-pt-foot { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 6px; }
 
@@ -367,6 +443,7 @@
 
     @media (max-width: 1024px) {
         .ap-grid-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .ap-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .ap-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .ap-stats--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
@@ -379,6 +456,7 @@
             padding-left: 0;
         }
         .ap-grid-2, .ap-grid-3 { grid-template-columns: 1fr; }
+        .ap-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .ap-grid-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .ap-hero-tools { width: 100%; }
         .ap-search input { width: 100%; }

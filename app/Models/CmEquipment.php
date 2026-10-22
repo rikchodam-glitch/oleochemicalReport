@@ -15,6 +15,15 @@ class CmEquipment extends Model
         'pt_location',
         'plant',
         'tipe_lubrikasi',
+        'is_active',
+        'in_master',
+        'deactivated_at',
+    ];
+
+    protected $casts = [
+        'is_active'      => 'boolean',
+        'in_master'      => 'boolean',
+        'deactivated_at' => 'datetime',
     ];
 
     /** @return HasMany<CmReading> */
@@ -71,4 +80,26 @@ class CmEquipment extends Model
     {
         return $query->where('plant', $plant);
     }
+
+    /**
+     * Equipment yang masih dimonitoring.
+     *
+     * Tag yang dihapus dari sheet "Master Equipment" dinonaktifkan oleh
+     * CmMasterEquipmentSyncService (histori reading/finding tetap disimpan),
+     * sehingga daftar, kartu ringkasan, dan modal "belum diambil data" pada
+     * halaman CM hanya boleh memakai scope ini.
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    /**
+     * Equipment yang sudah tidak dimonitoring (dihapus dari Master Equipment).
+     */
+    public function scopeInactive($query)
+    {
+        return $query->where('is_active', false);
+    }
+
 }

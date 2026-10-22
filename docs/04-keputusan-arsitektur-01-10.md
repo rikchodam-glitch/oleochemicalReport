@@ -36,8 +36,22 @@
      PhpSpreadsheet) — TIDAK PERLU dihitung ulang manual di PHP kecuali
      terbukti (lewat test terisolasi) cached value-nya benar-benar tidak
      terbaca.
-   - `Master Equipment` — referensi daftar equipment per PT/Plant, dipakai
-     untuk validasi (equipment belum terdaftar = warning, bukan reject).
+   - `Master Equipment` — referensi daftar equipment per PT/Plant sekaligus
+     SUMBER KEBENARAN daftar equipment yang dimonitoring. Setiap import/sync
+     (`ProcessCmExcelImport` untuk upload & Google Sheets, serta
+     `cm:import-readings`) memanggil `CmMasterEquipmentSyncService`: tag di
+     master dibuat/diperbarui (`pt_location`, `plant`, `in_master=true`,
+     `is_active=true`); tag yang tadinya ada di master lalu hilang dari sheet
+     dinonaktifkan (`is_active=false`, histori reading/finding TETAP ada).
+     Equipment yang dibuat otomatis dari `Data AppSheet`/Finding CM tetapi
+     belum ada di master ditandai `in_master=false` dan TIDAK ikut
+     dinonaktifkan. Perbandingan tag case-insensitive + spasi dirapikan
+     (`SC-Rework A` = `SC-REWORK A`). Bila baris master < 10 (sheet sedang
+     diisi/terpotong), deaktivasi dilewati. Sheet `Monitoring Bulanan` BUKAN
+     patokan deaktivasi — isinya bisa lebih sedikit dari master (21/10/2026:
+     `7822FN01` & `6400PD-2` tidak ada di sana padahal masih punya reading
+     terbaru). Semua daftar/hitungan halaman CM memakai scope
+     `CmEquipment::active()`.
    - `Monitoring Bulanan` — compliance tracking (Sudah/Belum) per equipment
      per bulan, header 3 baris dengan merged cells.
    - `Tabel Mon. Bulanan` — rekap agregat, bisa dihitung ulang otomatis dari

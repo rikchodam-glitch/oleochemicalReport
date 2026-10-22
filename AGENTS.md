@@ -46,7 +46,7 @@ Semua berkas di bawah ini ada di `docs/`.
 | [01-ikhtisar-dev-prod-dan-deploy.md](docs/01-ikhtisar-dev-prod-dan-deploy.md) | DEV/PROD, deploy satu klik, service latar, pintasan Desktop, storage/database, `.env` | Menyentuh deploy, service, atau lingkungan |
 | [02-alur-kerja-banyak-teknisi.md](docs/02-alur-kerja-banyak-teknisi.md) | Cabang tugas, papan klaim, Pull Request, konflik, penjaga deploy | Memulai tugas atau menyelesaikan konflik |
 | [03-domain-publik-cloudflare-tunnel.md](docs/03-domain-publik-cloudflare-tunnel.md) | Cloudflare Tunnel, DNS, domain publik, trusted proxy | Mengubah domain/tunnel/akses publik |
-| [04-keputusan-arsitektur-01-10.md](docs/04-keputusan-arsitektur-01-10.md) | Keputusan arsitektur 1-10 (CM, lokasi, Excel, threshold, wizard, man hour) | Menyentuh modul CM, import, shift, man hour |
+| [04-keputusan-arsitektur-01-10.md](docs/04-keputusan-arsitektur-01-10.md) | Keputusan arsitektur 1-10 (CM, lokasi, Excel, sinkronisasi Master Equipment, threshold, wizard, man hour) | Menyentuh modul CM, import, shift, man hour |
 | [05-keputusan-arsitektur-11-17.md](docs/05-keputusan-arsitektur-11-17.md) | Keputusan 11-17 (status laporan, user/Bagian, akses, wizard, aset, idle, kolaborasi) | Menyentuh laporan, user, akses, aset |
 | [06-keputusan-arsitektur-18-23.md](docs/06-keputusan-arsitektur-18-23.md) | Keputusan 18-23 (detail laporan, panel, import/export aset) | Menyentuh halaman detail laporan, panel, aset |
 | [07-keputusan-arsitektur-24-30.md](docs/07-keputusan-arsitektur-24-30.md) | Keputusan 24-30 (tata letak detail, edit lokasi/foto/teknisi, export, UMUM, pesan panel) | Menyentuh UI laporan, export, jenis pekerjaan, panel |

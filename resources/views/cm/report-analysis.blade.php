@@ -16,10 +16,10 @@
         <div class="ap-wrap">
             @include('cm._tabs')
 
-            <section class="ap-hero" style="padding:36px 40px;margin-bottom:24px;">
+            <section class="ap-hero" style="margin-bottom:24px;">
                 <p class="ap-eyebrow">Condition Monitoring</p>
-                <h2 class="ap-display" style="font-size:clamp(26px,3.2vw,40px);margin-top:8px;">Laporan &amp; analisis kondisi.</h2>
-                <p class="ap-lede" style="margin-top:10px;">
+                <h2 class="ap-display" style="margin-top:10px;">Laporan &amp; analisis kondisi.</h2>
+                <p class="ap-lede" style="margin-top:14px;">
                     Rekap reading, finding, dan kepatuhan pengambilan data per periode.
                 </p>
             </section>
@@ -62,26 +62,26 @@
         </form>
     </div>
     {{-- Summary Cards --}}
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <div class="ap-tile p-4">
+    <div class="ap-grid-5" style="margin-bottom:24px;">
+        <div class="ap-tile ap-tile--neutral">
             <p class="ap-micro">Total Equipment</p>
             <p class="ap-num" style="margin-top:8px;">{{ number_format($totalEquipment) }}</p>
         </div>
-        <div class="ap-tile p-4">
+        <div class="ap-tile ap-tile--blue">
             <p class="ap-micro">Total Readings</p>
             <p class="ap-num" style="margin-top:8px;">{{ number_format($totalReadings) }}</p>
         </div>
-        <div class="ap-tile p-4">
+        <div class="ap-tile ap-tile--info">
             <p class="ap-micro">Total Findings</p>
             <p class="ap-num" style="margin-top:8px;">{{ number_format($totalFindings) }}</p>
         </div>
-        <div class="ap-tile p-4">
-            <p class="ap-micro"><span class="ap-dot ap-dot--bad"></span> Finding Open</p>
-            <p class="ap-num" style="margin-top:8px;color:#d70015;">{{ number_format($openFindings) }}</p>
+        <div class="ap-tile ap-tile--bad">
+            <p class="ap-micro"><span class="ap-dot"></span> Finding Open</p>
+            <p class="ap-num" style="margin-top:8px;">{{ number_format($openFindings) }}</p>
         </div>
-        <div class="ap-tile p-4">
-            <p class="ap-micro"><span class="ap-dot ap-dot--ok"></span> Monitoring {{ $filterTahun }}</p>
-            <p class="ap-num" style="margin-top:8px;color:#248a3d;">{{ $monitoringPct }}<span class="ap-faint" style="font-size:14px;">%</span></p>
+        <div class="ap-tile ap-tile--ok">
+            <p class="ap-micro"><span class="ap-dot"></span> Monitoring {{ $filterTahun }}</p>
+            <p class="ap-num" style="margin-top:8px;">{{ $monitoringPct }}<span class="ap-faint" style="font-size:14px;">%</span></p>
             <p class="ap-micro" style="margin-top:2px;">{{ $monitoringSudah }}/{{ $monitoringTotal }} bulan</p>
         </div>
     </div>
