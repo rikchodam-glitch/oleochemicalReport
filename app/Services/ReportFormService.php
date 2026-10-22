@@ -441,8 +441,9 @@ class ReportFormService
                 'report_date'           => $laporan['report_date'],
                 'work_description'      => (string) $laporan['work_description'],
                 'work_duration_minutes' => $menit,
-                'start_time'            => $mulai->format('H:i:s'),
-                'end_time'              => $selesai->format('H:i:s'),
+                // Kolom reports.start_time/end_time bertipe varchar(5).
+                'start_time'            => $mulai->format('H:i'),
+                'end_time'              => $selesai->format('H:i'),
                 'root_cause'            => $this->rapikanTeks($laporan['root_cause'] ?? null),
                 'finding'               => $this->rapikanTeks($laporan['finding'] ?? null),
                 'tanggal_kejadian'      => $laporan['tanggal_kejadian'] ?? null,

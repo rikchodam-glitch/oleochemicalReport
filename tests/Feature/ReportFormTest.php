@@ -113,6 +113,8 @@ test('laporan equipment tersimpan dengan durasi jam dan salinan kolaborator', fu
     $laporan = Report::query()->where('technician_id', $this->teknisi->id)->firstOrFail();
 
     expect($laporan->work_duration_minutes)->toBe(90)
+        ->and($laporan->start_time)->toBe('08:00')
+        ->and($laporan->end_time)->toBe('09:30')
         ->and($laporan->report_type)->toBe('equipment_repair')
         ->and($laporan->asset_id)->toBe($this->aset->id)
         ->and($laporan->status)->toBe('completed')
