@@ -12,7 +12,7 @@ Diperbarui: 2026-10-22 13:32 WIB
   - `database/migrations/2026_10_22_000002_add_photos_to_assets_table.php` (baru)
   - `routes/web.php`
   - `tests/Feature/AssetManagementTest.php` (baru)
-  - `docs/28-assets-management.md`, `AGENTS.md`
+  - `docs/28-assets-management.md`, `docs/29-hierarki-lokasi-dropdown.md`, `AGENTS.md`
   - `tugas/pr-rekonstruksi-assets-management.md`
 - Catatan: live search, detail via klik tabel, hapus status/aksi, edit+delete di detail, sync CM, ringkasan CM, multi foto.
 

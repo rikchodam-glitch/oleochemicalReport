@@ -19,6 +19,7 @@ use App\Models\SubArea;
 use App\Models\Technician;
 use App\Services\AssetNumberService;
 use App\Services\FuncLocSyncService;
+use App\Services\LocationHierarchyService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -53,7 +54,7 @@ class AssetController extends Controller
      * @param  FuncLocSyncService  $syncService
      * @return \Illuminate\View\View
      */
-    public function index(Request $request, FuncLocSyncService $syncService)
+    public function index(Request $request, FuncLocSyncService $syncService, LocationHierarchyService $locations)
     {
         $query = Asset::with(['company', 'department', 'area', 'subArea']);
 
@@ -94,19 +95,17 @@ class AssetController extends Controller
             ->pluck('equipment_type');
 
         // Dropdown lokasi dinamis — hanya diisi jika filter terkait aktif
-        $departments = collect();
-        $areas       = collect();
-        $subAreas    = collect();
+        $departments = $request->filled('company_id')
+            ? $locations->departemenUntukCompany((int) $request->company_id)
+            : collect();
 
-        if ($request->filled('company_id')) {
-            $departments = Department::where('company_id', $request->company_id)->orderBy('code')->get();
-        }
-        if ($request->filled('department_id')) {
-            $areas = Area::where('department_id', $request->department_id)->orderBy('code')->get();
-        }
-        if ($request->filled('area_id')) {
-            $subAreas = SubArea::where('area_id', $request->area_id)->orderBy('code')->get();
-        }
+        $areas = $request->filled('department_id')
+            ? $locations->areaUntukDepartemen((int) $request->department_id)
+            : collect();
+
+        $subAreas = $request->filled('area_id')
+            ? $locations->subAreaUntukArea((int) $request->area_id)
+            : collect();
 
         // Jumlah asset yang belum tertaut funcloc_id — untuk badge tautan
         // menuju halaman rekonsiliasi manual.

@@ -71,6 +71,7 @@ Semua berkas di bawah ini ada di `docs/`.
 | [26-halaman-semua-cuti.md](docs/26-halaman-semua-cuti.md) | Halaman read-only semua cuti untuk admin, supervisor, admin_general, admin_reguler | Mengubah akses atau tampilan seluruh cuti |
 | [27-menu-perintah-bot-telegram.md](docs/27-menu-perintah-bot-telegram.md) | Menu command native bot (`/start`, `/laporan`, `/info`, `/cuti`, `/reset`) | Mengubah daftar command atau tombol menu bot |
 | [28-assets-management.md](docs/28-assets-management.md) | Pencarian live, detail via klik, foto equipment, ringkasan CM, sinkronisasi CM | Mengubah halaman Assets Management atau sinkronisasi CM |
+| [29-hierarki-lokasi-dropdown.md](docs/29-hierarki-lokasi-dropdown.md) | Opsi PT/Dept/Area/SubArea dari Functional Location untuk Assets, Teknisi, Laporan, Bot | Mengubah dropdown/filter lokasi |
 
 ## Dokumen pendukung di `docs/`
 

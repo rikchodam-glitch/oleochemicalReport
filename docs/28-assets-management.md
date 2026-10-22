@@ -11,6 +11,8 @@ Dokumen ini mencatat perubahan halaman Assets Management (22/10/2026).
 - Baris tabel dapat diklik (atau tekan Enter) untuk membuka detail.
 - Kode alat juga berupa tautan langsung ke detail.
 - Filter Status dihapus dari panel; filter lokasi/tipe tetap.
+- Opsi PT/Dept/Area/SubArea diturunkan dari hierarki Functional Location
+  (bukan tabel master departments/areas yang lama).
 - Tombol **Sinkronisasi CM** menampilkan jumlah equipment CM yang belum punya
   asset.
 
@@ -66,6 +68,6 @@ ada.
 
 ## Uji
 
-- `AssetManagementTest`: 5 test hijau, 23 assertion.
-- Seluruh suite: 721 test hijau, 3.537 assertion.
+- `AssetManagementTest`: 6 test hijau, 26 assertion.
+- Seluruh suite: 722 test hijau, 3.540 assertion.
 - `view:cache` sukses.

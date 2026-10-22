@@ -3,6 +3,7 @@
 use App\Models\Asset;
 use App\Models\CmEquipment;
 use App\Models\Company;
+use App\Models\Department;
 use App\Models\FunctionalLocation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -95,6 +96,33 @@ test('detail asset menampilkan ringkasan equipment CM', function () {
         ->assertOk()
         ->assertSee('Ringkasan Equipment (CM)')
         ->assertSee('AST-POMPA-01');
+});
+
+test('dropdown departemen mengikuti hierarki Functional Location per PT', function () {
+    $ces = Company::create(['code' => 'CES-TST', 'name' => 'CES Test']);
+    $pt = FunctionalLocation::create([
+        'code' => 'CES-TST', 'segment' => 'CES-TST', 'name' => 'CES Test',
+        'level' => 0, 'company_id' => $ces->id, 'is_active' => true,
+    ]);
+    $dept = Department::create([
+        'company_id' => $ces->id, 'code' => 'CES-TST-PROD', 'name' => 'Produksi CES Test',
+    ]);
+    FunctionalLocation::create([
+        'code' => 'CES-TST-PROD', 'segment' => 'CES-TST-PROD', 'name' => 'Produksi CES Test',
+        'level' => 1, 'parent_id' => $pt->id, 'department_id' => $dept->id,
+        'company_id' => $ces->id, 'is_active' => true,
+    ]);
+    FunctionalLocation::create([
+        'code' => 'CES-TST-PROD-BLDG', 'segment' => 'CES-TST-PROD-BLDG', 'name' => 'Building',
+        'level' => 2, 'parent_id' => FunctionalLocation::where('code', 'CES-TST-PROD')->value('id'),
+        'department_id' => $dept->id, 'company_id' => $ces->id, 'is_active' => true,
+    ]);
+
+    $this->actingAs($this->admin)
+        ->getJson(route('assets.locations.departments', ['company_id' => $ces->id]))
+        ->assertOk()
+        ->assertJsonCount(1)
+        ->assertJsonFragment(['code' => 'CES-TST-PROD']);
 });
 
 test('sinkronisasi CM membuat asset yang belum ada dan melewati yang sudah ada', function () {
