@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\KirimNotifikasiLaporanDiterima;
 use App\Models\Area;
 use App\Models\CollaborationGroup;
 use App\Models\Asset;
@@ -11,6 +12,7 @@ use App\Models\ReportToken;
 use App\Models\Technician;
 use App\Models\User;
 use App\Services\ReportFormService;
+use App\Services\TelegramService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
@@ -121,6 +123,11 @@ test('laporan equipment tersimpan dengan durasi jam dan salinan kolaborator', fu
         ->and(Report::where('collaborator_of', $laporan->id)->where('technician_id', $this->rekan->id)->exists())->toBeTrue();
 
     expect(ReportToken::latest('id')->first()?->used_at)->not->toBeNull();
+
+    Queue::assertPushed(
+        KirimNotifikasiLaporanDiterima::class,
+        fn (KirimNotifikasiLaporanDiterima $job) => in_array($laporan->id, $job->reportIds, true)
+    );
 });
 
 test('laporan area tanpa alat dan multi alat membuat salinan multi', function () {
@@ -370,6 +377,33 @@ test('perintah /laporan lewat webhook juga membuat token', function () {
     expect($token)->not->toBeNull()
         ->and($token->description)->toBe('kompresor panas')
         ->and(Report::count())->toBe(0);
+});
+
+test('job notifikasi mengirim pesan laporan diterima ke telegram pelapor', function () {
+    $this->teknisi->update(['telegram_id' => '999000125']);
+
+    $laporan = Report::create([
+        'technician_id'         => $this->teknisi->id,
+        'creator_id'            => $this->teknisi->id,
+        'report_date'           => '2026-10-20',
+        'report_code'           => 'RPT-NOTIF-01',
+        'work_description'      => 'Laporan notifikasi',
+        'work_duration_minutes' => 30,
+        'status'                => 'completed',
+    ]);
+
+    config(['services.telegram.bot_token' => '123:notif-uji']);
+    Http::fake(['api.telegram.org/*' => Http::response(['ok' => true], 200)]);
+
+    (new KirimNotifikasiLaporanDiterima([$laporan->id]))
+        ->handle(app(TelegramService::class));
+
+    Http::assertSent(function ($request) use ($laporan) {
+        return (string) $request['chat_id'] === '999000125'
+            && str_contains((string) $request['text'], 'Laporan diterima')
+            && str_contains((string) $request['text'], 'RPT-NOTIF-01')
+            && str_contains((string) $request['text'], '/reports/' . $laporan->id);
+    });
 });
 
 test('akun tanpa teknisi tidak bisa memakai route login form', function () {

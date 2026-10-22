@@ -56,7 +56,10 @@ Perintah `/laporan` ditangani di dua jalur: poller
   transaksi gagal.
 - Salinan kolaborator dan multi-alat memakai `ReportCopyService`; man hour hanya
   menghitung laporan induk (baris `multi_of` dikecualikan).
-- Broadcast kolaborasi dikirim sekali per laporan induk bila class job tersedia.
+- Setelah commit, `KirimNotifikasiLaporanDiterima` dan
+  `KirimBroadcastKolaborasi` masuk queue. Response form tidak menunggu Telegram.
+- Foto lebih dari 1,5 MB dikompres di browser sebelum upload; tombol Kirim
+  berubah menjadi "Mengirim..." dan mencegah klik ganda.
 
 ## Batasan
 
@@ -81,6 +84,6 @@ Perintah `/laporan` ditangani di dua jalur: poller
 
 ## Uji
 
-- `ReportFormTest`: 14 test hijau, 57 assertion.
-- Seluruh suite: 715 test hijau, 3.512 assertion.
+- `ReportFormTest`: 15 test hijau, 59 assertion.
+- Seluruh suite: 716 test hijau, 3.514 assertion.
 - `view:cache` sukses.

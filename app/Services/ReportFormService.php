@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\KirimNotifikasiLaporanDiterima;
 use App\Models\Asset;
 use App\Models\FunctionalLocation;
 use App\Models\Report;
@@ -236,7 +237,12 @@ class ReportFormService
             throw $e;
         }
 
-        // Broadcast setelah commit agar kegagalan Telegram tidak membatalkan laporan.
+        // Notifikasi setelah commit agar kegagalan Telegram tidak membatalkan
+        // laporan dan tidak menahan response form.
+        if ($idLaporan !== []) {
+            KirimNotifikasiLaporanDiterima::dispatch($idLaporan);
+        }
+
         if (class_exists(\App\Jobs\KirimBroadcastKolaborasi::class)) {
             foreach ($idLaporan as $id) {
                 \App\Jobs\KirimBroadcastKolaborasi::dispatch($id);
