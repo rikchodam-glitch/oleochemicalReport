@@ -14,7 +14,7 @@
 @section('content')
     <div class="max-w-2xl">
         <div class="bg-white rounded-xl border border-slate-200 p-6">
-            <form method="POST" action="{{ route('assets.update', $asset) }}" class="space-y-4">
+            <form method="POST" action="{{ route('assets.update', $asset) }}" enctype="multipart/form-data" class="space-y-4">
                 @csrf
                 @method('PUT')
 
@@ -75,13 +75,37 @@
                     </div>
                 </div>
 
-                <div class="space-y-1.5">
-                    <label class="block text-sm font-medium text-slate-700">Status</label>
-                    <select name="status" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="active" {{ old('status', $asset->status) === 'active' ? 'selected' : '' }}>Aktif</option>
-                        <option value="inactive" {{ old('status', $asset->status) === 'inactive' ? 'selected' : '' }}>Nonaktif</option>
-                        <option value="needs_review" {{ old('status', $asset->status) === 'needs_review' ? 'selected' : '' }}>Perlu Review</option>
-                    </select>
+                <input type="hidden" name="status" value="{{ old('status', $asset->status) }}">
+
+                <div class="space-y-3 border-t border-slate-100 pt-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700">Foto Equipment</label>
+                        <p class="text-xs text-slate-500">Bisa menambahkan lebih dari satu foto.</p>
+                    </div>
+
+                    @if(count($asset->photo_urls) > 0)
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            @foreach($asset->photo_urls as $path => $url)
+                                @php $fotoPath = $asset->photos[$path] ?? ''; @endphp
+                                <label class="relative block aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50 group cursor-pointer">
+                                    <img src="{{ $url }}" alt="Foto equipment" class="w-full h-full object-cover">
+                                    <span class="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[10px] px-2 py-1 flex items-center gap-1.5">
+                                        <input type="checkbox" name="hapus_foto[]" value="{{ $fotoPath }}" class="rounded border-white/50 text-rose-600 focus:ring-rose-500">
+                                        Hapus foto
+                                    </span>
+                                </label>
+                            @endforeach
+                        </div>
+                    @else
+                        <p class="text-sm text-slate-400">Belum ada foto.</p>
+                    @endif
+
+                    <div>
+                        <label for="photos" class="block text-xs font-medium text-slate-600 mb-1">Tambah foto baru</label>
+                        <input type="file" name="photos[]" id="photos" multiple accept="image/*"
+                               class="w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-100 file:font-medium">
+                        <div id="previewFoto" class="flex flex-wrap gap-2 mt-2"></div>
+                    </div>
                 </div>
 
                 <div class="flex gap-3 pt-2">
@@ -96,3 +120,25 @@
         </div>
     </div>
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const input = document.getElementById('photos');
+    const preview = document.getElementById('previewFoto');
+
+    if (!input || !preview) return;
+
+    input.addEventListener('change', function () {
+        preview.innerHTML = '';
+        Array.from(input.files || []).forEach(function (file) {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            img.className = 'w-16 h-16 rounded-lg object-cover border border-slate-200';
+            img.onload = () => URL.revokeObjectURL(img.src);
+            preview.appendChild(img);
+        });
+    });
+});
+</script>
+@endpush

@@ -98,7 +98,8 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     // Rekonsiliasi manual FuncLoc — WAJIB sebelum resource agar tidak
     // ditimpa wildcard {asset} milik resource (assets.show).
     Route::get('/assets/unlinked-funcloc', [AssetController::class, 'unlinked'])->name('assets.unlinked-funcloc');
-    Route::post('/assets/unlinked-funcloc/run-sync', [AssetController::class, 'runAutoSync'])->name('assets.unlinked-funcloc.run-sync');
+    Route::post('/assets/sync-cm', [AssetController::class, 'syncCm'])->name('assets.sync-cm');
+Route::post('/assets/unlinked-funcloc/run-sync', [AssetController::class, 'runAutoSync'])->name('assets.unlinked-funcloc.run-sync');
     Route::post('/assets/bulk-link-funcloc', [AssetController::class, 'bulkLinkFuncLoc'])->name('assets.bulk-link-funcloc');
     Route::patch('/assets/{asset}/link-funcloc', [AssetController::class, 'linkFuncLoc'])->name('assets.link-funcloc');
 

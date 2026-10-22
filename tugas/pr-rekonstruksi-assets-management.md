@@ -1,0 +1,37 @@
+# Rekonstruksi Assets Management
+
+## Ringkasan
+
+- Pencarian asset langsung memfilter setelah berhenti mengetik (debounce).
+- Kolom Status dan Aksi dihapus dari tabel; detail dibuka dengan klik baris/kode.
+- Detail asset punya tombol Edit + Hapus berdampingan; status tidak ditampilkan.
+- Footer/detail menampilkan Ringkasan Equipment CM yang tertaut.
+- Tombol Sinkronisasi CM membuat asset untuk equipment CM yang belum ada dan
+  melewati yang sudah ada.
+- Foto equipment bisa lebih dari satu: upload multiple, preview, hapus per foto.
+- Data Source `cm_sync` ditampilkan sebagai "Sinkron CM".
+
+## Data
+
+- Migrasi baru: `assets.photos` JSON.
+- Foto disimpan di disk `public` folder `assets/photos/{asset_id}`.
+- Menghapus asset menghapus file fotonya.
+- Sinkronisasi CM tidak menimpa asset yang sudah ada.
+
+## Berkas
+
+- `app/Http/Controllers/AssetController.php`
+- `app/Models/Asset.php`
+- `resources/views/assets/index.blade.php`, `show.blade.php`, `edit.blade.php`
+- `resources/views/assets/partials/_cm-ringkasan.blade.php` (baru)
+- `database/migrations/2026_10_22_000002_add_photos_to_assets_table.php` (baru)
+- `routes/web.php`
+- `tests/Feature/AssetManagementTest.php` (baru)
+- `docs/28-assets-management.md`, `AGENTS.md`
+- `tugas/erik.md`
+
+## Uji
+
+- `AssetManagementTest`: 5 test hijau, 23 assertion.
+- Seluruh suite: 721 test hijau, 3.537 assertion.
+- `view:cache` sukses.

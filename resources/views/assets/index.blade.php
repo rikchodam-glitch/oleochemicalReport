@@ -15,7 +15,7 @@
         </svg>
         Filter
         @if(request()->hasAny(['search', 'status', 'company_id', 'department_id', 'area_id', 'sub_area_id', 'equipment_type']))
-            <span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-blue-500 rounded-full">{{ collect([request('search'), request('status'), request('company_id'), request('department_id'), request('area_id'), request('sub_area_id'), request('equipment_type')])->filter()->count() }}</span>
+            <span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-blue-500 rounded-full">{{ collect([request('search'), request('company_id'), request('department_id'), request('area_id'), request('sub_area_id'), request('equipment_type')])->filter()->count() }}</span>
         @endif
     </button>
     <a href="{{ route('assets.unlinked-funcloc') }}"
@@ -29,6 +29,20 @@
             <span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-amber-500 rounded-full">{{ $unlinkedFuncLocCount }}</span>
         @endif
     </a>
+    <form method="POST" action="{{ route('assets.sync-cm') }}" class="inline">
+        @csrf
+        <button type="submit"
+                class="inline-flex items-center gap-2 px-4 py-2 border border-teal-300 hover:bg-teal-50 text-teal-700 text-sm font-medium rounded-lg transition-colors"
+                title="Buat asset dari equipment CM yang belum ada di Asset Management">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Sinkronisasi CM
+            @if($cmTanpaAsset > 0)
+                <span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-teal-500 rounded-full">{{ $cmTanpaAsset }}</span>
+            @endif
+        </button>
+    </form>
     <a href="{{ route('assets.export-excel', request()->query()) }}"
        class="inline-flex items-center gap-2 px-4 py-2 border border-green-300 hover:bg-green-50 text-green-700 text-sm font-medium rounded-lg transition-colors">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -62,7 +76,6 @@
 @php
     $activeFilterCount = collect([
         'search' => request('search'),
-        'status' => request('status'),
         'company_id' => request('company_id'),
         'department_id' => request('department_id'),
         'area_id' => request('area_id'),
@@ -72,7 +85,6 @@
 
     $activeFilters = [];
     if (request('search')) $activeFilters[] = ['key' => 'search', 'label' => 'Pencarian: ' . request('search')];
-    if (request('status')) $activeFilters[] = ['key' => 'status', 'label' => 'Status: ' . (['active' => 'Aktif', 'inactive' => 'Nonaktif', 'needs_review' => 'Perlu Review'][request('status')] ?? request('status'))];
     if (request('company_id')) {
         $c = $companies->firstWhere('id', request('company_id'));
         if ($c) $activeFilters[] = ['key' => 'company_id', 'label' => 'Company: ' . $c->code];
@@ -114,18 +126,9 @@
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                     <div>
                         <label class="block text-xs font-medium text-slate-500 mb-1.5">Pencarian</label>
-                        <input type="text" name="search" value="{{ request('search') }}"
+                        <input type="text" name="search" id="searchAsset" value="{{ request('search') }}"
                                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                placeholder="Equipment, deskripsi, tech ident...">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-500 mb-1.5">Status</label>
-                        <select name="status" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
-                            <option value="">Semua Status</option>
-                            <option value="active" {{ request('status') === 'active' ? 'selected' : '' }}>Aktif</option>
-                            <option value="inactive" {{ request('status') === 'inactive' ? 'selected' : '' }}>Nonaktif</option>
-                            <option value="needs_review" {{ request('status') === 'needs_review' ? 'selected' : '' }}>Perlu Review</option>
-                        </select>
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-slate-500 mb-1.5">Equipment Type</label>
@@ -229,16 +232,18 @@
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Deskripsi</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Tipe</th>
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Lokasi</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Status</th>
-                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3">Aksi</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-50">
                     @forelse($assets as $asset)
-                        <tr class="hover:bg-slate-50 transition-colors">
+                        <tr class="hover:bg-slate-50 transition-colors cursor-pointer"
+                            tabindex="0"
+                            onclick="window.location='{{ route('assets.show', $asset) }}'"
+                            onkeydown="if(event.key === 'Enter') window.location='{{ route('assets.show', $asset) }}'">
                             <td class="px-5 py-3.5">
                                 <div class="flex flex-col">
-                                    <span class="font-mono text-sm font-medium text-slate-900">{{ $asset->tech_ident_no ?? '-' }}</span>
+                                    <a href="{{ route('assets.show', $asset) }}"
+                                       class="font-mono text-sm font-medium text-slate-900 hover:text-teal-700">{{ $asset->tech_ident_no ?? '-' }}</a>
                                     @if($asset->equipment_no)
                                         <span class="text-[10px] text-slate-400 font-mono mt-0.5">EQ: {{ $asset->equipment_no }}</span>
                                     @endif
@@ -274,27 +279,10 @@
                                     <p class="text-[10px] text-slate-400 mt-0.5 font-mono">{{ $asset->functional_loc }}</p>
                                 @endif
                             </td>
-                            <td class="px-5 py-3.5">
-                                <x-status-badge :status="$asset->status" />
-                            </td>
-                            <td class="px-5 py-3.5">
-                                <div class="flex items-center gap-2">
-                                    <a href="{{ route('assets.show', $asset) }}"
-                                       class="text-blue-600 hover:text-blue-700 text-xs font-medium">Detail</a>
-                                    <a href="{{ route('assets.edit', $asset) }}"
-                                       class="text-amber-600 hover:text-amber-700 text-xs font-medium">Edit</a>
-                                    <form method="POST" action="{{ route('assets.destroy', $asset) }}" class="inline"
-                                          onsubmit="return confirm('Hapus asset ini?')">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="text-red-600 hover:text-red-700 text-xs font-medium">Hapus</button>
-                                    </form>
-                                </div>
-                            </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-5 py-8 text-center text-sm text-slate-400">
+                            <td colspan="4" class="px-5 py-8 text-center text-sm text-slate-400">
                                 Belum ada asset. <a href="{{ route('assets.import') }}" class="text-blue-600 hover:underline">Import dari Excel</a>
                             </td>
                         </tr>
@@ -341,6 +329,25 @@ document.addEventListener('DOMContentLoaded', function() {
         toggleFilter();
     }, 100);
     @endif
+
+    // Pencarian langsung: kirim form setelah pengguna berhenti mengetik.
+    const cari = document.getElementById('searchAsset');
+    const form = document.getElementById('filterForm');
+
+    if (cari && form) {
+        let timer = null;
+
+        cari.addEventListener('input', function () {
+            clearTimeout(timer);
+            timer = setTimeout(function () {
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit();
+                } else {
+                    form.submit();
+                }
+            }, 450);
+        });
+    }
 });
 </script>
 @endpush

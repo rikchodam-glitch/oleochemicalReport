@@ -9,6 +9,7 @@ use App\Http\Controllers\Traits\AssetLocationTrait;
 use App\Http\Controllers\Traits\AssetTechnicianTrait;
 use App\Models\Area;
 use App\Models\Asset;
+use App\Models\CmEquipment;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\FuncLocSyncLog;
@@ -20,6 +21,8 @@ use App\Services\AssetNumberService;
 use App\Services\FuncLocSyncService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class AssetController extends Controller
 {
@@ -109,9 +112,18 @@ class AssetController extends Controller
         // menuju halaman rekonsiliasi manual.
         $unlinkedFuncLocCount = $syncService->unlinkedAssetsCount();
 
+        // Jumlah equipment CM yang belum punya baris Asset Management.
+        $cmTanpaAsset = CmEquipment::query()
+            ->whereNotExists(function ($sub): void {
+                $sub->selectRaw('1')
+                    ->from('assets')
+                    ->whereRaw('UPPER(TRIM(assets.tech_ident_no)) = UPPER(TRIM(cm_equipment.equipment_tag))');
+            })
+            ->count();
+
         return view('assets.index', compact(
             'assets', 'companies', 'equipmentTypes', 'departments', 'areas', 'subAreas',
-            'unlinkedFuncLocCount'
+            'unlinkedFuncLocCount', 'cmTanpaAsset'
         ));
     }
 
@@ -224,11 +236,34 @@ class AssetController extends Controller
             ])
             ->all();
 
+        // Ringkasan equipment CM yang bertaut ke asset ini (exact tech_ident_no).
+        $cmEquipment = $asset->tech_ident_no
+            ? CmEquipment::with(['readings', 'findings'])
+                ->where('equipment_tag', $asset->tech_ident_no)
+                ->first()
+            : null;
+
+        $cmRingkasan = null;
+
+        if ($cmEquipment !== null) {
+            $lastReading = $cmEquipment->readings->sortByDesc('tanggal')->first();
+
+            $cmRingkasan = [
+                'equipment'        => $cmEquipment,
+                'total_readings'   => $cmEquipment->readings->count(),
+                'findings_open'    => $cmEquipment->findings->where('status', 'open')->count(),
+                'findings_closed'  => $cmEquipment->findings->where('status', 'closed')->count(),
+                'last_reading'     => $lastReading,
+                'vib_max'          => $cmEquipment->readings->max('max_vibration'),
+                'temp_max'         => $cmEquipment->readings->max('max_temp'),
+            ];
+        }
+
         return view('assets.show', compact(
             'asset', 'perbaikan', 'filterPerbaikan',
             'komposisiTipe', 'trenPerbaikan', 'ringkasanTren',
             'teknisiPernahRepair', 'totalReports', 'completedReports', 'needsReviewReports',
-            'allTechnicians', 'kolaboratorPerLaporan'
+            'allTechnicians', 'kolaboratorPerLaporan', 'cmEquipment', 'cmRingkasan'
         ));
     }
 
@@ -366,12 +401,33 @@ class AssetController extends Controller
             'model_number'   => 'nullable|string',
             'construct_year' => 'nullable|string',
             'status'         => 'required|in:active,inactive,needs_review',
+            'photos'         => 'nullable|array',
+            'photos.*'       => 'image|mimes:jpg,jpeg,png,webp|max:10240',
+            'hapus_foto'     => 'nullable|array',
+            'hapus_foto.*'   => 'string',
         ]);
 
         $funcLoc = FunctionalLocation::findOrFail($validated['funcloc_id']);
 
+        $foto = $asset->photos ?? [];
+        $hapus = $request->input('hapus_foto', []);
+
+        foreach ($foto as $path) {
+            if (in_array($path, $hapus, true)) {
+                Storage::disk('public')->delete($path);
+                $foto = array_values(array_diff($foto, [$path]));
+            }
+        }
+
+        foreach ($request->file('photos', []) as $file) {
+            $foto[] = $file->store('assets/photos/' . $asset->id, 'public');
+        }
+
+        unset($validated['photos'], $validated['hapus_foto']);
+
         $data = array_merge($validated, $this->locationFieldsFromFuncLoc($funcLoc));
         $data['has_equipment_no'] = $asset->equipment_no !== null && $asset->equipment_no !== '';
+        $data['photos'] = array_values($foto);
 
         $asset->update($data);
 
@@ -387,9 +443,75 @@ class AssetController extends Controller
      */
     public function destroy(Asset $asset)
     {
+        foreach ($asset->photos ?? [] as $path) {
+            Storage::disk('public')->delete($path);
+        }
+
         $asset->delete();
+
         return redirect()->route('assets.index')
             ->with('success', 'Asset berhasil dihapus.');
+    }
+
+    /**
+     * Buat baris Asset Management untuk equipment CM yang belum punya asset.
+     *
+     * Pencocokan memakai tech_ident_no = cm_equipment.equipment_tag (exact,
+     * case-insensitive, trim). Asset yang sudah ada tidak diubah.
+     *
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function syncCm()
+    {
+        $dibuat = 0;
+        $dilewati = 0;
+        $tanpaLokasi = 0;
+
+        CmEquipment::query()->orderBy('id')->chunkById(200, function ($daftar) use (&$dibuat, &$dilewati, &$tanpaLokasi): void {
+            foreach ($daftar as $equipment) {
+                $tag = trim((string) $equipment->equipment_tag);
+
+                if ($tag === '') {
+                    continue;
+                }
+
+                $sudahAda = Asset::query()
+                    ->whereRaw('UPPER(TRIM(tech_ident_no)) = ?', [mb_strtoupper($tag)])
+                    ->exists();
+
+                if ($sudahAda) {
+                    $dilewati++;
+                    continue;
+                }
+
+                $funcloc = FunctionalLocation::query()
+                    ->where('code', $equipment->pt_location)
+                    ->orWhere('code', $equipment->plant)
+                    ->first()
+                    ?? FunctionalLocation::query()->where('level', 0)->orderBy('id')->first();
+
+                if ($funcloc === null) {
+                    $tanpaLokasi++;
+                    continue;
+                }
+
+                Asset::create(array_merge([
+                    'tech_ident_no'    => $tag,
+                    'description'      => $tag,
+                    'status'           => 'active',
+                    'has_equipment_no' => false,
+                    'data_source'      => 'cm_sync',
+                    'imported_at'      => now(),
+                ], $this->locationFieldsFromFuncLoc($funcloc)));
+
+                $dibuat++;
+            }
+        });
+
+        return back()->with(
+            'success',
+            "Sinkronisasi CM selesai: {$dibuat} asset dibuat, {$dilewati} sudah ada, {$tanpaLokasi} tanpa lokasi."
+        );
     }
 
     /**
@@ -598,6 +720,7 @@ class AssetController extends Controller
     private function locationFieldsFromFuncLoc(FunctionalLocation $funcLoc): array
     {
         return [
+            'funcloc_id'     => $funcLoc->id,
             'functional_loc' => $funcLoc->code,
             'company_id'     => $this->assetNumbers->companyIdForFuncLoc($funcLoc),
             'department_id'  => $funcLoc->department_id,
