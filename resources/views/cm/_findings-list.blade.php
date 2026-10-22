@@ -1,31 +1,31 @@
 @if($findings->count())
-    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div class="ap-card overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="ap-table w-full text-sm">
                 <thead>
-                    <tr class="bg-slate-50 border-b border-slate-200">
-                        <th class="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wider">Equipment</th>
-                        <th class="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wider">Deskripsi</th>
-                        <th class="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wider">Severity</th>
-                        <th class="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
-                        <th class="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wider">Tgl Temuan</th>
-                        <th class="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wider">Hari</th>
-                        <th class="text-right px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wider">Aksi</th>
+                    <tr class="bg-[#fafafc] border-b border-black/5">
+                        <th class="text-left px-4 py-2.5 text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Equipment</th>
+                        <th class="text-left px-4 py-2.5 text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Deskripsi</th>
+                        <th class="text-left px-4 py-2.5 text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Severity</th>
+                        <th class="text-left px-4 py-2.5 text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Status</th>
+                        <th class="text-left px-4 py-2.5 text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Tgl Temuan</th>
+                        <th class="text-left px-4 py-2.5 text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Hari</th>
+                        <th class="text-right px-4 py-2.5 text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Aksi</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100">
+                <tbody class="divide-y divide-black/5">
                     @foreach($findings as $finding)
                         @php
                             $sevColors = ['low' => 'bg-blue-100 text-blue-700', 'medium' => 'bg-amber-100 text-amber-700', 'high' => 'bg-red-100 text-red-700'];
-                            $sevColor = $sevColors[$finding->severity] ?? 'bg-slate-100 text-slate-600';
+                            $sevColor = $sevColors[$finding->severity] ?? 'bg-[#e8e8ed] text-[#3a3a3c]';
                             $wo = $finding->workOrder()->first();
                         @endphp
-                        <tr class="hover:bg-slate-50 transition-colors">
+                        <tr class="hover:bg-[#fafafc] transition-colors">
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="flex items-center gap-2">
                                     @if($finding->foto_url)
                                         <button onclick="openModal('findingPhoto{{ $finding->id }}')"
-                                                class="shrink-0 w-8 h-8 rounded border border-slate-200 overflow-hidden hover:opacity-80">
+                                                class="shrink-0 w-8 h-8 rounded border border-black/5 overflow-hidden hover:opacity-80">
                                             <img src="{{ $finding->foto_url }}" alt="Foto" class="w-full h-full object-cover">
                                         </button>
 
@@ -36,25 +36,25 @@
                                                 @endif
                                                 <div class="grid grid-cols-2 gap-3 text-sm">
                                                     <div>
-                                                        <span class="text-slate-400 text-xs">Kategori</span>
+                                                        <span class="text-[#6e6e73] text-xs">Kategori</span>
                                                         <p class="font-medium">{{ $finding->kategori }}</p>
                                                     </div>
                                                     <div>
-                                                        <span class="text-slate-400 text-xs">Tanggal Temuan</span>
+                                                        <span class="text-[#6e6e73] text-xs">Tanggal Temuan</span>
                                                         <p class="font-medium">{{ $finding->tanggal_temuan->format('d M Y') }}</p>
                                                     </div>
                                                     <div>
-                                                        <span class="text-slate-400 text-xs">PIC</span>
+                                                        <span class="text-[#6e6e73] text-xs">PIC</span>
                                                         <p class="font-medium">{{ $finding->pic }}</p>
                                                     </div>
                                                     <div>
-                                                        <span class="text-slate-400 text-xs">Severity</span>
+                                                        <span class="text-[#6e6e73] text-xs">Severity</span>
                                                         <p class="font-medium capitalize">{{ $finding->severity }}</p>
                                                     </div>
                                                 </div>
-                                                <p class="text-sm text-slate-700">{{ $finding->deskripsi }}</p>
+                                                <p class="text-sm text-[#1d1d1f]">{{ $finding->deskripsi }}</p>
                                                 <button onclick="closeModal('findingPhoto{{ $finding->id }}')"
-                                                        class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg">
+                                                        class="px-4 py-2 border border-black/10 hover:bg-[#fafafc] text-[#1d1d1f] text-sm font-medium rounded-lg">
                                                     Tutup
                                                 </button>
                                             </div>
@@ -63,15 +63,15 @@
                                     <div>
                                         <div class="font-mono font-semibold">
                                             <a href="{{ route('cm.equipment-show', $finding->equipment->equipment_tag ?? '-') }}"
-                                               class="text-teal-700 hover:text-teal-900 hover:underline transition-colors">
+                                               class="text-[#0066cc] hover:text-[#004a99] hover:underline transition-colors">
                                                 {{ $finding->equipment->equipment_tag ?? '-' }}
                                             </a>
                                         </div>
-                                        <div class="text-xs text-slate-400">{{ $finding->equipment->pt_location ?? '' }}</div>
+                                        <div class="text-xs text-[#6e6e73]">{{ $finding->equipment->pt_location ?? '' }}</div>
                                     </div>
                                 </div>
                             </td>
-                            <td class="px-4 py-3 text-slate-700 max-w-[250px] truncate">{{ $finding->deskripsi }}</td>
+                            <td class="px-4 py-3 text-[#1d1d1f] max-w-[250px] truncate">{{ $finding->deskripsi }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium {{ $sevColor }}">
                                     {{ ucfirst($finding->severity) }}
@@ -90,21 +90,21 @@
                                     </span>
                                 @endif
                             </td>
-                            <td class="px-4 py-3 whitespace-nowrap text-slate-500 text-xs">{{ $finding->tanggal_temuan->format('d M Y') }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-[#6e6e73] text-xs">{{ $finding->tanggal_temuan->format('d M Y') }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 @if($finding->status === 'open')
-                                    <span class="text-xs {{ $finding->hari_open > 7 ? 'text-red-500 font-medium' : 'text-slate-400' }}">
+                                    <span class="text-xs {{ $finding->hari_open > 7 ? 'text-red-500 font-medium' : 'text-[#6e6e73]' }}">
                                         {{ $finding->hari_open }} hari
                                     </span>
                                 @else
-                                    <span class="text-xs text-slate-400">-</span>
+                                    <span class="text-xs text-[#6e6e73]">-</span>
                                 @endif
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap text-right">
                                 <div class="flex items-center justify-end gap-2">
                                     @if($wo)
                                         <a href="{{ route('work-orders.show', $wo) }}"
-                                           class="inline-block px-2.5 py-1 text-xs font-medium text-teal-600 hover:bg-teal-50 rounded-md transition-colors">
+                                           class="inline-block px-2.5 py-1 text-xs font-medium text-[#0066cc] hover:bg-[#f5f5f7] rounded-md transition-colors">
                                             Lihat WO
                                         </a>
                                     @elseif($finding->status === 'open')
@@ -132,7 +132,7 @@
         </div>
     </div>
 @else
-    <div class="bg-white rounded-xl border border-slate-200 p-8 text-center text-sm text-slate-400">
+    <div class="ap-card p-8 text-center text-sm text-[#6e6e73]">
         Tidak ada finding ditemukan.
     </div>
 @endif

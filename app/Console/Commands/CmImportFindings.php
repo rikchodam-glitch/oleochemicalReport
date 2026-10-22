@@ -224,13 +224,19 @@ class CmImportFindings extends Command
 
             // Cari atau buat equipment
             if (!isset($preloadEq[$equipmentTag])) {
-                $eq = CmEquipment::updateOrCreate(
-                    ['equipment_tag' => $equipmentTag],
-                    [
-                        'pt_location' => $this->cellVal($idxPt !== null ? ($row[$idxPt] ?? null) : null) ?? 'Unknown',
-                        'plant'       => $this->cellVal($idxPlant !== null ? ($row[$idxPlant] ?? null) : null) ?? 'Unknown',
-                    ]
-                );
+                $eq = CmEquipment::firstOrNew(['equipment_tag' => $equipmentTag]);
+
+                $eq->pt_location = $this->cellVal($idxPt !== null ? ($row[$idxPt] ?? null) : null) ?? 'Unknown';
+                $eq->plant       = $this->cellVal($idxPlant !== null ? ($row[$idxPlant] ?? null) : null) ?? 'Unknown';
+
+                // Equipment baru dari sheet Finding CM belum tentu terdaftar di
+                // sheet Master Equipment -> jangan ditandai anggota master.
+                if (!$eq->exists) {
+                    $eq->in_master = false;
+                }
+
+                $eq->save();
+
                 $preloadEq[$equipmentTag] = $eq->id;
             }
             $eqId = $preloadEq[$equipmentTag];

@@ -150,7 +150,7 @@ class CmController extends Controller
             ->get();
 
         // Daftar PT untuk filter
-        $ptList = CmEquipment::select('pt_location')->distinct()->pluck('pt_location');
+        $ptList = CmEquipment::active()->select('pt_location')->distinct()->pluck('pt_location');
 
         // Tahun untuk filter
         $tahunList = CmReading::selectRaw('YEAR(tanggal) as tahun')
@@ -204,7 +204,7 @@ class CmController extends Controller
         $totalClosed    = CmFinding::where('status', 'closed')->count();
         $totalFindings  = CmFinding::count();
 
-        $ptList = CmEquipment::select('pt_location')->distinct()->pluck('pt_location');
+        $ptList = CmEquipment::active()->select('pt_location')->distinct()->pluck('pt_location');
 
         return view('cm.findings', compact(
             'findings', 'ptList',
@@ -227,124 +227,162 @@ class CmController extends Controller
 
     /**
      * Tampilkan halaman CM Monitoring.
+     *
+     * Fokus halaman ini adalah BULAN BERJALAN: berapa equipment yang sudah
+     * diambil datanya, berapa yang belum, dan mana yang perlu di-arrange
+     * running (stop). Rekap bulanan tetap tersedia di tabel sebagai konteks
+     * progres, tetapi tabel dipaginasi 20 baris supaya halaman tidak perlu
+     * di-scroll panjang.
+     *
+     * Semua angka ringkasan, kartu per PT, dan daftar equipment memakai data
+     * bulan acuan yang sama (bulan terakhir), sehingga konsisten satu sama lain.
      */
     public function monitoring(Request $request)
     {
-        $filterTahun = $request->input('tahun', now()->year);
-        $hideDone    = $request->boolean('hide_done', false);
+        $filterTahun = (int) $request->input('tahun', now()->year);
 
-        $tahunIni = (int) $filterTahun;
-        $bulanIni = (int) now()->format('n');
+        // Bulan acuan: bulan berjalan untuk tahun ini, atau Desember untuk
+        // tahun yang sudah lewat (seluruh bulan pada tahun itu sudah selesai).
+        $bulanIni   = ($filterTahun === (int) now()->year) ? (int) now()->format('n') : 12;
+        $bulanMulai = ($filterTahun === 2026) ? 3 : 1;
+        $bulanTampil = ($bulanIni >= $bulanMulai) ? range($bulanMulai, $bulanIni) : [];
 
-        // Bulan pertama yang dinilai untuk tahun terpilih.
-        // Reporting monitoring baru dimulai Maret 2026, jadi Jan & Feb 2026
-        // diabaikan (tidak dihitung progress maupun ditampilkan sebagai belum).
-        $bulanMulai = (($tahunIni === 2026) ? 3 : 1);
+        $bulanPanjang = [
+            1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
+            5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
+            9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
+        ];
+        $bulanNama = $bulanPanjang[$bulanIni] ?? '';
 
-        // Semua equipment (termasuk yang belum pernah diambil reading, karena
-        // equipment bisa valid tetapi datanya memang belum diambil manpower).
-        $equipments = CmEquipment::with(['monthlyTrackings' => fn($q) => $q->where('tahun', $tahunIni)])
+        // Semua equipment AKTIF (termasuk yang belum pernah diambil reading,
+        // karena equipment bisa valid tetapi datanya memang belum diambil
+        // manpower). Tag yang sudah dihapus dari sheet "Master Equipment"
+        // tidak lagi ikut dihitung / tampil di modal "belum diambil data".
+        $equipments = CmEquipment::active()->with(['monthlyTrackings' => fn($q) => $q->where('tahun', $filterTahun)])
             ->orderBy('pt_location')
             ->orderBy('equipment_tag')
             ->get();
 
-        // Hitung progress per equipment.
-        // Bulan "free" (equipment tidak running/stop) dianggap tercakup dan
-        // tidak menurunkan progress, karena bukan keterlambatan sungguhan.
-        $equipments->each(function ($eq) use ($tahunIni, $bulanIni, $bulanMulai) {
-            // Jumlah bulan yang dinilai pada rentang aktif.
-            $totalBulan = ($tahunIni < now()->year)
-                ? 12
-                : ($bulanIni - $bulanMulai + 1);
-            $totalBulan = max($totalBulan, 0);
-            $list = $eq->monthlyTrackings->whereIn('status', ['sudah', 'free']);
-            $coveredCount = $list->filter(fn($t) => $t->bulan >= $bulanMulai)->count();
-            $eq->progress_pct = $totalBulan > 0 ? round(($coveredCount / $totalBulan) * 100, 0) : 0;
-            $eq->covered_count = $coveredCount;
-            $eq->sudah_count = $list->where('status', 'sudah')->count();
-            $eq->free_count = $list->where('status', 'free')->count();
-            $eq->total_bulan = $totalBulan;
-        });
+        // Satu baris ringkas per equipment untuk kartu ringkasan, kartu per PT,
+        // tabel, sekaligus daftar equipment di modal. Semua memakai data bulan
+        // acuan saja supaya informasi yang tampil konsisten.
+        $eqRows = $equipments->map(function ($eq) use ($bulanIni, $bulanMulai, $bulanTampil) {
+            $trackIni = $eq->monthlyTrackings->firstWhere('bulan', $bulanIni);
+            $status   = $trackIni->status ?? 'belum';
 
-        // Kelompokkan alert: equipment yang belum ada data bulan berjalan.
-        // Equipment berstatus "free" (stop) di bulan berjalan TIDAK dianggap
-        // belum; hanya yang benar-benar belum tercatat (belum) yang di-alert.
-        $alertEquipments = CmEquipment::whereDoesntHave('monthlyTrackings', function ($q) use ($tahunIni, $bulanIni) {
-                $q->where('tahun', $tahunIni)
-                    ->where('bulan', $bulanIni)
-                    ->whereIn('status', ['sudah', 'free']);
-            })->with(['monthlyTrackings' => fn($q) => $q->where('tahun', $tahunIni)->orderBy('bulan', 'desc')])
-            ->get();
-
-        // Data terakhir bulan apa per equipment untuk alert.
-        // Mengambil bulan TERBESAR yang berstatus "sudah" (data benar-benar
-        // diambil), bukan sekadar baris tracking terbesar (yang bisa berupa
-        // bulan masa depan berstatus "belum").
-        $alertEquipments->each(function ($eq) use ($tahunIni, $bulanIni) {
-            $lastTrack = $eq->monthlyTrackings
-                ->where('status', 'sudah')
-                ->sortByDesc('bulan')
-                ->first();
-
-            if ($lastTrack) {
-                $eq->last_month_label = $this->bulanLabel($lastTrack->bulan);
-            } elseif ($tahunIni >= now()->year) {
-                $eq->last_month_label = 'belum ada data';
-            } else {
-                $eq->last_month_label = 'tidak ada di ' . $tahunIni;
+            // Status bulan sebelumnya — dipakai untuk mendeteksi 2 bulan
+            // berturut tanpa data (belum) atau berturut stop (tidak running).
+            $statusSebelum = null;
+            if ($bulanIni - 1 >= $bulanMulai) {
+                $trackSebelum  = $eq->monthlyTrackings->firstWhere('bulan', $bulanIni - 1);
+                $statusSebelum = $trackSebelum->status ?? 'belum';
             }
-        });
 
-        // Filter hide done
-        if ($hideDone) {
-            $equipments = $equipments->filter(fn($eq) => $eq->progress_pct < 100);
-        }
-
-        // Insight: equipment yang 2 bulan TERAKHIR BERTURUT tidak ada data "sudah".
-        // Fokus pada bulan berjalan dan bulan sebelumnya; bulan yang lebih lama
-        // (mis. Mar-Apr) tidak lagi di-scoring karena sudah lewat / teratasi.
-        // Masuk insight bila KEDUA bulan terakhir berstatus bukan "sudah"
-        // (belum-belum, free-free, atau belum-free / free-belum). Stop 2 bulan
-        // berturut pun dianggap bermasalah dan wajib di-arrange untuk running.
-        // Hanya jika salah satu bulan tersebut "sudah" -> tidak masuk insight.
-        $bulanSebelum = $bulanIni - 1;
-        $insightEntities = [];
-        if ($bulanSebelum >= $bulanMulai) {
-            foreach ($equipments as $eq) {
-                $trackIni = $eq->monthlyTrackings->firstWhere('bulan', $bulanIni);
-                $trackSebelum = $eq->monthlyTrackings->firstWhere('bulan', $bulanSebelum);
-
-                if ($trackIni && $trackSebelum
-                    && $trackIni->status !== 'sudah'
-                    && $trackSebelum->status !== 'sudah') {
-                    $eq->insight_bln = [$bulanSebelum, $bulanIni];
-                    $eq->insight_jml = 2;
-                    $eq->insight_keterangan = $this->insightKeterangan($trackIni->status, $trackSebelum->status);
-                    $insightEntities[] = $eq;
+            $issue = null;
+            if ($statusSebelum !== null && $status !== 'sudah' && $statusSebelum !== 'sudah') {
+                if ($status === 'free' && $statusSebelum === 'free') {
+                    $issue = 'stop2';
+                } elseif ($status === 'free' || $statusSebelum === 'free') {
+                    $issue = 'campur';
+                } else {
+                    $issue = 'belum2';
                 }
             }
-        }
 
-        // Tambahkan label bulan & tautan pada equipment insight.
-        foreach ($insightEntities as $eq) {
-            $eq->insight_bulan_label = collect($eq->insight_bln)
-                ->map(fn($b) => $this->bulanLabel((int) $b))
-                ->implode(', ');
-        }
-        $insightEntities = collect($insightEntities);
+            $dalamRentang = $eq->monthlyTrackings->where('bulan', '>=', $bulanMulai);
+            $covered      = $dalamRentang->whereIn('status', ['sudah', 'free'])->count();
+            $totalBulan   = count($bulanTampil);
 
-        $ptList = CmEquipment::select('pt_location')->distinct()->pluck('pt_location');
-        $tahunList = range(now()->year - 2, now()->year);
+            // Bulan terakhir yang benar-benar ada datanya (status "sudah").
+            $lastSudah = $eq->monthlyTrackings->where('status', 'sudah')->sortByDesc('bulan')->first();
 
-        // Jumlah total equipment (penyebut pada ringkasan "X dari Y belum")
-        $totalEquipments = CmEquipment::count();
-        $belumBulanIni = $alertEquipments->count();
+            $months = [];
+            foreach ($bulanTampil as $b) {
+                $track       = $eq->monthlyTrackings->firstWhere('bulan', $b);
+                $months[$b]  = $track ? $track->status : 'belum';
+            }
+            return [
+                'tag'          => $eq->equipment_tag,
+                'pt'           => $eq->pt_location,
+                'url'          => route('cm.equipment-show', $eq->equipment_tag),
+                'status'       => $status,
+                'status_label' => $status === 'sudah' ? 'Sudah' : ($status === 'free' ? 'Stop' : 'Belum'),
+                'issue'        => $issue,
+                'issue_label'  => match ($issue) {
+                    'belum2' => 'belum 2 bln',
+                    'stop2'  => 'stop 2 bln',
+                    'campur' => 'belum/stop 2 bln',
+                    default  => '',
+                },
+                'months'       => $months,
+                'last'         => $lastSudah ? $this->bulanLabel((int) $lastSudah->bulan) : null,
+                'covered'      => $covered,
+                'total'        => $totalBulan,
+                'pct'          => $totalBulan > 0 ? (int) round(($covered / $totalBulan) * 100) : 0,
+            ];
+        })->values();
+
+        // Ringkasan bulan acuan (angka besar di kartu atas).
+        $ringkasan = [
+            'total'  => $eqRows->count(),
+            'sudah'  => $eqRows->where('status', 'sudah')->count(),
+            'belum'  => $eqRows->where('status', 'belum')->count(),
+            'stop'   => $eqRows->where('status', 'free')->count(),
+            'belum2' => $eqRows->where('issue', 'belum2')->count(),
+            'stop2'  => $eqRows->where('issue', 'stop2')->count(),
+            'campur' => $eqRows->where('issue', 'campur')->count(),
+        ];
+        $ringkasan['covered'] = $ringkasan['sudah'] + $ringkasan['stop'];
+        $ringkasan['pct']     = $ringkasan['total'] > 0
+            ? (int) round(($ringkasan['covered'] / $ringkasan['total']) * 100)
+            : 0;
+        $ringkasan['perlu']   = $ringkasan['belum2'] + $ringkasan['stop2'] + $ringkasan['campur'];
+        // Ringkasan per PT — diurutkan dari yang paling banyak belum diambil
+        // supaya PT yang butuh perhatian langsung terlihat di depan.
+        $ptSummary = $eqRows->groupBy('pt')->map(function ($rows, $pt) {
+            $total   = $rows->count();
+            $sudah   = $rows->where('status', 'sudah')->count();
+            $stop    = $rows->where('status', 'free')->count();
+            $belum   = $rows->where('status', 'belum')->count();
+            $covered = $sudah + $stop;
+
+            return [
+                'pt'      => $pt,
+                'total'   => $total,
+                'sudah'   => $sudah,
+                'stop'    => $stop,
+                'belum'   => $belum,
+                'covered' => $covered,
+                'pct'     => $total > 0 ? (int) round(($covered / $total) * 100) : 0,
+                'belum2'  => $rows->where('issue', 'belum2')->count(),
+                'stop2'   => $rows->where('issue', 'stop2')->count(),
+                'campur'  => $rows->where('issue', 'campur')->count(),
+            ];
+        })->sortByDesc('belum')->values();
+
+        // Tabel memakai urutan PT yang sama dengan kartu (paling banyak belum
+        // diambil di atas), lalu tag equipment A-Z di dalam PT.
+        $ptRank = $ptSummary->pluck('pt')->flip();
+        $eqRows = $eqRows
+            ->sortBy(fn($row) => sprintf('%02d|%s', $ptRank[$row['pt']] ?? 99, $row['tag']))
+            ->values();
+
+        // Hanya tahun yang punya data tracking (+ tahun berjalan & tahun yang
+        // sedang dipilih) supaya dropdown tidak menawarkan tahun kosong yang
+        // membuat semua equipment seolah-olah belum diambil.
+        $tahunList = CmMonthlyTracking::query()
+            ->distinct()
+            ->orderBy('tahun')
+            ->pluck('tahun')
+            ->push((int) now()->year)
+            ->push($filterTahun)
+            ->unique()
+            ->sort()
+            ->values();
 
         return view('cm.monitoring', compact(
-            'equipments', 'ptList', 'tahunList',
-            'filterTahun', 'hideDone', 'alertEquipments',
-            'tahunIni', 'bulanIni', 'totalEquipments', 'belumBulanIni',
-            'bulanMulai', 'insightEntities'
+            'filterTahun', 'tahunList', 'bulanIni', 'bulanMulai', 'bulanNama',
+            'bulanTampil', 'eqRows', 'ringkasan', 'ptSummary'
         ));
     }
 
@@ -867,7 +905,7 @@ class CmController extends Controller
         $filterStatus = array_values(array_intersect($filterStatus, ['good', 'alarm', 'danger', 'visual_bad']));
         $search       = $request->get('search', '');
 
-        $query = CmEquipment::with(['asset.company']);
+        $query = CmEquipment::active()->with(['asset.company']);
 
         // Filter PT
         if ($filterPt) {
@@ -934,7 +972,7 @@ class CmController extends Controller
             }
         });
 
-        $ptList = CmEquipment::select('pt_location')->distinct()->pluck('pt_location');
+        $ptList = CmEquipment::active()->select('pt_location')->distinct()->pluck('pt_location');
 
         return view('cm.equipment-status', compact(
             'equipments', 'ptList',
@@ -1306,7 +1344,7 @@ class CmController extends Controller
         // ---------------------------------------------------------------
         // DATA UNTUK RINGKASAN UMUM (existing)
         // ---------------------------------------------------------------
-        $totalEquipment = CmEquipment::when($filterPt, fn($q) => $q->where('pt_location', $filterPt))->count();
+        $totalEquipment = CmEquipment::active()->when($filterPt, fn($q) => $q->where('pt_location', $filterPt))->count();
 
         $totalReadingsQuery = CmReading::when($filterPt, fn($q) => $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt)));
         if ($filterTahun) { $totalReadingsQuery->whereYear('tanggal', $filterTahun); }
@@ -1319,7 +1357,13 @@ class CmController extends Controller
             ->count();
 
         $monitoringProgress = CmMonthlyTracking::where('tahun', $filterTahun)
-            ->when($filterPt, fn($q) => $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt)))
+            ->whereHas('equipment', function ($sq) use ($filterPt) {
+                $sq->active();
+
+                if ($filterPt) {
+                    $sq->where('pt_location', $filterPt);
+                }
+            })
             ->selectRaw('status, COUNT(*) as total')
             ->groupBy('status')
             ->get()
@@ -1336,7 +1380,7 @@ class CmController extends Controller
             9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
         ];
 
-        $ptList = CmEquipment::select('pt_location')->distinct()->pluck('pt_location');
+        $ptList = CmEquipment::active()->select('pt_location')->distinct()->pluck('pt_location');
         $tahunList = range(now()->year - 2, now()->year);
 
         return view('cm.report-analysis', compact(

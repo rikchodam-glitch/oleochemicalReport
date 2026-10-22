@@ -6,6 +6,7 @@ use App\Models\CmEquipment;
 use App\Models\CmMonthlyTracking;
 use App\Models\CmReading;
 use App\Models\ImportLog;
+use App\Services\CmMasterEquipmentSyncService;
 use Carbon\Carbon;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -139,6 +140,26 @@ class ProcessCmExcelImport implements ShouldQueue
             }
             unset($sheets2, $statusCmSheet, $fastExcel2);
             gc_collect_cycles();
+
+            // Sinkronkan daftar equipment dengan sheet "Master Equipment".
+            // Tag yang dihapus dari spreadsheet dinonaktifkan (histori reading
+            // & finding tetap tersimpan), tag baru dibuat / diaktifkan lagi.
+            // Dijalankan SETELAH reading diimpor supaya equipment baru dari
+            // "Data AppSheet" tidak langsung dianggap tag lama yang dihapus.
+            try {
+                $result['master_sync'] = app(CmMasterEquipmentSyncService::class)
+                    ->syncFromFile($this->filePath);
+            } catch (\Throwable $e) {
+                $result['errors'][] = [
+                    'baris' => 0,
+                    'pesan' => 'Master Equipment: ' . $e->getMessage(),
+                ];
+
+                \Illuminate\Support\Facades\Log::warning(
+                    'Sinkronisasi Master Equipment CM gagal: ' . $e->getMessage(),
+                    ['import_log_id' => $this->importLogId]
+                );
+            }
 
             $this->rebuildMonthlyTracking();
             gc_collect_cycles();
@@ -497,7 +518,7 @@ class ProcessCmExcelImport implements ShouldQueue
             ->where('bulan', '<', $bulanMulai)
             ->delete();
 
-        $equipments = CmEquipment::with('readings')->get();
+        $equipments = CmEquipment::active()->with('readings')->get();
 
         foreach ($equipments as $equipment) {
             $bulanSamples = [];
@@ -607,6 +628,10 @@ class ProcessCmExcelImport implements ShouldQueue
                 'pt_location'    => $ptLocation ?: 'Unknown',
                 'plant'          => $plant ?: 'Unknown',
                 'tipe_lubrikasi' => $tipeLubrikasi ?: null,
+                // Belum terdaftar di sheet "Master Equipment": jangan dianggap
+                // anggota master, supaya sync berikutnya tidak menonaktifkan
+                // equipment baru ini sebelum user menambahkannya ke master.
+                'in_master'      => false,
             ]);
         } catch (\Exception $e) {
             return null;
