@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 class Asset extends Model
 {
@@ -25,6 +26,7 @@ class Asset extends Model
         'sub_area_id',
         'manufacturer',
         'model_number',
+        'photos',
         'construct_year',
         'status',
         'has_equipment_no',
@@ -35,9 +37,23 @@ class Asset extends Model
     protected function casts(): array
     {
         return [
+            'photos'           => 'array',
             'has_equipment_no' => 'boolean',
             'imported_at'      => 'datetime',
         ];
+    }
+
+    /**
+     * URL publik seluruh foto equipment.
+     *
+     * @return array<int, string>
+     */
+    public function getPhotoUrlsAttribute(): array
+    {
+        return collect($this->photos ?? [])
+            ->map(fn (string $path): string => Storage::disk('public')->url($path))
+            ->values()
+            ->all();
     }
 
     public function company(): BelongsTo

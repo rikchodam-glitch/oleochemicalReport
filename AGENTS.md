@@ -70,6 +70,7 @@ Semua berkas di bawah ini ada di `docs/`.
 | [25-form-laporan-teknisi.md](docs/25-form-laporan-teknisi.md) | Form laporan web token `/laporan`, multi-laporan, hierarki, multi-alat, foto, kolaborator | Mengubah form laporan, token, foto, kolaborator, atau akses teknisi |
 | [26-halaman-semua-cuti.md](docs/26-halaman-semua-cuti.md) | Halaman read-only semua cuti untuk admin, supervisor, admin_general, admin_reguler | Mengubah akses atau tampilan seluruh cuti |
 | [27-menu-perintah-bot-telegram.md](docs/27-menu-perintah-bot-telegram.md) | Menu command native bot (`/start`, `/laporan`, `/info`, `/cuti`, `/reset`) | Mengubah daftar command atau tombol menu bot |
+| [28-assets-management.md](docs/28-assets-management.md) | Pencarian live, detail via klik, foto equipment, ringkasan CM, sinkronisasi CM | Mengubah halaman Assets Management atau sinkronisasi CM |
 
 ## Dokumen pendukung di `docs/`
 

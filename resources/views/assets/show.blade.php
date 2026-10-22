@@ -14,6 +14,15 @@
        class="inline-flex items-center gap-2 px-4 py-2 border border-amber-300 hover:bg-amber-50 text-amber-700 text-sm font-medium rounded-lg transition-colors">
         Edit Asset
     </a>
+    <form method="POST" action="{{ route('assets.destroy', $asset) }}" class="inline"
+          onsubmit="return confirm('Hapus asset ini? Semua foto equipment ikut dihapus.')">
+        @csrf
+        @method('DELETE')
+        <button type="submit"
+                class="inline-flex items-center gap-2 px-4 py-2 border border-rose-300 hover:bg-rose-50 text-rose-700 text-sm font-medium rounded-lg transition-colors">
+            Hapus Asset
+        </button>
+    </form>
 @endsection
 
 @section('content')
@@ -42,7 +51,6 @@
                                 @endif
                             </p>
                         </div>
-                        <x-status-badge :status="$asset->status" />
                     </div>
                     <dl class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
                         <div class="md:col-span-3">
@@ -65,7 +73,7 @@
                         </div>
                         <div>
                             <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Data Source</dt>
-                            <dd class="mt-1 text-sm text-slate-900">{{ ['import_excel' => 'Import Excel', 'manual' => 'Manual', 'it_sync' => 'Sinkron IT Assets', 'panel_sync' => 'Sinkron Ruang Panel'][$asset->data_source] ?? $asset->data_source }}</dd>
+                            <dd class="mt-1 text-sm text-slate-900">{{ ['import_excel' => 'Import Excel', 'manual' => 'Manual', 'it_sync' => 'Sinkron IT Assets', 'panel_sync' => 'Sinkron Ruang Panel', 'cm_sync' => 'Sinkron CM'][$asset->data_source] ?? $asset->data_source }}</dd>
                         </div>
                         <div>
                             <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Manufacturer</dt>
@@ -132,6 +140,35 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        @include('assets.partials._cm-ringkasan')
+
+        {{-- Foto Equipment --}}
+        <div class="bg-white rounded-xl border border-slate-200 p-6">
+            <div class="flex items-center justify-between gap-3 mb-4">
+                <div>
+                    <h3 class="text-base font-semibold text-slate-900">Foto Equipment</h3>
+                    <p class="text-xs text-slate-400 mt-0.5">{{ count($asset->photo_urls) }} foto</p>
+                </div>
+                <a href="{{ route('assets.edit', $asset) }}" class="text-xs font-semibold text-teal-700 hover:text-teal-800">
+                    Kelola foto
+                </a>
+            </div>
+
+            @if(count($asset->photo_urls) > 0)
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    @foreach($asset->photo_urls as $index => $url)
+                        <a href="{{ $url }}" target="_blank" rel="noopener"
+                           class="block aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+                            <img src="{{ $url }}" alt="Foto {{ $asset->tech_ident_no ?? 'asset' }} {{ $index + 1 }}"
+                                 class="w-full h-full object-cover">
+                        </a>
+                    @endforeach
+                </div>
+            @else
+                <p class="text-sm text-slate-400">Belum ada foto equipment.</p>
+            @endif
         </div>
 
         <!-- Kartu Statistik -->
