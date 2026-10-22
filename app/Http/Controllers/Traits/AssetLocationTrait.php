@@ -2,9 +2,7 @@
 
 namespace App\Http\Controllers\Traits;
 
-use App\Models\Area;
-use App\Models\Department;
-use App\Models\SubArea;
+use App\Services\LocationHierarchyService;
 use Illuminate\Http\Request;
 
 /**
@@ -29,13 +27,11 @@ trait AssetLocationTrait
      * @param  Request  $request  Harus mengandung company_id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function getDepartments(Request $request)
+    public function getDepartments(Request $request, LocationHierarchyService $locations)
     {
-        $departments = Department::where('company_id', $request->company_id)
-            ->orderBy('code')
-            ->get(['id', 'code', 'name']);
-
-        return response()->json($departments);
+        return response()->json(
+            $locations->departemenUntukCompany((int) $request->company_id)
+        );
     }
 
     /**
@@ -45,13 +41,11 @@ trait AssetLocationTrait
      * @param  Request  $request  Harus mengandung department_id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function getAreas(Request $request)
+    public function getAreas(Request $request, LocationHierarchyService $locations)
     {
-        $areas = Area::where('department_id', $request->department_id)
-            ->orderBy('code')
-            ->get(['id', 'code', 'name']);
-
-        return response()->json($areas);
+        return response()->json(
+            $locations->areaUntukDepartemen((int) $request->department_id)
+        );
     }
 
     /**
@@ -61,12 +55,10 @@ trait AssetLocationTrait
      * @param  Request  $request  Harus mengandung area_id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function getSubAreas(Request $request)
+    public function getSubAreas(Request $request, LocationHierarchyService $locations)
     {
-        $subAreas = SubArea::where('area_id', $request->area_id)
-            ->orderBy('code')
-            ->get(['id', 'code', 'name']);
-
-        return response()->json($subAreas);
+        return response()->json(
+            $locations->subAreaUntukArea((int) $request->area_id)
+        );
     }
 }

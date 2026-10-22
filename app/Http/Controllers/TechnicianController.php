@@ -58,7 +58,7 @@ class TechnicianController extends Controller
         $technicians = $query->latest()
             ->paginate(20)
             ->appends($request->only(['status', 'department_id', 'group', 'section', 'search']));
-        $departments = Department::all();
+        $departments = app(\App\Services\LocationHierarchyService::class)->semuaDepartemen();
 
         // Ringkasan man hour periode berjalan untuk kolom di tabel teknisi.
         $manHour = app(ManHourService::class);
@@ -163,7 +163,7 @@ class TechnicianController extends Controller
 
     public function create()
     {
-        $departments = Department::all();
+        $departments = app(\App\Services\LocationHierarchyService::class)->semuaDepartemen();
         $groups = \App\Models\Technician::GROUPS;
         $sections = \App\Models\Technician::SECTIONS;
         return view('technicians.create', compact('departments', 'groups', 'sections'));
@@ -227,7 +227,23 @@ class TechnicianController extends Controller
 
     public function edit(Technician $technician)
     {
-        $departments = Department::all();
+        $departments = app(\App\Services\LocationHierarchyService::class)->semuaDepartemen();
+
+        // Pertahankan departemen lama yang belum ada di hierarki FuncLoc agar
+        // nilai teknisi tidak hilang saat form edit dibuka.
+        if ($technician->department_id !== null
+            && ! $departments->contains(fn ($dept) => (int) $dept->id === (int) $technician->department_id)) {
+            $lama = Department::find($technician->department_id);
+
+            if ($lama !== null) {
+                $departments->push((object) [
+                    'id'   => $lama->id,
+                    'code' => $lama->code,
+                    'name' => $lama->name,
+                ]);
+            }
+        }
+
         $groups = \App\Models\Technician::GROUPS;
         $sections = \App\Models\Technician::SECTIONS;
         return view('technicians.edit', compact('technician', 'departments', 'groups', 'sections'));

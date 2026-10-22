@@ -109,7 +109,7 @@ class BotController extends Controller
             ->get();
 
         // Data untuk dropdown modal persetujuan
-        $departments = Department::orderBy('name')->get();
+        $departments = app(\App\Services\LocationHierarchyService::class)->semuaDepartemen();
 
         // Cek apakah polling sedang berjalan
         $pollStatus     = $this->getPollingStatus();

@@ -10,6 +10,8 @@
   melewati yang sudah ada.
 - Foto equipment bisa lebih dari satu: upload multiple, preview, hapus per foto.
 - Data Source `cm_sync` ditampilkan sebagai "Sinkron CM".
+- Opsi lokasi (Assets, Teknisi, Laporan, Bot) memakai hierarki Functional
+  Location; PT CES kini hanya menampilkan 1 departemen (CES-PROD).
 
 ## Data
 
@@ -32,6 +34,6 @@
 
 ## Uji
 
-- `AssetManagementTest`: 5 test hijau, 23 assertion.
-- Seluruh suite: 721 test hijau, 3.537 assertion.
+- `AssetManagementTest`: 6 test hijau, 26 assertion.
+- Seluruh suite: 722 test hijau, 3.540 assertion.
 - `view:cache` sukses.

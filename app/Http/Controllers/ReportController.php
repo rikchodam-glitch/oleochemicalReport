@@ -103,7 +103,17 @@ class ReportController extends Controller
 
         $tanggalSekitar = $this->tanggalSekitar($request, $tampilan, $grubAktif, $tanggalAktif);
 
-        $areas       = Area::orderBy('code')->get();
+        $areas       = app(\App\Services\LocationHierarchyService::class)->semuaArea();
+
+        if ($request->filled('area_id')
+            && ! $areas->contains(fn ($area) => (int) $area->id === (int) $request->area_id)) {
+            $lama = Area::find($request->area_id);
+
+            if ($lama !== null) {
+                $areas->push($lama);
+            }
+        }
+
         $technicians = Technician::orderBy('name')->get(['id', 'name', 'nik']);
         // Pilihan grub hanya untuk pekerja shift (Grub A-D); reguler & reguler
         // staff masuk ke tampilan Reguler, bukan ke daftar grub.
@@ -400,7 +410,7 @@ class ReportController extends Controller
      */
     public function create()
     {
-        $areas = Area::orderBy('code')->get(['id', 'code', 'name']);
+        $areas = app(\App\Services\LocationHierarchyService::class)->semuaArea();
 
         return view('reports.create', compact('areas'));
     }
@@ -471,7 +481,16 @@ class ReportController extends Controller
 
     // Variabel untuk dropdown inline edit di show.blade.php.
     // Mengikuti pola yang sama dengan edit() agar prefetch awal sudah terisi.
-    $areas = Area::orderBy('code')->get(['id', 'code', 'name']);
+    $areas = app(\App\Services\LocationHierarchyService::class)->semuaArea();
+
+    if ($report->area_id !== null
+        && ! $areas->contains(fn ($area) => (int) $area->id === (int) $report->area_id)) {
+        $lama = Area::find($report->area_id);
+
+        if ($lama !== null) {
+            $areas->push($lama);
+        }
+    }
 
     $funcLocs = $report->area_id
         ? FunctionalLocation::where('area_id', $report->area_id)->orderBy('code')->get(['id', 'code', 'name', 'level'])
