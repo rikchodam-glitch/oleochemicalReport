@@ -28,14 +28,16 @@ Perintah `/laporan` ditangani di dua jalur: poller
 - Server memvalidasi ulang pasangan klasifikasi-jenis.
 - Lokasi: PT → Dept → Area → Section (dari `functional_locations` aktif).
 - Equipment type wajib dipilih sebelum alat; tipe berasal dari
-  `assets.equipment_type` pada subtree lokasi.
+  `assets.equipment_type` pada subtree lokasi. Memilih tipe langsung
+  menampilkan daftar alat pada tipe/lokasi tersebut.
 - Pencarian alat memakai exact/prefix/LIKE + skor `similar_text`.
 - Tanpa alat = pekerjaan area; dengan alat = perbaikan equipment.
 - `[+Tambah]` menambah alat/lokasi tambahan; dibuat salinan `multi_of`.
 - Durasi memakai jam mulai/selesai dan dihitung server menjadi menit.
 - Kolaborator otomatis dari group + pencarian manual per Bagian.
-- Foto dokumentasi/hygiene bisa lebih dari satu, dengan preview dan hapus
-  sebelum kirim.
+- Foto dokumentasi/hygiene memakai beberapa baris input; tombol **+ Tambah
+  foto** menambah baris, dan setiap baris bisa memilih beberapa file sekaligus.
+  Semua file dipreview sebelum kirim.
 - Status on/off: on = `completed`, off = `continue`.
 - **Tambah laporan** membuat kartu baru; **Kirim** mengirim maksimal 5 laporan
   dalam satu POST atomik.
@@ -78,6 +80,6 @@ Perintah `/laporan` ditangani di dua jalur: poller
 
 ## Uji
 
-- `ReportFormTest`: 9 test hijau, 34 assertion.
-- Seluruh suite: 707 test hijau, 3.482 assertion.
+- `ReportFormTest`: 13 test hijau, 50 assertion.
+- Seluruh suite: 711 test hijau, 3.498 assertion.
 - `view:cache` sukses.

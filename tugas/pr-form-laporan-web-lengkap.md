@@ -13,12 +13,19 @@
 - `[+Tambah]` untuk multi-alat/lokasi; dibuat salinan `multi_of`.
 - Durasi memakai jam mulai/selesai dan dihitung server.
 - Kolaborator otomatis group + pencarian manual per Bagian.
-- Foto dokumentasi/hygiene multiple upload dengan preview/remove.
+- Foto dokumentasi/hygiene multi-baris dengan tombol Tambah foto; setiap baris
+  bisa memilih beberapa file dan semua dipreview.
 - Status on/off = completed/continue.
 - **Tambah laporan** + **Kirim** mendukung maksimal 5 laporan dalam satu POST
   atomik; token dikunci saat transaksi agar tidak ada double-submit.
 
-## Perbaikan UI setelah uji\n\n- Memilih tipe equipment langsung menampilkan daftar alat pada tipe/lokasi tersebut.\n- Dokumentasi/hygiene memakai beberapa baris input + tombol **Tambah foto**; setiap baris bisa memilih beberapa file dan semua dipreview, tanpa DataTransfer.\n\n## Data & teknis
+## Perbaikan UI setelah uji
+
+- Memilih tipe equipment langsung menampilkan daftar alat pada tipe/lokasi tersebut.
+- Dokumentasi/hygiene memakai beberapa baris input + tombol **Tambah foto**;
+  setiap baris bisa memilih beberapa file dan semua dipreview, tanpa DataTransfer.
+
+## Data & teknis
 
 - Tabel baru `report_tokens`; model `ReportToken`.
 - Service baru `ReportFormService` menangani token, validasi, penyimpanan,
@@ -51,6 +58,6 @@
 
 ## Uji
 
-- `ReportFormTest`: 9 test hijau, 34 assertion.
-- Seluruh suite: 707 test hijau, 3.482 assertion.
+- `ReportFormTest`: 13 test hijau, 50 assertion.
+- Seluruh suite: 711 test hijau, 3.498 assertion.
 - `view:cache` sukses.
