@@ -112,14 +112,14 @@
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">Foto dokumentasi (bisa lebih dari satu)</label>
-                <input type="file" name="reports[__R__][photos_documentation][]" class="foto-dokumentasi w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-100 file:font-medium" multiple accept="image/*">
-                <div class="preview-dokumentasi flex flex-wrap gap-2 mt-2"></div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Foto dokumentasi</label>
+                <div class="foto-dokumentasi-list space-y-2" data-name="reports[__R__][photos_documentation][]"></div>
+                <button type="button" class="tambah-foto-dokumentasi mt-2 text-xs font-semibold text-teal-700 hover:text-teal-800">+ Tambah foto dokumentasi</button>
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 mb-1">Foto hygiene clearance</label>
-                <input type="file" name="reports[__R__][photos_hygiene][]" class="foto-hygiene w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-100 file:font-medium" multiple accept="image/*">
-                <div class="preview-hygiene flex flex-wrap gap-2 mt-2"></div>
+                <div class="foto-hygiene-list space-y-2" data-name="reports[__R__][photos_hygiene][]"></div>
+                <button type="button" class="tambah-foto-hygiene mt-2 text-xs font-semibold text-teal-700 hover:text-teal-800">+ Tambah foto hygiene</button>
             </div>
         </div>
 
@@ -220,14 +220,12 @@ document.addEventListener('DOMContentLoaded', function () {
         select.disabled = daftar.length === 0;
     }
 
-    function setupFoto(input, preview) {
+    function bindFoto(input, preview) {
         input.addEventListener('change', function () {
             const files = Array.from(input.files || []);
-            const dt = new DataTransfer();
-            files.forEach(f => dt.items.add(f));
-            input.files = dt.files;
             preview.innerHTML = '';
-            files.forEach(function (file, idx) {
+
+            files.forEach(function (file) {
                 const wrap = document.createElement('div');
                 wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 bg-slate-100';
                 const img = document.createElement('img');
@@ -235,21 +233,58 @@ document.addEventListener('DOMContentLoaded', function () {
                 img.className = 'w-full h-full object-cover';
                 img.onload = () => URL.revokeObjectURL(img.src);
                 wrap.appendChild(img);
-                const hapus = document.createElement('button');
-                hapus.type = 'button';
-                hapus.textContent = '×';
-                hapus.className = 'absolute top-0 right-0 bg-rose-600 text-white text-xs w-5 h-5';
-                hapus.addEventListener('click', function () {
-                    const sisa = files.filter((_, i) => i !== idx);
-                    const baru = new DataTransfer();
-                    sisa.forEach(f => baru.items.add(f));
-                    input.files = baru.files;
-                    input.dispatchEvent(new Event('change'));
-                });
-                wrap.appendChild(hapus);
                 preview.appendChild(wrap);
             });
+
+            if (files.length > 0) {
+                const info = document.createElement('p');
+                info.className = 'w-full text-[10px] text-emerald-700';
+                info.textContent = files.length + ' foto dipilih.';
+                preview.appendChild(info);
+            }
         });
+    }
+
+    function tambahBarisFoto(container) {
+        const row = document.createElement('div');
+        row.className = 'foto-row flex items-start gap-2';
+
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.name = container.dataset.name;
+        input.accept = 'image/*';
+        input.multiple = true;
+        input.className = 'foto-input w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-100 file:font-medium';
+
+        const preview = document.createElement('div');
+        preview.className = 'foto-preview flex flex-wrap gap-2';
+
+        const hapus = document.createElement('button');
+        hapus.type = 'button';
+        hapus.textContent = '×';
+        hapus.className = 'shrink-0 w-6 h-6 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold';
+        hapus.addEventListener('click', function () {
+            if (container.querySelectorAll('.foto-row').length > 1) row.remove();
+            else {
+                input.value = '';
+                preview.innerHTML = '';
+            }
+        });
+
+        row.append(input, preview, hapus);
+        container.appendChild(row);
+        bindFoto(input, preview);
+    }
+
+    function setupFotoList(card, listSelector, buttonSelector) {
+        const container = card.querySelector(listSelector);
+        const tombol = card.querySelector(buttonSelector);
+
+        tombol.addEventListener('click', function () {
+            tambahBarisFoto(container);
+        });
+
+        tambahBarisFoto(container);
     }
 
     function setupItem(item, reportIndex, itemIndex) {
@@ -362,8 +397,13 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         tipe.addEventListener('change', function () {
             kosongkanAlat();
-            if (tipe.value) cari.disabled = false;
-            cari.focus();
+            cari.disabled = tipe.value === '';
+            cari.value = '';
+            if (tipe.value) {
+                // Langsung tampilkan daftar alat untuk tipe terpilih, tanpa
+                // menunggu teknisi mengetik.
+                cariAlat();
+            }
         });
         cari.addEventListener('input', function () {
             clearTimeout(timer);
@@ -420,8 +460,8 @@ document.addEventListener('DOMContentLoaded', function () {
             statusValue.value = status.checked ? 'completed' : 'continue';
         });
 
-        setupFoto(card.querySelector('.foto-dokumentasi'), card.querySelector('.preview-dokumentasi'));
-        setupFoto(card.querySelector('.foto-hygiene'), card.querySelector('.preview-hygiene'));
+        setupFotoList(card, '.foto-dokumentasi-list', '.tambah-foto-dokumentasi');
+        setupFotoList(card, '.foto-hygiene-list', '.tambah-foto-hygiene');
 
         card.querySelectorAll('input[data-auto="1"]').forEach(function (cb) { cb.checked = true; });
 
