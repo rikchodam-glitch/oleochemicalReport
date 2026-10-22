@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Area;
+use App\Models\CollaborationGroup;
 use App\Models\Asset;
 use App\Models\Company;
 use App\Models\Department;
@@ -154,6 +155,72 @@ test('laporan area tanpa alat dan multi alat membuat salinan multi', function ()
         ->and(Report::where('multi_of', $induk->id)->first()->asset_id)->toBe($asetKedua->id);
 });
 
+test('banyak laporan dalam satu kirim disimpan sekaligus', function () {
+    $this->post(route('laporan.simpan', ['token' => $this->token]), [
+        'reports' => [
+            [
+                'report_date' => '2026-10-20', 'work_classification' => 'zpm1',
+                'jenis_pekerjaan' => 'Mekanik', 'work_description' => 'Laporan pertama',
+                'start_time' => '08:00', 'end_time' => '09:00', 'final_status' => 'completed',
+                'items' => [['funcloc_id' => $this->section->id, 'asset_id' => $this->aset->id, 'equipment_type' => 'PUMP']],
+            ],
+            [
+                'report_date' => '2026-10-20', 'work_classification' => 'umum',
+                'jenis_pekerjaan' => 'UMUM', 'work_description' => 'Laporan kedua',
+                'start_time' => '09:00', 'end_time' => '10:00', 'final_status' => 'continue',
+                'items' => [['funcloc_id' => $this->section->id]],
+            ],
+        ],
+    ])->assertRedirect(route('laporan.selesai'));
+
+    $daftar = Report::orderBy('id')->get();
+
+    expect($daftar)->toHaveCount(2)
+        ->and($daftar[0]->report_type)->toBe('equipment_repair')
+        ->and($daftar[1]->report_type)->toBe('area_work')
+        ->and($daftar[1]->status)->toBe('continue')
+        ->and($daftar[1]->completed_at)->toBeNull();
+});
+
+test('kolaborator otomatis dari group ikut dibuatkan salinan', function () {
+    $group = CollaborationGroup::create([
+        'name' => 'Grup Form Uji', 'code' => 'FORM-GRP',
+        'is_active' => true, 'auto_collaborate' => true,
+    ]);
+    $group->members()->attach([$this->teknisi->id, $this->rekan->id]);
+
+    $this->post(route('laporan.simpan', ['token' => $this->token]), [
+        'reports' => [[
+            'report_date' => '2026-10-20', 'work_classification' => 'zpm1',
+            'jenis_pekerjaan' => 'Mekanik', 'work_description' => 'Laporan kolaborasi otomatis',
+            'start_time' => '08:00', 'end_time' => '09:00', 'final_status' => 'completed',
+            'items' => [['funcloc_id' => $this->section->id]],
+        ]],
+    ])->assertRedirect(route('laporan.selesai'));
+
+    $induk = Report::whereNull('collaborator_of')->firstOrFail();
+
+    expect(Report::where('collaborator_of', $induk->id)->where('technician_id', $this->rekan->id)->exists())->toBeTrue();
+});
+
+test('alat di luar lokasi yang dipilih ditolak', function () {
+    $lain = FunctionalLocation::create([
+        'code' => 'FORM-LAIN', 'segment' => 'FORM-LAIN', 'name' => 'Lokasi Lain',
+        'level' => 3, 'is_active' => true,
+    ]);
+
+    $this->post(route('laporan.simpan', ['token' => $this->token]), [
+        'reports' => [[
+            'report_date' => '2026-10-20', 'work_classification' => 'zpm1',
+            'jenis_pekerjaan' => 'Mekanik', 'work_description' => 'Alat salah lokasi',
+            'start_time' => '08:00', 'end_time' => '09:00', 'final_status' => 'completed',
+            'items' => [['funcloc_id' => $lain->id, 'asset_id' => $this->aset->id, 'equipment_type' => 'PUMP']],
+        ]],
+    ])->assertSessionHasErrors();
+
+    expect(Report::count())->toBe(0);
+});
+
 test('klasifikasi dan jenis yang tidak cocok ditolak', function () {
     $this->post(route('laporan.simpan', ['token' => $this->token]), [
         'reports' => [[
@@ -263,6 +330,24 @@ test('perintah /laporan di poller membuat token dengan deskripsi', function () {
     expect($token)->not->toBeNull()
         ->and($token->description)->toBe('pompa bergetar')
         ->and($handler->terkirim[0] ?? '')->toContain('/laporan/form/')
+        ->and(Report::count())->toBe(0);
+});
+
+test('perintah /laporan lewat webhook juga membuat token', function () {
+    $this->teknisi->update(['telegram_id' => '999000124']);
+
+    $this->post(route('telegram.webhook'), [
+        'message' => [
+            'chat' => ['id' => 12346],
+            'text' => '/laporan kompresor panas',
+            'from' => ['id' => 999000124, 'username' => 'form_webhook', 'first_name' => 'Form'],
+        ],
+    ])->assertOk();
+
+    $token = ReportToken::latest('id')->first();
+
+    expect($token)->not->toBeNull()
+        ->and($token->description)->toBe('kompresor panas')
         ->and(Report::count())->toBe(0);
 });
 

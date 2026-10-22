@@ -112,14 +112,14 @@
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">Foto dokumentasi (bisa lebih dari satu)</label>
-                <input type="file" name="reports[__R__][photos_documentation][]" class="foto-dokumentasi w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-100 file:font-medium" multiple accept="image/*">
-                <div class="preview-dokumentasi flex flex-wrap gap-2 mt-2"></div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Foto dokumentasi</label>
+                <div class="foto-dokumentasi-list space-y-2" data-name="reports[__R__][photos_documentation][]"></div>
+                <button type="button" class="tambah-foto-dokumentasi mt-2 text-xs font-semibold text-teal-700 hover:text-teal-800">+ Tambah foto dokumentasi</button>
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 mb-1">Foto hygiene clearance</label>
-                <input type="file" name="reports[__R__][photos_hygiene][]" class="foto-hygiene w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-100 file:font-medium" multiple accept="image/*">
-                <div class="preview-hygiene flex flex-wrap gap-2 mt-2"></div>
+                <div class="foto-hygiene-list space-y-2" data-name="reports[__R__][photos_hygiene][]"></div>
+                <button type="button" class="tambah-foto-hygiene mt-2 text-xs font-semibold text-teal-700 hover:text-teal-800">+ Tambah foto hygiene</button>
             </div>
         </div>
 
@@ -220,14 +220,11 @@ document.addEventListener('DOMContentLoaded', function () {
         select.disabled = daftar.length === 0;
     }
 
-    function setupFoto(input, preview) {
+    function bindFoto(input, preview) {
         input.addEventListener('change', function () {
             const files = Array.from(input.files || []);
             preview.innerHTML = '';
 
-            // Jangan menyalin ulang input.files lewat DataTransfer: pada
-            // beberapa browser/WebView Telegram hal itu membuat file yang
-            // dipilih hilang. Cukup tampilkan semua file yang dipilih.
             files.forEach(function (file) {
                 const wrap = document.createElement('div');
                 wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 bg-slate-100';
@@ -239,13 +236,55 @@ document.addEventListener('DOMContentLoaded', function () {
                 preview.appendChild(wrap);
             });
 
-            if (files.length > 1) {
+            if (files.length > 0) {
                 const info = document.createElement('p');
                 info.className = 'w-full text-[10px] text-emerald-700';
                 info.textContent = files.length + ' foto dipilih.';
                 preview.appendChild(info);
             }
         });
+    }
+
+    function tambahBarisFoto(container) {
+        const row = document.createElement('div');
+        row.className = 'foto-row flex items-start gap-2';
+
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.name = container.dataset.name;
+        input.accept = 'image/*';
+        input.multiple = true;
+        input.className = 'foto-input w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-100 file:font-medium';
+
+        const preview = document.createElement('div');
+        preview.className = 'foto-preview flex flex-wrap gap-2';
+
+        const hapus = document.createElement('button');
+        hapus.type = 'button';
+        hapus.textContent = '×';
+        hapus.className = 'shrink-0 w-6 h-6 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold';
+        hapus.addEventListener('click', function () {
+            if (container.querySelectorAll('.foto-row').length > 1) row.remove();
+            else {
+                input.value = '';
+                preview.innerHTML = '';
+            }
+        });
+
+        row.append(input, preview, hapus);
+        container.appendChild(row);
+        bindFoto(input, preview);
+    }
+
+    function setupFotoList(card, listSelector, buttonSelector) {
+        const container = card.querySelector(listSelector);
+        const tombol = card.querySelector(buttonSelector);
+
+        tombol.addEventListener('click', function () {
+            tambahBarisFoto(container);
+        });
+
+        tambahBarisFoto(container);
     }
 
     function setupItem(item, reportIndex, itemIndex) {
@@ -421,8 +460,8 @@ document.addEventListener('DOMContentLoaded', function () {
             statusValue.value = status.checked ? 'completed' : 'continue';
         });
 
-        setupFoto(card.querySelector('.foto-dokumentasi'), card.querySelector('.preview-dokumentasi'));
-        setupFoto(card.querySelector('.foto-hygiene'), card.querySelector('.preview-hygiene'));
+        setupFotoList(card, '.foto-dokumentasi-list', '.tambah-foto-dokumentasi');
+        setupFotoList(card, '.foto-hygiene-list', '.tambah-foto-hygiene');
 
         card.querySelectorAll('input[data-auto="1"]').forEach(function (cb) { cb.checked = true; });
 

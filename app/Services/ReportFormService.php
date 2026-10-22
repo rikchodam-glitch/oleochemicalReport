@@ -199,7 +199,11 @@ class ReportFormService
             }
 
             foreach ($disiapkan as $index => $siap) {
-                $laporan = Report::create($siap['report']);
+                $atribut = $siap['report'];
+                // Generate kode saat insert agar beberapa laporan dalam satu
+                // transaksi tidak memakai nomor urut yang sama.
+                $atribut['report_code'] = Report::generateReportCode();
+                $laporan = Report::create($atribut);
                 $idLaporan[] = $laporan->id;
 
                 $foto = $this->simpanFoto($laporan, $request, $index);
@@ -435,7 +439,6 @@ class ReportFormService
                 'technician_id'         => $teknisi->id,
                 'creator_id'            => $teknisi->id,
                 'report_date'           => $laporan['report_date'],
-                'report_code'           => Report::generateReportCode(),
                 'work_description'      => (string) $laporan['work_description'],
                 'work_duration_minutes' => $menit,
                 'start_time'            => $mulai->format('H:i:s'),
