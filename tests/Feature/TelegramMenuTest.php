@@ -22,8 +22,14 @@ test('service mendaftarkan command dan menu button default', function () {
     expect($hasil)->toBe(['commands' => true, 'menu' => true]);
 
     Http::assertSent(function ($request) {
-        return str_contains($request->url(), '/setMyCommands')
-            && collect($request['commands'])->contains(fn ($command) => $command['command'] === 'laporan');
+        if (! str_contains($request->url(), '/setMyCommands')) {
+            return false;
+        }
+
+        $daftar = collect($request['commands']);
+
+        return $daftar->contains(fn ($command) => $command['command'] === 'laporan')
+            && ! $daftar->contains(fn ($command) => $command['command'] === 'cuti');
     });
 
     Http::assertSent(fn ($request) => str_contains($request->url(), '/setChatMenuButton')

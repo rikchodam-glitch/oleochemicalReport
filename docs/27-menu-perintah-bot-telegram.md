@@ -16,12 +16,12 @@ oleh klien Telegram secara native, bukan popup buatan aplikasi.
 | `/start` | Mulai bot / daftar teknisi |
 | `/laporan` | Buat laporan lewat form web |
 | `/info` | Cari informasi perangkat |
-| `/cuti` | Info cuti (diinput Admin Reguler) |
 | `/reset` | Batalkan sesi laporan |
 
-Hanya command yang sudah memiliki handler yang didaftarkan. `/stok` dan
-`/settings` tidak dimasukkan karena belum ada handler-nya; tambahkan ke
-`TelegramService::MENU_COMMANDS` setelah handler tersedia.
+`/cuti` tidak ditampilkan di menu; handler info cuti tetap ada bila command
+dikirim manual. `/stok` dan `/settings` tidak dimasukkan karena belum ada
+handler-nya; tambahkan ke `TelegramService::MENU_COMMANDS` setelah handler
+tersedia.
 
 ## Cara sinkronisasi
 

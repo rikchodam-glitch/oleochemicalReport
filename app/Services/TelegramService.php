@@ -146,7 +146,6 @@ class TelegramService
         ['command' => 'start', 'description' => 'Mulai bot / daftar teknisi'],
         ['command' => 'laporan', 'description' => 'Buat laporan lewat form web'],
         ['command' => 'info', 'description' => 'Cari informasi perangkat'],
-        ['command' => 'cuti', 'description' => 'Info cuti (diinput Admin Reguler)'],
         ['command' => 'reset', 'description' => 'Batalkan sesi laporan'],
     ];
 
