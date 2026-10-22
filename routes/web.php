@@ -286,6 +286,7 @@ Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'next
     Route::get('/bot', [BotController::class, 'index'])->name('bot.index');
     Route::post('/bot/settings', [BotController::class, 'updateSettings'])->name('bot.settings.update');
     Route::post('/bot/test-connection', [BotController::class, 'testConnection'])->name('bot.test-connection');
+    Route::post('/bot/menu', [BotController::class, 'sinkronkanMenu'])->name('bot.menu.sync');
     Route::post('/bot/set-webhook', [BotController::class, 'setWebhook'])->name('bot.set-webhook');
     Route::post('/bot/delete-webhook', [BotController::class, 'deleteWebhook'])->name('bot.delete-webhook');
     Route::post('/bot/registrations/{registration}/approve', [BotController::class, 'approveRegistration'])->name('bot.registrations.approve');

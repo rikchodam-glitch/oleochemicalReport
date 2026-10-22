@@ -7,6 +7,7 @@ use App\Models\BotUnknownAsset;
 use App\Models\Department;
 use App\Models\Technician;
 use App\Models\Report;
+use App\Services\TelegramService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Auth;
@@ -137,6 +138,25 @@ class BotController extends Controller
         ]);
 
         return back()->with('success', 'Pengaturan bot berhasil disimpan.');
+    }
+
+    /**
+     * Daftarkan command bot ke menu Telegram.
+     *
+     * @param  TelegramService $telegram
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function sinkronkanMenu(TelegramService $telegram)
+    {
+        $hasil = $telegram->sinkronkanMenuBot();
+
+        if (! $hasil['commands']) {
+            return back()->with('error', 'Menu bot gagal disinkronkan. Periksa token bot dan log.');
+        }
+
+        return back()->with('success', $hasil['menu']
+            ? 'Menu bot berhasil disinkronkan: /start, /laporan, /info, /cuti, /reset.'
+            : 'Command terdaftar, tetapi menu button default gagal diaktifkan.');
     }
 
     public function testConnection()

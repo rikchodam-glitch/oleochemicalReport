@@ -136,4 +136,95 @@ class TelegramService
 
         return implode("\n", $lines);
     }
+
+    /**
+     * Daftar command yang muncul pada menu bot Telegram.
+     *
+     * Hanya command yang benar-benar ditangani bot.
+     */
+    public const MENU_COMMANDS = [
+        ['command' => 'start', 'description' => 'Mulai bot / daftar teknisi'],
+        ['command' => 'laporan', 'description' => 'Buat laporan lewat form web'],
+        ['command' => 'info', 'description' => 'Cari informasi perangkat'],
+        ['command' => 'cuti', 'description' => 'Info cuti (diinput Admin Reguler)'],
+        ['command' => 'reset', 'description' => 'Batalkan sesi laporan'],
+    ];
+
+    /**
+     * Daftarkan command ke menu bot (tombol di samping emoji).
+     *
+     * @return bool
+     */
+    public function setBotCommands(): bool
+    {
+        if (! $this->isConfigured()) {
+            Log::info('[Telegram] setMyCommands dilewati: token belum diisi.');
+
+            return false;
+        }
+
+        try {
+            $response = Http::timeout(10)->asJson()->post("{$this->apiUrl}/setMyCommands", [
+                'commands' => self::MENU_COMMANDS,
+                'scope'    => ['type' => 'default'],
+            ]);
+
+            if (! $response->successful()) {
+                Log::warning('[Telegram] setMyCommands gagal: ' . $response->body());
+
+                return false;
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('[Telegram] setMyCommands error: ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Pastikan tombol menu default Telegram aktif.
+     *
+     * @return bool
+     */
+    public function setDefaultMenuButton(): bool
+    {
+        if (! $this->isConfigured()) {
+            Log::info('[Telegram] setChatMenuButton dilewati: token belum diisi.');
+
+            return false;
+        }
+
+        try {
+            $response = Http::timeout(10)->asJson()->post("{$this->apiUrl}/setChatMenuButton", [
+                'menu_button' => ['type' => 'default'],
+            ]);
+
+            if (! $response->successful()) {
+                Log::warning('[Telegram] setChatMenuButton gagal: ' . $response->body());
+
+                return false;
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('[Telegram] setChatMenuButton error: ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Sinkronkan command dan menu button bot.
+     *
+     * @return array{commands: bool, menu: bool}
+     */
+    public function sinkronkanMenuBot(): array
+    {
+        return [
+            'commands' => $this->setBotCommands(),
+            'menu'     => $this->setDefaultMenuButton(),
+        ];
+    }
 }
