@@ -220,28 +220,101 @@ document.addEventListener('DOMContentLoaded', function () {
         select.disabled = daftar.length === 0;
     }
 
+    function renderPreview(input, preview) {
+        const files = Array.from(input.files || []);
+        preview.innerHTML = '';
+
+        files.forEach(function (file) {
+            const wrap = document.createElement('div');
+            wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 bg-slate-100';
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            img.className = 'w-full h-full object-cover';
+            img.onload = () => URL.revokeObjectURL(img.src);
+            wrap.appendChild(img);
+            preview.appendChild(wrap);
+        });
+
+        if (files.length > 0) {
+            const info = document.createElement('p');
+            info.className = 'w-full text-[10px] text-emerald-700';
+            info.textContent = files.length + ' foto dipilih.';
+            preview.appendChild(info);
+        }
+    }
+
+    function kompresGambar(file) {
+        return new Promise(function (resolve) {
+            if (!file.type.startsWith('image/') || file.size <= 1.5 * 1024 * 1024) {
+                resolve(file);
+                return;
+            }
+
+            const img = new Image();
+            img.onload = function () {
+                const maks = 1600;
+                let w = img.width;
+                let h = img.height;
+
+                if (w > maks || h > maks) {
+                    const rasio = Math.min(maks / w, maks / h);
+                    w = Math.round(w * rasio);
+                    h = Math.round(h * rasio);
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+
+                canvas.toBlob(function (blob) {
+                    if (!blob) {
+                        resolve(file);
+                        return;
+                    }
+
+                    const nama = file.name.replace(/\.(jpe?g|png|webp)$/i, '') + '.jpg';
+                    resolve(new File([blob], nama, { type: 'image/jpeg' }));
+                }, 'image/jpeg', 0.82);
+            };
+            img.onerror = function () { resolve(file); };
+            img.src = URL.createObjectURL(file);
+        });
+    }
+
+    async function kompresInput(input, preview) {
+        const files = Array.from(input.files || []);
+
+        if (input.dataset.compressing === '1' || !files.some(f => f.size > 1.5 * 1024 * 1024)) {
+            return;
+        }
+
+        input.dataset.compressing = '1';
+
+        try {
+            const hasil = [];
+
+            for (const file of files) {
+                hasil.push(await kompresGambar(file));
+            }
+
+            if (window.DataTransfer) {
+                const dt = new DataTransfer();
+                hasil.forEach(f => dt.items.add(f));
+                input.files = dt.files;
+                renderPreview(input, preview);
+            }
+        } catch (e) {
+            // Bila browser menolak penggantian file, file asli tetap dipakai.
+        } finally {
+            delete input.dataset.compressing;
+        }
+    }
+
     function bindFoto(input, preview) {
         input.addEventListener('change', function () {
-            const files = Array.from(input.files || []);
-            preview.innerHTML = '';
-
-            files.forEach(function (file) {
-                const wrap = document.createElement('div');
-                wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 bg-slate-100';
-                const img = document.createElement('img');
-                img.src = URL.createObjectURL(file);
-                img.className = 'w-full h-full object-cover';
-                img.onload = () => URL.revokeObjectURL(img.src);
-                wrap.appendChild(img);
-                preview.appendChild(wrap);
-            });
-
-            if (files.length > 0) {
-                const info = document.createElement('p');
-                info.className = 'w-full text-[10px] text-emerald-700';
-                info.textContent = files.length + ' foto dipilih.';
-                preview.appendChild(info);
-            }
+            renderPreview(input, preview);
+            kompresInput(input, preview);
         });
     }
 
@@ -506,6 +579,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('tambah-laporan').addEventListener('click', tambahLaporan);
     tambahLaporan();
+
+    document.getElementById('form-laporan').addEventListener('submit', function (event) {
+        if (document.querySelector('input[data-compressing="1"]')) {
+            event.preventDefault();
+            alert('Foto sedang dikompres. Tunggu sebentar lalu kirim lagi.');
+            return;
+        }
+
+        const tombol = this.querySelector('button[type="submit"]');
+        if (tombol) {
+            tombol.disabled = true;
+            tombol.textContent = 'Mengirim...';
+        }
+    });
 });
 </script>
 </body>

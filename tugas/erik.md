@@ -1,17 +1,18 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-22 11:12 WIB
+Diperbarui: 2026-10-22 11:27 WIB
 
-- Cabang aktif: `tugas/erik/perbaiki-format-jam-laporan-web`
-- Mulai: 2026-10-22 11:12
+- Cabang aktif: `tugas/erik/notifikasi-laporan-web-diterima`
+- Mulai: 2026-10-22 11:27
 - Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
+  - `app/Jobs/KirimNotifikasiLaporanDiterima.php` (baru)
   - `app/Services/ReportFormService.php`
   - `tests/Feature/ReportFormTest.php`
-  - `docs/25-form-laporan-teknisi.md`
-  - `tugas/pr-perbaiki-format-jam-laporan-web.md`
-  - `tugas/pr-perbaiki-format-jam-laporan-web.md`
-- Catatan: start_time/end_time harus H:i (kolom varchar 5), bukan H:i:s.
+  - `docs/25-form-laporan-teknisi.md`, `AGENTS.md`
+  - `tugas/pr-notifikasi-laporan-web-diterima.md`
+  - `tugas/pr-notifikasi-laporan-web-diterima.md`
+- Catatan: notifikasi laporan diterima + pastikan broadcast kolaborasi terkirim via queue.
 
 ## Riwayat
-- tugas/erik/perbaiki-lokasi-pt-form-laporan (mulai 2026-10-22 10:55) -> dilanjutkan 2026-10-22 11:12
+- tugas/erik/perbaiki-format-jam-laporan-web (mulai 2026-10-22 11:12) -> dilanjutkan 2026-10-22 11:27
