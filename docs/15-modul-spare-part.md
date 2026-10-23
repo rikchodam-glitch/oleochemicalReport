@@ -380,3 +380,41 @@ Bukti DEV 23/10/2026 (`oleochemical_dev`, PROD tidak disentuh):
 - Uji: `php artisan test --filter=Sparepart` **42 test hijau, 313 assertions**
   (termasuk `SparepartMrpFilterTest` baru: 4 test/54 assertions); seluruh suite
   **734 test hijau, 3.642 assertions**; `php artisan view:cache` sukses.
+
+## POPUP DETAIL DAN TOOLTIP SPAREPART — 23/10/2026
+
+Latar: user meminta tampilan PR/PO Sparepart dirapikan dengan popup detail dan
+penjelasan tiap fungsi muncul saat kursor diarahkan, supaya tampilan lebih
+minimalis dan informatif. Aturan umumnya dicatat di
+`docs/13-...` bagian "ATURAN TAMPILAN MINIMALIS DAN INFORMATIF".
+
+Perubahan yang dikerjakan:
+
+- Tabel utama dirampingkan: kolom PR/PO hanya menampilkan dokumen terpilih,
+  status singkat, jumlah baris, dan jumlah terbuka. Daftar semua nomor PR/PO,
+  history PR, PO sebelumnya/terakhir, serta rincian teknis dipindahkan ke popup.
+- Tombol **Detail** (dan klik nomor PR/PO) membuka popup bertab:
+  **PR** (ringkasan + History PR ME5A), **PO** (ringkasan + semua nomor PO),
+  **Stok G001** (stok awal/masuk/keluar/sisa/lokasi), dan **MRP** (Stock by SAP,
+  Safety Stk, Reorder Pt, Stok Beda). Popup dapat ditutup dengan Esc, klik latar,
+  tombol X, atau tombol Tutup.
+- Penjelasan fungsi/istilah memakai tooltip hover (`title`): judul kolom,
+  kartu ringkasan, kartu aksi, lencana status/aksi, tombol, dan nilai penting.
+  Keterangan panjang pada kartu aksi dihapus dari tampilan dan dipindah ke
+  tooltip sehingga kartu lebih bersih.
+- Kolom Purchaser/Vendor hanya menampilkan nilai terpilih; riwayat PO
+  sebelumnya/terakhir ada di tab PO.
+- Header tabel tetap memakai filter klik judul kolom (tidak berubah).
+
+Bukti DEV 23/10/2026:
+
+- Halaman `/sparepart` HTTP 200; 50 baris + 50 template popup detail;
+  `History PR (EXPORT ME5A)` dan teks tooltip "Klik nomor PR untuk membuka
+  History PR di popup" ada di HTML.
+- Uji: `php artisan test --filter=Sparepart` **42 test hijau, 316 assertions**;
+  seluruh suite **734 test hijau, 3.645 assertions**; `php artisan view:cache`
+  sukses.
+- Catatan ukuran halaman: HTML `/sparepart` menjadi sekitar 2,3 MB karena
+  markup popup dirender per baris (50 baris). Bila kelak dirasa berat, langkah
+  berikutnya adalah memuat isi popup lewat endpoint terpisah; belum dikerjakan
+  karena tidak diminta.
