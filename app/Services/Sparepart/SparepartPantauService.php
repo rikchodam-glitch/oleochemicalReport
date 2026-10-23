@@ -12,8 +12,9 @@ use Illuminate\Support\Facades\DB;
  *
  * Daftar pantau adalah sumber populasi halaman Integrasi PR/PO, karena itu
  * pengelolaannya berdiri sendiri: impor dari berkas (sheet MASTER DATA atau
- * CSV), tambah/ubah/hapus manual, dan perhitungan ulang status material yang
- * terdampak (stok minimum berubah berarti status REORDER bisa berubah).
+ * CSV), tambah/ubah/hapus manual, dan perhitungan ulang keadaan material yang
+ * terdampak. Status REORDER memakai Safety Stk EXPORT MRP, bukan kolom stok
+ * minimum manual pada daftar pantau.
  */
 class SparepartPantauService
 {
@@ -193,9 +194,10 @@ class SparepartPantauService
     /**
      * Menghitung ulang status material yang terdampak perubahan daftar pantau.
      *
-     * Yang dihitung ulang hanya bagian yang bergantung pada stok (reorder),
-     * penanda, kolom aksi, dan keterangan; nilai PR/PO/stok dari import
-     * terakhir dibiarkan apa adanya.
+     * Yang dihitung ulang hanya bagian yang bergantung pada keadaan material
+     * (reorder, penanda, kolom aksi, keterangan); nilai PR/PO/stok dari import
+     * terakhir dibiarkan apa adanya. Stok minimum disalin dari Safety Stk MRP
+     * yang sudah tersimpan.
      *
      * @param  array<int, string|null> $kode Daftar kode material
      * @return int                           Jumlah baris keadaan yang dihitung ulang
@@ -224,17 +226,21 @@ class SparepartPantauService
             $keadaan = SpMaterial::query()->where('kode_material', $satu)->first()
                 ?? new SpMaterial(['kode_material' => $satu]);
 
-            $keadaan->stok_min  = $barisPantau->stok_min;
+            // Stok minimum mengikuti Safety Stk EXPORT MRP; nilai manual pada
+            // daftar pantau tidak lagi menentukan status REORDER.
+            $keadaan->stok_min  = $keadaan->mrp_safety;
             $keadaan->deskripsi = $keadaan->deskripsi ?? $barisPantau->deskripsi;
-            $keadaan->reorder   = $barisPantau->stok_min !== null
-                && (float) ($keadaan->stok_tersedia ?? 0.0) <= (float) $barisPantau->stok_min;
+            $keadaan->reorder   = $keadaan->stok_min !== null
+                && (float) ($keadaan->stok_tersedia ?? 0.0) <= (float) $keadaan->stok_min;
 
             $adaPr = (int) $keadaan->pr_line > 0;
             $adaPo = (int) $keadaan->po_line > 0;
 
             $keadaan->ket = ($adaPr || $adaPo)
                 ? 'Sudah ada PR/PO'
-                : ($keadaan->reorder ? 'REORDER - belum ada PR/PO' : 'AMAN');
+                : ($keadaan->stok_min === null
+                    ? 'Belum MRP'
+                    : ($keadaan->reorder ? 'REORDER - belum ada PR/PO' : 'AMAN'));
 
             $keadaan->aksi = (int) $keadaan->po_open > 0
                 ? SpMaterial::AKSI_KEJAR
@@ -248,8 +254,8 @@ class SparepartPantauService
                 $penanda[] = 'tanpa catatan stok gudang';
             }
 
-            if ($barisPantau->stok_min === null) {
-                $penanda[] = 'stok minimum belum diisi';
+            if ($keadaan->stok_min === null) {
+                $penanda[] = 'Belum MRP';
             }
 
             $keadaan->penanda = $this->potong(implode('; ', $penanda), 120);

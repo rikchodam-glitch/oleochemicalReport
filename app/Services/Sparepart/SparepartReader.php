@@ -81,7 +81,7 @@ class SparepartReader
      */
     public const JUDUL_PO_AWALAN = 'Still to be delivered';
 
-    /** Judul kolom wajib pada berkas EXPORT MRP (SAP MD07). */
+    /** Judul kolom wajib pada berkas EXPORT MRP (SAP MD07/MD04). */
     public const JUDUL_MRP = [
         'Material',
         'Plnt stock',
@@ -355,13 +355,13 @@ class SparepartReader
     }
 
     /**
-     * Membaca berkas EXPORT MRP (SAP MD07 - Stock/Requirements List).
+     * Membaca berkas EXPORT MRP (SAP MD07/MD04 - Stock/Requirements List).
      *
      * Nilai yang diambil: stok di SAP ("Plnt stock"), safety stock, reorder
-     * point, satuan, dan tipe MRP. Angka stok TIDAK dipakai untuk menghitung
-     * REORDER; status reorder tetap memakai stok minimum daftar pantau dan
-     * sisa stok G001. Kolom MRP hanya pelengkap pembanding seperti dashboard
-     * lama (Stock by SAP, Safety Stk, Stok Min MRP, Min vs MRP).
+     * point, satuan, dan tipe MRP. Safety Stk dipakai sebagai stok minimum
+     * pada halaman Sparepart; status REORDER membandingkan sisa stok G001
+     * dengan Safety Stk tersebut. Stock by SAP dipakai untuk indikator
+     * Stok Beda.
      *
      * @param  string $path Path berkas xlsx
      * @return array<string, mixed> Data per material + rincian baca

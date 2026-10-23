@@ -36,14 +36,14 @@ trait SparepartExportTrait
      */
     private const HEADER_SP = [
         'No', 'Kode Material', 'Deskripsi', 'Plant', 'Model', 'Tag No.', 'Satuan',
-        'Stok Min', 'Stok Tersedia', 'Status', 'Penanda', 'Aksi',
+        'Stok Min (MRP)', 'Stok Gudang G001', 'Status', 'Penanda', 'Aksi',
         'No PR', 'Status PR', 'Status PR (aksi)', 'Qty PR', 'Jml Baris PR', 'PR Terbuka', 'Semua No PR', 'Requisitioner',
         'No PO', 'Sisa Kirim PO', 'Jml Baris PO', 'Jml PO', 'PO Terbuka', 'PO Tertutup', 'Sisa Semua PO', 'Tgl PO', 'Semua No PO',
         'Vendor PO', 'Purchaser', 'Purchaser PO Terakhir', 'Vendor PO Terakhir', 'PO Sebelumnya', 'Vendor Sebelumnya',
         'Stok Awal G001', 'Masuk G001', 'Keluar G001', 'Sisa G001', 'Lokasi G001', 'Keterangan',
         'Stok Diperbarui', 'PR Diperbarui', 'PO Diperbarui',
-        'Stock by SAP (MRP)', 'Safety Stk (MRP)', 'Stok Min (MRP)', 'Unit (MRP)', 'Tipe MRP',
-        'Min Monitoring vs MRP', 'MRP Diperbarui',
+        'Stock by SAP (MRP)', 'Safety Stk (MRP)', 'Reorder Pt (MRP)', 'Unit (MRP)', 'Tipe MRP',
+        'Stok Beda', 'MRP Diperbarui',
     ];
 
     /**
@@ -89,7 +89,7 @@ trait SparepartExportTrait
             'Diekspor: ' . now()->format('d/m/Y H:i'),
             'Saringan: ' . $labelSaringan,
             'Jumlah baris: ' . number_format($jumlahBaris, 0, ',', '.'),
-            'Stok tersedia dari laporan stok gudang G001 (material yang tidak ada di laporan stok ditulis 0 mengikuti dashboard lama); stok minimum dari daftar pantau.',
+            'Stok gudang dari laporan stok gudang G001 (material yang tidak ada di laporan stok ditulis 0 mengikuti dashboard lama); stok minimum dari Safety Stk EXPORT MRP.',
         ];
 
         foreach ($keterangan as $i => $teks) {
@@ -179,9 +179,15 @@ trait SparepartExportTrait
     private function nilaiBaris(int $no, object $baris): array
     {
         $status = match (true) {
-            $baris->m_stok_min === null => 'Tanpa catatan stok',
+            $baris->m_stok_min === null => 'Belum MRP',
             (bool) ($baris->m_reorder ?? false) => 'REORDER',
             default => 'Aman',
+        };
+
+        $stokBeda = match ($baris->m_mrp_cmp ?? null) {
+            'Sama' => 'Stok Sama',
+            'Beda' => 'Stok Beda',
+            default => '',
         };
 
         // Satuan HANYA diambil dari kolom UN laporan stok gudang (G001) supaya
@@ -255,7 +261,7 @@ trait SparepartExportTrait
             $this->angkaSel($baris->m_mrp_reorder ?? null),
             (string) ($baris->m_mrp_unit ?? ''),
             (string) ($baris->m_mrp_type ?? ''),
-            (string) ($baris->m_mrp_cmp ?? ''),
+            $stokBeda,
             $this->waktuSel($baris->m_mrp_diupdate_at ?? null),
         ];
     }
@@ -310,7 +316,7 @@ trait SparepartExportTrait
             'Perlu reorder (REORDER)'    => (int) ($ringkasan['reorder'] ?? 0),
             'Stok aman'                  => (int) ($ringkasan['aman'] ?? 0),
             'Tanpa catatan stok gudang'  => (int) ($ringkasan['tanpa_stok'] ?? 0),
-            'Tanpa stok minimum'         => (int) ($ringkasan['belum'] ?? 0),
+            'Belum MRP (tanpa data MRP)' => (int) ($ringkasan['belum'] ?? 0),
             'Punya data PR'              => (int) ($ringkasan['punya_pr'] ?? 0),
             'Punya data PO'              => (int) ($ringkasan['punya_po'] ?? 0),
             'Punya data MRP'             => (int) ($ringkasan['punya_mrp'] ?? 0),
@@ -350,9 +356,9 @@ trait SparepartExportTrait
             'Saringan berkas ini' => $labelSaringan,
             'Aturan baris'        => 'Satu baris = satu kode material (keadaan terkini hasil import terakhir).',
             'Satuan'              => 'Kolom UN laporan stok gudang G001 (bukan lokasi penyimpanan, lokasi ada di kolom "Lokasi G001"); material yang tidak ada di laporan stok dibiarkan kosong, sama dengan dashboard lama (kolom UOM daftar pantau TIDAK dipakai di berkas ini).',
-            'Stok Tersedia'       => 'Sisa stok gudang G001 pada laporan stok terakhir; material yang tidak ada di laporan stok ditulis 0 mengikuti dashboard lama (di halaman web material seperti itu tetap ditandai "datanya belum ada").',
-            'Stok Min'            => 'Stok minimum dari daftar pantau (biasanya kolom Jumlah pada sheet MASTER DATA).',
-            'Status REORDER'      => 'Stok tersedia <= stok minimum. Material tanpa catatan stok dihitung sebagai stok nol.',
+            'Stok Gudang G001'    => 'Sisa stok gudang G001 pada laporan stok terakhir; material yang tidak ada di laporan stok ditulis 0 mengikuti dashboard lama (di halaman web material seperti itu tetap ditandai "datanya belum ada").',
+            'Stok Min (MRP)'      => 'Safety Stk pada EXPORT MRP (MD07/MD04). Material yang tidak ada di berkas MRP diberi status "Belum MRP" dan tidak dinilai REORDER.',
+            'Status REORDER'      => 'Stok gudang G001 <= stok minimum (Safety Stk MRP). Material tanpa catatan stok dihitung sebagai stok nol.',
             'Aksi'                => 'Kejar Delivery: ada PO terbuka; Kejar PO: ada PR terbuka tetapi PO belum dibuat; Cek/Buat PR: PR pernah/ada tetapi tidak terbuka; Buat PR: belum ada PR maupun PO.',
             'No PR / No PO'       => 'Dokumen paling relevan untuk material itu; kolom "Semua No PR" dan "Semua No PO" memuat seluruh nomor dokumen yang pernah dibaca.',
             'Requisitioner'       => 'Nama peminta dari berkas EXPORT PR yang dibaca (semua peminta digabung dengan titik koma bila lebih dari satu).',
@@ -360,8 +366,8 @@ trait SparepartExportTrait
             'Purchaser / Vendor PO Terakhir' => 'Diambil dari nomor PO TERBARU material ini; kolom "Purchaser" dan "Vendor PO" (tanpa akhiran) mengikuti nomor pada kolom "No PO".',
             'Diperbarui'          => 'Waktu sumber datanya terakhir dipasok import (boleh berbeda antar kolom karena import boleh sebagian berkas).',
             'Selaras dashboard lama' => 'Kolom "Requisitioner", "Jml PO", "Semua No PO", "Purchaser PO Terakhir", dan "Vendor PO Terakhir" ditambahkan supaya isi berkas ini setara sheet "Data Lengkap" dashboard lama.',
-            'MRP (MD07)'          => 'Stock by SAP = kolom "Plnt stock" pada EXPORT MRP; Safety Stk (MRP) = "Safety Stk"; Stok Min (MRP) = "Reorder Pt". "Min Monitoring vs MRP" bernilai Sama/Beda, atau kosong bila material tidak ada di berkas MRP.',
-            'Max Stock (MRP)'     => 'Tidak disediakan oleh MD07 dan belum diisi manual di modul ini, sama seperti catatan pada dashboard lama.',
+            'MRP (MD07/MD04)'     => 'Stock by SAP = kolom "Plnt stock" pada EXPORT MRP; Safety Stk (MRP) = "Safety Stk" (dipakai sebagai stok minimum); Reorder Pt (MRP) = "Reorder Pt". "Stok Beda" membandingkan Sisa Stok G001 dengan Stock by SAP dan bernilai Stok Sama/Stok Beda, atau kosong bila tidak bisa dibandingkan.',
+            'Max Stock (MRP)'     => 'Tidak disediakan oleh MD07/MD04 dan belum diisi manual di modul ini, sama seperti catatan pada dashboard lama.',
         ];
 
         $r = 3;

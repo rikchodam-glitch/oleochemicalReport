@@ -41,7 +41,7 @@ class SparepartController extends Controller
     public const STATUS_SARING = [
         'reorder' => 'Perlu reorder (REORDER)',
         'aman'    => 'Stok aman',
-        'belum'   => 'Tanpa catatan stok',
+        'belum'   => 'Belum MRP (tanpa data MRP)',
     ];
 
     /**
@@ -54,6 +54,42 @@ class SparepartController extends Controller
         'pr'   => 'Punya PR',
         'po'   => 'Punya PO',
         'mrp'  => 'Punya data MRP',
+    ];
+
+    /**
+     * Nilai saringan kolom PR pada header tabel.
+     *
+     * @var array<string, string>
+     */
+    public const PR_SARING = [
+        'punya'         => 'Punya PR',
+        'terbuka'       => 'Ada PR terbuka',
+        'tanpa'         => 'Tanpa PR',
+        'tanpa_terbuka' => 'Tanpa PR terbuka',
+    ];
+
+    /**
+     * Nilai saringan kolom PO pada header tabel.
+     *
+     * @var array<string, string>
+     */
+    public const PO_SARING = [
+        'punya'         => 'Punya PO',
+        'terbuka'       => 'Ada PO terbuka',
+        'tanpa'         => 'Tanpa PO',
+        'tanpa_terbuka' => 'Tanpa PO terbuka',
+    ];
+
+    /**
+     * Nilai saringan kolom MRP pada header tabel.
+     *
+     * @var array<string, string>
+     */
+    public const MRP_SARING = [
+        'punya' => 'Punya data MRP',
+        'tanpa' => 'Belum ada di MRP',
+        'sama'  => 'Stok Sama',
+        'beda'  => 'Stok Beda',
     ];
 
     /**
@@ -224,14 +260,42 @@ class SparepartController extends Controller
         $aksi   = (string) $request->input('aksi', '');
         $status = (string) $request->input('status', '');
         $punya  = (string) $request->input('punya', '');
+        $pr     = (string) $request->input('pr', '');
+        $po     = (string) $request->input('po', '');
+        $mrp    = (string) $request->input('mrp', '');
         $urut   = (string) $request->input('urut', 'reorder');
 
+        $angka = static function (mixed $nilai): string {
+            $teks = trim((string) $nilai);
+
+            return $teks !== '' && is_numeric($teks) ? $teks : '';
+        };
+
+        $tanggal = static function (mixed $nilai): string {
+            $teks = trim((string) $nilai);
+
+            return preg_match('/^\d{4}-\d{2}-\d{2}$/', $teks) === 1 ? $teks : '';
+        };
+
         return [
-            'q'      => trim((string) $request->input('q', '')),
-            'aksi'   => in_array($aksi, SpMaterial::AKSI, true) ? $aksi : '',
-            'status' => array_key_exists($status, self::STATUS_SARING) ? $status : '',
-            'punya'  => array_key_exists($punya, self::PUNYA_SARING) ? $punya : '',
-            'urut'   => in_array($urut, ['reorder', 'kode', 'stok', 'aksi', 'terakhir'], true) ? $urut : 'reorder',
+            'q'            => trim((string) $request->input('q', '')),
+            'kode'         => trim((string) $request->input('kode', '')),
+            'deskripsi'    => trim((string) $request->input('deskripsi', '')),
+            'aksi'         => in_array($aksi, SpMaterial::AKSI, true) ? $aksi : '',
+            'status'       => array_key_exists($status, self::STATUS_SARING) ? $status : '',
+            'punya'        => array_key_exists($punya, self::PUNYA_SARING) ? $punya : '',
+            'pr'           => array_key_exists($pr, self::PR_SARING) ? $pr : '',
+            'po'           => array_key_exists($po, self::PO_SARING) ? $po : '',
+            'mrp'          => array_key_exists($mrp, self::MRP_SARING) ? $mrp : '',
+            'min_stok_min' => $angka($request->input('min_stok_min', '')),
+            'max_stok_min' => $angka($request->input('max_stok_min', '')),
+            'min_stok'     => $angka($request->input('min_stok', '')),
+            'max_stok'     => $angka($request->input('max_stok', '')),
+            'purch'        => trim((string) $request->input('purch', '')),
+            'vendor'       => trim((string) $request->input('vendor', '')),
+            'dari'         => $tanggal($request->input('dari', '')),
+            'sampai'       => $tanggal($request->input('sampai', '')),
+            'urut'         => in_array($urut, ['reorder', 'kode', 'stok', 'aksi', 'terakhir'], true) ? $urut : 'reorder',
         ];
     }
 
@@ -252,7 +316,6 @@ class SparepartController extends Controller
             ->select([
                 'sp_pantau.kode_material',
                 'sp_pantau.deskripsi as deskripsi_pantau',
-                'sp_pantau.stok_min as stok_min_pantau',
                 'sp_pantau.plant',
                 'sp_pantau.model',
                 'sp_pantau.tag_no',
@@ -274,6 +337,7 @@ class SparepartController extends Controller
                 'sp_material.pr_open_nums as m_pr_open_nums',
                 'sp_material.pr_nums as m_pr_nums',
                 'sp_material.req_list as m_req_list',
+                'sp_material.pr_history as m_pr_history',
                 'sp_material.po_no as m_po_no',
                 'sp_material.po_sisa as m_po_sisa',
                 'sp_material.po_line as m_po_line',
@@ -329,6 +393,19 @@ class SparepartController extends Controller
             });
         }
 
+        if ($saringan['kode'] !== '') {
+            $query->where('sp_pantau.kode_material', 'like', '%' . $saringan['kode'] . '%');
+        }
+
+        if ($saringan['deskripsi'] !== '') {
+            $kunci = $saringan['deskripsi'];
+
+            $query->where(function (QueryBuilder $sub) use ($kunci): void {
+                $sub->where('sp_pantau.deskripsi', 'like', '%' . $kunci . '%')
+                    ->orWhere('sp_material.deskripsi', 'like', '%' . $kunci . '%');
+            });
+        }
+
         if ($saringan['aksi'] !== '') {
             $query->where('sp_material.aksi', $saringan['aksi']);
         }
@@ -348,7 +425,79 @@ class SparepartController extends Controller
         } elseif ($saringan['punya'] === 'po') {
             $query->where('sp_material.po_line', '>', 0);
         } elseif ($saringan['punya'] === 'mrp') {
-            $query->whereNotNull('sp_material.mrp_reorder');
+            $query->whereNotNull('sp_material.mrp_safety');
+        }
+
+        if ($saringan['min_stok_min'] !== '') {
+            $query->where('sp_material.stok_min', '>=', (float) $saringan['min_stok_min']);
+        }
+
+        if ($saringan['max_stok_min'] !== '') {
+            $query->where('sp_material.stok_min', '<=', (float) $saringan['max_stok_min']);
+        }
+
+        if ($saringan['min_stok'] !== '') {
+            $query->where('sp_material.stok_tersedia', '>=', (float) $saringan['min_stok']);
+        }
+
+        if ($saringan['max_stok'] !== '') {
+            $query->where('sp_material.stok_tersedia', '<=', (float) $saringan['max_stok']);
+        }
+
+        if ($saringan['pr'] === 'punya') {
+            $query->where('sp_material.pr_line', '>', 0);
+        } elseif ($saringan['pr'] === 'terbuka') {
+            $query->where('sp_material.pr_terbuka', '>', 0);
+        } elseif ($saringan['pr'] === 'tanpa') {
+            $query->where('sp_material.pr_line', 0);
+        } elseif ($saringan['pr'] === 'tanpa_terbuka') {
+            $query->where('sp_material.pr_terbuka', 0);
+        }
+
+        if ($saringan['po'] === 'punya') {
+            $query->where('sp_material.po_line', '>', 0);
+        } elseif ($saringan['po'] === 'terbuka') {
+            $query->where('sp_material.po_open', '>', 0);
+        } elseif ($saringan['po'] === 'tanpa') {
+            $query->where('sp_material.po_line', 0);
+        } elseif ($saringan['po'] === 'tanpa_terbuka') {
+            $query->where('sp_material.po_open', 0);
+        }
+
+        if ($saringan['mrp'] === 'punya') {
+            $query->whereNotNull('sp_material.mrp_safety');
+        } elseif ($saringan['mrp'] === 'tanpa') {
+            $query->whereNull('sp_material.mrp_safety');
+        } elseif ($saringan['mrp'] === 'sama') {
+            $query->where('sp_material.mrp_cmp', 'Sama');
+        } elseif ($saringan['mrp'] === 'beda') {
+            $query->where('sp_material.mrp_cmp', 'Beda');
+        }
+
+        if ($saringan['purch'] !== '') {
+            $kunci = $saringan['purch'];
+
+            $query->where(function (QueryBuilder $sub) use ($kunci): void {
+                $sub->where('sp_material.purch', 'like', '%' . $kunci . '%')
+                    ->orWhere('sp_material.purch_last', 'like', '%' . $kunci . '%');
+            });
+        }
+
+        if ($saringan['vendor'] !== '') {
+            $kunci = $saringan['vendor'];
+
+            $query->where(function (QueryBuilder $sub) use ($kunci): void {
+                $sub->where('sp_material.vendor', 'like', '%' . $kunci . '%')
+                    ->orWhere('sp_material.vendor_last', 'like', '%' . $kunci . '%');
+            });
+        }
+
+        if ($saringan['dari'] !== '') {
+            $query->whereDate('sp_material.updated_at', '>=', $saringan['dari']);
+        }
+
+        if ($saringan['sampai'] !== '') {
+            $query->whereDate('sp_material.updated_at', '<=', $saringan['sampai']);
         }
 
         return match ($saringan['urut']) {
@@ -377,7 +526,7 @@ class SparepartController extends Controller
             ->selectRaw('SUM(CASE WHEN sp_material.stok_tersedia IS NULL THEN 1 ELSE 0 END) AS tanpa_stok')
             ->selectRaw('SUM(CASE WHEN sp_material.pr_line > 0 THEN 1 ELSE 0 END) AS punya_pr')
             ->selectRaw('SUM(CASE WHEN sp_material.po_line > 0 THEN 1 ELSE 0 END) AS punya_po')
-            ->selectRaw('SUM(CASE WHEN sp_material.mrp_reorder IS NOT NULL THEN 1 ELSE 0 END) AS punya_mrp')
+            ->selectRaw('SUM(CASE WHEN sp_material.mrp_safety IS NOT NULL THEN 1 ELSE 0 END) AS punya_mrp')
             ->first();
 
         return [
@@ -435,6 +584,14 @@ class SparepartController extends Controller
     {
         $bagian = [];
 
+        if ($saringan['kode'] !== '') {
+            $bagian[] = 'Kode: ' . $saringan['kode'];
+        }
+
+        if ($saringan['deskripsi'] !== '') {
+            $bagian[] = 'Deskripsi: ' . $saringan['deskripsi'];
+        }
+
         if ($saringan['aksi'] !== '') {
             $bagian[] = 'Aksi: ' . SpMaterial::labelAksi($saringan['aksi']);
         }
@@ -445,6 +602,41 @@ class SparepartController extends Controller
 
         if ($saringan['punya'] !== '') {
             $bagian[] = self::PUNYA_SARING[$saringan['punya']];
+        }
+
+        if ($saringan['pr'] !== '') {
+            $bagian[] = 'PR: ' . self::PR_SARING[$saringan['pr']];
+        }
+
+        if ($saringan['po'] !== '') {
+            $bagian[] = 'PO: ' . self::PO_SARING[$saringan['po']];
+        }
+
+        if ($saringan['mrp'] !== '') {
+            $bagian[] = 'MRP: ' . self::MRP_SARING[$saringan['mrp']];
+        }
+
+        if ($saringan['min_stok_min'] !== '' || $saringan['max_stok_min'] !== '') {
+            $bagian[] = 'Stok Min: ' . ($saringan['min_stok_min'] !== '' ? $saringan['min_stok_min'] : '0')
+                . '-' . ($saringan['max_stok_min'] !== '' ? $saringan['max_stok_min'] : 'tak terbatas');
+        }
+
+        if ($saringan['min_stok'] !== '' || $saringan['max_stok'] !== '') {
+            $bagian[] = 'Stok Gudang: ' . ($saringan['min_stok'] !== '' ? $saringan['min_stok'] : '0')
+                . '-' . ($saringan['max_stok'] !== '' ? $saringan['max_stok'] : 'tak terbatas');
+        }
+
+        if ($saringan['purch'] !== '') {
+            $bagian[] = 'Purchaser: ' . $saringan['purch'];
+        }
+
+        if ($saringan['vendor'] !== '') {
+            $bagian[] = 'Vendor: ' . $saringan['vendor'];
+        }
+
+        if ($saringan['dari'] !== '' || $saringan['sampai'] !== '') {
+            $bagian[] = 'Diperbarui: ' . ($saringan['dari'] !== '' ? $saringan['dari'] : 'awal')
+                . ' s.d. ' . ($saringan['sampai'] !== '' ? $saringan['sampai'] : 'akhir');
         }
 
         if ($saringan['q'] !== '') {

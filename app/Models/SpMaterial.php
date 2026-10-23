@@ -36,6 +36,7 @@ class SpMaterial extends Model
         'pr_open_nums',
         'pr_nums',
         'req_list',
+        'pr_history',
         'po_no',
         'po_sisa',
         'po_line',

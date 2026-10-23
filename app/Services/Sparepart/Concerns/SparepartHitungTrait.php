@@ -373,9 +373,13 @@ trait SparepartHitungTrait
     /**
      * Menyusun nilai kolom tabel sp_material untuk satu kode material.
      *
-     * Dipakai import (dari baris berkas) maupun perhitungan ulang setelah stok
-     * minimum pada daftar pantau diubah, karena itu argumennya nilai yang
-     * sudah dibaca/dihitung, bukan berkas.
+     * Dipakai import (dari baris berkas) maupun perhitungan ulang keadaan
+     * material, karena itu argumennya nilai yang sudah dibaca/dihitung, bukan
+     * berkas.
+     *
+     * Stok minimum yang dipakai adalah Safety Stk dari EXPORT MRP. Material
+     * yang tidak ada di berkas MRP tidak punya stok minimum dan diberi
+     * keterangan "Belum MRP".
      *
      * Material yang belum punya catatan stok gudang dihitung seperti stok nol
      * (mengikuti dashboard lama: 110 material ber-stok nol + 39 tanpa catatan
@@ -384,8 +388,8 @@ trait SparepartHitungTrait
      *
      * @param  string                           $kode         Kode material
      * @param  string|null                      $deskripsi    Deskripsi material
-     * @param  float|null                       $stokMin      Stok minimum dari daftar pantau
-     * @param  float|null                       $stokTersedia Stok tersedia (G001), null bila tidak ada
+     * @param  float|null                       $stokMin      Stok minimum (Safety Stk MRP)
+     * @param  float|null                       $stokTersedia Stok gudang G001, null bila tidak ada
      * @param  array<string, mixed>|null        $g            Ringkasan stok gudang material
      * @param  array<int, array<string, mixed>> $prBaris      Seluruh baris PR material
      * @param  array<int, array<string, mixed>> $poBaris      Seluruh baris PO material
@@ -420,12 +424,12 @@ trait SparepartHitungTrait
         }
 
         if ($stokMin === null) {
-            $penanda[] = 'stok minimum belum diisi';
+            $penanda[] = 'Belum MRP';
         }
 
         $ket = ($adaPr || $adaPo)
             ? 'Sudah ada PR/PO'
-            : ($reorder ? 'REORDER - belum ada PR/PO' : 'AMAN');
+            : ($stokMin === null ? 'Belum MRP' : ($reorder ? 'REORDER - belum ada PR/PO' : 'AMAN'));
 
         $tanggalTerakhir = (string) ($rekapPo['tanggal_terakhir'] ?? '');
 
@@ -446,6 +450,7 @@ trait SparepartHitungTrait
             'pr_open_nums'    => $this->potong(implode('; ', (array) ($rekapPr['open_nums'] ?? [])), 2000),
             'pr_nums'         => $rekapPr['nums'],
             'req_list'        => implode('; ', (array) ($rekapPr['req'] ?? [])),
+            'pr_history'      => json_encode($this->riwayatPr($prBaris), JSON_UNESCAPED_UNICODE) ?: '[]',
             'po_no'           => $this->potong((string) ($rekapPo['po_no'] ?? ''), self::BATAS_NO_DOKUMEN),
             'po_sisa'         => $rekapPo['po_sisa'],
             'po_line'         => count($poBaris),
@@ -481,24 +486,128 @@ trait SparepartHitungTrait
             'mrp_reorder'     => $mrp === null ? null : ($mrp['mrp_reorder'] ?? null),
             'mrp_unit'        => $mrp === null ? null : $this->potong($mrp['mrp_unit'] ?? null, 20),
             'mrp_type'        => $mrp === null ? null : $this->potong($mrp['mrp_type'] ?? null, 20),
-            'mrp_cmp'         => $this->bandingkanMin($stokMin, $mrp['mrp_reorder'] ?? null),
+            'mrp_cmp'         => $this->bandingkanStok($stokTersedia, $mrp['mrp_stock'] ?? null),
             'ket'             => $this->potong($ket, self::BATAS_KET),
         ];
     }
 
     /**
-     * Membandingkan stok minimum daftar pantau dengan reorder point MRP.
+     * Menyusun riwayat PR per material dari baris EXPORT PR (SAP ME5A).
      *
-     * @param  float|null $stokMin     Stok minimum daftar pantau
-     * @param  mixed      $mrpReorder  Reorder point dari berkas MRP
-     * @return string|null             "Sama", "Beda", atau null bila tidak bisa dibandingkan
+     * Baris item ME5A dikelompokkan per nomor PR supaya panel rincian bisa
+     * menampilkan satu baris per dokumen PR beserta status, qty, tanggal
+     * kirim, dan nomor PO hasil link-nya.
+     *
+     * @param  array<int, array<string, mixed>> $prBaris Seluruh baris PR material
+     * @return array<int, array<string, mixed>>          Riwayat PR urut nomor terbaru
      */
-    private function bandingkanMin(?float $stokMin, mixed $mrpReorder): ?string
+    private function riwayatPr(array $prBaris): array
     {
-        if ($stokMin === null || ! is_numeric($mrpReorder)) {
+        $kelompok = [];
+
+        foreach ($prBaris as $item) {
+            $nomor = trim((string) ($item['no_pr'] ?? ''));
+
+            if ($nomor === '') {
+                continue;
+            }
+
+            $kelompok[$nomor][] = $item;
+        }
+
+        $riwayat = [];
+
+        foreach ($kelompok as $nomor => $baris) {
+            $terbuka = false;
+            $jadiPo  = false;
+            $batal   = 0;
+            $qty     = 0.0;
+            $tanggal = '';
+            $noPo    = [];
+            $pemohon = [];
+            $grup    = [];
+
+            foreach ($baris as $item) {
+                $status = (string) ($item['processing_status'] ?? '');
+
+                if (! empty($item['batal'])) {
+                    $batal++;
+                } elseif ($status === 'N') {
+                    $terbuka = true;
+                } elseif ($status === 'B') {
+                    $jadiPo = true;
+                }
+
+                $qty += (float) ($item['qty_requested'] ?? 0);
+
+                $tanggalItem = (string) ($item['tanggal_kirim'] ?? '');
+
+                if ($tanggalItem > $tanggal) {
+                    $tanggal = $tanggalItem;
+                }
+
+                $nilaiPo = trim((string) ($item['no_po'] ?? ''));
+
+                if ($nilaiPo !== '' && ! in_array($nilaiPo, $noPo, true)) {
+                    $noPo[] = $nilaiPo;
+                }
+
+                $nilaiPemohon = trim((string) ($item['requisitioner'] ?? ''));
+
+                if ($nilaiPemohon !== '' && ! in_array($nilaiPemohon, $pemohon, true)) {
+                    $pemohon[] = $nilaiPemohon;
+                }
+
+                $nilaiGrup = trim((string) ($item['purchasing_group'] ?? ''));
+
+                if ($nilaiGrup !== '' && ! in_array($nilaiGrup, $grup, true)) {
+                    $grup[] = $nilaiGrup;
+                }
+            }
+
+            $status = 'Tidak diketahui';
+
+            if ($batal > 0 && ! $terbuka && ! $jadiPo) {
+                $status = 'Dibatalkan';
+            } elseif ($terbuka) {
+                $status = 'Terbuka (belum PO)';
+            } elseif ($jadiPo) {
+                $status = 'Sudah jadi PO';
+            }
+
+            $riwayat[] = [
+                'no_pr'            => mb_substr((string) $nomor, 0, 40),
+                'status'           => $status,
+                'qty'              => $qty,
+                'baris'            => count($baris),
+                'tanggal_kirim'    => $tanggal === '' ? null : $tanggal,
+                'no_po'            => implode('; ', $noPo),
+                'requisitioner'    => mb_substr(implode('; ', $pemohon), 0, 100),
+                'purchasing_group' => implode('; ', $grup),
+            ];
+        }
+
+        usort($riwayat, static fn (array $a, array $b): int => strcmp(
+            (string) $b['no_pr'],
+            (string) $a['no_pr']
+        ));
+
+        return $riwayat;
+    }
+
+    /**
+     * Membandingkan stok gudang G001 dengan stock by SAP pada berkas MRP.
+     *
+     * @param  float|null $stokGudang Stok gudang G001 (sisa)
+     * @param  mixed      $stokSap    Stock by SAP (kolom Plnt stock MRP)
+     * @return string|null            "Sama", "Beda", atau null bila tidak bisa dibandingkan
+     */
+    private function bandingkanStok(?float $stokGudang, mixed $stokSap): ?string
+    {
+        if ($stokGudang === null || ! is_numeric($stokSap)) {
             return null;
         }
 
-        return abs((float) $stokMin - (float) $mrpReorder) < 0.0001 ? 'Sama' : 'Beda';
+        return abs((float) $stokGudang - (float) $stokSap) < 0.0001 ? 'Sama' : 'Beda';
     }
 }

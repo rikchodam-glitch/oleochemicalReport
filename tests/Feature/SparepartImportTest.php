@@ -46,6 +46,7 @@ test('import mengisi keadaan material sesuai aturan stok dan kolom aksi', functi
         SparepartImportService::SUMBER_STOK => $berkas['stok'],
         SparepartImportService::SUMBER_PR   => $berkas['pr'],
         SparepartImportService::SUMBER_PO   => $berkas['po'],
+        SparepartImportService::SUMBER_MRP  => $berkas['mrp'],
     ], null, 'Uji lengkap');
 
     expect($impor->status)->toBe(SpImpor::STATUS_SELESAI)
@@ -88,6 +89,7 @@ test('import sebagian mempertahankan nilai sumber yang tidak diunggah', function
         SparepartImportService::SUMBER_STOK => $berkas['stok'],
         SparepartImportService::SUMBER_PR   => $berkas['pr'],
         SparepartImportService::SUMBER_PO   => $berkas['po'],
+        SparepartImportService::SUMBER_MRP  => $berkas['mrp'],
     ]);
 
     // Berkas PO baru: sisa kirim PO 4500000001 berubah dari 5 menjadi 9.
@@ -148,6 +150,7 @@ test('analisa mencatat material di luar daftar pantau', function () {
         SparepartImportService::SUMBER_STOK => $berkas['stok'],
         SparepartImportService::SUMBER_PR   => $berkas['pr'],
         SparepartImportService::SUMBER_PO   => $berkas['po'],
+        SparepartImportService::SUMBER_MRP  => $berkas['mrp'],
     ]);
 
     $analisa = (array) $impor->analisa;
@@ -166,6 +169,7 @@ test('analisa mencatat material yang statusnya berubah menjadi REORDER', functio
         SparepartImportService::SUMBER_STOK => $berkas['stok'],
         SparepartImportService::SUMBER_PR   => $berkas['pr'],
         SparepartImportService::SUMBER_PO   => $berkas['po'],
+        SparepartImportService::SUMBER_MRP  => $berkas['mrp'],
     ]);
 
     // Berkas stok baru: BEARING UJI (30000003) habis, sebelumnya sisa 7.
@@ -197,6 +201,7 @@ test('perintah sparepart:import menjalankan import dan mencatat riwayatnya', fun
         '--stok'  => $berkas['stok'],
         '--pr'    => $berkas['pr'],
         '--po'    => $berkas['po'],
+        '--mrp'   => $berkas['mrp'],
         '--label' => 'Uji perintah',
     ])->assertExitCode(0);
 
@@ -219,12 +224,14 @@ test('import kedua memperbarui baris yang sama tanpa menambah baris baru', funct
         SparepartImportService::SUMBER_STOK => $berkas['stok'],
         SparepartImportService::SUMBER_PR   => $berkas['pr'],
         SparepartImportService::SUMBER_PO   => $berkas['po'],
+        SparepartImportService::SUMBER_MRP  => $berkas['mrp'],
     ]);
 
     $impor = $layanan->import([
         SparepartImportService::SUMBER_STOK => $berkas['stok'],
         SparepartImportService::SUMBER_PR   => $berkas['pr'],
         SparepartImportService::SUMBER_PO   => $berkas['po'],
+        SparepartImportService::SUMBER_MRP  => $berkas['mrp'],
     ]);
 
     expect(SpMaterial::query()->count())->toBe(5)

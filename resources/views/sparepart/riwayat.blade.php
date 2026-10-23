@@ -185,7 +185,7 @@
                         <p class="text-sm font-semibold text-slate-800 mb-1">Status stok setelah import</p>
                         <p>Perlu reorder: <span class="font-medium text-rose-600">{{ number_format((int) ($status['reorder'] ?? 0), 0, ',', '.') }}</span></p>
                         <p>Stok aman: <span class="font-medium text-teal-700">{{ number_format((int) ($status['aman'] ?? 0), 0, ',', '.') }}</span></p>
-                        <p>Belum dinilai: <span class="font-medium text-amber-600">{{ number_format((int) ($status['belum_dinilai'] ?? 0), 0, ',', '.') }}</span></p>
+                        <p>Belum MRP: <span class="font-medium text-amber-600">{{ number_format((int) ($status['belum_dinilai'] ?? 0), 0, ',', '.') }}</span></p>
                     </div>
                     <div class="rounded-xl border border-slate-200 p-4 text-xs text-slate-600">
                         <p class="text-sm font-semibold text-slate-800 mb-1">Daftar pantau</p>

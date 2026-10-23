@@ -36,6 +36,7 @@ function spImporPenuh(): array
         SparepartImportService::SUMBER_STOK => $berkas['stok'],
         SparepartImportService::SUMBER_PR   => $berkas['pr'],
         SparepartImportService::SUMBER_PO   => $berkas['po'],
+        SparepartImportService::SUMBER_MRP  => $berkas['mrp'],
     ]);
 
     return $berkas;
@@ -60,10 +61,10 @@ test('impor berkas daftar pantau mengisi daftar dan menghitung status material',
         ->assertSee('Daftar Pantau Sparepart');
 });
 
-test('tambah, ubah, dan hapus daftar pantau manual ikut menghitung ulang status', function () {
+test('tambah, ubah, dan hapus daftar pantau manual tidak lagi mengubah status REORDER dari MRP', function () {
     $berkas = spImporPenuh();
 
-    // Tambah manual: material tanpa catatan stok dianggap stok nol -> REORDER.
+    // Tambah manual: material baru belum punya data MRP -> Belum MRP, bukan REORDER.
     $this->actingAs($this->admin)
         ->post(route('sparepart.pantau.store'), [
             'kode_material' => '30000009',
@@ -75,10 +76,11 @@ test('tambah, ubah, dan hapus daftar pantau manual ikut menghitung ulang status'
     $pantau = SpPantau::query()->where('kode_material', '30000009')->firstOrFail();
 
     expect($pantau->sumber)->toBe(SpPantau::SUMBER_MANUAL)
-        ->and((bool) SpMaterial::query()->where('kode_material', '30000009')->value('reorder'))->toBeTrue();
+        ->and((bool) SpMaterial::query()->where('kode_material', '30000009')->value('reorder'))->toBeFalse()
+        ->and((string) SpMaterial::query()->where('kode_material', '30000009')->value('penanda'))->toContain('Belum MRP');
 
-    // Ubah stok minimum material berstok (30000003, stok tersedia 7) menjadi 10
-    // sehingga statusnya berubah menjadi REORDER, lalu dikembalikan.
+    // Stok minimum manual bukan lagi penentu status: 30000003 punya Safety Stk
+    // MRP 1 dan stok 7, jadi mengubah nilai manual menjadi 10 tetap aman.
     $bearing = SpPantau::query()->where('kode_material', '30000003')->firstOrFail();
 
     $this->actingAs($this->admin)
@@ -89,17 +91,8 @@ test('tambah, ubah, dan hapus daftar pantau manual ikut menghitung ulang status'
         ])
         ->assertRedirect(route('sparepart.pantau'));
 
-    expect((bool) SpMaterial::query()->where('kode_material', '30000003')->value('reorder'))->toBeTrue();
-
-    $this->actingAs($this->admin)
-        ->put(route('sparepart.pantau.update', $bearing), [
-            'kode_material' => '30000003',
-            'deskripsi'     => 'BEARING UJI',
-            'stok_min'      => 1,
-        ])
-        ->assertRedirect(route('sparepart.pantau'));
-
-    expect((bool) SpMaterial::query()->where('kode_material', '30000003')->value('reorder'))->toBeFalse();
+    expect((bool) SpMaterial::query()->where('kode_material', '30000003')->value('reorder'))->toBeFalse()
+        ->and((float) SpMaterial::query()->where('kode_material', '30000003')->value('stok_min'))->toBe(1.0);
 
     // Hapus -> baris keadaan material itu ikut dibuang.
     $this->actingAs($this->admin)
@@ -251,7 +244,7 @@ test('impor daftar pantau mode ganti membuang baris di luar berkas', function ()
     expect(SpPantau::query()->count())->toBe(2)
         ->and(SpPantau::query()->where('kode_material', '30000001')->exists())->toBeFalse()
         ->and(SpMaterial::query()->where('kode_material', '30000001')->exists())->toBeFalse()
-        // Stok tersedia 30000003 = 7 dan stok minimum menjadi 4 -> masih aman.
+        // Stok tersedia 30000003 = 7 dan Safety Stk MRP = 1 -> masih aman.
         ->and((bool) SpMaterial::query()->where('kode_material', '30000003')->value('reorder'))->toBeFalse();
 });
 test('export mengisi Satuan dari kolom UN laporan stok saja dan menulis Stok Tersedia 0 untuk material di luar G001', function () {

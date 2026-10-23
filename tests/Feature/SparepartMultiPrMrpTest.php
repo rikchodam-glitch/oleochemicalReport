@@ -68,6 +68,7 @@ test('semua nomor PR yang terbuka tersimpan dan tampil pada halaman', function (
     ]);
 
     $material = SpMaterial::query()->where('kode_material', '30000001')->firstOrFail();
+    $riwayat  = json_decode((string) $material->pr_history, true);
 
     expect($material->pr_line)->toBe(2)
         ->and($material->pr_terbuka)->toBe(2)
@@ -75,17 +76,22 @@ test('semua nomor PR yang terbuka tersimpan dan tampil pada halaman', function (
         ->and($material->pr_nums)->toContain('1000000012')
         ->and($material->pr_open_nums)->toContain('1000000011')
         ->and($material->pr_open_nums)->toContain('1000000012')
-        ->and($material->aksi)->toBe(SpMaterial::AKSI_BUAT_PO);
+        ->and($material->aksi)->toBe(SpMaterial::AKSI_BUAT_PO)
+        ->and($riwayat)->toHaveCount(2)
+        ->and(collect($riwayat)->pluck('no_pr')->all())->toContain('1000000011')
+        ->and(collect($riwayat)->pluck('no_pr')->all())->toContain('1000000012')
+        ->and(collect($riwayat)->pluck('status')->unique()->all())->toContain('Terbuka (belum PO)');
 
     $this->actingAs($admin)->get(route('sparepart.index'))
         ->assertStatus(200)
         ->assertSee('1000000011')
         ->assertSee('1000000012')
+        ->assertSee('History PR (EXPORT ME5A)')
         ->assertSee('Kejar Delivery')
         ->assertSee('Kejar PO');
 });
 
-test('berkas EXPORT MRP mengisi kolom MRP dan pembanding stok minimum', function () {
+test('berkas EXPORT MRP mengisi kolom MRP, stok minimum, dan pembanding stok gudang', function () {
     $this->seed();
 
     $admin  = User::where('email', 'admin@oleochemical.pro')->firstOrFail();
@@ -102,16 +108,18 @@ test('berkas EXPORT MRP mengisi kolom MRP dan pembanding stok minimum', function
     expect((float) $material->mrp_stock)->toBe(0.0)
         ->and((float) $material->mrp_safety)->toBe(1.0)
         ->and((float) $material->mrp_reorder)->toBe(2.0)
+        ->and((float) $material->stok_min)->toBe(1.0)
+        ->and((bool) $material->reorder)->toBeTrue()
         ->and($material->mrp_unit)->toBe('PCS')
         ->and($material->mrp_type)->toBe('VB')
-        ->and($material->mrp_cmp)->toBe('Beda')
+        ->and($material->mrp_cmp)->toBe('Sama')
         ->and($material->mrp_diupdate_at)->not->toBeNull();
 
     $this->actingAs($admin)->get(route('sparepart.index'))
         ->assertStatus(200)
         ->assertSee('Stock by SAP')
         ->assertSee('Safety 1 / Reorder 2')
-        ->assertSee('Min Beda');
+        ->assertSee('Stok Sama');
 });
 
 test('halaman import menampilkan berkas MRP dan menerima unggahannya', function () {
@@ -122,7 +130,7 @@ test('halaman import menampilkan berkas MRP dan menerima unggahannya', function 
 
     $this->actingAs($admin)->get(route('sparepart.impor'))
         ->assertStatus(200)
-        ->assertSee('EXPORT MRP (SAP MD07)')
+        ->assertSee('EXPORT MRP (SAP MD07/MD04)')
         ->assertSee('Plnt stock');
 
     $this->actingAs($admin)
@@ -161,7 +169,8 @@ test('export Excel memuat kolom MRP setelah kolom lama tanpa menggeser kolom lam
 
     expect($sheet->getCell('AS7')->getValue())->toBe('Stock by SAP (MRP)')
         ->and($sheet->getCell('AT7')->getValue())->toBe('Safety Stk (MRP)')
-        ->and($sheet->getCell('AU7')->getValue())->toBe('Stok Min (MRP)')
+        ->and($sheet->getCell('AU7')->getValue())->toBe('Reorder Pt (MRP)')
+        ->and($sheet->getCell('AX7')->getValue())->toBe('Stok Beda')
         ->and($sheet->getCell('AY7')->getValue())->toBe('MRP Diperbarui')
         // Kolom lama tidak bergeser: Lokasi G001 tetap AN.
         ->and($sheet->getCell('AN7')->getValue())->toBe('Lokasi G001');
