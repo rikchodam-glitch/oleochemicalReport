@@ -70,10 +70,11 @@ test('detail asset menampilkan preview CM, tombol CM, dan galeri foto', function
         ->assertSee('Buka Halaman CM')
         ->assertSee(route('cm.equipment-show', $this->cm->equipment_tag), false)
         ->assertSee('Foto Equipment')
-        ->assertSee('Lihat semua')
+        ->assertDontSee('Lihat semua')
+        ->assertDontSee('Buka Asset Management')
         ->assertSee('galeriFotoAset', false)
         ->assertSee('x-init="mulaiSlide()"', false)
-        ->assertSee('aspect-[4/3]', false)
+        ->assertSee('aspect-square', false)
         ->assertSee($url, false);
 });
 
@@ -85,12 +86,12 @@ test('halaman CM menampilkan foto asset dan tautan ke Asset Management', functio
         ->assertOk()
         ->assertSee('Ringkasan Equipment')
         ->assertSee('Foto Equipment')
-        ->assertSee('Buka Asset Management')
-        ->assertSee(route('assets.show', $this->asset), false)
+        ->assertDontSee('Lihat semua')
+        ->assertDontSee('Buka Asset Management')
         ->assertSee($url, false)
         ->assertSee('galeriFotoAset', false)
         ->assertSee('x-init="mulaiSlide()"', false)
-        ->assertSee('aspect-[4/3]', false);
+        ->assertSee('aspect-square', false);
 });
 
 test('foto yang ditambahkan lewat Edit Asset langsung muncul di halaman CM', function () {

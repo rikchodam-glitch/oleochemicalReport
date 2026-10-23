@@ -84,6 +84,14 @@
     </div>
     <div class="p-6">
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {{-- Foto Equipment: di kiri detail spek --}}
+            <div class="lg:col-span-1">
+                @include('assets.partials._foto-equipment', [
+                    'asset' => $assetTerkait,
+                    'bisaKelola' => false,
+                    'konteks' => 'Ringkasan Equipment',
+                ])
+            </div>
             {{-- Informasi Spek --}}
             <div class="lg:col-span-1">
                 <div class="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -125,13 +133,6 @@
                     </a>
                 </div>
                 @endif
-            </div>
-            <div class="lg:col-span-1">
-                @include('assets.partials._foto-equipment', [
-                    'asset' => $assetTerkait,
-                    'bisaKelola' => false,
-                    'konteks' => 'Ringkasan Equipment',
-                ])
             </div>
             {{-- Stat Cards --}}
             <div class="lg:col-span-2">

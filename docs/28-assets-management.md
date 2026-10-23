@@ -160,3 +160,30 @@ Perubahan:
   `aspect-[4/3]` (4 test, 25 assertion).
 - Uji: `php artisan test` (seluruh suite) **738 test hijau, 3.672 assertions**;
   `php artisan view:cache` sukses.
+
+## PERBAIKAN POSISI FOTO: KIRI DETAIL — 23/10/2026
+
+- Foto dipindahkan ke **KIRI** detail dengan ukuran tetap seperti sebelumnya:
+  - Detail Asset Management: **2/5 foto + 3/5 detail** (foto di kiri
+    Deskripsi/Tech Ident/Type dll).
+  - CM Equipment: **1/4 foto + 1/4 spek + 2/4 statistik** (foto di kiri
+    Company/Equipment No/Tech Ident dll).
+- Verifikasi DEV: pada `/assets/2071` posisi `Foto Equipment` muncul sebelum
+  `Deskripsi`; pada `/cm/equipment/6400P5` muncul sebelum `Company`. Keduanya
+  HTTP 200.
+- Ukuran kotak foto memakai rasio **persegi (`aspect-square`)**, sama seperti
+  thumbnail preview dokumentasi report, bukan rasio 4:3.
+- Uji: seluruh suite **738 test hijau, 3.672 assertions**; `view:cache` sukses.
+
+## FINALISASI FOTO: UKURAN SAMA DENGAN CM, TOMBOL DIHAPUS — 23/10/2026
+
+- Detail Asset Management disamakan dengan CM: **1/4 foto + 3/4 detail**
+  (sebelumnya 2/5 foto + 3/5 detail), foto tetap di kiri Deskripsi dll.
+- Tombol **Lihat semua** dan **Buka Asset Management** dihapus dari bagian
+  foto. Pada halaman aset, tautan **Kelola foto** tetap ada; pada halaman CM
+  tidak ada tautan tambahan di bagian foto.
+- Empty state di halaman CM hanya menampilkan "Belum ada foto equipment."
+  tanpa tautan; di halaman aset tetap ada tautan "Tambahkan foto".
+- Klik foto tetap membuka galeri maximized; auto-slide/swipe tidak berubah.
+- Uji: `AssetCmIntegrationTest` **4 test hijau, 26 assertions**; seluruh suite
+  **738 test hijau, 3.673 assertions**; `view:cache` sukses.

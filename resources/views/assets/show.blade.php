@@ -61,7 +61,15 @@
                             </p>
                         </div>
                     </div>
-                    <div class="grid grid-cols-1 gap-6 xl:grid-cols-5">
+                    <div class="grid grid-cols-1 gap-6 xl:grid-cols-4">
+                        <div class="xl:col-span-1">
+                            @include('assets.partials._foto-equipment', [
+                                'asset' => $asset,
+                                'bisaKelola' => true,
+                                'konteks' => 'Informasi Asset',
+                            ])
+                        </div>
+
                         <div class="xl:col-span-3">
                             <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                                 <div class="sm:col-span-2">
@@ -99,14 +107,6 @@
                                     <dd class="mt-1 text-sm text-slate-900">{{ $asset->construct_year ?? '-' }}</dd>
                                 </div>
                             </dl>
-                        </div>
-
-                        <div class="xl:col-span-2">
-                            @include('assets.partials._foto-equipment', [
-                                'asset' => $asset,
-                                'bisaKelola' => true,
-                                'konteks' => 'Informasi Asset',
-                            ])
                         </div>
                     </div>
                 </div>
