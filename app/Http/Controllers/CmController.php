@@ -406,6 +406,11 @@ class CmController extends Controller
             ->where('equipment_tag', $tag)
             ->firstOrFail();
 
+        // Simpan asset asli sebelum aturan "asset manual bukan data SAP"
+        // diterapkan. Foto dan tautan Asset Management tetap memakai asset
+        // ini, sedangkan kolom spek SAP tetap mengikuti aturan lama.
+        $assetTerkait = $equipment->asset;
+
         // Asset manual (data_source = 'manual') bukan data SAP asli — bisa
         // berupa data sisa percobaan edit. Jangan ditampilkan sebagai data
         // SAP di halaman ini; perlakukan seperti equipment tanpa asset.
@@ -629,6 +634,7 @@ class CmController extends Controller
 
         return view('cm.equipment-show', compact(
             'equipment',
+            'assetTerkait',
             'lastReading',
             'vibMax',
             'tempMax',

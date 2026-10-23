@@ -158,9 +158,12 @@
                                 </a>
                             </td>
                             <td style="max-width:220px;">
-                                <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ strip_tags($namaEquipment) }}">
+                                <a href="{{ $eq->asset ? route('assets.show', $eq->asset) : route('cm.equipment-show', $eq->equipment_tag) }}"
+                                   class="ap-link"
+                                   style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                                   title="{{ strip_tags($namaEquipment) }}">
                                     {!! $namaEquipment !!}
-                                </span>
+                                </a>
                             </td>
                             <td class="ap-mono">{!! $model !!}</td>
                             <td>{{ $eq->pt_location }}</td>

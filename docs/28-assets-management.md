@@ -72,3 +72,58 @@ ada.
 - `AssetManagementTest`: 6 test hijau, 26 assertion.
 - Seluruh suite: 722 test hijau, 3.540 assertion.
 - `view:cache` sukses.
+
+## INTEGRASI ASSETS MANAGEMENT ↔ CM EQUIPMENT + GALERI FOTO — 23/10/2026
+
+Latar: user meminta detail Assets Management dan halaman CM Equipment
+terhubung lebih jelas, foto equipment menyatu dengan Informasi Asset /
+Ringkasan Equipment dalam bentuk slideshow, dan foto yang ditambahkan di
+Assets Management ikut tampil di halaman CM.
+
+Aturan yang dikerjakan:
+
+- **Satu sumber foto** tetap `assets.photos` (JSON). Halaman CM membaca
+  `photo_urls` dari asset yang bertaut (`cm_equipment.equipment_tag` =
+  `assets.tech_ident_no`); tidak ada tabel/salinan foto baru. Foto yang
+  ditambahkan lewat Edit Asset muncul di halaman CM setelah halaman dimuat
+  ulang.
+- **Detail asset**:
+  - Preview CM tetap menampilkan statistik (readings, findings, last reading,
+    vibrasi/temp maks, lubrikasi) dan kini punya tombol **Buka Halaman CM**
+    yang jelas di header serta di kartu ringkasan.
+  - Foto equipment dipindah ke dalam kartu **Informasi Asset** memakai partial
+    `assets/partials/_foto-equipment.blade.php`.
+- **Halaman CM Equipment**:
+  - Deskripsi asset di header menjadi tautan ke detail Asset Management.
+  - Foto equipment tampil di kartu **Foto Equipment** yang menempel langsung
+    di bawah kartu **Ringkasan Equipment**, dengan tautan **Buka Asset
+    Management**.
+  - Asset manual (`data_source = 'manual'`) tetap menyembunyikan spek SAP,
+    tetapi foto dan tautan Asset Management TETAP ditampilkan. Caranya:
+    `CmController::equipmentShow()` menyimpan `$assetTerkait` sebelum relasi
+    asset manual di-null-kan.
+- **CM Equipment Status**: nama equipment yang punya asset menjadi tautan ke
+  detail Asset Management; bila belum ada asset, tautan tetap menuju halaman
+  CM equipment.
+- **Galeri foto** (`partials/_galeri-foto-aset.blade.php` + komponen Alpine
+  `galeriFotoAset`): tampilan seperti dokumentasi report (foto besar,
+  sebelumnya/berikutnya, keyboard kiri/kanan, swipe, strip thumbnail, dan
+  penghitung posisi). Galeri bersifat **lihat saja**; upload/hapus tetap di
+  halaman Edit Asset.
+- **Tanpa migrasi baru**. Di DEV, migration lama
+  `2026_10_21_000001_add_active_status_to_cm_equipment` sempat tertunda
+  sehingga halaman CM Equipment Status 500; migration itu dijalankan di DEV
+  (bukan PROD) sebelum verifikasi.
+- Berkas: `app/Http/Controllers/CmController.php`,
+  `resources/views/assets/show.blade.php`,
+  `resources/views/assets/partials/_cm-ringkasan.blade.php`,
+  `resources/views/assets/partials/_foto-equipment.blade.php` (baru),
+  `resources/views/partials/_galeri-foto-aset.blade.php` (baru),
+  `resources/views/cm/equipment-show.blade.php`,
+  `resources/views/cm/equipment-status.blade.php`.
+- Uji baru `tests/Feature/AssetCmIntegrationTest.php` (4 test, 21 assertion):
+  preview CM + galeri di detail asset, foto + tautan di halaman CM, foto yang
+  diunggah lewat Edit Asset muncul di CM, dan nama equipment di CM Equipment
+  Status menaut ke detail asset.
+- Uji: `php artisan test` **738 test hijau, 3.668 assertions**;
+  `php artisan view:cache` sukses.
