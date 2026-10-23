@@ -127,3 +127,36 @@ Aturan yang dikerjakan:
   Status menaut ke detail asset.
 - Uji: `php artisan test` **738 test hijau, 3.668 assertions**;
   `php artisan view:cache` sukses.
+
+## PENYEMPURNAAN FOTO: CAROUSEL DI SAMPING DETAIL — 23/10/2026
+
+Latar: user meminta foto equipment tampil dalam SATU kotak yang berganti
+otomatis dan bisa digeser manual, lalu klik foto membuka mode geser
+maximized. Posisi foto harus tepat di samping detail: pada **Informasi Asset**
+di samping Deskripsi dll, dan pada **Ringkasan Equipment** CM di samping
+Company dll.
+
+Perubahan:
+
+- `assets/partials/_foto-equipment.blade.php` tidak lagi berupa grid thumbnail;
+  kini berupa **satu kotak carousel**:
+  - foto berganti otomatis tiap 5 detik (berhenti saat kursor di atas kotak
+    atau saat galeri maximized dibuka),
+  - tombol panah kiri/kanan, titik navigasi, dan geser (swipe) untuk manual,
+  - klik foto membuka galeri maximized di posisi foto yang sedang tampil,
+  - `baruGeser` mencegah klik palsu setelah swipe supaya galeri tidak
+    terbuka tanpa sengaja.
+- Detail Asset Management: kartu Informasi Asset dibagi
+  **3/5 detail + 2/5 foto** pada layar lebar, sehingga foto berada tepat di
+  samping Deskripsi/Tech Ident/Type dll.
+- Halaman CM Equipment: grid Ringkasan Equipment menjadi
+  **1/4 spek + 1/4 foto + 2/4 statistik**, sehingga foto berada tepat di
+  samping Company/Equipment No/Tech Ident dll. Kartu foto terpisah di bawah
+  Ringkasan Equipment dihapus.
+- `partials/_galeri-foto-aset.blade.php`: state carousel (`indeksSlide`,
+  `slideTimer`, `baruGeser`) dan galeri maximized memakai sumber foto yang
+  sama; auto-slide berhenti saat galeri dibuka dan lanjut lagi setelah ditutup.
+- Uji `AssetCmIntegrationTest` ditambah assertion `x-init="mulaiSlide()"` dan
+  `aspect-[4/3]` (4 test, 25 assertion).
+- Uji: `php artisan test` (seluruh suite) **738 test hijau, 3.672 assertions**;
+  `php artisan view:cache` sukses.

@@ -83,10 +83,124 @@
         return {
             foto: Array.isArray(urls) ? urls : [],
             judul: judul || 'Foto Equipment',
+            indeksSlide: 0,
+            slideTimer: null,
+            baruGeser: false,
             galeri: {
                 buka: false,
                 indeks: 0,
                 geserDari: null,
+            },
+
+            /**
+             * Mulai slideshow otomatis pada kotak foto (bukan galeri penuh).
+             *
+             * @return {void}
+             */
+            mulaiSlide() {
+                this.hentikanSlide();
+
+                if (this.foto.length < 2) {
+                    return;
+                }
+
+                this.slideTimer = setInterval(() => {
+                    if (!this.galeri.buka) {
+                        this.slideBerikut();
+                    }
+                }, 5000);
+            },
+
+            /**
+             * Hentikan slideshow otomatis.
+             *
+             * @return {void}
+             */
+            hentikanSlide() {
+                if (this.slideTimer) {
+                    clearInterval(this.slideTimer);
+                    this.slideTimer = null;
+                }
+            },
+
+            slideFoto() {
+                return this.foto[this.indeksSlide] || '';
+            },
+
+            slidePosisi() {
+                var jumlah = this.foto.length;
+
+                return jumlah ? (this.indeksSlide + 1) + ' / ' + jumlah : '0 / 0';
+            },
+
+            slideSebelum() {
+                var jumlah = this.foto.length;
+
+                if (!jumlah) {
+                    return;
+                }
+
+                this.indeksSlide = (this.indeksSlide - 1 + jumlah) % jumlah;
+            },
+
+            slideBerikut() {
+                var jumlah = this.foto.length;
+
+                if (!jumlah) {
+                    return;
+                }
+
+                this.indeksSlide = (this.indeksSlide + 1) % jumlah;
+            },
+
+            slideKe(indeks) {
+                if (indeks >= 0 && indeks < this.foto.length) {
+                    this.indeksSlide = indeks;
+                }
+            },
+
+            /**
+             * Buka galeri penuh dari foto yang sedang tampil di kotak.
+             *
+             * @return {void}
+             */
+            masukGaleri() {
+                if (this.baruGeser) {
+                    this.baruGeser = false;
+                    return;
+                }
+
+                this.galeriBuka(this.indeksSlide);
+            },
+
+            geserSlideMulai(kejadian) {
+                this.galeri.geserDari = kejadian.touches && kejadian.touches.length
+                    ? kejadian.touches[0].clientX
+                    : null;
+            },
+
+            geserSlideSelesai(kejadian) {
+                if (this.galeri.geserDari === null || !kejadian.changedTouches.length) {
+                    this.galeri.geserDari = null;
+                    return;
+                }
+
+                var jarak = kejadian.changedTouches[0].clientX - this.galeri.geserDari;
+                this.galeri.geserDari = null;
+
+                // Setelah menggeser, klik yang kadang ikut terpicu browser
+                // diabaikan supaya tidak langsung membuka galeri penuh.
+                this.baruGeser = Math.abs(jarak) > 10;
+
+                if (this.baruGeser) {
+                    setTimeout(() => { this.baruGeser = false; }, 350);
+                }
+
+                if (jarak > 50) {
+                    this.slideSebelum();
+                } else if (jarak < -50) {
+                    this.slideBerikut();
+                }
             },
 
             galeriBuka(indeks) {
@@ -96,12 +210,15 @@
                     return;
                 }
 
+                this.hentikanSlide();
                 this.galeri.indeks = Math.min(Math.max(indeks || 0, 0), jumlah - 1);
+                this.indeksSlide = this.galeri.indeks;
                 this.galeri.buka = true;
             },
 
             galeriTutup() {
                 this.galeri.buka = false;
+                this.mulaiSlide();
             },
 
             galeriFoto() {
@@ -122,6 +239,7 @@
                 }
 
                 this.galeri.indeks = (this.galeri.indeks - 1 + jumlah) % jumlah;
+                this.indeksSlide = this.galeri.indeks;
             },
 
             galeriBerikut() {
@@ -132,11 +250,13 @@
                 }
 
                 this.galeri.indeks = (this.galeri.indeks + 1) % jumlah;
+                this.indeksSlide = this.galeri.indeks;
             },
 
             galeriKe(indeks) {
                 if (indeks >= 0 && indeks < this.foto.length) {
                     this.galeri.indeks = indeks;
+                    this.indeksSlide = indeks;
                 }
             },
 
