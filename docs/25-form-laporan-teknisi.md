@@ -35,7 +35,9 @@ Perintah `/laporan` ditangani di dua jalur: poller
 - Tanpa alat = pekerjaan area; dengan alat = perbaikan equipment.
 - `[+Tambah]` menambah alat/lokasi tambahan; dibuat salinan `multi_of`.
 - Durasi memakai jam mulai/selesai dan dihitung server menjadi menit.
-- Kolaborator otomatis dari group + pencarian manual per Bagian.
+- Kolaborator otomatis group ditampilkan tercentang per laporan dan dapat
+  dilepas; server mengikuti pilihan checkbox masing-masing laporan.
+- Kolaborasi multi-alat memakai `equipment_tag` alat tambahan, bukan alat utama.
 - Foto dokumentasi/hygiene memakai beberapa baris input; tombol **+ Tambah
   foto** menambah baris, dan setiap baris bisa memilih beberapa file sekaligus.
   Semua file dipreview sebelum kirim.
@@ -84,6 +86,6 @@ Perintah `/laporan` ditangani di dua jalur: poller
 
 ## Uji
 
-- `ReportFormTest`: 15 test hijau, 59 assertion.
-- Seluruh suite: 716 test hijau, 3.514 assertion.
+- `ReportFormTest`: 17 test hijau, 69 assertion.
+- Seluruh suite: 730 test hijau, 3.581 assertion.
 - `view:cache` sukses.

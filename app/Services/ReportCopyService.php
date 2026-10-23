@@ -145,6 +145,7 @@ class ReportCopyService
             'technician_id' => $induk->technician_id,
             'creator_id'    => $induk->creator_id ?? $induk->technician_id,
             'asset_id'      => $asetId,
+            'equipment_tag' => $aset?->tech_ident_no,
             'funcloc_id'    => $fungsiLokasi?->id ?? $aset?->funcloc_id,
             // Area dihitung dari alat/lokasi tambahan; bila tidak diketahui,
             // pakai area laporan induk supaya laporan tidak tampil tanpa area.

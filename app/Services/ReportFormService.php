@@ -176,12 +176,11 @@ class ReportFormService
         }
 
         $nodes       = FunctionalLocation::query()->get(['id', 'parent_id'])->all();
-        $autoIds     = $this->kolaborasi->autoCollaboratorsFor($teknisi)->pluck('id')->map(fn ($id) => (int) $id)->all();
         $disiapkan   = [];
         $fotoTersimpan = [];
 
         foreach ($reports as $index => $laporan) {
-            $disiapkan[] = $this->validasiLaporan($laporan, $teknisi, $nodes, $autoIds, (int) $index);
+            $disiapkan[] = $this->validasiLaporan($laporan, $teknisi, $nodes, (int) $index);
         }
 
         $idLaporan = [];
@@ -336,10 +335,9 @@ class ReportFormService
      *
      * @param  array<string, mixed> $laporan
      * @param  array<int, FunctionalLocation> $nodes
-     * @param  array<int, int> $autoIds
      * @return array<string, mixed>
      */
-    private function validasiLaporan(array $laporan, Technician $teknisi, array $nodes, array $autoIds, int $index): array
+    private function validasiLaporan(array $laporan, Technician $teknisi, array $nodes, int $index): array
     {
         $prefix = "reports.{$index}.";
 
@@ -429,7 +427,6 @@ class ReportFormService
         $utama = $siapItems[0];
         $collaborators = collect($laporan['collaborator_ids'] ?? [])
             ->map(fn ($id) => (int) $id)
-            ->merge($autoIds)
             ->reject(fn ($id) => $id === (int) $teknisi->id)
             ->unique()
             ->values();

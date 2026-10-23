@@ -161,7 +161,8 @@ test('laporan area tanpa alat dan multi alat membuat salinan multi', function ()
     $induk = Report::query()->whereNull('multi_of')->firstOrFail();
 
     expect(Report::where('multi_of', $induk->id)->count())->toBe(1)
-        ->and(Report::where('multi_of', $induk->id)->first()->asset_id)->toBe($asetKedua->id);
+        ->and(Report::where('multi_of', $induk->id)->first()->asset_id)->toBe($asetKedua->id)
+        ->and(Report::where('multi_of', $induk->id)->first()->equipment_tag)->toBe('FORM-PUMP-02');
 });
 
 test('banyak laporan dalam satu kirim disimpan sekaligus', function () {
@@ -191,7 +192,7 @@ test('banyak laporan dalam satu kirim disimpan sekaligus', function () {
         ->and($daftar[1]->completed_at)->toBeNull();
 });
 
-test('kolaborator otomatis dari group ikut dibuatkan salinan', function () {
+test('kolaborator group yang dipilih ikut dibuatkan salinan', function () {
     $group = CollaborationGroup::create([
         'name' => 'Grup Form Uji', 'code' => 'FORM-GRP',
         'is_active' => true, 'auto_collaborate' => true,
@@ -204,12 +205,76 @@ test('kolaborator otomatis dari group ikut dibuatkan salinan', function () {
             'jenis_pekerjaan' => 'Mekanik', 'work_description' => 'Laporan kolaborasi otomatis',
             'start_time' => '08:00', 'end_time' => '09:00', 'final_status' => 'completed',
             'items' => [['funcloc_id' => $this->section->id]],
+            'collaborator_ids' => [$this->rekan->id],
         ]],
     ])->assertRedirect(route('laporan.selesai'));
 
     $induk = Report::whereNull('collaborator_of')->firstOrFail();
 
     expect(Report::where('collaborator_of', $induk->id)->where('technician_id', $this->rekan->id)->exists())->toBeTrue();
+});
+
+test('report tanpa pilihan collaborator tidak membuat salinan walau ada group auto', function () {
+    $group = CollaborationGroup::create([
+        'name' => 'Grup Tanpa Pilih', 'code' => 'FORM-GRP-2',
+        'is_active' => true, 'auto_collaborate' => true,
+    ]);
+    $group->members()->attach([$this->teknisi->id, $this->rekan->id]);
+
+    $this->post(route('laporan.simpan', ['token' => $this->token]), [
+        'reports' => [[
+            'report_date' => '2026-10-20', 'work_classification' => 'zpm1',
+            'jenis_pekerjaan' => 'Mekanik', 'work_description' => 'Tanpa kolaborator',
+            'start_time' => '08:00', 'end_time' => '09:00', 'final_status' => 'completed',
+            'items' => [['funcloc_id' => $this->section->id]],
+        ]],
+    ])->assertRedirect(route('laporan.selesai'));
+
+    $induk = Report::whereNull('collaborator_of')->firstOrFail();
+
+    expect(Report::where('collaborator_of', $induk->id)->count())->toBe(0);
+});
+
+test('dua report dengan collaborator dan alat berbeda tidak tercampur', function () {
+    $rekan2 = Technician::create([
+        'name' => 'Rekan Form Kedua', 'nik' => 'FORM-TK-03',
+        'group' => 'reguler', 'section' => 'mekanik', 'status' => 'active',
+    ]);
+
+    $aset2 = Asset::create([
+        'tech_ident_no' => 'FORM-PUMP-03', 'description' => 'Pompa Form 3',
+        'equipment_type' => 'PUMP', 'funcloc_id' => $this->section->id,
+        'company_id' => $this->aset->company_id,
+        'department_id' => $this->aset->department_id,
+        'area_id' => $this->aset->area_id, 'status' => 'active',
+    ]);
+
+    $this->post(route('laporan.simpan', ['token' => $this->token]), [
+        'reports' => [
+            [
+                'report_date' => '2026-10-20', 'work_classification' => 'zpm1',
+                'jenis_pekerjaan' => 'Mekanik', 'work_description' => 'Report alat satu',
+                'start_time' => '08:00', 'end_time' => '09:00', 'final_status' => 'completed',
+                'items' => [['funcloc_id' => $this->section->id, 'asset_id' => $this->aset->id, 'equipment_type' => 'PUMP']],
+                'collaborator_ids' => [$this->rekan->id],
+            ],
+            [
+                'report_date' => '2026-10-20', 'work_classification' => 'zpm1',
+                'jenis_pekerjaan' => 'Mekanik', 'work_description' => 'Report alat dua',
+                'start_time' => '09:00', 'end_time' => '10:00', 'final_status' => 'completed',
+                'items' => [['funcloc_id' => $this->section->id, 'asset_id' => $aset2->id, 'equipment_type' => 'PUMP']],
+                'collaborator_ids' => [$rekan2->id],
+            ],
+        ],
+    ])->assertRedirect(route('laporan.selesai'));
+
+    $satu = Report::where('work_description', 'Report alat satu')->whereNull('collaborator_of')->firstOrFail();
+    $dua = Report::where('work_description', 'Report alat dua')->whereNull('collaborator_of')->firstOrFail();
+
+    expect(Report::where('collaborator_of', $satu->id)->pluck('technician_id')->all())->toBe([$this->rekan->id])
+        ->and(Report::where('collaborator_of', $dua->id)->pluck('technician_id')->all())->toBe([$rekan2->id])
+        ->and($satu->asset_id)->toBe($this->aset->id)
+        ->and($dua->asset_id)->toBe($aset2->id);
 });
 
 test('lokasi yang berhenti di PT tetap tersimpan sebagai pekerjaan area', function () {
