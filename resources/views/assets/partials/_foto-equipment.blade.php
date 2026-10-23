@@ -34,25 +34,11 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-3">
-            @if(count($fotoUrls) > 0)
-                <button type="button" @click="galeriBuka(0)"
-                        class="text-xs font-semibold text-teal-700 hover:text-teal-800">
-                    Lihat semua
-                </button>
-            @endif
-
-            @if($asset !== null)
-                @if($bisaKelola)
-                    <a href="{{ route('assets.edit', $asset) }}"
-                       class="text-xs font-semibold text-teal-700 hover:text-teal-800">
-                        Kelola foto
-                    </a>
-                @else
-                    <a href="{{ route('assets.show', $asset) }}"
-                       class="text-xs font-semibold text-teal-700 hover:text-teal-800">
-                        Buka Asset Management
-                    </a>
-                @endif
+            @if($asset !== null && $bisaKelola)
+                <a href="{{ route('assets.edit', $asset) }}"
+                   class="text-xs font-semibold text-teal-700 hover:text-teal-800">
+                    Kelola foto
+                </a>
             @endif
         </div>
     </div>
@@ -112,8 +98,6 @@
             Belum ada foto equipment.
             @if($bisaKelola)
                 <a href="{{ route('assets.edit', $asset) }}" class="font-medium text-teal-700 hover:underline">Tambahkan foto</a>.
-            @else
-                <a href="{{ route('assets.edit', $asset) }}" class="font-medium text-teal-700 hover:underline">Tambahkan lewat Edit Asset</a>.
             @endif
         </div>
     @endif

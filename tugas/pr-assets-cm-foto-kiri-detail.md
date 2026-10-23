@@ -2,14 +2,17 @@
 
 ## Ringkasan
 
-- Carousel foto dipindahkan ke **kiri** detail, ukuran tetap seperti
-  sebelumnya:
-  - **Informasi Asset**: 2/5 foto + 3/5 detail, foto di kiri
+- Carousel foto dipindahkan ke **kiri** detail dengan ukuran yang sama seperti
+  CM:
+  - **Informasi Asset**: **1/4 foto + 3/4 detail**, foto di kiri
     Deskripsi/Tech Ident/Type dll.
   - **Ringkasan Equipment CM**: 1/4 foto + 1/4 spek + 2/4 statistik, foto di
     kiri Company/Equipment No/Tech Ident dll.
 - Ukuran kotak foto memakai rasio **persegi (`aspect-square`)**, sama seperti
   thumbnail preview dokumentasi report.
+- Tombol **Lihat semua** dan **Buka Asset Management** dihapus. Tautan
+  **Kelola foto** tetap ada di halaman aset; halaman CM tidak punya tautan
+  tambahan di bagian foto.
 - Perilaku carousel tidak berubah: auto-slide 5 detik, swipe/panah/titik
   navigasi, klik foto membuka galeri maximized.
 - Tidak ada perubahan data, controller, atau migrasi.
@@ -24,8 +27,8 @@
 
 ## Uji
 
-- `php artisan test --filter=AssetCmIntegrationTest`: **4 test hijau, 25 assertions**.
-- `php artisan test` (seluruh suite): **738 test hijau, 3.672 assertions**.
+- `php artisan test --filter=AssetCmIntegrationTest`: **4 test hijau, 26 assertions**.
+- `php artisan test` (seluruh suite): **738 test hijau, 3.673 assertions**.
 - `php artisan view:cache`: sukses.
 
 ## Berkas

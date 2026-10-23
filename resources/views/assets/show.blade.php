@@ -61,8 +61,8 @@
                             </p>
                         </div>
                     </div>
-                    <div class="grid grid-cols-1 gap-6 xl:grid-cols-5">
-                        <div class="xl:col-span-2">
+                    <div class="grid grid-cols-1 gap-6 xl:grid-cols-4">
+                        <div class="xl:col-span-1">
                             @include('assets.partials._foto-equipment', [
                                 'asset' => $asset,
                                 'bisaKelola' => true,
