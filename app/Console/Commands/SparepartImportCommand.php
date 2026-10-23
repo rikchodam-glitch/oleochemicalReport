@@ -22,7 +22,7 @@ class SparepartImportCommand extends Command
         {--stok= : Path laporan stok gudang (xlsx)}
         {--pr= : Path EXPORT PR (xlsx, SAP ME5A)}
         {--po= : Path EXPORT PO (xlsx, SAP ME2M)}
-        {--mrp= : Path EXPORT MRP (xlsx, SAP MD07)}
+        {--mrp= : Path EXPORT MRP (xlsx, SAP MD07/MD04)}
         {--pantau= : Path berkas daftar pantau (xlsx sheet MASTER DATA atau CSV)}
         {--ganti-pantau : Daftar pantau diganti seluruhnya dengan isi berkas --pantau}
         {--label= : Catatan label import}

@@ -39,7 +39,7 @@ class SparepartImportService
     /** Kunci berkas sumber EXPORT PO (SAP ME2M). */
     public const SUMBER_PO = 'po';
 
-    /** Kunci berkas sumber EXPORT MRP (SAP MD07). */
+    /** Kunci berkas sumber EXPORT MRP (SAP MD07/MD04). */
     public const SUMBER_MRP = 'mrp';
 
     /** Nama berkas tiap sumber untuk kalimat catatan analisa. */
@@ -65,7 +65,7 @@ class SparepartImportService
     ];
 
     private const BLOK_PR = [
-        'pr_no', 'pr_status_aksi', 'pr_status', 'pr_qty', 'pr_line', 'pr_terbuka', 'pr_nums', 'req_list',
+        'pr_no', 'pr_status_aksi', 'pr_status', 'pr_qty', 'pr_line', 'pr_terbuka', 'pr_nums', 'req_list', 'pr_history',
     ];
 
     private const BLOK_PO = [
@@ -75,7 +75,7 @@ class SparepartImportService
     ];
 
     private const BLOK_MRP = [
-        'mrp_stock', 'mrp_safety', 'mrp_reorder', 'mrp_unit', 'mrp_type', 'mrp_cmp', 'mrp_diupdate_at',
+        'stok_min', 'mrp_stock', 'mrp_safety', 'mrp_reorder', 'mrp_unit', 'mrp_type', 'mrp_cmp', 'mrp_diupdate_at',
     ];
 
     /**
@@ -325,12 +325,21 @@ class SparepartImportService
         bool $adaMrp,
         Carbon $kini
     ): array {
-        $stokTersedia = $adaStok ? ($g === null ? null : (float) $g['sisa']) : null;
+        $stokTersedia = $adaStok
+            ? ($g === null ? null : (float) $g['sisa'])
+            : $sebelum?->stok_tersedia;
+
+        // Stok minimum mengikuti Safety Stk EXPORT MRP. Bila berkas MRP tidak
+        // diunggah pada import ini, nilai terakhir dipertahankan; material yang
+        // tidak ada di berkas MRP tetap tanpa stok minimum ("Belum MRP").
+        $stokMin = $adaMrp
+            ? ($mrp === null ? null : ($mrp['mrp_safety'] ?? null))
+            : $sebelum?->stok_min;
 
         $payload = $this->keadaanMaterial(
             $kode,
             $pantau->deskripsi,
-            $pantau->stok_min,
+            $stokMin,
             $stokTersedia,
             $adaStok ? $g : null,
             $prBaris,
@@ -387,14 +396,16 @@ class SparepartImportService
         }
 
         if ($payload['stok_min'] === null) {
-            $penanda[] = 'stok minimum belum diisi';
+            $penanda[] = 'Belum MRP';
         }
 
         $payload['penanda'] = $this->potong(implode('; ', $penanda), self::BATAS_PENANDA);
 
         $payload['ket'] = ($adaPrBaris || $adaPoBaris)
             ? 'Sudah ada PR/PO'
-            : ($payload['reorder'] ? 'REORDER - belum ada PR/PO' : 'AMAN');
+            : ($payload['stok_min'] === null
+                ? 'Belum MRP'
+                : ($payload['reorder'] ? 'REORDER - belum ada PR/PO' : 'AMAN'));
 
         $payload['stok_diupdate_at'] = $adaStok ? $kini : $sebelum?->stok_diupdate_at;
         $payload['pr_diupdate_at']   = $adaPr ? $kini : $sebelum?->pr_diupdate_at;
@@ -434,7 +445,12 @@ class SparepartImportService
             return;
         }
 
-        $lewati  = ['created_at', 'updated_at', 'stok_diupdate_at', 'pr_diupdate_at', 'po_diupdate_at', 'po_tanggal'];
+        // pr_history dan cap waktu tidak dibandingkan: JSON bisa dinormalkan
+        // database sehingga isi yang sama tampak berubah pada import berikutnya.
+        $lewati  = [
+            'created_at', 'updated_at', 'stok_diupdate_at', 'pr_diupdate_at', 'po_diupdate_at',
+            'mrp_diupdate_at', 'po_tanggal', 'pr_history',
+        ];
         $berubah = false;
 
         foreach (array_keys($payload) as $kolom) {

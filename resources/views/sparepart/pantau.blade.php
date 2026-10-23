@@ -17,7 +17,8 @@
                 <p class="text-sm text-slate-500 mt-1 max-w-3xl">
                     Daftar ini menentukan material mana yang dihitung pada halaman Integrasi PR/PO.
                     Isinya dapat diimpor dari sheet MASTER DATA (kolom Kode Material) atau diisi manual:
-                    tambah, ubah, dan hapus baris langsung di tabel bawah.
+                    tambah, ubah, dan hapus baris langsung di tabel bawah. Status REORDER memakai
+                    Safety Stk EXPORT MRP; kolom stok minimum di sini hanya referensi manual.
                 </p>
             </div>
             <a href="{{ route('sparepart.index') }}"
@@ -47,7 +48,7 @@
                 <p class="text-2xl font-bold text-slate-900 mt-1">{{ number_format($ringkasan['manual'], 0, ',', '.') }}</p>
             </div>
             <div class="bg-white rounded-xl border border-slate-200 p-4">
-                <p class="text-xs text-slate-500">Tanpa stok minimum</p>
+                <p class="text-xs text-slate-500">Stok min manual kosong</p>
                 <p class="text-2xl font-bold text-amber-600 mt-1">{{ number_format($ringkasan['tanpa_stok_min'], 0, ',', '.') }}</p>
             </div>
             <div class="bg-white rounded-xl border border-slate-200 p-4">
@@ -99,7 +100,7 @@
                        class="w-full rounded-lg border-slate-200 text-sm focus:border-teal-500 focus:ring-teal-500">
             </div>
             <div>
-                <label for="stok_min" class="block text-xs font-medium text-slate-600 mb-1">Stok minimum</label>
+                <label for="stok_min" class="block text-xs font-medium text-slate-600 mb-1">Stok min manual (referensi)</label>
                 <input type="number" step="0.001" min="0" name="stok_min" id="stok_min" value="{{ old('stok_min') }}"
                        class="w-full rounded-lg border-slate-200 text-sm focus:border-teal-500 focus:ring-teal-500">
             </div>
@@ -142,7 +143,7 @@
                         <tr>
                             <th class="px-3 py-3 text-left font-medium">Kode material</th>
                             <th class="px-3 py-3 text-left font-medium">Deskripsi</th>
-                            <th class="px-3 py-3 text-right font-medium">Stok minimum</th>
+                            <th class="px-3 py-3 text-right font-medium">Stok min manual (referensi)</th>
                             <th class="px-3 py-3 text-left font-medium">Satuan</th>
                             <th class="px-3 py-3 text-left font-medium">Sumber</th>
                             <th class="px-3 py-3 text-right font-medium">Aksi</th>

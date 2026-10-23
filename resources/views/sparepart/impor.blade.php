@@ -55,10 +55,10 @@
                     <p class="text-xs text-slate-400 mt-1">Wajib memuat kolom sisa kirim ("Still to be delivered").</p>
                 </div>
                 <div>
-                    <label for="mrp" class="block text-sm font-medium text-slate-700 mb-1">4. EXPORT MRP (SAP MD07)</label>
+                    <label for="mrp" class="block text-sm font-medium text-slate-700 mb-1">4. EXPORT MRP (SAP MD07/MD04)</label>
                     <input type="file" name="mrp" id="mrp" accept=".xlsx,.xls"
                            class="w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-slate-100 file:text-slate-700">
-                    <p class="text-xs text-slate-400 mt-1">Opsional. Mengisi Stock by SAP, Safety Stk, dan Stok Min MRP.</p>
+                    <p class="text-xs text-slate-400 mt-1">Opsional. Safety Stk menjadi stok minimum; Stock by SAP dipakai untuk indikator Stok Beda.</p>
                 </div>
             </div>
 
@@ -130,10 +130,10 @@
                         | {{ \App\Services\Sparepart\SparepartReader::JUDUL_PO_AWALAN }} (qty)</p>
                 </div>
                 <div>
-                    <p class="font-semibold text-slate-700">EXPORT MRP (SAP MD07)</p>
+                    <p class="font-semibold text-slate-700">EXPORT MRP (SAP MD07/MD04)</p>
                     <p>{{ implode(' | ', \App\Services\Sparepart\SparepartReader::JUDUL_MRP) }}</p>
                     <p class="text-slate-400 mt-1">Kolom pendukung: {{ implode(' | ', \App\Services\Sparepart\SparepartReader::JUDUL_MRP_OPSIONAL) }}.
-                        Nilai MRP hanya pelengkap; status REORDER tetap memakai stok minimum daftar pantau.</p>
+                        Safety Stk dipakai sebagai stok minimum; material yang tidak ada di berkas MRP berstatus Belum MRP.</p>
                 </div>
                 <div>
                     <p class="font-semibold text-slate-700">Daftar pantau</p>

@@ -311,3 +311,72 @@ menampilkan `pr_open_nums=1000004103; 1000004108`. Halaman `/sparepart`,
 HTTP 200. Uji sparepart: 38 test hijau. Seluruh suite 669 test: 666 hijau,
 3 gagal karena test man hour memakai `now()->subDay()` yang pada 19/10/2026
 jatuh hari Minggu (18/10/2026) — bukan akibat perubahan ini.
+
+## STOK MIN MRP, STOK BEDA, HISTORY PR, DAN FILTER HEADER — 23/10/2026
+
+Latar: user meminta (a) stok minimum dari EXPORT MRP, (b) stok gudang dari
+Laporan Stok Gudang G001, (c) History PR memakai No PR dari EXPORT PR ME5A,
+(d) indikator "Min Beda" diganti "Stok Beda", dan (e) judul kolom tabel bisa
+diklik untuk menyaring data.
+
+Keputusan yang DIKONFIRMASI user sebelum koding:
+
+- **Stok minimum = `Safety Stk` pada EXPORT MRP** (MD07/MD04), bukan lagi
+  kolom `Jumlah` pada sheet MASTER DATA. Nilai `sp_pantau.stok_min` tetap
+  disimpan sebagai referensi manual, tetapi TIDAK lagi menentukan REORDER.
+- **Material yang tidak ada di berkas MRP** diberi status/keterangan
+  **Belum MRP** dan TIDAK memakai fallback stok minimum manual.
+- **Stok gudang** tetap sisa G001 (stok awal + masuk - keluar per kode).
+- **Stok Beda** membandingkan Sisa Stok G001 dengan `Plnt stock` MRP
+  (Stock by SAP); label lama `Min Sama`/`Min Beda` menjadi
+  `Stok Sama`/`Stok Beda`, dan kosong bila tidak bisa dibandingkan.
+- **History PR** memakai nomor PR dari EXPORT PR ME5A, ditampilkan di panel
+  rincian tiap material sebagai tabel per nomor PR.
+- **Filter header**: klik judul kolom membuka kontrol sesuai karakteristik
+  datanya (teks, angka minimum/maksimum, pilihan status/aksi/PR/PO/MRP,
+  rentang tanggal). Saringan lama di atas tabel tetap tersedia.
+
+Perubahan kode:
+
+- Migrasi `2026_10_23_000001_add_pr_history_to_sparepart` menambah kolom JSON
+  `sp_material.pr_history`.
+- `SparepartHitungTrait::keadaanMaterial()` memakai stok minimum yang
+  diteruskan pemanggil (Safety Stk MRP), menyusun `riwayatPr()`, dan
+  membandingkan stok lewat `bandingkanStok()`.
+- `SparepartImportService` menyimpan `stok_min` dari Safety Stk, menyalin
+  blok MRP/PR (termasuk `pr_history`) saat berkas tidak diunggah, serta tidak
+  membandingkan `pr_history`/cap waktu sebagai perubahan keadaan agar import
+  kedua tetap idempoten.
+- `SparepartPantauService::hitungUlang()` tidak lagi memakai stok minimum
+  manual untuk REORDER; status dihitung dari `mrp_safety` yang tersimpan.
+- `SparepartController` menambah saringan kolom: `kode`, `deskripsi`,
+  `min_stok_min`, `max_stok_min`, `min_stok`, `max_stok`, `pr`, `po`, `mrp`,
+  `purch`, `vendor`, `dari`, `sampai`; status `belum` kini berarti Belum MRP.
+- Export Excel: kolom H menjadi `Stok Min (MRP)`, kolom I `Stok Gudang G001`,
+  kolom AU `Reorder Pt (MRP)`, kolom AX `Stok Beda`, status `Belum MRP`.
+- Tampilan `resources/views/sparepart/index.blade.php` ditulis ulang: judul
+  halaman menjadi "Sparepart — Buat PR & Kejar PO", kartu "Belum MRP",
+  popover filter di setiap judul kolom, panel History PR (ME5A), dan kartu MRP
+  yang menampilkan Stok Gudang G001 vs Stock by SAP.
+- Label halaman pendukung ikut disesuaikan (`impor`, `pantau`, `riwayat`).
+
+Bukti DEV 23/10/2026 (`oleochemical_dev`, PROD tidak disentuh):
+
+- Migrasi dijalankan hanya untuk berkas ini:
+  `php artisan migrate --path=database/migrations/2026_10_23_000001_add_pr_history_to_sparepart.php`.
+- Import #18 (berkas penuh `D:\RYAN\Dasboard\EPE\IMPORT`) berhasil:
+  stok 3.328 baris, PR 14.557 baris, PO 14.835 baris, MRP 566 baris;
+  keadaan 449 diperbarui; **REORDER 337, aman 95, Belum MRP 17**;
+  `mrp_cmp` Sama 359 / Beda 36 / kosong 54 (17 tanpa MRP + 37 tanpa catatan
+  stok G001). `pr_history` terisi untuk seluruh 449 material.
+- Import #19 dengan berkas yang sama menghasilkan **tetap 449** (idempoten).
+- Halaman `/sparepart` HTTP 200 (50 baris + 50 panel History PR); seluruh
+  kombinasi saringan kolom (`status=belum`, `mrp=beda`, `mrp=sama`,
+  `pr=terbuka`, `po=terbuka`, `min_stok/max_stok`, `kode`, `deskripsi`,
+  `dari/sampai`) HTTP 200.
+- Catatan angka: REORDER naik dari 149 (aturan lama) menjadi 337 karena
+  Safety Stk MRP umumnya lebih tinggi daripada stok minimum manual. Ini
+  akibat langsung keputusan user 23/10/2026, bukan kesalahan hitung.
+- Uji: `php artisan test --filter=Sparepart` **42 test hijau, 313 assertions**
+  (termasuk `SparepartMrpFilterTest` baru: 4 test/54 assertions); seluruh suite
+  **734 test hijau, 3.642 assertions**; `php artisan view:cache` sukses.

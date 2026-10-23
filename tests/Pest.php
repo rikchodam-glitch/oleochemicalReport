@@ -109,7 +109,7 @@ function spUjiFolder(): string
  * 30000002 sisa 0 (REORDER), 30000003 sisa 7 (aman), 30000004 sisa 0 (REORDER),
  * 30000005 sisa 2 (aman), 30000001 tanpa catatan stok (REORDER).
  *
- * @return array<string, string> Path berkas per kunci: stok, pr, po, pantau
+ * @return array<string, string> Path berkas per kunci: stok, pr, po, pantau, mrp
  */
 function spUjiBerkas(): array
 {
@@ -166,6 +166,21 @@ function spUjiBerkas(): array
         ],
     ]);
 
-    return ['stok' => $stok, 'pr' => $pr, 'po' => $po, 'pantau' => $pantau];
+    // MRP (MD07): Safety Stk menjadi stok minimum. Nilai Safety disamakan
+    // dengan stok minimum lama supaya pola REORDER fixture tetap:
+    // 30000001/02/04 REORDER, 30000003/05 aman. Stock by SAP 30000003
+    // sengaja beda dari G001 untuk menguji indikator Stok Beda.
+    $mrp = spUjiXlsx('mrp-pantau-uji.xlsx', [
+        'Sheet1' => [
+            ['Status', 'Valid from date', 'Material', 'MRP Area', 'Description', 'Accessed', 'Process.', 'Stock DS', '1st RDS', '2nd RDS', 'EM1', 'EM2', 'EM3', 'EM4', 'EM5', 'EM6', 'EM7', 'EM8', 'Plnt stock', 'Unit', 'Safety Stk', 'Reorder Pt', 'Matl type', 'Proc. Type', 'Spec.proc.', 'ABC', 'MRP Group', 'MRP Type', 'L-L code', 'Created', 'Seg.Status'],
+            ['XOO', '', '30000001', '7011', 'BRACKET UJI', '', '', '', '', '', '', '', '', '', '', '', '', '', 0, 'PCS', 1, 1, 'Z5ER', 'F', '', '', '0000', 'VB', '999', '', 'X'],
+            ['XOO', '', '30000002', '7011', 'SEAL UJI', '', '', '', '', '', '', '', '', '', '', '', '', '', 0, 'PCS', 1, 1, 'Z5ER', 'F', '', '', '0000', 'VB', '999', '', 'X'],
+            ['XOO', '', '30000003', '7011', 'BEARING UJI', '', '', '', '', '', '', '', '', '', '', '', '', '', 5, 'PCS', 1, 1, 'Z5ER', 'F', '', '', '0000', 'VB', '999', '', 'X'],
+            ['XOO', '', '30000004', '7011', 'V-BELT UJI', '', '', '', '', '', '', '', '', '', '', '', '', '', 0, 'PCS', 1, 1, 'Z5ER', 'F', '', '', '0000', 'VB', '999', '', 'X'],
+            ['XOO', '', '30000005', '7011', 'GASKET UJI', '', '', '', '', '', '', '', '', '', '', '', '', '', 2, 'PCS', 1, 1, 'Z5ER', 'F', '', '', '0000', 'VB', '999', '', 'X'],
+        ],
+    ]);
+
+    return ['stok' => $stok, 'pr' => $pr, 'po' => $po, 'pantau' => $pantau, 'mrp' => $mrp];
 }
 
