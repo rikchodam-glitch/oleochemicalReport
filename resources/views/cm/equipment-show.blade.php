@@ -83,7 +83,7 @@
         </button>
     </div>
     <div class="p-6">
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {{-- Informasi Spek --}}
             <div class="lg:col-span-1">
                 <div class="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -125,6 +125,13 @@
                     </a>
                 </div>
                 @endif
+            </div>
+            <div class="lg:col-span-1">
+                @include('assets.partials._foto-equipment', [
+                    'asset' => $assetTerkait,
+                    'bisaKelola' => false,
+                    'konteks' => 'Ringkasan Equipment',
+                ])
             </div>
             {{-- Stat Cards --}}
             <div class="lg:col-span-2">
@@ -250,17 +257,6 @@
         </div>
     </div>
 </div>
-
-@if($assetTerkait !== null)
-    <div class="bg-white rounded-xl border border-slate-200 p-6 mb-6">
-        @include('assets.partials._foto-equipment', [
-            'asset' => $assetTerkait,
-            'bisaKelola' => false,
-            'konteks' => 'Ringkasan Equipment',
-            'tanpaGaris' => true,
-        ])
-    </div>
-@endif
 
 {{-- Card Trend & Analisa: filter + chart dalam satu card --}}
 <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">

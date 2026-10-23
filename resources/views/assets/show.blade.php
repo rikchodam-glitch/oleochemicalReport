@@ -61,48 +61,54 @@
                             </p>
                         </div>
                     </div>
-                    <dl class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
-                        <div class="md:col-span-3">
-                            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Deskripsi</dt>
-                            <dd class="mt-1 text-sm text-slate-900">{{ $asset->description ?? '-' }}</dd>
+                    <div class="grid grid-cols-1 gap-6 xl:grid-cols-5">
+                        <div class="xl:col-span-3">
+                            <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+                                <div class="sm:col-span-2">
+                                    <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Deskripsi</dt>
+                                    <dd class="mt-1 text-sm text-slate-900">{{ $asset->description ?? '-' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Tech Ident No</dt>
+                                    <dd class="mt-1 font-mono text-sm font-semibold text-slate-900">{{ $asset->tech_ident_no ?? '-' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Equipment Type</dt>
+                                    <dd class="mt-1">
+                                        @if($asset->equipment_type)
+                                            <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 rounded">{{ $asset->equipment_type }}</span>
+                                        @else
+                                            <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 rounded">Tanpa Tipe</span>
+                                        @endif
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Data Source</dt>
+                                    <dd class="mt-1 text-sm text-slate-900">{{ ['import_excel' => 'Import Excel', 'manual' => 'Manual', 'it_sync' => 'Sinkron IT Assets', 'panel_sync' => 'Sinkron Ruang Panel', 'cm_sync' => 'Sinkron CM'][$asset->data_source] ?? $asset->data_source }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Manufacturer</dt>
+                                    <dd class="mt-1 text-sm text-slate-900">{{ $asset->manufacturer ?? '-' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Model Number</dt>
+                                    <dd class="mt-1 text-sm text-slate-900">{{ $asset->model_number ?? '-' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Construct Year</dt>
+                                    <dd class="mt-1 text-sm text-slate-900">{{ $asset->construct_year ?? '-' }}</dd>
+                                </div>
+                            </dl>
                         </div>
-                        <div>
-                            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Tech Ident No</dt>
-                            <dd class="mt-1 font-mono text-sm font-semibold text-slate-900">{{ $asset->tech_ident_no ?? '-' }}</dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Equipment Type</dt>
-                            <dd class="mt-1">
-                                @if($asset->equipment_type)
-                                    <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 rounded">{{ $asset->equipment_type }}</span>
-                                @else
-                                    <span class="inline-flex px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 rounded">Tanpa Tipe</span>
-                                @endif
-                            </dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Data Source</dt>
-                            <dd class="mt-1 text-sm text-slate-900">{{ ['import_excel' => 'Import Excel', 'manual' => 'Manual', 'it_sync' => 'Sinkron IT Assets', 'panel_sync' => 'Sinkron Ruang Panel', 'cm_sync' => 'Sinkron CM'][$asset->data_source] ?? $asset->data_source }}</dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Manufacturer</dt>
-                            <dd class="mt-1 text-sm text-slate-900">{{ $asset->manufacturer ?? '-' }}</dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Model Number</dt>
-                            <dd class="mt-1 text-sm text-slate-900">{{ $asset->model_number ?? '-' }}</dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide">Construct Year</dt>
-                            <dd class="mt-1 text-sm text-slate-900">{{ $asset->construct_year ?? '-' }}</dd>
-                        </div>
-                    </dl>
 
-                    @include('assets.partials._foto-equipment', [
-                        'asset' => $asset,
-                        'bisaKelola' => true,
-                        'konteks' => 'Informasi Asset',
-                    ])
+                        <div class="xl:col-span-2">
+                            @include('assets.partials._foto-equipment', [
+                                'asset' => $asset,
+                                'bisaKelola' => true,
+                                'konteks' => 'Informasi Asset',
+                            ])
+                        </div>
+                    </div>
                 </div>
             </div>
 
