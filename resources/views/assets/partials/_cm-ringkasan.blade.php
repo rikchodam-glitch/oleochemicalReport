@@ -14,6 +14,7 @@
     <div class="bg-white rounded-xl border border-slate-200 p-6">
         <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
             <div>
+                <p class="text-[11px] font-medium uppercase tracking-wider text-slate-400">Preview</p>
                 <h3 class="text-base font-semibold text-slate-900">Ringkasan Equipment (CM)</h3>
                 <p class="text-xs text-slate-400 mt-0.5">
                     {{ $cm->pt_location ?? '-' }}
@@ -23,7 +24,12 @@
                 </p>
             </div>
             <a href="{{ route('cm.equipment-show', $cm->equipment_tag) }}"
-               class="text-xs font-semibold text-teal-700 hover:text-teal-800">Buka halaman CM</a>
+               class="inline-flex items-center gap-2 rounded-lg border border-teal-300 px-4 py-2 text-sm font-medium text-teal-700 transition-colors hover:bg-teal-50">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m8-3v-2a2 2 0 00-2-2h-2a2 2 0 00-2 2v2m0 0v6a2 2 0 002 2h2a2 2 0 002-2v-6"/>
+                </svg>
+                Buka Halaman CM
+            </a>
         </div>
 
         <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">

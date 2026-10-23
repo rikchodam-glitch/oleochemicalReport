@@ -1,19 +1,23 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-23 10:36 WIB
+Diperbarui: 2026-10-23 15:05 WIB
 
-- Cabang aktif: `tugas/erik/sparepart-filter-header-grup-dan-popup-lanjutan`
-- Mulai: 2026-10-23 10:36
-- Status: SEDANG DIKERJAKAN
+- Cabang aktif: `tugas/erik/assets-cm-integrasi-foto-dan-preview`
+- Mulai: 2026-10-23 15:05
+- Status: SELESAI DIUJI, SIAP PR
 - Modul/berkas yang disentuh:
-  - Modul Spare Part: filter header dua mode (kelompok di judul, lanjutan di panah, popup)
-  - `resources/views/sparepart/index.blade.php`
-  - `resources/views/sparepart/partials/_filter-grup.blade.php` (baru)
-  - `resources/views/sparepart/partials/_saringan-tersembunyi.blade.php` (baru)
-  - `tests/Feature/SparepartMrpFilterTest.php`
-  - `docs/13-nama-sistem-kode-alur-sesi-kebersihan.md`
-  - `docs/15-modul-spare-part.md`
-- Catatan: filter kelompok langsung menerapkan lewat tautan; filter lanjutan tetap memakai form di popup.
+  - Integrasi Assets Management dan CM Equipment (preview + tautan)
+  - Galeri foto asset reusable (slideshow, thumbnail, keyboard, swipe)
+  - `app/Http/Controllers/CmController.php`
+  - `resources/views/assets/show.blade.php`
+  - `resources/views/assets/partials/_cm-ringkasan.blade.php`
+  - `resources/views/assets/partials/_foto-equipment.blade.php` (baru)
+  - `resources/views/partials/_galeri-foto-aset.blade.php` (baru)
+  - `resources/views/cm/equipment-show.blade.php`
+  - `resources/views/cm/equipment-status.blade.php`
+  - `tests/Feature/AssetCmIntegrationTest.php` (baru)
+  - `docs/28-assets-management.md`
+- Catatan: DEV saja; tanpa migrasi baru. Migration lama `add_active_status_to_cm_equipment` dijalankan di DEV agar halaman CM Status tidak 500. Foto memakai satu sumber `assets.photos`.
 
 ## Riwayat
-- tugas/erik/sparepart-popup-detail-dan-tooltip (mulai 2026-10-23 10:15) -> dilanjutkan 2026-10-23 10:36
+- tugas/erik/sparepart-filter-header-grup-dan-popup-lanjutan (mulai 2026-10-23 10:36) -> dilanjutkan 2026-10-23 15:05

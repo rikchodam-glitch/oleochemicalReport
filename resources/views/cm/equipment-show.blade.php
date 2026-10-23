@@ -31,7 +31,10 @@
             </p>
             <p class="text-sm text-slate-700 mt-1">
                 @if($equipment->asset)
-                    {{ $equipment->asset->description }}
+                    <a href="{{ route('assets.show', $equipment->asset) }}"
+                       class="text-teal-600 hover:text-teal-800 hover:underline">
+                        {{ $equipment->asset->description }}
+                    </a>
                 @else
                     <span class="text-amber-600">Asset belum terdaftar di Asset Management.</span>
                     <a href="{{ route('assets.create') }}?equipment_no={{ urlencode($equipment->equipment_tag) }}"
@@ -247,6 +250,17 @@
         </div>
     </div>
 </div>
+
+@if($assetTerkait !== null)
+    <div class="bg-white rounded-xl border border-slate-200 p-6 mb-6">
+        @include('assets.partials._foto-equipment', [
+            'asset' => $assetTerkait,
+            'bisaKelola' => false,
+            'konteks' => 'Ringkasan Equipment',
+            'tanpaGaris' => true,
+        ])
+    </div>
+@endif
 
 {{-- Card Trend & Analisa: filter + chart dalam satu card --}}
 <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">

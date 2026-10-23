@@ -10,6 +10,15 @@
 @endsection
 
 @section('header-actions')
+    @if($cmRingkasan !== null)
+        <a href="{{ route('cm.equipment-show', $cmRingkasan['equipment']->equipment_tag) }}"
+           class="inline-flex items-center gap-2 px-4 py-2 border border-teal-300 hover:bg-teal-50 text-teal-700 text-sm font-medium rounded-lg transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m8-3v-2a2 2 0 00-2-2h-2a2 2 0 00-2 2v2m0 0v6a2 2 0 002 2h2a2 2 0 002-2v-6"/>
+            </svg>
+            Buka Halaman CM
+        </a>
+    @endif
     <a href="{{ route('assets.edit', $asset) }}"
        class="inline-flex items-center gap-2 px-4 py-2 border border-amber-300 hover:bg-amber-50 text-amber-700 text-sm font-medium rounded-lg transition-colors">
         Edit Asset
@@ -88,6 +97,12 @@
                             <dd class="mt-1 text-sm text-slate-900">{{ $asset->construct_year ?? '-' }}</dd>
                         </div>
                     </dl>
+
+                    @include('assets.partials._foto-equipment', [
+                        'asset' => $asset,
+                        'bisaKelola' => true,
+                        'konteks' => 'Informasi Asset',
+                    ])
                 </div>
             </div>
 
@@ -121,7 +136,7 @@
                         @if($asset->subArea)
                         <div class="border-t border-slate-100 pt-3">
                             <div class="flex items-center gap-2 text-xs text-slate-400 mb-2">Sub Area</div>
-                            <p class="text-sm text-slate-900">{{ $asset->subArea->code }} — {{ $asset->subArea->name }}</p>
+                            <p class="text-sm font-medium text-slate-900">{{ $asset->subArea->code }} — {{ $asset->subArea->name }}</p>
                         </div>
                         @endif
                         @if($asset->functional_loc)
@@ -143,33 +158,6 @@
         </div>
 
         @include('assets.partials._cm-ringkasan')
-
-        {{-- Foto Equipment --}}
-        <div class="bg-white rounded-xl border border-slate-200 p-6">
-            <div class="flex items-center justify-between gap-3 mb-4">
-                <div>
-                    <h3 class="text-base font-semibold text-slate-900">Foto Equipment</h3>
-                    <p class="text-xs text-slate-400 mt-0.5">{{ count($asset->photo_urls) }} foto</p>
-                </div>
-                <a href="{{ route('assets.edit', $asset) }}" class="text-xs font-semibold text-teal-700 hover:text-teal-800">
-                    Kelola foto
-                </a>
-            </div>
-
-            @if(count($asset->photo_urls) > 0)
-                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                    @foreach($asset->photo_urls as $index => $url)
-                        <a href="{{ $url }}" target="_blank" rel="noopener"
-                           class="block aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
-                            <img src="{{ $url }}" alt="Foto {{ $asset->tech_ident_no ?? 'asset' }} {{ $index + 1 }}"
-                                 class="w-full h-full object-cover">
-                        </a>
-                    @endforeach
-                </div>
-            @else
-                <p class="text-sm text-slate-400">Belum ada foto equipment.</p>
-            @endif
-        </div>
 
         <!-- Kartu Statistik -->
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
