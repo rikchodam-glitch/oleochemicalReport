@@ -160,3 +160,15 @@ Perubahan:
   `aspect-[4/3]` (4 test, 25 assertion).
 - Uji: `php artisan test` (seluruh suite) **738 test hijau, 3.672 assertions**;
   `php artisan view:cache` sukses.
+
+## PERBAIKAN POSISI FOTO: KIRI DETAIL — 23/10/2026
+
+- Foto dipindahkan ke **KIRI** detail dengan ukuran tetap seperti sebelumnya:
+  - Detail Asset Management: **2/5 foto + 3/5 detail** (foto di kiri
+    Deskripsi/Tech Ident/Type dll).
+  - CM Equipment: **1/4 foto + 1/4 spek + 2/4 statistik** (foto di kiri
+    Company/Equipment No/Tech Ident dll).
+- Verifikasi DEV: pada `/assets/2071` posisi `Foto Equipment` muncul sebelum
+  `Deskripsi`; pada `/cm/equipment/6400P5` muncul sebelum `Company`. Keduanya
+  HTTP 200.
+- Uji: seluruh suite **738 test hijau, 3.672 assertions**; `view:cache` sukses.
