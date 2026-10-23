@@ -8,10 +8,11 @@
     Deskripsi/Tech Ident/Type dll.
   - **Ringkasan Equipment CM**: 1/4 foto + 1/4 spek + 2/4 statistik, foto di
     kiri Company/Equipment No/Tech Ident dll.
+- Ukuran kotak foto memakai rasio **persegi (`aspect-square`)**, sama seperti
+  thumbnail preview dokumentasi report.
 - Perilaku carousel tidak berubah: auto-slide 5 detik, swipe/panah/titik
   navigasi, klik foto membuka galeri maximized.
-- Hanya penempatan/urutan kolom yang diubah; tidak ada perubahan data,
-  controller, atau migrasi.
+- Tidak ada perubahan data, controller, atau migrasi.
 
 ## Bukti
 
@@ -29,6 +30,8 @@
 
 ## Berkas
 
+- `resources/views/assets/partials/_foto-equipment.blade.php`
 - `resources/views/assets/show.blade.php`
 - `resources/views/cm/equipment-show.blade.php`
+- `tests/Feature/AssetCmIntegrationTest.php`
 - `docs/28-assets-management.md`

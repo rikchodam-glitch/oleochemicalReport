@@ -72,7 +72,7 @@
                     title="Klik untuk membuka galeri foto">
                 <img :src="slideFoto()" src="{{ $fotoUrls[0] }}"
                      alt="Foto {{ $judulFoto }}"
-                     class="aspect-[4/3] w-full object-cover">
+                     class="aspect-square w-full object-cover">
             </button>
 
             <button type="button" @click.stop="slideSebelum()"

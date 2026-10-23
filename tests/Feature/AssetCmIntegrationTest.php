@@ -73,7 +73,7 @@ test('detail asset menampilkan preview CM, tombol CM, dan galeri foto', function
         ->assertSee('Lihat semua')
         ->assertSee('galeriFotoAset', false)
         ->assertSee('x-init="mulaiSlide()"', false)
-        ->assertSee('aspect-[4/3]', false)
+        ->assertSee('aspect-square', false)
         ->assertSee($url, false);
 });
 
@@ -90,7 +90,7 @@ test('halaman CM menampilkan foto asset dan tautan ke Asset Management', functio
         ->assertSee($url, false)
         ->assertSee('galeriFotoAset', false)
         ->assertSee('x-init="mulaiSlide()"', false)
-        ->assertSee('aspect-[4/3]', false);
+        ->assertSee('aspect-square', false);
 });
 
 test('foto yang ditambahkan lewat Edit Asset langsung muncul di halaman CM', function () {

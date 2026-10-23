@@ -171,4 +171,6 @@ Perubahan:
 - Verifikasi DEV: pada `/assets/2071` posisi `Foto Equipment` muncul sebelum
   `Deskripsi`; pada `/cm/equipment/6400P5` muncul sebelum `Company`. Keduanya
   HTTP 200.
+- Ukuran kotak foto memakai rasio **persegi (`aspect-square`)**, sama seperti
+  thumbnail preview dokumentasi report, bukan rasio 4:3.
 - Uji: seluruh suite **738 test hijau, 3.672 assertions**; `view:cache` sukses.
