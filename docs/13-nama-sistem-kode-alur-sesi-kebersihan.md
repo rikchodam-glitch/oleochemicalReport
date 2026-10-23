@@ -67,6 +67,11 @@ untuk halaman lain yang punya tabel padat dan rincian panjang:
   utama, sisanya di popup.
 - Tetap informatif: angka penting, status, dan tindakan harus terlihat tanpa
   membuka popup.
+- Filter tabel dua mode: klik **judul kolom** membuka filter pengelompokan
+  (pilih kelompok/nilai), klik **panah** membuka filter lanjutan (rentang/teks/
+  tanggal). Keduanya tampil sebagai popup, bukan panel yang mengembang di
+  dalam header tabel. Kolom yang tidak punya kelompok (teks/angka/tanggal)
+  boleh langsung membuka filter lanjutan dari judul.
 
 ## ALUR KERJA SETIAP SESI BARU
 

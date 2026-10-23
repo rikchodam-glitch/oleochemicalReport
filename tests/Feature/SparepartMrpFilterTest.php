@@ -156,6 +156,8 @@ test('form filter header dan History PR tampil di halaman', function () {
         ->assertSee('name="deskripsi"', false)
         ->assertSee('name="min_stok_min"', false)
         ->assertSee('name="dari"', false)
+        ->assertSee('Semua kelompok')
+        ->assertSee('Filter lanjutan')
         ->assertSee('Detail material')
         ->assertSee('Klik nomor PR untuk membuka History PR di popup')
         ->assertSee('History PR (EXPORT ME5A)')
