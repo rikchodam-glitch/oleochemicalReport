@@ -118,7 +118,8 @@ test('berkas EXPORT MRP mengisi kolom MRP, stok minimum, dan pembanding stok gud
     $this->actingAs($admin)->get(route('sparepart.index'))
         ->assertStatus(200)
         ->assertSee('Stock by SAP')
-        ->assertSee('Safety 1 / Reorder 2')
+        ->assertSee('Safety Stk (stok min)')
+        ->assertSee('Reorder Pt')
         ->assertSee('Stok Sama');
 });
 

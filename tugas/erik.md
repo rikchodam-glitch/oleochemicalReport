@@ -1,21 +1,18 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-23 09:39 WIB
+Diperbarui: 2026-10-23 10:15 WIB
 
-- Cabang aktif: `tugas/erik/sparepart-mrp-stok-beda-history-pr-filter-header`
-- Mulai: 2026-10-23 09:39
-- Status: SELESAI DIUJI, SIAP PR
+- Cabang aktif: `tugas/erik/sparepart-popup-detail-dan-tooltip`
+- Mulai: 2026-10-23 10:15
+- Status: SEDANG DIKERJAKAN
 - Modul/berkas yang disentuh:
-  - Modul Spare Part (halaman keadaan, import MRP/PR, export, filter header)
-  - `database/migrations/2026_10_23_000001_add_pr_history_to_sparepart.php`
-  - `app/Models/SpMaterial.php`
-  - `app/Services/Sparepart/*` dan `Concerns/SparepartHitungTrait.php`
-  - `app/Http/Controllers/SparepartController.php`
-  - `app/Http/Controllers/Traits/SparepartExportTrait.php`
-  - `resources/views/sparepart/{index,pantau,impor}.blade.php`
-  - `tests/Feature/Sparepart*` dan `tests/Pest.php`
+  - Modul Spare Part: popup detail PR/PO/Stok/MRP dan tooltip hover
+  - `resources/views/sparepart/index.blade.php`
+  - `tests/Feature/SparepartMultiPrMrpTest.php`
+  - `tests/Feature/SparepartMrpFilterTest.php`
+  - `docs/13-nama-sistem-kode-alur-sesi-kebersihan.md`
   - `docs/15-modul-spare-part.md`
-- Catatan: DEV sudah diimpor ulang (import #18/#19) memakai aturan baru; PROD tidak disentuh. Uji: 734 test hijau, view:cache sukses.
+- Catatan: tampilan tabel dirampingkan; rincian panjang pindah ke popup bertab; penjelasan fungsi memakai tooltip.
 
 ## Riwayat
-- tugas/erik/perbaiki-kolaborasi-multi-report-web (mulai 2026-10-23 08:34) -> dilanjutkan 2026-10-23 09:39
+- tugas/erik/sparepart-mrp-stok-beda-history-pr-filter-header (mulai 2026-10-23 09:39) -> dilanjutkan 2026-10-23 10:15

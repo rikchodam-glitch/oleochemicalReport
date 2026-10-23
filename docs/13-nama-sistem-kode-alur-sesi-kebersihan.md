@@ -48,6 +48,26 @@ dibiarkan apa adanya, sengaja, karena itu nama perusahaan bukan nama aplikasi.
   halaman tampak KOSONG/PUTIH di production (`APP_DEBUG=false`) tanpa pesan
   error jelas, sering disalahartikan sebagai "data tidak ada".
 
+## ATURAN TAMPILAN MINIMALIS DAN INFORMATIF (23/10/2026)
+
+Diminta user 23/10/2026 saat merapikan halaman Sparepart. Aturan ini berlaku
+untuk halaman lain yang punya tabel padat dan rincian panjang:
+
+- Tabel utama hanya memuat ringkasan yang perlu untuk mengambil keputusan.
+  Daftar panjang (semua nomor dokumen, riwayat, rincian teknis) dipindahkan ke
+  popup/detail, bukan ditumpuk di dalam sel tabel.
+- Detail memakai popup/modal yang bisa ditutup (Esc atau klik latar). Bila
+  isinya banyak, gunakan tab (mis. PR / PO / Stok / MRP) supaya tidak menjadi
+  satu dinding teks.
+- Penjelasan fungsi atau istilah singkat memakai tooltip hover (atribut
+  `title` atau komponen tooltip), bukan paragraf panjang yang selalu tampil.
+  Label yang diberi tooltip memakai isyarat `cursor-help`.
+- Jangan menampilkan informasi yang sama dua kali di tempat berbeda (mis.
+  Safety Stk di kolom stok minimum dan lagi di kolom MRP); pilih satu tempat
+  utama, sisanya di popup.
+- Tetap informatif: angka penting, status, dan tindakan harus terlihat tanpa
+  membuka popup.
+
 ## ALUR KERJA SETIAP SESI BARU
 
 1. Baca ulang peta `AGENTS.md` dan dokumen `docs/` yang relevan sebelum mulai
