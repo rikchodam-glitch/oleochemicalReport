@@ -418,3 +418,40 @@ Bukti DEV 23/10/2026:
   markup popup dirender per baris (50 baris). Bila kelak dirasa berat, langkah
   berikutnya adalah memuat isi popup lewat endpoint terpisah; belum dikerjakan
   karena tidak diminta.
+
+## FILTER HEADER DUA MODE: KELOMPOK DAN LANJUTAN — 23/10/2026
+
+Latar: user meminta klik biasa pada judul kolom hanya menampilkan filter
+pengelompokan, sedangkan filter lanjutan (seperti sebelumnya) muncul ketika
+tanda panah diklik dan ditampilkan sebagai popup, bukan panel yang mengembang
+di dalam header tabel.
+
+Perubahan yang dikerjakan:
+
+- Judul kolom kini berupa tombol; tanda panah di sebelahnya adalah tombol
+  terpisah. Klik judul membuka mode **pengelompokan**, klik panah membuka mode
+  **lanjutan** (`bukaFilter(kolom, mode)` di Alpine).
+- Filter kelompok yang tersedia: **Status, Aksi, PR, PO, dan MRP**. Pilihannya
+  berupa tautan langsung (satu klik menerapkan kelompok, mempertahankan
+  saringan lain). Kolom lain yang tidak punya kelompok (Kode/Deskripsi, Stok
+  Min, Stok Gudang, Purchaser/Vendor, Diperbarui) langsung membuka filter
+  lanjutan dari judul.
+- Filter lanjutan dipindah dari `<details>` di header ke satu **popup filter**
+  (`fixed`, bisa ditutup dengan Esc/klik latar/tombol X). Setiap form lanjutan
+  memakai partial `_saringan-tersembunyi` supaya saringan kolom lain tidak
+  ter-reset.
+- Partial baru: `resources/views/sparepart/partials/_filter-grup.blade.php`
+  (pilihan kelompok) dan `_saringan-tersembunyi.blade.php` (input tersembunyi).
+- Tabel tidak lagi dibungkus form filter; form hanya ada di popup. Ini
+  mengurangi markup header dan menghilangkan perilaku panel mengembang.
+- Aturan umum dicatat di `docs/13-...` bagian "ATURAN TAMPILAN MINIMALIS DAN
+  INFORMATIF".
+
+Bukti DEV 23/10/2026:
+
+- Halaman `/sparepart` HTTP 200; popup filter memuat 5 kelompok
+  (`Semua kelompok` muncul 5 kali), 16 kemunculan teks `Filter lanjutan`, dan
+  21 pemanggilan `bukaFilter(` pada tombol header.
+- Uji: `php artisan test --filter=Sparepart` **42 test hijau, 318 assertions**;
+  seluruh suite **734 test hijau, 3.647 assertions**; `php artisan view:cache`
+  sukses.
