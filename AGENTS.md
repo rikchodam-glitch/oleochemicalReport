@@ -17,7 +17,13 @@ relevan dengan tugasnya.
 - **Commit segera setelah uji hijau**, satu perubahan = satu commit, hanya berkas
   terkait. DILARANG `git add -A` / `git add .`.
 - Deploy HANYA di komputer integrator, manual lewat `Deploy-Laporan.bat`,
-  sesudah Pull Request di-merge. Commit/push tidak mengubah PROD.
+  sesudah Pull Request BENAR-BENAR di-merge dan copy DEV kembali ke `main`.
+  Menyiapkan PR belum berarti PR dibuat/di-merge; jangan menambah commit ke
+  cabang tugas sesudah PR-nya di-merge. Sebelum menyarankan deploy, jalankan
+  `tools\kembalikan-ke-main.ps1` sampai penjaga mencetak `SEJAJAR=1`. Bila DEV
+  masih di cabang tugas, `Deploy-Laporan.bat` PASTI dibatalkan. Rincian:
+  `docs/02-alur-kerja-banyak-teknisi.md` bagian 6c/6d. Commit/push tidak
+  mengubah PROD.
 - **Verifikasi dulu, baru koding**: nama tabel/kolom/relasi wajib dicek lewat
   `php artisan model:show`, migration, atau model. Jangan berasumsi.
 - **Blade**: baca ulang dari disk sebelum edit; default **overwrite penuh**.
