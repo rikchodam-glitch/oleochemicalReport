@@ -187,3 +187,15 @@ Perubahan:
 - Klik foto tetap membuka galeri maximized; auto-slide/swipe tidak berubah.
 - Uji: `AssetCmIntegrationTest` **4 test hijau, 26 assertions**; seluruh suite
   **738 test hijau, 3.673 assertions**; `view:cache` sukses.
+
+## RAPIKAN FOTO: HAPUS PETUNJUK DAN PINDAHKAN KELOLA FOTO — 24/10/2026
+
+- Teks "Berganti otomatis tiap 5 detik. Geser foto atau klik untuk membuka
+  ukuran penuh." dihapus dari bawah kotak foto; perilaku slideshow tidak
+  berubah.
+- Tautan **Kelola foto** dipindah dari kepala kotak foto ke header galeri
+  fullsize. Galeri menerima `$kelolaUrl` dari partial `_foto-equipment`.
+- Tautan hanya dirender di halaman Assets Management (`$bisaKelola = true`);
+  halaman CM Equipment tetap lihat-saja.
+- Uji: `AssetCmIntegrationTest` **4 test hijau, 30 assertions**; seluruh suite
+  **738 test hijau, 3.673 assertions**; `view:cache` sukses.

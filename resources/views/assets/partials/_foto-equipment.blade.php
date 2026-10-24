@@ -16,6 +16,7 @@
     $konteks    = (string) ($konteks ?? 'Foto Equipment');
     $fotoUrls   = $asset?->photo_urls ?? [];
     $judulFoto  = $asset?->tech_ident_no ?? $asset?->description ?? 'Foto Equipment';
+    $kelolaUrl  = ($asset !== null && $bisaKelola) ? route('assets.edit', $asset) : null;
 
     // JSON_HEX_QUOT/APOS supaya hasil json_encode aman dipakai di atribut HTML
     // x-data yang memakai tanda kutip ganda.
@@ -25,22 +26,11 @@
 
 <div x-data="galeriFotoAset({{ $fotoJson }}, {{ $judulJson }})"
      x-init="mulaiSlide()">
-    <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
-        <div>
-            <h3 class="text-sm font-semibold text-slate-900">Foto Equipment</h3>
-            <p class="mt-0.5 text-xs text-slate-400">
-                {{ $konteks }} &middot; {{ count($fotoUrls) }} foto
-            </p>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-3">
-            @if($asset !== null && $bisaKelola)
-                <a href="{{ route('assets.edit', $asset) }}"
-                   class="text-xs font-semibold text-teal-700 hover:text-teal-800">
-                    Kelola foto
-                </a>
-            @endif
-        </div>
+    <div class="mb-3">
+        <h3 class="text-sm font-semibold text-slate-900">Foto Equipment</h3>
+        <p class="mt-0.5 text-xs text-slate-400">
+            {{ $konteks }} &middot; {{ count($fotoUrls) }} foto
+        </p>
     </div>
 
     @if($asset === null)
@@ -89,10 +79,6 @@
                 </template>
             </div>
         </div>
-
-        <p class="mt-1.5 text-[10px] text-slate-400">
-            Berganti otomatis tiap 5 detik. Geser foto atau klik untuk membuka ukuran penuh.
-        </p>
     @else
         <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-4 text-sm text-slate-400">
             Belum ada foto equipment.
@@ -102,5 +88,5 @@
         </div>
     @endif
 
-    @include('partials._galeri-foto-aset')
+    @include('partials._galeri-foto-aset', ['kelolaUrl' => $kelolaUrl])
 </div>
