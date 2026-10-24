@@ -14,8 +14,9 @@ use Symfony\Component\HttpFoundation\Response;
  * - route yang memang bebas (mis. logout) atau route yang tidak mengubah data
  *   (mis. menandai notifikasi sudah dibaca) sesuai config('akses.route_hanya_baca_bebas');
  * - route yang termasuk kemampuan tulis sebagian group akun (mis. Staff Grub
- *   boleh mengelola laporan + import PO Spare Part + sync data CM) sesuai
- *   config('akses.tulis_grup') dan config('akses.tulis_kemampuan').
+ *   boleh mengelola laporan + import PO Spare Part + request Spare Part +
+ *   sync data CM) sesuai config('akses.tulis_grup') dan
+ *   config('akses.tulis_kemampuan').
  * Halaman yang boleh DIBUKA tetap diatur per Bagian lewat AksesMiddleware, dan
  * batas per-baris (hanya laporan grub yang dinaungi) ditegakkan di controller.
  */

@@ -2,7 +2,7 @@
 
      Sejak 15/10/2026 akun non-administrator bisa punya IZIN TULIS SEBAGIAN
      (Reguler Staff / Staff Grub A-D): mengelola laporan grub yang dinaungi,
-     import PO Spare Part, dan sync data CM. Untuk akun itu form yang diizinkan
+     import PO Spare Part, request Spare Part, dan sync data CM. Untuk akun itu form yang diizinkan
      tetap tampil (mis. form edit laporan), sedangkan form lain disembunyikan.
      Penegakan sebenarnya ada di HanyaBacaMiddleware + penjaga per-baris di
      ReportController/ReportCollaborationController/ReportMultiItemController.
@@ -42,8 +42,8 @@
             <p class="text-xs font-semibold text-teal-800">Akses terbatas</p>
             <p class="text-xs text-teal-700 mt-0.5">
                 Akun Bagian {{ $penggunaBaca->labelBagian() }} bisa mengelola laporan grub yang dinaungi
-                (termasuk kolaborasi bila laporan itu induk), import PO Spare Part, dan sync data CM.
-                Perubahan data lain (aset, import lain, dan sebagainya) tetap ditolak di server.
+                (termasuk kolaborasi bila laporan itu induk), import PO Spare Part, request Spare Part,
+                dan sync data CM. Perubahan data lain (aset, import lain, dan sebagainya) tetap ditolak di server.
             </p>
         @endif
     </div>
