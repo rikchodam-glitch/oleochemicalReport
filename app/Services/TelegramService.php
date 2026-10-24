@@ -145,8 +145,9 @@ class TelegramService
     public const MENU_COMMANDS = [
         ['command' => 'start', 'description' => 'Mulai bot / daftar teknisi'],
         ['command' => 'laporan', 'description' => 'Buat laporan lewat form web'],
+        ['command' => 'req', 'description' => 'Request spare part'],
         ['command' => 'info', 'description' => 'Cari informasi perangkat'],
-        ['command' => 'reset', 'description' => 'Batalkan sesi laporan'],
+        ['command' => 'reset', 'description' => 'Batalkan sesi laporan atau request'],
     ];
 
     /**

@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Services\AiService;
 use App\Services\ReportFormService;
+use App\Services\Telegram\PhotoStorageService;
+use App\Services\Telegram\SparepartRequestWizardService;
 use App\Models\BotRegistration;
 use App\Models\Report;
 use App\Models\Technician;
@@ -52,12 +54,44 @@ class TelegramWebhookController extends Controller
 
                 $technician->update(['last_active_at' => now()]);
 
+                if (preg_match('/^\/req(?:@\S+)?(?:\s+(.+))?$/isu', $text, $cocokReq)) {
+                    return $this->handleRequestSparepart($chatId, $technician, trim((string) ($cocokReq[1] ?? '')));
+                }
+
+                if (preg_match('/^\/reset(?:@\S+)?\b/i', $text)) {
+                    return $this->handleResetRequestSparepart($chatId);
+                }
+
                 if (preg_match('/^\/laporan(?:@\S+)?(?:\s+(.+))?$/isu', $text, $cocokLaporan)) {
                     return $this->handleLaporan($chatId, $technician, trim((string) ($cocokLaporan[1] ?? '')));
                 }
 
                 if (preg_match('/^\/cuti(?:@\S+)?\b/i', $text)) {
                     return $this->sendMessage($chatId, 'Cuti tidak lagi diajukan lewat bot. Hubungi Admin Reguler untuk mencatat cuti Anda.');
+                }
+
+                $requestWizard = app(SparepartRequestWizardService::class);
+
+                if ($requestWizard->hasActive((string) $chatId)) {
+                    if (isset($message['photo'])) {
+                        $photos = $message['photo'];
+                        $best   = end($photos);
+                        $fileId = $best['file_id'] ?? null;
+
+                        if (! $fileId) {
+                            return $this->sendMessage($chatId, 'Foto tidak bisa dibaca. Coba kirim ulang.');
+                        }
+
+                        $path = app(PhotoStorageService::class)->store($fileId, (string) $chatId, 'sparepart-requests');
+
+                        if ($path === null) {
+                            return $this->sendMessage($chatId, 'Gagal menyimpan foto. Coba kirim ulang atau ketik - untuk melewati.');
+                        }
+
+                        return $this->kirimResponsRequest($chatId, $requestWizard->handleFoto((string) $chatId, $path));
+                    }
+
+                    return $this->kirimResponsRequest($chatId, $requestWizard->handleText((string) $chatId, $text));
                 }
 
                 return $this->handleReport($chatId, $technician, $text);
@@ -106,6 +140,13 @@ class TelegramWebhookController extends Controller
      */
     protected function handleLaporan($chatId, Technician $technician, string $deskripsi)
     {
+        if (app(SparepartRequestWizardService::class)->hasActive((string) $chatId)) {
+            return $this->sendMessage(
+                $chatId,
+                'Selesaikan atau batalkan request spare part dulu dengan /reset sebelum membuat laporan.'
+            );
+        }
+
         $kunci = 'laporan-tautan:' . $technician->id;
 
         if (! Cache::add($kunci, true, now()->addSeconds(10))) {
@@ -124,6 +165,77 @@ class TelegramWebhookController extends Controller
         }
 
         return $this->sendMessage($chatId, $pesan, ['disable_web_page_preview' => true]);
+    }
+
+    /**
+     * Mulai wizard request spare part dari perintah /req.
+     *
+     * @param  int|string $chatId
+     * @param  Technician $technician
+     * @param  string     $keterangan
+     * @return \Illuminate\Http\Response
+     */
+    protected function handleRequestSparepart($chatId, Technician $technician, string $keterangan)
+    {
+        $wizard = app(SparepartRequestWizardService::class);
+
+        return $this->kirimResponsRequest($chatId, $wizard->mulai((string) $chatId, $technician, $keterangan));
+    }
+
+    /**
+     * Batalkan sesi request spare part lewat /reset pada jalur webhook.
+     *
+     * @param  int|string $chatId
+     * @return \Illuminate\Http\Response
+     */
+    protected function handleResetRequestSparepart($chatId)
+    {
+        $wizard = app(SparepartRequestWizardService::class);
+        $ada    = $wizard->hasActive((string) $chatId);
+
+        if ($ada) {
+            $wizard->destroy((string) $chatId);
+        }
+
+        return $this->sendMessage(
+            $chatId,
+            $ada
+                ? 'Sesi request spare part dibatalkan. Kirim /req untuk membuat request baru.'
+                : 'Tidak ada sesi request spare part yang aktif.'
+        );
+    }
+
+    /**
+     * Kirim respons wizard request beserta inline keyboard-nya.
+     *
+     * @param  int|string $chatId
+     * @param  array<string, mixed> $respons
+     * @return \Illuminate\Http\Response
+     */
+    protected function kirimResponsRequest($chatId, array $respons)
+    {
+        $pesan = (string) ($respons['message'] ?? '');
+
+        if ($pesan === '') {
+            return response('OK');
+        }
+
+        $extra = [];
+
+        if (! empty($respons['keyboard'])) {
+            $keyboard = [];
+
+            foreach ($respons['keyboard'] as $tombol) {
+                $keyboard[] = [[
+                    'text'          => $tombol['text'],
+                    'callback_data' => $tombol['callback_data'],
+                ]];
+            }
+
+            $extra['reply_markup'] = json_encode(['inline_keyboard' => $keyboard]);
+        }
+
+        return $this->sendMessage($chatId, $pesan, $extra);
     }
 
     protected function handleReport($chatId, Technician $technician, string $text)

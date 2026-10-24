@@ -8,6 +8,7 @@ use App\Models\Technician;
 use App\Services\AiService;
 use App\Services\Telegram\PhotoStorageService;
 use App\Services\Telegram\ReportWizardService;
+use App\Services\Telegram\SparepartRequestWizardService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -52,6 +53,7 @@ class PollTelegramUpdates extends Command
     private AiService $aiService;
     private PhotoStorageService $photoStorage;
     private ReportWizardService $reportWizard;
+    private SparepartRequestWizardService $sparepartRequestWizard;
 
     private string $offsetFile;
     private string $lockFile;
@@ -60,15 +62,17 @@ class PollTelegramUpdates extends Command
     public function __construct(
         AiService $aiService,
         PhotoStorageService $photoStorage,
-        ReportWizardService $reportWizard
+        ReportWizardService $reportWizard,
+        SparepartRequestWizardService $sparepartRequestWizard
     ) {
         parent::__construct();
-        $this->aiService    = $aiService;
-        $this->photoStorage = $photoStorage;
-        $this->reportWizard = $reportWizard;
-        $this->offsetFile   = storage_path('app/telegram_offset.txt');
-        $this->lockFile     = storage_path('app/telegram_poll.lock');
-        $this->stopFile     = storage_path('app/telegram_poll.stop');
+        $this->aiService              = $aiService;
+        $this->photoStorage           = $photoStorage;
+        $this->reportWizard           = $reportWizard;
+        $this->sparepartRequestWizard = $sparepartRequestWizard;
+        $this->offsetFile             = storage_path('app/telegram_offset.txt');
+        $this->lockFile               = storage_path('app/telegram_poll.lock');
+        $this->stopFile               = storage_path('app/telegram_poll.stop');
     }
 
     /**
@@ -285,6 +289,23 @@ class PollTelegramUpdates extends Command
                     $this->editMessageText($chatId, $messageId, $respons['message'], $respons['keyboard']);
                 } else {
                     $this->editMessageTextSimple($chatId, $messageId, $respons['message']);
+                }
+
+                return;
+            }
+
+            // Tombol wizard request spare part berdiri sendiri dan tidak
+            // membutuhkan sesi wizard laporan.
+            if (str_starts_with($data, 'spr:')) {
+                $respons     = $this->sparepartRequestWizard->handleCallback((string) $chatId, $data);
+                $editMessage = $respons['message'] ?? '';
+
+                if ($editMessage !== '') {
+                    if (!empty($respons['keyboard'])) {
+                        $this->editMessageText($chatId, $messageId, $editMessage, $respons['keyboard']);
+                    } else {
+                        $this->editMessageTextSimple($chatId, $messageId, $editMessage);
+                    }
                 }
 
                 return;
