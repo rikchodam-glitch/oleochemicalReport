@@ -23,7 +23,7 @@
 - `php artisan view:cache` sukses.
 - `php artisan test --filter AssetCmIntegrationTest`: 4 test hijau,
   30 assertions.
-- `php artisan test`: 738 test hijau, 3.673 assertions.
+- `php artisan test`: 738 test hijau, 3.677 assertions.
 
 ## Checklist
 

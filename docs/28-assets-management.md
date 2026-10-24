@@ -198,4 +198,4 @@ Perubahan:
 - Tautan hanya dirender di halaman Assets Management (`$bisaKelola = true`);
   halaman CM Equipment tetap lihat-saja.
 - Uji: `AssetCmIntegrationTest` **4 test hijau, 30 assertions**; seluruh suite
-  **738 test hijau, 3.673 assertions**; `view:cache` sukses.
+  **738 test hijau, 3.677 assertions**; `view:cache` sukses.
