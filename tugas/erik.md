@@ -1,17 +1,16 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-24 08:32 WIB
+Diperbarui: 2026-10-24 08:39 WIB
 
-- Cabang aktif: `tugas/erik/rapikan-foto-asset-kelola-fullsize`
-- Mulai: 2026-10-24 08:32
+- Cabang aktif: `tugas/erik/catat-aturan-deploy-setelah-merge`
+- Mulai: 2026-10-24 08:39
 - Status: SELESAI DIUJI, SIAP PR
 - Modul/berkas yang disentuh:
-  - Hapus teks petunjuk di bawah kotak foto; pindahkan tautan "Kelola foto" ke header galeri fullsize (hanya dari Assets Management)
-  - `resources/views/assets/partials/_foto-equipment.blade.php`
-  - `resources/views/partials/_galeri-foto-aset.blade.php`
-  - `tests/Feature/AssetCmIntegrationTest.php`
-  - `docs/28-assets-management.md`
-- Catatan: Halaman CM/PM tetap lihat-saja; perilaku slideshow tidak berubah.
+  - Catat aturan deploy: PR harus benar-benar di-merge, jangan menambah commit setelah merge, dan kembalikan DEV ke main sampai `SEJAJAR=1`
+  - `AGENTS.md`
+  - `docs/02-alur-kerja-banyak-teknisi.md`
+  - `docs/28-assets-management.md` (koreksi jumlah assertion dari PR #58)
+- Catatan: Melanjutkan koreksi dokumen yang tertinggal dari PR #58; tidak ada perubahan kode.
 
 ## Riwayat
-- tugas/erik/assets-cm-foto-kiri-detail (mulai 2026-10-23 15:32) -> dilanjutkan 2026-10-24 08:32
+- tugas/erik/rapikan-foto-asset-kelola-fullsize (mulai 2026-10-24 08:32) -> dilanjutkan 2026-10-24 08:39

@@ -216,6 +216,32 @@ Aturan yang berlaku sekarang:
 4. Berkas kotor sesi lain tidak ikut di-deploy; deploy memakai commit `main`,
    bukan working tree.
 
+### 6d. Jangan menyarankan deploy saat copy DEV masih di cabang tugas (24/10/2026)
+
+Kejadian 24/10/2026: PR #58 (foto Assets/CM) sudah di-merge menjadi `8154eb3`,
+tetapi copy DEV masih berada di `tugas/erik/rapikan-foto-asset-kelola-fullsize`
+dengan commit tambahan `9533c47` (hanya koreksi jumlah assertion pada dokumen)
+yang belum masuk `main`. `Deploy-Laporan.bat` dibatalkan penjaga dengan
+`SEJAJAR=0`: "copy DEV TIDAK berada pada commit main GitHub".
+
+Aturan:
+
+1. Sebelum menyarankan deploy, pastikan PR sudah BENAR-BENAR dibuat dan
+   di-merge. `tools\buat-pr-tugas.ps1` hanya menyiapkan judul/isi dan membuka
+   peramban; PR baru sah sesudah manusia menekan "Create pull request" dan
+   "Merge pull request".
+2. Jangan menambah commit ke cabang tugas setelah PR-nya di-merge. Semua berkas
+   PR, termasuk `tugas/pr-*.md`, WAJIB di-commit sebelum PR dibuat.
+3. Sesudah merge, kembalikan copy DEV ke `main` dengan
+   `tools\kembalikan-ke-main.ps1`, lalu pastikan penjaga mencetak `SEJAJAR=1`
+   dan `CARA=dilanjutkan` sebelum deploy.
+4. Bila yang tertinggal hanya commit administratif/dokumentasi (mis. koreksi
+   catatan uji), jangan menganggap fitur belum di-merge. Selesaikan commit itu
+   lewat PR terpisah; deploy tetap hanya memakai `main` yang sejajar GitHub.
+5. Agent DILARANG menyimpulkan "sudah siap deploy" hanya karena
+   `unggah-tugas.ps1`/`buat-pr-tugas.ps1` selesai, atau karena PR sudah
+   di-merge, tanpa memeriksa cabang dan `SEJAJAR=1` di copy DEV.
+
 ### 7. Setelan GitHub yang harus dipasang integrator (sekali, manual di web)
 
 Repo ini PUBLIK (dibuktikan `git ls-remote` tanpa kredensial, 13/10/2026), jadi
