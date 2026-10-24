@@ -78,6 +78,7 @@ Semua berkas di bawah ini ada di `docs/`.
 | [27-menu-perintah-bot-telegram.md](docs/27-menu-perintah-bot-telegram.md) | Menu command native bot (`/start`, `/laporan`, `/info`, `/cuti`, `/reset`) | Mengubah daftar command atau tombol menu bot |
 | [28-assets-management.md](docs/28-assets-management.md) | Pencarian live, detail via klik, foto equipment, ringkasan CM, sinkronisasi CM | Mengubah halaman Assets Management atau sinkronisasi CM |
 | [29-hierarki-lokasi-dropdown.md](docs/29-hierarki-lokasi-dropdown.md) | Opsi PT/Dept/Area/SubArea dari Functional Location untuk Assets, Teknisi, Laporan, Bot | Mengubah dropdown/filter lokasi |
+| [30-request-sparepart.md](docs/30-request-sparepart.md) | Request spare part lewat bot Telegram, tab Request di halaman Sparepart, status PR/PO/delivery, hak akses Staff CM/PM | Menyentuh request spare part, bot `/req`, atau halaman request |
 
 ## Dokumen pendukung di `docs/`
 
