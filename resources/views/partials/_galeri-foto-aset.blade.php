@@ -1,10 +1,14 @@
 {{--
     Popup galeri foto asset. Dipakai halaman detail Asset Management dan
     halaman CM Equipment. Galeri bersifat lihat-saja; pengelolaan foto tetap
-    di halaman Edit Asset.
+    di halaman Edit Asset. Bila $kelolaUrl diisi (halaman Assets Management),
+    tautan Kelola foto ditampilkan di header galeri.
 
     Markup ini di-include SEKALI per halaman oleh partial _foto-equipment.
 --}}
+@php
+    $kelolaUrl = $kelolaUrl ?? null;
+@endphp
 <template x-teleport="body">
     <div x-show="galeri.buka" x-cloak
          @keydown.escape.window="galeriTutup()"
@@ -12,7 +16,7 @@
          @keydown.arrow-right.window="galeriBerikut()"
          class="fixed inset-0 z-50 flex flex-col bg-black/90">
 
-        {{-- Kepala: judul, posisi foto, tombol tutup --}}
+        {{-- Kepala: judul, posisi foto, tombol kelola/tutup --}}
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
             <div class="min-w-0">
                 <p class="truncate text-sm font-medium text-white" x-text="judul"></p>
@@ -20,6 +24,12 @@
             </div>
 
             <div class="flex items-center gap-3">
+                @if($kelolaUrl)
+                    <a href="{{ $kelolaUrl }}"
+                       class="rounded-lg border border-white/30 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20">
+                        Kelola foto
+                    </a>
+                @endif
                 <span class="text-xs text-white/70" x-text="galeriPosisi()"></span>
                 <button type="button" @click="galeriTutup()"
                         class="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20">

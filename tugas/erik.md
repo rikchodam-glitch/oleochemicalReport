@@ -1,18 +1,17 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-23 15:32 WIB
+Diperbarui: 2026-10-24 08:32 WIB
 
-- Cabang aktif: `tugas/erik/assets-cm-foto-kiri-detail`
-- Mulai: 2026-10-23 15:32
+- Cabang aktif: `tugas/erik/rapikan-foto-asset-kelola-fullsize`
+- Mulai: 2026-10-24 08:32
 - Status: SELESAI DIUJI, SIAP PR
 - Modul/berkas yang disentuh:
-  - Pindahkan carousel foto ke KIRI detail (Informasi Asset dan Ringkasan Equipment CM)
+  - Hapus teks petunjuk di bawah kotak foto; pindahkan tautan "Kelola foto" ke header galeri fullsize (hanya dari Assets Management)
   - `resources/views/assets/partials/_foto-equipment.blade.php`
-  - `resources/views/assets/show.blade.php`
-  - `resources/views/cm/equipment-show.blade.php`
+  - `resources/views/partials/_galeri-foto-aset.blade.php`
   - `tests/Feature/AssetCmIntegrationTest.php`
   - `docs/28-assets-management.md`
-- Catatan: Foto rasio persegi (`aspect-square`) seperti preview dokumentasi report; kolom 1/4 di aset dan CM. Tombol "Lihat semua" dan "Buka Asset Management" dihapus.
+- Catatan: Halaman CM/PM tetap lihat-saja; perilaku slideshow tidak berubah.
 
 ## Riwayat
-- tugas/erik/assets-cm-foto-carousel (mulai 2026-10-23 15:21) -> dilanjutkan 2026-10-23 15:32
+- tugas/erik/assets-cm-foto-kiri-detail (mulai 2026-10-23 15:32) -> dilanjutkan 2026-10-24 08:32
