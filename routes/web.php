@@ -27,6 +27,7 @@ use App\Http\Controllers\ReportFormController;
 use App\Http\Controllers\ReportMultiItemController;
 use App\Http\Controllers\SparepartController;
 use App\Http\Controllers\SparepartPantauController;
+use App\Http\Controllers\SparepartRequestController;
 use App\Http\Controllers\StorageController;
 use App\Http\Controllers\ShiftScheduleController;
 use App\Http\Controllers\TechnicianController;
@@ -342,6 +343,15 @@ Route::post('/assets/unlinked-funcloc/run-sync', [AssetController::class, 'runAu
     Route::get('/sparepart/impor', [SparepartController::class, 'impor'])->name('sparepart.impor');
     Route::post('/sparepart/impor', [SparepartController::class, 'imporProses'])->name('sparepart.impor.proses');
     Route::get('/sparepart/riwayat', [SparepartController::class, 'riwayat'])->name('sparepart.riwayat');
+
+    // Request spare part dari teknisi lewat bot Telegram. Tab Pengajuan,
+    // Kejar PO, Kejar Delivery, dan Selesai.
+    Route::get('/sparepart/request', [SparepartRequestController::class, 'index'])->name('sparepart.request.index');
+    Route::post('/sparepart/request/{spRequest}/setujui', [SparepartRequestController::class, 'setujui'])->name('sparepart.request.setujui');
+    Route::post('/sparepart/request/{spRequest}/tolak', [SparepartRequestController::class, 'tolak'])->name('sparepart.request.tolak');
+    Route::post('/sparepart/request/{spRequest}/pr', [SparepartRequestController::class, 'pr'])->name('sparepart.request.pr');
+    Route::post('/sparepart/request/{spRequest}/po', [SparepartRequestController::class, 'po'])->name('sparepart.request.po');
+    Route::post('/sparepart/request/{spRequest}/terima', [SparepartRequestController::class, 'terima'])->name('sparepart.request.terima');
 
     // Daftar pantau: sumber populasi halaman di atas, dapat diimpor maupun
     // diedit manual (tambah/ubah/hapus).

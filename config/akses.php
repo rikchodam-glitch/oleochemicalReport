@@ -117,6 +117,12 @@ return [
             'pola'  => ['sparepart.*'],
             'link'  => 'sparepart.index',
         ],
+        'sparepart_request' => [
+            'label' => 'Request Spare Part',
+            'grup'  => 'Reliability & Maintenance',
+            'pola'  => ['sparepart.request.*'],
+            'link'  => null,
+        ],
         'ai_providers' => [
             'label' => 'AI Providers',
             'grup'  => 'Pengaturan',
@@ -189,11 +195,11 @@ return [
      * Diputuskan user 15/10/2026: Reguler Staff dan Staff Grub A-D boleh
      * mengelola laporan grub yang dinaunginya (termasuk baris kolaborasi bila
      * laporan itu induk), TIDAK boleh mengubah aset/menu lain, TIDAK boleh
-     * import apa pun KECUALI import PO Spare Part dan sync data CM/PM. Export
-     * tetap boleh karena route-nya GET.
+     * import apa pun KECUALI import PO Spare Part, request Spare Part untuk
+     * Bagian CM/PM, dan sync data CM/PM. Export tetap boleh karena route-nya GET.
      */
     'tulis_grup' => [
-        'reguler_staff' => ['laporan', 'sparepart_impor', 'cm_sync'],
+        'reguler_staff' => ['laporan', 'sparepart_impor', 'sparepart_request', 'cm_sync'],
         'grub_a_staff'  => ['laporan', 'sparepart_impor', 'cm_sync'],
         'grub_b_staff'  => ['laporan', 'sparepart_impor', 'cm_sync'],
         'grub_c_staff'  => ['laporan', 'sparepart_impor', 'cm_sync'],
@@ -222,6 +228,13 @@ return [
         'sparepart_impor' => [
             'sparepart.impor.proses',
         ],
+        'sparepart_request' => [
+            'sparepart.request.setujui',
+            'sparepart.request.tolak',
+            'sparepart.request.pr',
+            'sparepart.request.po',
+            'sparepart.request.terima',
+        ],
         'cm_sync' => [
             'cm.sync-google-sheets',
         ],
@@ -236,12 +249,13 @@ return [
      * Ubah pola ini sepasang dengan 'tulis_kemampuan' di atas.
      */
     'tulis_kemampuan_tampilan' => [
-        'laporan'         => ['^/reports/[0-9]+(/|$)'],
-        'sparepart_impor' => ['^/sparepart/impor$'],
-        'cm_sync'         => ['^/cm/sync-google-sheets$'],
+        'laporan'           => ['^/reports/[0-9]+(/|$)'],
+        'sparepart_impor'   => ['^/sparepart/impor$'],
+        'sparepart_request' => ['^/sparepart/request(/|$)'],
+        'cm_sync'           => ['^/cm/sync-google-sheets$'],
     ],
 
-    'pesan_tulis_sebagian' => 'Akun Anda hanya bisa mengelola laporan grub yang Anda naungi, ditambah import PO Spare Part dan sync data CM. Perubahan data lain ditolak.',
+    'pesan_tulis_sebagian' => 'Akun Anda hanya bisa mengelola laporan grub yang Anda naungi, ditambah import PO Spare Part, request Spare Part, dan sync data CM. Perubahan data lain ditolak.',
 
     'pesan_kelola_grub' => 'Akun Anda hanya bisa mengelola laporan grub yang Anda naungi.',
 

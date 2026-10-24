@@ -455,3 +455,12 @@ Bukti DEV 23/10/2026:
 - Uji: `php artisan test --filter=Sparepart` **42 test hijau, 318 assertions**;
   seluruh suite **734 test hijau, 3.647 assertions**; `php artisan view:cache`
   sukses.
+
+## REQUEST SPARE PART TERPISAH DARI INTEGRASI PR/PO — 24/10/2026
+
+- Fitur request spare part lewat bot Telegram dan tab Request di halaman
+  Sparepart TIDAK memakai tabel `sp_material`/`sp_pantau`; datanya disimpan di
+  tabel baru `sp_requests`.
+- Modul Integrasi PR/PO tetap mengimpor berkas stok/PR/PO seperti sebelumnya.
+- Alur status, hak akses Staff CM/PM, notifikasi, dan checklist deploy ada di
+  `docs/30-request-sparepart.md`.

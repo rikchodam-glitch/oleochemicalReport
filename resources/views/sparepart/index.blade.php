@@ -94,7 +94,9 @@
 @endphp
 
 @section('content')
-    <div class="space-y-6"
+    @include('sparepart.partials._tabs', ['tabAktif' => 'stok'])
+
+    <div class="mt-6 space-y-6"
          x-data="{
             buka: null,
             tab: 'pr',

@@ -125,6 +125,21 @@ trait TelegramMessageHandlerTrait
             return;
         }
 
+        // /req atau /req <keterangan>: mulai wizard request spare part.
+        if (preg_match('/^\/req(?:@\S+)?(?:\s+(.+))?$/isu', $text, $cocokReq)) {
+            $this->handleRequestSparepart($chatId, $technician, trim((string) ($cocokReq[1] ?? '')));
+            return;
+        }
+
+        // Teks selama sesi request spare part aktif tidak boleh masuk ke wizard
+        // laporan. Foto ditangani handlePhotoMessage di bawah.
+        if (! $hasPhoto && $this->adaWizardRequest((string) $chatId)) {
+            $this->sendChatAction($chatId);
+            $response = $this->sparepartRequestWizard->handleText((string) $chatId, $text);
+            $this->dispatchWizardResponse($chatId, $response);
+            return;
+        }
+
         // Routing foto
         if ($hasPhoto) {
             $this->handlePhotoMessage($chatId, $message, $technician, $caption, $message['media_group_id'] ?? null);
@@ -182,11 +197,16 @@ trait TelegramMessageHandlerTrait
      */
     private function handleResetCommand(int|string $chatId): void
     {
-        $adaSesi = $this->reportWizard->hasActiveWizard((string) $chatId);
+        $adaSesi    = $this->reportWizard->hasActiveWizard((string) $chatId);
+        $adaRequest = $this->adaWizardRequest((string) $chatId);
 
         $this->reportWizard->destroyWizard((string) $chatId);
 
-        if (!$adaSesi) {
+        if ($adaRequest) {
+            $this->sparepartRequestWizard->destroy((string) $chatId);
+        }
+
+        if (!$adaSesi && !$adaRequest) {
             $this->sendMessage($chatId, 'Tidak ada sesi laporan yang aktif. Kirim pesan atau foto untuk memulai laporan baru.');
 
             return;
@@ -194,7 +214,19 @@ trait TelegramMessageHandlerTrait
 
         Log::info('TelegramMessageHandler: sesi wizard direset lewat perintah /reset', [
             'chat_id' => (string) $chatId,
+            'laporan' => $adaSesi,
+            'request' => $adaRequest,
         ]);
+
+        if ($adaSesi && $adaRequest) {
+            $this->sendMessage($chatId, 'Sesi laporan dan request spare part dibatalkan. Kirim pesan untuk memulai laporan baru atau /req untuk request spare part.');
+            return;
+        }
+
+        if ($adaRequest) {
+            $this->sendMessage($chatId, 'Sesi request spare part dibatalkan. Kirim /req untuk membuat request baru.');
+            return;
+        }
 
         $this->sendMessage($chatId, 'Sesi laporan dibatalkan. Kirim pesan atau foto untuk memulai laporan baru.');
     }
@@ -209,6 +241,15 @@ trait TelegramMessageHandlerTrait
      */
     private function handleLaporanCommand(int|string $chatId, Technician $technician, string $deskripsi): void
     {
+        if ($this->adaWizardRequest((string) $chatId)) {
+            $this->sendMessage(
+                $chatId,
+                'Selesaikan atau batalkan request spare part dulu dengan /reset sebelum membuat laporan.'
+            );
+
+            return;
+        }
+
         $kunci = 'laporan-tautan:' . $technician->id;
 
         if (! Cache::add($kunci, true, now()->addSeconds(10))) {
@@ -229,6 +270,39 @@ trait TelegramMessageHandlerTrait
         }
 
         $this->sendMessage($chatId, $pesan, ['disable_web_page_preview' => true]);
+    }
+
+    /**
+     * Mulai wizard request spare part dari perintah /req.
+     *
+     * Request ditolak sementara bila wizard laporan sedang aktif supaya teks
+     * teknisi tidak dibaca oleh dua sesi sekaligus.
+     *
+     * @param  int|string $chatId     ID chat Telegram
+     * @param  Technician $technician Teknisi pengirim
+     * @param  string     $keterangan Teks setelah /req
+     * @return void
+     */
+    private function handleRequestSparepart(int|string $chatId, Technician $technician, string $keterangan): void
+    {
+        if (! isset($this->sparepartRequestWizard)) {
+            $this->sendMessage($chatId, 'Fitur request spare part belum tersedia. Hubungi admin.');
+
+            return;
+        }
+
+        if ($this->reportWizard->hasActiveWizard((string) $chatId)) {
+            $this->sendMessage(
+                $chatId,
+                'Selesaikan atau batalkan laporan yang sedang berjalan dengan /reset sebelum membuat request spare part.'
+            );
+
+            return;
+        }
+
+        $this->sendChatAction($chatId);
+        $response = $this->sparepartRequestWizard->mulai((string) $chatId, $technician, $keterangan);
+        $this->dispatchWizardResponse($chatId, $response);
     }
 
     /**
@@ -270,7 +344,21 @@ trait TelegramMessageHandlerTrait
             return;
         }
 
-        // A) Wizard aktif — download & teruskan ke wizard
+        // A) Wizard request spare part aktif — simpan foto ke folder request.
+        if ($this->adaWizardRequest((string) $chatId)) {
+            $path = $this->photoStorage->store($fileId, (string) $chatId, 'sparepart-requests');
+
+            if ($path === null) {
+                $this->sendMessage($chatId, 'Gagal menyimpan foto. Coba kirim ulang atau ketik - untuk melewati.');
+                return;
+            }
+
+            $response = $this->sparepartRequestWizard->handleFoto((string) $chatId, $path);
+            $this->kirimAtauTahanResponsFoto($chatId, $mediaGroupId, $response);
+            return;
+        }
+
+        // B) Wizard laporan aktif — download & teruskan ke wizard
         if ($this->reportWizard->hasActiveWizard((string) $chatId)) {
             $path = $this->photoStorage->store($fileId, (string) $chatId);
 
@@ -468,6 +556,21 @@ trait TelegramMessageHandlerTrait
             $successMessage = $response['success_message'] ?? $response['message'] ?? "Laporan tersimpan.";
             $this->sendMessage($chatId, $successMessage);
         }
+    }
+
+    /**
+     * Apakah wizard request spare part aktif untuk chat ini.
+     *
+     * Pemeriksaan isset membuat trait tetap aman dipakai kelas uji yang hanya
+     * menguji sebagian alur pesan.
+     *
+     * @param  string $chatId
+     * @return bool
+     */
+    private function adaWizardRequest(string $chatId): bool
+    {
+        return isset($this->sparepartRequestWizard)
+            && $this->sparepartRequestWizard->hasActive($chatId);
     }
 
     /**

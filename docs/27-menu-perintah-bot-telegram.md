@@ -15,8 +15,9 @@ oleh klien Telegram secara native, bukan popup buatan aplikasi.
 |---|---|
 | `/start` | Mulai bot / daftar teknisi |
 | `/laporan` | Buat laporan lewat form web |
+| `/req` | Request spare part |
 | `/info` | Cari informasi perangkat |
-| `/reset` | Batalkan sesi laporan |
+| `/reset` | Batalkan sesi laporan atau request |
 
 `/cuti` tidak ditampilkan di menu; handler info cuti tetap ada bila command
 dikirim manual. `/stok` dan `/settings` tidak dimasukkan karena belum ada
@@ -40,6 +41,14 @@ tersedia.
 - Token diambil dari `services.telegram.bot_token`; tanpa token tidak ada
   request ke Telegram.
 
+## Request spare part
+
+- `/req` memakai `SparepartRequestWizardService` dengan state cache
+  `sparepart_request_wizard:<chat_id>` (TTL 1 jam, basi setelah 30 menit).
+- Tombol inline memakai callback prefix `spr:` dan hanya dilayani jalur
+  polling. Jalur webhook tetap bisa memakai teks `KIRIM`/`BATAL`.
+- `/reset` membatalkan sesi request (dan sesi laporan bila ada).
+
 ## Berkas
 
 - `app/Services/TelegramService.php`
@@ -48,6 +57,8 @@ tersedia.
 - `resources/views/bot/index.blade.php`
 - `routes/web.php`
 - `tests/Feature/TelegramMenuTest.php`
+- `app/Services/Telegram/SparepartRequestWizardService.php`
+- `docs/30-request-sparepart.md`
 
 ## Uji
 

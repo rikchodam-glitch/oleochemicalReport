@@ -185,6 +185,24 @@ class User extends Authenticatable
     }
 
     /**
+     * Apakah akun ini boleh mengelola request spare part.
+     *
+     * Alur utama adalah Bagian CM/PM dengan Group Reguler Staff. Administrator
+     * dan Supervisor tetap boleh karena memiliki akses penuh.
+     *
+     * @return bool
+     */
+    public function bolehKelolaRequestSparepart(): bool
+    {
+        if ($this->aksesPenuh()) {
+            return true;
+        }
+
+        return $this->kodeBagian() === 'cm_pm'
+            && $this->grupBagian() === 'reguler_staff';
+    }
+
+    /**
      * Apakah akun ini boleh memakai metode tulis pada route tertentu.
      *
      * Administrator selalu boleh. Selain itu hanya route yang termasuk

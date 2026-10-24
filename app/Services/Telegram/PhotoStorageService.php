@@ -51,11 +51,12 @@ class PhotoStorageService
     /**
      * Download foto dari Telegram berdasarkan file_id dan simpan ke Storage.
      *
-     * @param  string $fileId  File ID Telegram (dari message.photo[].file_id)
-     * @param  string $chatId  Chat ID — dipakai sebagai subfolder
-     * @return string|null     Path relatif di Storage, atau null jika gagal
+     * @param  string      $fileId  File ID Telegram (dari message.photo[].file_id)
+     * @param  string      $chatId  Chat ID — dipakai sebagai subfolder
+     * @param  string|null $folder  Subfolder root alternatif (null = folder bawaan)
+     * @return string|null          Path relatif di Storage, atau null jika gagal
      */
-    public function store(string $fileId, string $chatId): ?string
+    public function store(string $fileId, string $chatId, ?string $folder = null): ?string
     {
         try {
             // 1. Resolve URL download dari Telegram
@@ -82,7 +83,7 @@ class PhotoStorageService
             //    teknisi mengirim ulang foto yang sama. Path yang sudah ada
             //    dipakai ulang tanpa menulis file baru.
             $hash = md5($content);
-            $path = $this->buildPath($chatId, $fileUrl, $hash);
+            $path = $this->buildPath($chatId, $fileUrl, $hash, $folder);
 
             if (!Storage::disk($this->disk)->exists($path)) {
                 Storage::disk($this->disk)->put($path, $content);
@@ -109,15 +110,16 @@ class PhotoStorageService
      * Download dan simpan beberapa foto sekaligus.
      * File ID yang gagal dilewati (tidak membatalkan seluruh batch).
      *
-     * @param  array  $fileIds  Array of file_id string
-     * @param  string $chatId
-     * @return array  Array of path string (hanya yang berhasil)
+     * @param  array       $fileIds Array of file_id string
+     * @param  string      $chatId
+     * @param  string|null $folder  Subfolder root alternatif (null = folder bawaan)
+     * @return array                Array of path string (hanya yang berhasil)
      */
-    public function storeMany(array $fileIds, string $chatId): array
+    public function storeMany(array $fileIds, string $chatId, ?string $folder = null): array
     {
         $paths = [];
         foreach ($fileIds as $fileId) {
-            $path = $this->store($fileId, $chatId);
+            $path = $this->store($fileId, $chatId, $folder);
             if ($path !== null) {
                 $paths[] = $path;
             }
@@ -307,12 +309,13 @@ class PhotoStorageService
      * Nama file memakai hash konten (md5) supaya foto yang sama menghasilkan
      * path yang sama — mencegah file kembar saat satu update terproses dua kali.
      *
-     * @param  string  $chatId     Chat ID pengirim (subfolder)
-     * @param  string  $sourceUrl  URL sumber Telegram (dipakai untuk ekstensi)
-     * @param  string  $hash       Hash konten foto (md5)
-     * @return string  Path relatif di dalam disk
+     * @param  string      $chatId    Chat ID pengirim (subfolder)
+     * @param  string      $sourceUrl URL sumber Telegram (dipakai untuk ekstensi)
+     * @param  string      $hash      Hash konten foto (md5)
+     * @param  string|null $folder    Subfolder root alternatif (null = folder bawaan)
+     * @return string                 Path relatif di dalam disk
      */
-    protected function buildPath(string $chatId, string $sourceUrl, string $hash = ''): string
+    protected function buildPath(string $chatId, string $sourceUrl, string $hash = '', ?string $folder = null): string
     {
         $now      = now();
         $year     = $now->format('Y');
@@ -330,6 +333,8 @@ class PhotoStorageService
 
         $filename = $hash !== '' ? 'photo_' . $hash . '.' . $ext : uniqid('photo_', true) . '.' . $ext;
 
-        return "{$this->rootFolder}/{$year}/{$month}/{$day}/{$safeChatId}/{$filename}";
+        $root = $folder !== null && trim($folder) !== '' ? trim($folder, '/') : $this->rootFolder;
+
+        return "{$root}/{$year}/{$month}/{$day}/{$safeChatId}/{$filename}";
     }
 }
