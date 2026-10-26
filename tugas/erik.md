@@ -1,19 +1,17 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-26 08:51 WIB
+Diperbarui: 2026-10-26 09:25 WIB
 
-- Cabang aktif: `tugas/erik/navigasi-kembali-request-sparepart`
-- Mulai: 2026-10-26 08:51
+- Cabang aktif: `tugas/erik/hapus-start-dari-menu-bot`
+- Mulai: 2026-10-26 09:25
 - Status: SELESAI DIUJI, SIAP PR
 - Modul/berkas yang disentuh:
-  - Pastikan `/req` terdaftar di menu Telegram dan dijaga tes
-  - Tombol Kembali/Batalkan di setiap tahap wizard request spare part; edit isian tanpa kehilangan data
-  - `app/Services/Telegram/SparepartRequestWizardService.php`
-  - `tests/Feature/SparepartRequestTelegramTest.php`
+  - Hapus `/start` dari menu command Telegram; handler `/start` tetap ada untuk pendaftaran teknisi
+  - `app/Services/TelegramService.php`
+  - `app/Console/Commands/TelegramSetCommands.php`
   - `tests/Feature/TelegramMenuTest.php`
   - `docs/27-menu-perintah-bot-telegram.md`
-  - `docs/30-request-sparepart.md`
-- Catatan: Kembali dari konfirmasi membuka langkah foto; melewati foto menghapus foto lama. Teks KEMBALI/BACK/UBAH juga dikenali. 28 test request hijau, 103 assertions; seluruh suite 766 test hijau, 3.780 assertions; `view:cache` sukses.
+- Catatan: Menu bot live sudah disinkronkan tanpa `/start`. `TelegramMenuTest` 3 test hijau, 7 assertions; seluruh suite 766 test hijau, 3.780 assertions.
 
 ## Riwayat
-- tugas/erik/hapus-request-sparepart-belum-pr (mulai 2026-10-26 08:28) -> dilanjutkan 2026-10-26 08:51
+- tugas/erik/navigasi-kembali-request-sparepart (mulai 2026-10-26 08:51) -> dilanjutkan 2026-10-26 09:25
