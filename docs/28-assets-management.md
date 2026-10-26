@@ -36,6 +36,8 @@ Dokumen ini mencatat perubahan halaman Assets Management (22/10/2026).
   dihapus dari disk `public`.
 - Foto disimpan di `assets/photos/{asset_id}`.
 - Menghapus asset ikut menghapus seluruh file fotonya.
+- Import massal dokumentasi dari folder (dry-run/apply, laporan, pencocokan
+  tag) dijelaskan di `docs/31-import-dokumentasi-asset.md`.
 
 ## Sinkronisasi CM ke Assets
 
