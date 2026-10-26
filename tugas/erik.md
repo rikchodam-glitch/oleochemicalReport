@@ -1,21 +1,19 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-26 08:28 WIB
+Diperbarui: 2026-10-26 08:51 WIB
 
-- Cabang aktif: `tugas/erik/hapus-request-sparepart-belum-pr`
-- Mulai: 2026-10-26 08:28
+- Cabang aktif: `tugas/erik/navigasi-kembali-request-sparepart`
+- Mulai: 2026-10-26 08:51
 - Status: SELESAI DIUJI, SIAP PR
 - Modul/berkas yang disentuh:
-  - Hapus request Spare Part yang belum punya PR (menunggu, disetujui, ditolak)
-  - `app/Models/SpRequest.php`
-  - `app/Services/Sparepart/SparepartRequestService.php`
-  - `app/Http/Controllers/SparepartRequestController.php`
-  - `resources/views/sparepart/request/partials/_pengajuan.blade.php`
-  - `resources/views/sparepart/request/partials/_tombol-hapus.blade.php`
-  - `config/akses.php`, `routes/web.php`
-  - `tests/Feature/SparepartRequestWebTest.php`
+  - Pastikan `/req` terdaftar di menu Telegram dan dijaga tes
+  - Tombol Kembali/Batalkan di setiap tahap wizard request spare part; edit isian tanpa kehilangan data
+  - `app/Services/Telegram/SparepartRequestWizardService.php`
+  - `tests/Feature/SparepartRequestTelegramTest.php`
+  - `tests/Feature/TelegramMenuTest.php`
+  - `docs/27-menu-perintah-bot-telegram.md`
   - `docs/30-request-sparepart.md`
-- Catatan: Request dengan PR/PO tidak bisa dihapus; foto ikut dihapus. 23 test request hijau, 81 assertions; seluruh suite 761 test hijau, 3.758 assertions; `view:cache` sukses.
+- Catatan: Kembali dari konfirmasi membuka langkah foto; melewati foto menghapus foto lama. Teks KEMBALI/BACK/UBAH juga dikenali. 28 test request hijau, 103 assertions; seluruh suite 766 test hijau, 3.780 assertions; `view:cache` sukses.
 
 ## Riwayat
-- tugas/erik/request-sparepart-telegram (mulai 2026-10-24 10:17) -> dilanjutkan 2026-10-26 08:28
+- tugas/erik/hapus-request-sparepart-belum-pr (mulai 2026-10-26 08:28) -> dilanjutkan 2026-10-26 08:51

@@ -44,9 +44,23 @@ mengikuti pola `Report::generateReportCode()`.
 3. Bot menanyakan jumlah (wajib, angka).
 4. Bot menanyakan satuan (opsional, ketik `-` untuk lewati).
 5. Bot meminta foto (opsional; kirim foto atau ketik `-`).
-6. Bot menampilkan ringkasan dan tombol **Kirim** / **Batalkan**. Teks `KIRIM`
-   atau `BATAL` juga dikenali sebagai fallback jalur webhook.
+6. Bot menampilkan ringkasan dan tombol **Kembali** / **Kirim** / **Batalkan**.
+   Teks `KEMBALI`, `KIRIM`, atau `BATAL` juga dikenali sebagai fallback jalur
+   webhook.
 7. Setelah dikonfirmasi, request disimpan dengan status `menunggu`.
+
+### Navigasi dan edit isian
+
+- Setiap langkah setelah keterangan menampilkan tombol **Kembali** dan
+  **Batalkan**.
+- Tombol **Kembali** mengembalikan teknisi ke langkah sebelumnya TANPA
+  menghapus isian yang sudah ada, sehingga keterangan, ukuran, jumlah, satuan,
+  atau foto bisa diubah lalu dilanjutkan kembali.
+- Prompt langkah yang dibuka ulang menampilkan nilai saat ini agar teknisi tahu
+  isian yang akan diubah.
+- Kembali dari konfirmasi membuka langkah foto. Jika teknisi memilih melewati
+  foto, foto lama yang tersimpan di sesi ikut dihapus.
+- Teks `KEMBALI`, `BACK`, atau `UBAH` juga berfungsi sebagai tombol kembali.
 
 State wizard disimpan di cache per chat (`sparepart_request_wizard:<chat_id>`,
 TTL 1 jam) dan dibatalkan otomatis setelah 30 menit tanpa jawaban. `/reset`
@@ -145,9 +159,9 @@ ada bila akun/teknisi dihapus.
 
 ## Uji
 
-- `php artisan test --filter=SparepartRequest`: **23 test hijau,
-  81 assertions**.
-- Seluruh suite: **761 test hijau, 3.758 assertions**.
+- `php artisan test --filter=SparepartRequest`: **28 test hijau,
+  103 assertions**.
+- Seluruh suite: **766 test hijau, 3.780 assertions**.
 - `php artisan view:cache` sukses.
 - Migrasi DEV `2026_10_24_000001_create_sp_requests_table` sudah dijalankan.
 

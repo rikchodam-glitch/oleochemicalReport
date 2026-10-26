@@ -29,6 +29,7 @@ test('service mendaftarkan command dan menu button default', function () {
         $daftar = collect($request['commands']);
 
         return $daftar->contains(fn ($command) => $command['command'] === 'laporan')
+            && $daftar->contains(fn ($command) => $command['command'] === 'req')
             && ! $daftar->contains(fn ($command) => $command['command'] === 'cuti');
     });
 

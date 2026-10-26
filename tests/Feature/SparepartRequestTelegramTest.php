@@ -219,3 +219,104 @@ test('/req ditolak saat wizard laporan sedang aktif', function () {
 
     Http::assertSent(fn ($http) => str_contains((string) ($http['text'] ?? ''), 'Selesaikan atau batalkan laporan'));
 });
+
+/**
+ * Apakah respons wizard memuat tombol dengan callback tertentu.
+ *
+ * @param  array<string, mixed> $respons
+ * @param  string               $callback
+ * @return bool
+ */
+function responsPunyaTombol(array $respons, string $callback): bool
+{
+    foreach (($respons['keyboard'] ?? []) as $tombol) {
+        if (($tombol['callback_data'] ?? null) === $callback) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+test('tombol kembali tersedia di setiap tahap setelah keterangan', function () {
+    $respons = $this->wizard->mulai('91001', $this->pemohon, 'Seal pompa bocor');
+    expect(responsPunyaTombol($respons, 'spr:kembali'))->toBeTrue();
+
+    $respons = $this->wizard->handleText('91001', '25 mm');
+    expect(responsPunyaTombol($respons, 'spr:kembali'))->toBeTrue();
+
+    $respons = $this->wizard->handleText('91001', '2');
+    expect(responsPunyaTombol($respons, 'spr:kembali'))->toBeTrue();
+
+    $respons = $this->wizard->handleText('91001', 'pcs');
+    expect(responsPunyaTombol($respons, 'spr:kembali'))->toBeTrue();
+
+    $respons = $this->wizard->handleText('91001', '-');
+    expect(responsPunyaTombol($respons, 'spr:kembali'))->toBeTrue()
+        ->and(responsPunyaTombol($respons, 'spr:kirim'))->toBeTrue()
+        ->and(responsPunyaTombol($respons, 'spr:batal'))->toBeTrue();
+});
+
+test('langkah keterangan tidak menampilkan tombol kembali', function () {
+    $respons = $this->wizard->mulai('91001', $this->pemohon);
+
+    expect(responsPunyaTombol($respons, 'spr:kembali'))->toBeFalse()
+        ->and(responsPunyaTombol($respons, 'spr:batal'))->toBeTrue();
+});
+
+test('tombol kembali memungkinkan teknisi mengubah ukuran dan jumlah', function () {
+    $this->wizard->mulai('91001', $this->pemohon, 'Seal pompa bocor');
+    $this->wizard->handleText('91001', '25 mm');
+
+    $respons = $this->wizard->handleCallback('91001', 'spr:kembali');
+    expect($respons['message'])->toContain('Ukuran saat ini')
+        ->and($this->wizard->getState('91001')['step'])->toBe(SparepartRequestWizardService::STEP_UKURAN);
+
+    $this->wizard->handleText('91001', '30 mm');
+    $this->wizard->handleText('91001', '5');
+
+    $respons = $this->wizard->handleCallback('91001', 'spr:kembali');
+    expect($respons['message'])->toContain('Jumlah saat ini')
+        ->and($this->wizard->getState('91001')['step'])->toBe(SparepartRequestWizardService::STEP_JUMLAH);
+
+    $this->wizard->handleText('91001', '7');
+    $this->wizard->handleText('91001', 'pcs');
+    $this->wizard->handleText('91001', '-');
+    $this->wizard->handleCallback('91001', 'spr:kirim');
+
+    $request = SpRequest::query()->firstOrFail();
+
+    expect($request->deskripsi_ukuran)->toBe('30 mm')
+        ->and($request->jumlah)->toBe(7.0)
+        ->and($request->satuan)->toBe('pcs');
+});
+
+test('kembali dari konfirmasi ke foto lalu melewati foto menghapus foto lama', function () {
+    $path = 'sparepart-requests/2026/10/24/91001/back.jpg';
+    Storage::disk('telegram_photos')->put($path, 'foto');
+
+    isiWizardSampaiKonfirmasi($this->wizard, '91001', $path);
+
+    $respons = $this->wizard->handleCallback('91001', 'spr:kembali');
+
+    expect($respons['message'])->toContain('Foto saat ini: ada')
+        ->and($this->wizard->getState('91001')['step'])->toBe(SparepartRequestWizardService::STEP_FOTO);
+
+    $respons = $this->wizard->handleText('91001', '-');
+
+    expect($respons['message'])->toContain('Periksa request')
+        ->and(Storage::disk('telegram_photos')->exists($path))->toBeFalse();
+
+    $this->wizard->handleCallback('91001', 'spr:kirim');
+
+    expect(SpRequest::query()->firstOrFail()->foto_path)->toBeNull();
+});
+
+test('teks KEMBALI juga berfungsi sebagai tombol kembali', function () {
+    $this->wizard->mulai('91001', $this->pemohon, 'Seal pompa bocor');
+    $this->wizard->handleText('91001', '25 mm');
+
+    $this->wizard->handleText('91001', 'KEMBALI');
+
+    expect($this->wizard->getState('91001')['step'])->toBe(SparepartRequestWizardService::STEP_UKURAN);
+});
