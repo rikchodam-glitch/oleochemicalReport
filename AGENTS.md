@@ -79,6 +79,7 @@ Semua berkas di bawah ini ada di `docs/`.
 | [28-assets-management.md](docs/28-assets-management.md) | Pencarian live, detail via klik, foto equipment, ringkasan CM, sinkronisasi CM | Mengubah halaman Assets Management atau sinkronisasi CM |
 | [29-hierarki-lokasi-dropdown.md](docs/29-hierarki-lokasi-dropdown.md) | Opsi PT/Dept/Area/SubArea dari Functional Location untuk Assets, Teknisi, Laporan, Bot | Mengubah dropdown/filter lokasi |
 | [30-request-sparepart.md](docs/30-request-sparepart.md) | Request spare part lewat bot Telegram, tab Request di halaman Sparepart, status PR/PO/delivery, hak akses Staff CM/PM | Menyentuh request spare part, bot `/req`, atau halaman request |
+| [31-import-dokumentasi-asset.md](docs/31-import-dokumentasi-asset.md) | Import dokumentasi foto equipment ke assets.photos: dry-run/apply, pencocokan folder/file, laporan, lokasi D: PROD | Mengimpor atau memeriksa dokumentasi foto aset |
 
 ## Dokumen pendukung di `docs/`
 
