@@ -15,7 +15,7 @@ class TelegramSetCommands extends Command
 {
     protected $signature = 'telegram:set-commands';
 
-    protected $description = 'Daftarkan command /start, /laporan, /info, /cuti, /reset ke menu bot Telegram';
+    protected $description = 'Sinkronkan daftar command bot Telegram ke menu';
 
     public function handle(TelegramService $telegram): int
     {
