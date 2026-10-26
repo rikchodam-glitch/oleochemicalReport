@@ -103,19 +103,25 @@
                                             class="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50">
                                         Tolak
                                     </button>
+                                    @include('sparepart.request.partials._tombol-hapus', ['row' => $row])
                                 </div>
                             @elseif($row->status === \App\Models\SpRequest::STATUS_DISETUJUI)
-                                <form method="POST" action="{{ route('sparepart.request.pr', $row) }}"
-                                      class="flex flex-wrap items-center gap-1.5">
-                                    @csrf
-                                    <input name="pr_no" required maxlength="50" placeholder="Nomor PR"
-                                           value="{{ old('pr_no') }}"
-                                           class="w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-teal-400">
-                                    <button type="submit"
-                                            class="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700">
-                                        Simpan PR
-                                    </button>
-                                </form>
+                                <div class="flex flex-wrap items-start gap-1.5">
+                                    <form method="POST" action="{{ route('sparepart.request.pr', $row) }}"
+                                          class="flex flex-wrap items-center gap-1.5">
+                                        @csrf
+                                        <input name="pr_no" required maxlength="50" placeholder="Nomor PR"
+                                               value="{{ old('pr_no') }}"
+                                               class="w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-teal-400">
+                                        <button type="submit"
+                                                class="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700">
+                                            Simpan PR
+                                        </button>
+                                    </form>
+                                    @include('sparepart.request.partials._tombol-hapus', ['row' => $row])
+                                </div>
+                            @elseif($row->status === \App\Models\SpRequest::STATUS_DITOLAK)
+                                @include('sparepart.request.partials._tombol-hapus', ['row' => $row])
                             @else
                                 <span class="text-xs text-slate-400">-</span>
                             @endif

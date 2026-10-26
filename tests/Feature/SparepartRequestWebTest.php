@@ -275,6 +275,69 @@ test('nomor PR wajib diisi dan status tidak berubah bila kosong', function () {
     ]);
 });
 
+test('Staff CM/PM dapat menghapus request yang belum punya PR beserta fotonya', function () {
+    $path = 'sparepart-requests/hapus.jpg';
+    Storage::disk('telegram_photos')->put($path, 'foto');
+
+    $request = buatSpRequestUji($this->pemohon, [
+        'foto_path' => $path,
+    ]);
+
+    $this->actingAs($this->staff)
+        ->delete(route('sparepart.request.destroy', $request))
+        ->assertRedirect();
+
+    $this->assertDatabaseMissing('sp_requests', ['id' => $request->id]);
+    expect(Storage::disk('telegram_photos')->exists($path))->toBeFalse();
+});
+
+test('request disetujui dan ditolak juga bisa dihapus', function () {
+    foreach ([SpRequest::STATUS_DISETUJUI, SpRequest::STATUS_DITOLAK] as $status) {
+        $request = buatSpRequestUji($this->pemohon, ['status' => $status]);
+
+        $this->actingAs($this->staff)
+            ->delete(route('sparepart.request.destroy', $request))
+            ->assertRedirect();
+
+        $this->assertDatabaseMissing('sp_requests', ['id' => $request->id]);
+    }
+});
+
+test('request yang sudah punya PR tidak bisa dihapus', function () {
+    $request = buatSpRequestUji($this->pemohon, [
+        'status' => SpRequest::STATUS_KEJAR_PO,
+        'pr_no'  => 'PR-HAPUS-1',
+        'pr_at'  => now(),
+    ]);
+
+    $this->actingAs($this->staff)
+        ->delete(route('sparepart.request.destroy', $request))
+        ->assertRedirect()
+        ->assertSessionHas('error');
+
+    $this->assertDatabaseHas('sp_requests', ['id' => $request->id]);
+});
+
+test('Reguler Staff dari Bagian lain tidak boleh menghapus request', function () {
+    $request = buatSpRequestUji($this->pemohon);
+
+    $this->actingAs($this->staffLain)
+        ->delete(route('sparepart.request.destroy', $request))
+        ->assertForbidden();
+
+    $this->assertDatabaseHas('sp_requests', ['id' => $request->id]);
+});
+
+test('teknisi biasa tidak boleh menghapus request', function () {
+    $request = buatSpRequestUji($this->pemohon);
+
+    $this->actingAs($this->reguler)
+        ->delete(route('sparepart.request.destroy', $request))
+        ->assertForbidden();
+
+    $this->assertDatabaseHas('sp_requests', ['id' => $request->id]);
+});
+
 test('notifikasi status disetujui dikirim ke teknisi pemohon', function () {
     config(['services.telegram.bot_token' => 'token-uji-web']);
 

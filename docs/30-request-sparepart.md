@@ -65,11 +65,23 @@ Tab Request hanya tampil untuk pengguna yang punya modul `sparepart_request`.
 Sub-tab:
 
 - **Pengajuan**: filter Menunggu/Disetujui/Ditolak/Semua. Request menunggu
-  punya tombol Setujui/Tolak; request disetujui punya input nomor PR.
+  punya tombol Setujui/Tolak; request disetujui punya input nomor PR; request
+  yang belum punya PR punya tombol hapus.
 - **Kejar PO**: tabel collapsible **Daftar PR Menunggu PO** di bagian atas
   (input nomor PO per baris), lalu daftar lengkap dengan pencarian/pagination.
 - **Kejar Delivery**: daftar PO menunggu barang dan tombol **Barang diterima**.
 - **Selesai**: arsip request yang sudah diterima.
+
+### Hapus request
+
+- Request boleh dihapus selama belum punya nomor PR, yaitu status `menunggu`,
+  `disetujui`, atau `ditolak`.
+- Request yang sudah masuk `kejar_po`, `kejar_delivery`, atau `selesai` tidak
+  bisa dihapus karena sudah menjadi riwayat pengadaan.
+- Penghapusan hanya bisa dilakukan Staff CM/PM (atau Administrator/Supervisor)
+  dan ikut menghapus berkas foto request.
+- Tombol hapus berupa ikon tempat sampah di kolom Aksi tab Pengajuan dan
+  meminta konfirmasi sebelum menghapus.
 
 Pencarian mencakup kode, keterangan, nama/NIK teknisi, nomor PR, dan nomor PO.
 Filter tanggal memakai `created_at`.
@@ -133,9 +145,9 @@ ada bila akun/teknisi dihapus.
 
 ## Uji
 
-- `php artisan test --filter=SparepartRequest`: **18 test hijau,
-  67 assertions**.
-- Seluruh suite: **756 test hijau, 3.744 assertions**.
+- `php artisan test --filter=SparepartRequest`: **23 test hijau,
+  81 assertions**.
+- Seluruh suite: **761 test hijau, 3.758 assertions**.
 - `php artisan view:cache` sukses.
 - Migrasi DEV `2026_10_24_000001_create_sp_requests_table` sudah dijalankan.
 
@@ -152,7 +164,8 @@ ada bila akun/teknisi dihapus.
 
 ## Batasan versi ini
 
-- Belum ada edit/hapus request atau pembatalan oleh teknisi.
+- Belum ada edit request atau pembatalan oleh teknisi; hapus hanya oleh
+  Staff CM/PM dan hanya selama request belum punya PR.
 - Belum ada partial delivery; satu tombol Barang diterima menutup request.
 - Satu request hanya satu foto dan satu nomor PR/PO.
 - Belum terhubung ke kode material/daftar pantau atau equipment.
