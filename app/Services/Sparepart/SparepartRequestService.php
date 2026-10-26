@@ -179,6 +179,26 @@ class SparepartRequestService
     }
 
     /**
+     * Hapus request yang belum punya nomor PR.
+     *
+     * Request yang sudah masuk Kejar PO, Kejar Delivery, atau Selesai tidak
+     * boleh dihapus karena sudah menjadi riwayat pengadaan.
+     *
+     * @param  SpRequest $request
+     * @return bool
+     */
+    public function hapus(SpRequest $request): bool
+    {
+        if (! $request->bisaDihapus()) {
+            return false;
+        }
+
+        $request->delete();
+
+        return true;
+    }
+
+    /**
      * Segarkan model dan kirim notifikasi bila perubahan status berhasil.
      *
      * @param  SpRequest $request

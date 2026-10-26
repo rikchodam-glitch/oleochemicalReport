@@ -352,6 +352,7 @@ Route::post('/assets/unlinked-funcloc/run-sync', [AssetController::class, 'runAu
     Route::post('/sparepart/request/{spRequest}/pr', [SparepartRequestController::class, 'pr'])->name('sparepart.request.pr');
     Route::post('/sparepart/request/{spRequest}/po', [SparepartRequestController::class, 'po'])->name('sparepart.request.po');
     Route::post('/sparepart/request/{spRequest}/terima', [SparepartRequestController::class, 'terima'])->name('sparepart.request.terima');
+    Route::delete('/sparepart/request/{spRequest}', [SparepartRequestController::class, 'destroy'])->name('sparepart.request.destroy');
 
     // Daftar pantau: sumber populasi halaman di atas, dapat diimpor maupun
     // diedit manual (tambah/ubah/hapus).

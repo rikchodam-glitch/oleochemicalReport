@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -35,6 +36,15 @@ class SpRequest extends Model
         self::STATUS_KEJAR_PO       => 'Kejar PO',
         self::STATUS_KEJAR_DELIVERY => 'Kejar Delivery',
         self::STATUS_SELESAI        => 'Selesai',
+    ];
+
+    /**
+     * Status request yang belum punya nomor PR sehingga boleh dihapus.
+     */
+    public const STATUS_TANPA_PR = [
+        self::STATUS_MENUNGGU,
+        self::STATUS_DISETUJUI,
+        self::STATUS_DITOLAK,
     ];
 
     protected $fillable = [
@@ -77,6 +87,47 @@ class SpRequest extends Model
             'po_at'        => 'datetime',
             'received_at'  => 'datetime',
         ];
+    }
+
+    /**
+     * Hapus foto request bersama barisnya.
+     *
+     * Foto request tidak dipakai baris lain. Kegagalan hapus berkas hanya
+     * dicatat supaya penghapusan data tetap berhasil.
+     *
+     * @return void
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (SpRequest $request): void {
+            if ($request->foto_path === null || $request->foto_path === '') {
+                return;
+            }
+
+            try {
+                Storage::disk(config('telegram.photo_disk', 'telegram_photos'))->delete($request->foto_path);
+            } catch (\Throwable $galat) {
+                Log::warning('SpRequest: gagal menghapus foto request', [
+                    'id'    => $request->id,
+                    'foto'  => $request->foto_path,
+                    'error' => $galat->getMessage(),
+                ]);
+            }
+        });
+    }
+
+    /**
+     * Apakah request boleh dihapus.
+     *
+     * Hanya request yang belum punya PR (menunggu, disetujui, atau ditolak)
+     * yang boleh dihapus. Request yang sudah masuk Kejar PO/Delivery/Selesai
+     * harus dipertahankan sebagai riwayat.
+     *
+     * @return bool
+     */
+    public function bisaDihapus(): bool
+    {
+        return in_array($this->status, self::STATUS_TANPA_PR, true);
     }
 
     /**

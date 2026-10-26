@@ -243,6 +243,33 @@ class SparepartRequestController extends Controller
     }
 
     /**
+     * Hapus request yang belum punya nomor PR.
+     *
+     * Hanya request pada tahap Pengajuan (menunggu, disetujui, ditolak) yang
+     * boleh dihapus. Request yang sudah masuk Kejar PO/Delivery/Selesai
+     * dipertahankan sebagai riwayat pengadaan.
+     *
+     * @param  Request   $request
+     * @param  SpRequest $spRequest
+     * @return RedirectResponse
+     */
+    public function destroy(Request $request, SpRequest $spRequest): RedirectResponse
+    {
+        $this->pastikanBolehKelola($request);
+
+        $kode = $spRequest->kode;
+
+        if (! $this->layanan->hapus($spRequest)) {
+            return back()->with(
+                'error',
+                'Request ' . $kode . ' sudah memiliki PR/PO sehingga tidak bisa dihapus.'
+            );
+        }
+
+        return back()->with('success', 'Request ' . $kode . ' dihapus.');
+    }
+
+    /**
      * Status yang dipakai untuk tab aktif.
      *
      * @param  string $tab

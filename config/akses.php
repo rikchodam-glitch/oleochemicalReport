@@ -234,6 +234,7 @@ return [
             'sparepart.request.pr',
             'sparepart.request.po',
             'sparepart.request.terima',
+            'sparepart.request.destroy',
         ],
         'cm_sync' => [
             'cm.sync-google-sheets',
