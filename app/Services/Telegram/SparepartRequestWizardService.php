@@ -27,6 +27,17 @@ class SparepartRequestWizardService
     public const STEP_KONFIRMASI = 'konfirmasi';
 
     /**
+     * Langkah sebelumnya untuk tombol Kembali.
+     */
+    private const STEP_SEBELUMNYA = [
+        self::STEP_UKURAN     => self::STEP_KETERANGAN,
+        self::STEP_JUMLAH     => self::STEP_UKURAN,
+        self::STEP_SATUAN     => self::STEP_JUMLAH,
+        self::STEP_FOTO       => self::STEP_SATUAN,
+        self::STEP_KONFIRMASI => self::STEP_FOTO,
+    ];
+
+    /**
      * Batas diam sesi request sebelum dianggap basi (menit).
      */
     private const BATAS_IDLE_MENIT = 30;
@@ -108,6 +119,10 @@ class SparepartRequestWizardService
 
         $teks = trim($text);
 
+        if ($this->perintahKembali($teks)) {
+            return $this->kembali($chatId, $state);
+        }
+
         if ($state['step'] === self::STEP_KONFIRMASI) {
             $perintah = strtolower($teks);
 
@@ -156,7 +171,10 @@ class SparepartRequestWizardService
         if ($state === null || $state['step'] !== self::STEP_FOTO) {
             $this->photoStorage->delete($path);
 
-            return $this->respons('Foto hanya bisa dikirim pada langkah foto. Lanjutkan request atau kirim /reset.');
+            return $this->respons(
+                'Foto hanya bisa dikirim pada langkah foto. Lanjutkan request atau kirim /reset.',
+                $state !== null ? $this->tombolStep($state['step']) : []
+            );
         }
 
         if ($state['foto_path'] !== null && $state['foto_path'] !== $path) {
@@ -173,7 +191,7 @@ class SparepartRequestWizardService
     }
 
     /**
-     * Proses callback tombol Kirim/Batalkan.
+     * Proses callback tombol navigasi (Kembali/Kirim/Batalkan).
      *
      * @param  string $chatId
      * @param  string $data
@@ -197,9 +215,10 @@ class SparepartRequestWizardService
         }
 
         return match ($data) {
-            'spr:kirim' => $this->simpan($chatId, $state),
-            'spr:batal' => $this->batalkan($chatId, $state),
-            default     => $this->respons('Tombol request tidak dikenal.'),
+            'spr:kembali' => $this->kembali($chatId, $state),
+            'spr:kirim'   => $this->simpan($chatId, $state),
+            'spr:batal'   => $this->batalkan($chatId, $state),
+            default       => $this->respons('Tombol request tidak dikenal.'),
         };
     }
 
@@ -294,7 +313,10 @@ class SparepartRequestWizardService
     private function simpanKeterangan(string $chatId, array $state, string $teks): array
     {
         if (mb_strlen($teks) < 3) {
-            return $this->respons("Keterangan terlalu pendek. Minimal 3 karakter.\nContoh: Seal pompa bocor.");
+            return $this->respons(
+                "Keterangan terlalu pendek. Minimal 3 karakter.\nContoh: Seal pompa bocor.",
+                $this->tombolBatal()
+            );
         }
 
         $state['keterangan'] = mb_substr($teks, 0, 1000);
@@ -336,7 +358,10 @@ class SparepartRequestWizardService
         $angka = str_replace(',', '.', $teks);
 
         if (! is_numeric($angka) || (float) $angka <= 0) {
-            return $this->respons("Jumlah harus berupa angka lebih dari 0.\nContoh: 2 atau 1,5.");
+            return $this->respons(
+                "Jumlah harus berupa angka lebih dari 0.\nContoh: 2 atau 1,5.",
+                $this->tombolNavigasi()
+            );
         }
 
         $state['jumlah'] = (float) $angka;
@@ -376,7 +401,14 @@ class SparepartRequestWizardService
     private function lewatiFoto(string $chatId, array $state, string $teks): array
     {
         if ($teks !== '-' && strtolower($teks) !== 'lewat') {
-            return $this->respons("Kirim foto barang (opsional) atau ketik - untuk melewati langkah ini.");
+            return $this->respons(
+                "Kirim foto barang (opsional) atau ketik - untuk melewati langkah ini.",
+                $this->tombolNavigasi()
+            );
+        }
+
+        if (! empty($state['foto_path'])) {
+            $this->photoStorage->delete($state['foto_path']);
         }
 
         $state['foto_path'] = null;
@@ -442,17 +474,79 @@ class SparepartRequestWizardService
     }
 
     /**
-     * Prompt awal untuk keterangan.
+     * Kembali ke langkah sebelumnya tanpa menghapus isian yang sudah ada.
      *
+     * Teknisi dapat mengubah keterangan, ukuran, jumlah, satuan, atau foto
+     * dengan menekan tombol Kembali berulang kali.
+     *
+     * @param  string               $chatId
+     * @param  array<string, mixed> $state
      * @return array<string, mixed>
      */
-    private function promptKeterangan(): array
+    private function kembali(string $chatId, array $state): array
     {
-        return $this->respons(
-            "Request spare part baru.\n\n"
-            . "Tulis keterangan request.\nContoh: Seal pompa bocor di area 6600.",
-            $this->tombolBatal()
-        );
+        $sebelum = self::STEP_SEBELUMNYA[$state['step']] ?? null;
+
+        if ($sebelum === null) {
+            return $this->respons(
+                "Tidak ada langkah sebelumnya.\nLanjutkan mengisi langkah saat ini.",
+                $this->tombolStep($state['step'])
+            );
+        }
+
+        $state['step'] = $sebelum;
+        $this->saveState($chatId, $state);
+
+        return $this->promptStep($state);
+    }
+
+    /**
+     * Tampilkan prompt sesuai langkah yang sedang aktif.
+     *
+     * @param  array<string, mixed> $state
+     * @return array<string, mixed>
+     */
+    private function promptStep(array $state): array
+    {
+        return match ($state['step']) {
+            self::STEP_KETERANGAN => $this->promptKeterangan($state),
+            self::STEP_UKURAN     => $this->promptUkuran($state),
+            self::STEP_JUMLAH     => $this->promptJumlah($state),
+            self::STEP_SATUAN     => $this->promptSatuan($state),
+            self::STEP_FOTO       => $this->promptFoto($state),
+            self::STEP_KONFIRMASI => $this->promptKonfirmasi($state),
+            default               => $this->respons('Langkah request tidak dikenal. Mulai lagi dengan /req.'),
+        };
+    }
+
+    /**
+     * Apakah teks pengguna adalah perintah kembali.
+     *
+     * @param  string $teks
+     * @return bool
+     */
+    private function perintahKembali(string $teks): bool
+    {
+        return in_array(strtolower(trim($teks)), ['kembali', 'back', 'ubah'], true);
+    }
+
+    /**
+     * Prompt awal untuk keterangan.
+     *
+     * @param  array<string, mixed>|null $state State saat ini (null saat mulai baru)
+     * @return array<string, mixed>
+     */
+    private function promptKeterangan(?array $state = null): array
+    {
+        $pesan = 'Request spare part baru.';
+
+        if ($state !== null && ($state['keterangan'] ?? '') !== '') {
+            $pesan .= "\n\nKeterangan saat ini: " . $this->teksAman($state['keterangan']);
+        }
+
+        $pesan .= "\n\nTulis keterangan request.\nContoh: Seal pompa bocor di area 6600.";
+
+        return $this->respons($pesan, $this->tombolBatal());
     }
 
     /**
@@ -463,10 +557,14 @@ class SparepartRequestWizardService
      */
     private function promptUkuran(array $state): array
     {
+        $ukuran = ! empty($state['deskripsi_ukuran'])
+            ? "\nUkuran saat ini: " . $this->teksAman($state['deskripsi_ukuran'])
+            : '';
+
         return $this->respons(
-            "Keterangan: " . $this->teksAman($state['keterangan']) . "\n\n"
-            . "Deskripsi/ukuran (opsional). Ketik - untuk melewati.",
-            $this->tombolBatal()
+            "Keterangan: " . $this->teksAman($state['keterangan']) . $ukuran . "\n\n"
+            . "Deskripsi/ukuran (opsional). Ketik - untuk melewati atau mengosongkan.",
+            $this->tombolNavigasi()
         );
     }
 
@@ -481,11 +579,14 @@ class SparepartRequestWizardService
         $ukuran = $state['deskripsi_ukuran']
             ? "\nUkuran: " . $this->teksAman($state['deskripsi_ukuran'])
             : '';
+        $jumlah = $state['jumlah'] !== null
+            ? "\nJumlah saat ini: " . $this->angka($state['jumlah'])
+            : '';
 
         return $this->respons(
-            "Keterangan: " . $this->teksAman($state['keterangan']) . $ukuran . "\n\n"
+            "Keterangan: " . $this->teksAman($state['keterangan']) . $ukuran . $jumlah . "\n\n"
             . "Jumlah yang diminta (wajib, angka).\nContoh: 2 atau 1,5.",
-            $this->tombolBatal()
+            $this->tombolNavigasi()
         );
     }
 
@@ -497,10 +598,14 @@ class SparepartRequestWizardService
      */
     private function promptSatuan(array $state): array
     {
+        $satuan = $state['satuan']
+            ? "\nSatuan saat ini: " . $this->teksAman($state['satuan'])
+            : '';
+
         return $this->respons(
-            "Jumlah: " . $this->angka($state['jumlah']) . "\n\n"
-            . "Satuan (opsional). Contoh: pcs, meter, liter, roll.\nKetik - untuk melewati.",
-            $this->tombolBatal()
+            "Jumlah: " . $this->angka($state['jumlah']) . $satuan . "\n\n"
+            . "Satuan (opsional). Contoh: pcs, meter, liter, roll.\nKetik - untuk melewati atau mengosongkan.",
+            $this->tombolNavigasi()
         );
     }
 
@@ -512,10 +617,14 @@ class SparepartRequestWizardService
      */
     private function promptFoto(array $state): array
     {
+        $foto = ! empty($state['foto_path'])
+            ? "\nFoto saat ini: ada. Kirim foto baru untuk mengganti atau ketik - untuk menghapus."
+            : "\nFoto saat ini: tidak ada.";
+
         return $this->respons(
-            "Jumlah: " . $this->angka($state['jumlah']) . ($state['satuan'] ? ' ' . $this->teksAman($state['satuan']) : '') . "\n\n"
+            "Jumlah: " . $this->angka($state['jumlah']) . ($state['satuan'] ? ' ' . $this->teksAman($state['satuan']) : '') . $foto . "\n\n"
             . "Kirim foto barang (opsional) atau ketik - untuk melewati.",
-            $this->tombolBatal()
+            $this->tombolNavigasi()
         );
     }
 
@@ -537,8 +646,9 @@ class SparepartRequestWizardService
         return $this->respons(
             "Periksa request spare part berikut.\n\n"
             . implode("\n", $baris)
-            . "\n\nKetik KIRIM untuk menyimpan atau BATAL untuk membatalkan.",
+            . "\n\nKetik KEMBALI untuk mengubah isian, KIRIM untuk menyimpan, atau BATAL untuk membatalkan.",
             [
+                ['text' => 'Kembali', 'callback_data' => 'spr:kembali'],
                 ['text' => 'Kirim', 'callback_data' => 'spr:kirim'],
                 ['text' => 'Batalkan', 'callback_data' => 'spr:batal'],
             ]
@@ -555,6 +665,30 @@ class SparepartRequestWizardService
         return [
             ['text' => 'Batalkan', 'callback_data' => 'spr:batal'],
         ];
+    }
+
+    /**
+     * Tombol Kembali dan Batalkan untuk langkah setelah keterangan.
+     *
+     * @return array<int, array<string, string>>
+     */
+    private function tombolNavigasi(): array
+    {
+        return [
+            ['text' => 'Kembali', 'callback_data' => 'spr:kembali'],
+            ['text' => 'Batalkan', 'callback_data' => 'spr:batal'],
+        ];
+    }
+
+    /**
+     * Tombol sesuai langkah: keterangan hanya Batal, langkah lain Kembali+Batal.
+     *
+     * @param  string $step
+     * @return array<int, array<string, string>>
+     */
+    private function tombolStep(string $step): array
+    {
+        return $step === self::STEP_KETERANGAN ? $this->tombolBatal() : $this->tombolNavigasi();
     }
 
     /**

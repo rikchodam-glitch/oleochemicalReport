@@ -46,7 +46,10 @@ tersedia.
 - `/req` memakai `SparepartRequestWizardService` dengan state cache
   `sparepart_request_wizard:<chat_id>` (TTL 1 jam, basi setelah 30 menit).
 - Tombol inline memakai callback prefix `spr:` dan hanya dilayani jalur
-  polling. Jalur webhook tetap bisa memakai teks `KIRIM`/`BATAL`.
+  polling. Jalur webhook tetap bisa memakai teks `KEMBALI`/`KIRIM`/`BATAL`.
+- Setiap langkah setelah keterangan punya tombol **Kembali** dan **Batalkan**;
+  konfirmasi punya **Kembali**, **Kirim**, dan **Batalkan**. Kembali tidak
+  menghapus isian sehingga teknisi bisa mengedit nilai sebelumnya.
 - `/reset` membatalkan sesi request (dan sesi laporan bila ada).
 
 ## Berkas
