@@ -260,25 +260,35 @@ test('halaman teknisi menampilkan man hour, rincian harian, dan kolom jam kerja'
         ->assertSee('4,0 j', false);
 });
 
-test('man hour detail memakai bulan berjalan, tanggal 1 di bawah, dan grafik bisa digeser', function () {
+test('man hour detail memakai periode jadwal 26-25 dan grafik/tabel bisa digeser', function () {
+    ShiftSchedule::create([
+        'periode_mulai'   => '2026-09-26',
+        'periode_selesai' => '2026-10-25',
+        'nama_file'       => 'jadwal-uji.xlsx',
+    ]);
+
     $response = $this->actingAs($this->admin)
         ->get('/technicians/' . $this->teknisiStaf->id)
         ->assertStatus(200)
+        ->assertSee('26/09/2026 - 25/10/2026', false)
+        ->assertSee('26/09/2026', false)
+        ->assertSee('25/10/2026', false)
         ->assertSee('grafikManHourScroll', false)
         ->assertSee('overflow-x-auto', false)
         ->assertSee('min-width:', false)
         ->assertSee('Geser grafik ke kiri atau ke kanan', false)
-        ->assertSee(now()->translatedFormat('F Y'), false)
-        ->assertSee(now()->startOfMonth()->format('d/m/Y'), false)
-        ->assertSee(now()->endOfMonth()->format('d/m/Y'), false);
+        ->assertSee('max-h-[32rem]', false)
+        ->assertSee('sticky top-0', false)
+        ->assertSee('Gulir tabel ke atas/bawah', false);
 
-    $html       = $response->getContent();
-    $awalTabel  = strpos($html, 'Rincian Man Hour Harian');
-    $akhirTabel = strpos($html, 'Pekerjaan Harian');
-    $tabel      = substr($html, $awalTabel, $akhirTabel - $awalTabel);
+    $html      = $response->getContent();
+    $awalTabel = strpos($html, 'Rincian Man Hour Harian');
+    $awalBody  = strpos($html, '<tbody class="divide-y divide-slate-50">', $awalTabel);
+    $akhirBody = strpos($html, '</tbody>', $awalBody);
+    $tabel     = substr($html, $awalBody, $akhirBody - $awalBody);
 
-    expect(strpos($tabel, now()->endOfMonth()->format('d/m/Y')))
-        ->toBeLessThan(strpos($tabel, now()->startOfMonth()->format('d/m/Y')));
+    expect(strpos($tabel, '25/10/2026'))
+        ->toBeLessThan(strpos($tabel, '26/09/2026'));
 });
 
 test('upload jadwal shift lewat halaman teknisi menyimpan hasil import', function () {
