@@ -1,18 +1,20 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-27 14:16 WIB
+Diperbarui: 2026-10-27 14:29 WIB
 
-- Cabang aktif: `tugas/erik/man-hour-otomatis-26-25`
-- Mulai: 2026-10-27 14:16
+- Cabang aktif: `tugas/erik/fokus-hari-ini-man-hour`
+- Mulai: 2026-10-27 14:29
 - Status: SELESAI DIUJI, SIAP PR
 - Modul/berkas yang disentuh:
-  - Periode man hour otomatis 26-25 dari tanggal berjalan; bergeser saat tanggal 26 tiba
-  - Ringkasan/target/lembur mengikuti periode berjalan; grafik/tabel tetap memuat satu bulan sebelum/sesudah
+  - Fokus awal halaman man hour: tabel di-scroll ke baris HARI INI (paling atas)
+  - Grafik di-scroll ke tanggal HARI INI (paling kiri)
+  - Data sebelum/sesudah periode tetap tersedia lewat geser/gulir
   - `app/Http/Controllers/TechnicianController.php`
+  - `resources/views/technicians/show.blade.php`
+  - `resources/views/technicians/partials/_grafik-manhour.blade.php`
   - `tests/Feature/TechnicianShiftManHourTest.php`
-  - `tests/Feature/TechnicianLemburTest.php`
   - `docs/08-keputusan-arsitektur-31-33.md`
-- Catatan: 50 test Technician hijau, 307 assertions; seluruh suite 772 test hijau, 3.849 assertions; `view:cache` sukses.
+- Catatan: 17 test TechnicianShiftManHourTest hijau, 168 assertions; seluruh suite 772 test hijau, 3.850 assertions; `view:cache` sukses.
 
 ## Riwayat
-- tugas/erik/perluas-data-man-hour-grafik-tabel (mulai 2026-10-27 14:00) -> dilanjutkan 2026-10-27 14:16
+- tugas/erik/man-hour-otomatis-26-25 (mulai 2026-10-27 14:16) -> dilanjutkan 2026-10-27 14:29

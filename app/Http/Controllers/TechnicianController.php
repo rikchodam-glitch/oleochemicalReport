@@ -347,19 +347,34 @@ class TechnicianController extends Controller
         // laporan penyebab lembur beserta jamnya.
         $lemburRincian    = $manHour->lemburPerTanggal($technician, $mulaiManHour, $selesaiManHour);
 
-        // Titik awal tampilan grafik: indeks tanggal mulai periode utama di
-        // dalam data yang diperluas. Dipakai JavaScript untuk mengatur scroll
-        // awal tanpa harus menghitung ulang di browser.
-        $indeksFokusGrafik = 0;
+        // Tampilan awal: grafik dimulai dari tanggal HARI INI (paling kiri)
+        // dan tabel dimulai dari baris tanggal HARI INI (paling atas), supaya
+        // teknisi tidak perlu mencari/menggeser saat pertama membuka halaman.
+        // Bila tanggal hari ini tidak ada di data (seharusnya tidak terjadi
+        // karena data mencakup periode berjalan), pakai awal/akhir periode.
+        $tanggalHariIni   = now()->toDateString();
+        $indeksFokusGrafik = null;
+        $tanggalFokusTabel = null;
 
         foreach ($manHourHarian as $indeksHari => $hari) {
-            if ($hari['tanggal'] >= $mulaiManHour->toDateString()) {
+            if ($hari['tanggal'] === $tanggalHariIni) {
                 $indeksFokusGrafik = $indeksHari;
+                $tanggalFokusTabel = $tanggalHariIni;
                 break;
             }
         }
 
-        $tanggalFokusTabel = $selesaiManHour->toDateString();
+        if ($indeksFokusGrafik === null) {
+            $tanggalFokusTabel = $selesaiManHour->toDateString();
+            $indeksFokusGrafik = 0;
+
+            foreach ($manHourHarian as $indeksHari => $hari) {
+                if ($hari['tanggal'] >= $mulaiManHour->toDateString()) {
+                    $indeksFokusGrafik = $indeksHari;
+                    break;
+                }
+            }
+        }
         $shiftHariIni = $technician->shifts()->untukTanggal(now()->toDateString())->first();
 
         // Bila belum ada baris jadwal (mis. periode berjalan belum diupload),
