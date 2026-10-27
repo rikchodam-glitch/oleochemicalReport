@@ -140,25 +140,26 @@ class TechnicianController extends Controller
     }
 
     /**
-     * Rentang tanggal untuk perhitungan man hour: periode jadwal shift terakhir
-     * bila sudah ada, jika belum memakai bulan berjalan.
+     * Rentang tanggal untuk perhitungan man hour daftar/detail teknisi:
+     * selalu bulan berjalan.
+     *
+     * Sebelumnya memakai periode file jadwal shift terakhir. Bila periode itu
+     * berakhir di tanggal 26, tanggal 27 sampai akhir bulan tidak pernah
+     * tampil pada tabel maupun grafik. Bulan berjalan memastikan seluruh
+     * tanggal 1 sampai akhir bulan (28-31 hari) tersedia.
      *
      * @return array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon, 2: string}
      *         [tanggal mulai, tanggal selesai, label periode]
      */
     private function rentangManHour(): array
     {
-        $jadwal = ShiftSchedule::latest('id')->first();
+        $awal = now()->startOfMonth();
 
-        if ($jadwal?->periode_mulai !== null && $jadwal?->periode_selesai !== null) {
-            return [
-                $jadwal->periode_mulai->copy()->startOfDay(),
-                $jadwal->periode_selesai->copy()->startOfDay(),
-                (string) $jadwal->periode_label,
-            ];
-        }
-
-        return [now()->startOfMonth(), now()->endOfMonth(), now()->translatedFormat('F Y')];
+        return [
+            $awal->copy(),
+            $awal->copy()->endOfMonth(),
+            $awal->translatedFormat('F Y'),
+        ];
     }
 
     public function create()

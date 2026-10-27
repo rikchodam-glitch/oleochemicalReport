@@ -260,6 +260,27 @@ test('halaman teknisi menampilkan man hour, rincian harian, dan kolom jam kerja'
         ->assertSee('4,0 j', false);
 });
 
+test('man hour detail memakai bulan berjalan, tanggal 1 di bawah, dan grafik bisa digeser', function () {
+    $response = $this->actingAs($this->admin)
+        ->get('/technicians/' . $this->teknisiStaf->id)
+        ->assertStatus(200)
+        ->assertSee('grafikManHourScroll', false)
+        ->assertSee('overflow-x-auto', false)
+        ->assertSee('min-width:', false)
+        ->assertSee('Geser grafik ke kiri atau ke kanan', false)
+        ->assertSee(now()->translatedFormat('F Y'), false)
+        ->assertSee(now()->startOfMonth()->format('d/m/Y'), false)
+        ->assertSee(now()->endOfMonth()->format('d/m/Y'), false);
+
+    $html       = $response->getContent();
+    $awalTabel  = strpos($html, 'Rincian Man Hour Harian');
+    $akhirTabel = strpos($html, 'Pekerjaan Harian');
+    $tabel      = substr($html, $awalTabel, $akhirTabel - $awalTabel);
+
+    expect(strpos($tabel, now()->endOfMonth()->format('d/m/Y')))
+        ->toBeLessThan(strpos($tabel, now()->startOfMonth()->format('d/m/Y')));
+});
+
 test('upload jadwal shift lewat halaman teknisi menyimpan hasil import', function () {
     $path = buatFileJadwalShift('NIK-STAF-1', 'NIK-BEDA-9', 'Teknisi Shift Uji');
 

@@ -172,6 +172,54 @@
             }
         }
     });
+
+    // Geser grafik secara horizontal dengan drag mouse. Pada layar sentuh,
+    // scroll native dari wadah overflow-x-auto yang dipakai.
+    var wadah = document.getElementById('grafikManHourScroll');
+
+    if (wadah) {
+        var aktif = false;
+        var mulaiX = 0;
+        var mulaiScroll = 0;
+
+        wadah.addEventListener('pointerdown', function (kejadian) {
+            if (kejadian.pointerType !== 'mouse') {
+                return;
+            }
+
+            aktif = true;
+            mulaiX = kejadian.clientX;
+            mulaiScroll = wadah.scrollLeft;
+            wadah.classList.add('cursor-grabbing');
+            wadah.classList.remove('cursor-grab');
+
+            if (wadah.setPointerCapture) {
+                wadah.setPointerCapture(kejadian.pointerId);
+            }
+        });
+
+        wadah.addEventListener('pointermove', function (kejadian) {
+            if (!aktif) {
+                return;
+            }
+
+            wadah.scrollLeft = mulaiScroll - (kejadian.clientX - mulaiX);
+        });
+
+        function selesaiGeser() {
+            if (!aktif) {
+                return;
+            }
+
+            aktif = false;
+            wadah.classList.add('cursor-grab');
+            wadah.classList.remove('cursor-grabbing');
+        }
+
+        wadah.addEventListener('pointerup', selesaiGeser);
+        wadah.addEventListener('pointercancel', selesaiGeser);
+        wadah.addEventListener('pointerleave', selesaiGeser);
+    }
 })();
 </script>
 @endpush

@@ -1,24 +1,20 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-27 08:11 WIB
+Diperbarui: 2026-10-27 09:14 WIB
 
-- Cabang aktif: `tugas/erik/filter-bagian-request-sparepart`
-- Mulai: 2026-10-27 08:11
+- Cabang aktif: `tugas/erik/man-hour-bulanan-grafik-geser`
+- Mulai: 2026-10-27 09:14
 - Status: SELESAI DIUJI, SIAP PR
 - Modul/berkas yang disentuh:
-  - Filter Bagian pada tabel Request Spare Part (Pengajuan, Kejar PO, Kejar Delivery, Selesai)
-  - Kolom Bagian + Group pada semua tabel request; filter berlaku juga untuk tabel PR Menunggu PO
-  - `app/Http/Controllers/SparepartRequestController.php`
-  - `resources/views/sparepart/request/index.blade.php`
-  - `resources/views/sparepart/request/partials/_pengajuan.blade.php`
-  - `resources/views/sparepart/request/partials/_kejar-po.blade.php`
-  - `resources/views/sparepart/request/partials/_kejar-delivery.blade.php`
-  - `resources/views/sparepart/request/partials/_selesai.blade.php`
-  - `resources/views/sparepart/request/partials/_teknisi.blade.php`
-  - `resources/views/sparepart/request/partials/_bagian.blade.php` (baru)
-  - `tests/Feature/SparepartRequestWebTest.php`
-  - `docs/30-request-sparepart.md`
-- Catatan: 29 test request hijau, 110 assertions; seluruh suite 771 test hijau, 3.833 assertions; `view:cache` sukses.
+  - Man hour teknisi memakai bulan berjalan (bukan periode jadwal yang berakhir tanggal 26)
+  - Rincian Man Hour Harian diurutkan terbaru di atas; tanggal 1 di paling bawah
+  - Grafik man hour selebar 28-31 hari dan bisa digeser horizontal (scrollbar/drag mouse)
+  - `app/Http/Controllers/TechnicianController.php`
+  - `resources/views/technicians/show.blade.php`
+  - `resources/views/technicians/partials/_grafik-manhour.blade.php`
+  - `tests/Feature/TechnicianShiftManHourTest.php`
+  - `docs/08-keputusan-arsitektur-31-33.md`
+- Catatan: 17 test TechnicianShiftManHourTest hijau, 160 assertions; seluruh suite 772 test hijau, 3.842 assertions; `view:cache` sukses.
 
 ## Riwayat
-- tugas/erik/import-dokumentasi-asset (mulai 2026-10-26 10:49) -> dilanjutkan 2026-10-27 08:11
+- tugas/erik/filter-bagian-request-sparepart (mulai 2026-10-27 08:11) -> dilanjutkan 2026-10-27 09:14
