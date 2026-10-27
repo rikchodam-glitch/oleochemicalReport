@@ -261,3 +261,15 @@
   `shifts:generate --execute`; data lama TIDAK dihapus dan masih bisa dilihat
   dengan menggeser grafik/menggulir tabel.
 - Uji: seluruh suite **772 test hijau, 3.849 assertions**; `view:cache` sukses.
+
+## FOKUS AWAL HARI INI — 27/10/2026
+
+- Saat halaman detail teknisi pertama kali dibuka, grafik di-scroll sehingga
+  tanggal HARI INI berada di paling kiri dan tabel di-scroll sehingga baris
+  tanggal HARI INI berada di paling atas. Tidak perlu mencari/menggeser dulu.
+- Data grafik/tabel tetap mencakup satu bulan sebelum dan sesudah periode
+  26-25 berjalan; tanggal lain tetap bisa dilihat dengan menggeser grafik atau
+  menggulir tabel.
+- Ringkasan, target, dan rincian lembur tetap mengikuti periode 26-25 berjalan.
+- Uji: `TechnicianShiftManHourTest` **17 test hijau, 168 assertions**; seluruh
+  suite **772 test hijau, 3.850 assertions**; `view:cache` sukses.

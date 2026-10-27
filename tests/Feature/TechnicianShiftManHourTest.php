@@ -275,6 +275,7 @@ test('man hour otomatis memakai periode 26-25 berjalan dengan data sebelum/sesud
     $selesai = $mulai->copy()->addMonthNoOverflow()->subDay();
     $sebelum = $mulai->copy()->subMonthNoOverflow();
     $sesudah = $selesai->copy()->addMonthNoOverflow();
+    $indeksHariIni = (int) $sebelum->copy()->startOfDay()->diffInDays($hariIni);
 
     $response = $this->actingAs($this->admin)
         ->get('/technicians/' . $this->teknisiStaf->id)
@@ -284,13 +285,14 @@ test('man hour otomatis memakai periode 26-25 berjalan dengan data sebelum/sesud
         ->assertSee($selesai->format('d/m/Y'), false)
         ->assertSee($sebelum->format('d/m/Y'), false)
         ->assertSee($sesudah->format('d/m/Y'), false)
+        ->assertSee($hariIni->format('d/m/Y'), false)
         ->assertSee('grafikManHourScroll', false)
-        ->assertSee('data-indeks-mulai=', false)
+        ->assertSee('data-indeks-fokus="' . $indeksHariIni . '"', false)
         ->assertSee('overflow-x-auto', false)
         ->assertSee('min-width:', false)
-        ->assertSee('Geser ke kiri/kanan', false)
+        ->assertSee('geser ke kiri/kanan', false)
         ->assertSee('max-h-[32rem]', false)
-        ->assertSee('data-tanggal-fokus="' . $selesai->toDateString() . '"', false)
+        ->assertSee('data-tanggal-fokus="' . $hariIni->toDateString() . '"', false)
         ->assertSee('sticky top-0', false)
         ->assertSee('gulir ke atas/bawah', false);
 

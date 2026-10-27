@@ -178,12 +178,12 @@
     var wadah = document.getElementById('grafikManHourScroll');
 
     if (wadah) {
-        var indeksMulai = parseInt(wadah.getAttribute('data-indeks-mulai') || '0', 10);
+        var indeksFokus = parseInt(wadah.getAttribute('data-indeks-fokus') || '0', 10);
 
-        // Mulai dari tanggal awal periode utama (26), bukan dari data paling
-        // kiri (satu bulan sebelumnya), supaya tampilan awal tetap 26-25.
+        // Mulai dari tanggal HARI INI, bukan dari data paling kiri, supaya
+        // tanggal hari ini langsung tampil di sisi kiri saat halaman dibuka.
         requestAnimationFrame(function () {
-            wadah.scrollLeft = Math.max(0, indeksMulai * 42 - 8);
+            wadah.scrollLeft = Math.max(0, indeksFokus * 42 - 8);
         });
 
         var aktif = false;
@@ -229,7 +229,7 @@
         wadah.addEventListener('pointerleave', selesaiGeser);
     }
 
-    // Tabel man hour juga dimulai dari akhir periode utama (25), sehingga
+    // Tabel man hour dimulai dari baris HARI INI (paling atas), sehingga
     // pengguna bisa menggulir ke atas untuk tanggal sesudahnya dan ke bawah
     // untuk tanggal sebelumnya.
     var tabelWadah = document.querySelector('[data-tanggal-fokus]');
