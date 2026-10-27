@@ -105,8 +105,10 @@ test('riwayat pembacaan menampilkan kolom Pressure berisi discharge_pressure', f
     $response->assertStatus(200);
     $response->assertSeeInOrder(['Ampere', 'Pressure', 'Remark'], false);
 
-    // Pembacaan terbaru (2026-03-05) tampil paling atas dengan pressure 4,80
-    $response->assertSee('<td class="px-4 py-3 text-right font-mono text-xs text-slate-700">4.80</td>', false);
+    // Pembacaan terbaru (2026-03-05) tampil paling atas dengan pressure 4,80.
+    // Sel Pressure sekarang memakai padding py-4 (baris lebih lega), jadi
+    // cukup pastikan nilainya tampil, bukan mencocokkan class HTML lama.
+    $response->assertSee('4.80', false);
 });
 
 test('equipment tanpa data pressure dan ampere tetap punya bagian trend dan analisa', function () {

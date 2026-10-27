@@ -1072,7 +1072,9 @@ function reportDetail() {
         // ── State utama ───────────────────────────────────────
         // Baris salinan (kolaborasi / alat tambahan) TIDAK pernah masuk mode edit:
         // seluruh pengelolaannya dilakukan dari laporan INDUK (popup penolakan).
-        editMode: {{ ($errors->any() && $laporanInduk->id === $report->id) ? 'true' : 'false' }},
+        // ?edit=1 dipakai tautan "Edit" dari halaman equipment CM supaya mode
+        // edit langsung terbuka tanpa klik tombol Edit lagi.
+        editMode: {{ (($errors->any() || request()->boolean('edit')) && $laporanInduk->id === $report->id) ? 'true' : 'false' }},
         salinan: {{ $laporanInduk->id === $report->id ? 'false' : 'true' }},
 
         // Popup penolakan baris salinan (dibuka tombol Edit/Hapus pada kartu

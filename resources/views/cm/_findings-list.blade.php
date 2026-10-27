@@ -71,7 +71,14 @@
                                     </div>
                                 </div>
                             </td>
-                            <td class="px-4 py-3 text-[#1d1d1f] max-w-[250px] truncate">{{ $finding->deskripsi }}</td>
+                            <td class="px-4 py-3 text-[#1d1d1f] max-w-[280px]">
+                                <p class="whitespace-normal break-words">{{ $finding->deskripsi ?: '—' }}</p>
+                                @if($finding->remark)
+                                    <p class="mt-1 text-xs text-[#6e6e73] whitespace-pre-line break-words">
+                                        <span class="font-medium">Remark:</span> {{ $finding->remark }}
+                                    </p>
+                                @endif
+                            </td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium {{ $sevColor }}">
                                     {{ ucfirst($finding->severity) }}
@@ -102,6 +109,10 @@
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap text-right">
                                 <div class="flex items-center justify-end gap-2">
+                                    <a href="{{ route('cm.equipment-show', $finding->equipment->equipment_tag ?? '-') }}?edit_finding={{ $finding->id }}#temuan"
+                                       class="inline-block px-2.5 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-md transition-colors">
+                                        Edit
+                                    </a>
                                     @if($wo)
                                         <a href="{{ route('work-orders.show', $wo) }}"
                                            class="inline-block px-2.5 py-1 text-xs font-medium text-[#0066cc] hover:bg-[#f5f5f7] rounded-md transition-colors">

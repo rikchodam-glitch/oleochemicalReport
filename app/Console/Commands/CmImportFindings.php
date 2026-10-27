@@ -199,7 +199,8 @@ class CmImportFindings extends Command
             $fotoUrlFirst = !empty($fotoUrls) ? $fotoUrls[0] : null;
 
             $analysis = $this->cellVal($idxAnalysis !== null ? ($row[$idxAnalysis] ?? null) : null);
-            $action = $this->cellVal($idxAction !== null ? ($row[$idxAction] ?? null) : null);
+            $action   = $this->cellVal($idxAction !== null ? ($row[$idxAction] ?? null) : null);
+            $remark   = $idxRemark !== null ? $this->cellVal($row[$idxRemark] ?? null) : null;
 
             $deskripsi = '';
             if ($analysis) $deskripsi .= $analysis;
@@ -264,6 +265,7 @@ class CmImportFindings extends Command
                 'deskripsi'        => $deskripsi ?: '-',
                 'analysis'         => $analysis,
                 'action'           => $action,
+                'remark'           => $remark,
                 'status'           => $status,
                 'pic'              => $pic,
                 'tanggal_temuan'   => $tanggalTemuan,
@@ -297,7 +299,7 @@ class CmImportFindings extends Command
                 ['kode_finding'],
                 [
                     'cm_equipment_id', 'cm_reading_id',
-                    'severity', 'kategori', 'deskripsi', 'analysis', 'action',
+                    'severity', 'kategori', 'deskripsi', 'analysis', 'action', 'remark',
                     'status', 'pic', 'tanggal_temuan', 'date_action',
                     'foto_url', 'foto_urls', 'hari_open',
                 ]
