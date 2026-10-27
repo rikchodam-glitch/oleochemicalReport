@@ -275,6 +275,44 @@ test('nomor PR wajib diisi dan status tidak berubah bila kosong', function () {
     ]);
 });
 
+test('filter bagian berlaku di Pengajuan dan Kejar PO', function () {
+    $mekanikMenunggu = buatSpRequestUji($this->pemohon);
+    $mekanikPo       = buatSpRequestUji($this->pemohon, [
+        'status' => SpRequest::STATUS_KEJAR_PO,
+        'pr_no'  => 'PR-MEKANIK',
+        'pr_at'  => now(),
+    ]);
+
+    $teknisiEi = Technician::create([
+        'name'        => 'Teknisi EI',
+        'nik'         => 'REQ104',
+        'group'       => 'reguler',
+        'section'     => 'ei',
+        'status'      => 'active',
+        'telegram_id' => '92004',
+    ]);
+
+    $eiMenunggu = buatSpRequestUji($teknisiEi);
+    $eiPo       = buatSpRequestUji($teknisiEi, [
+        'status' => SpRequest::STATUS_KEJAR_PO,
+        'pr_no'  => 'PR-EI',
+        'pr_at'  => now(),
+    ]);
+
+    $this->actingAs($this->staff)
+        ->get(route('sparepart.request.index', ['tab' => 'pengajuan', 'bagian' => 'ei']))
+        ->assertOk()
+        ->assertSee($eiMenunggu->kode)
+        ->assertDontSee($mekanikMenunggu->kode)
+        ->assertSee('Bagian');
+
+    $this->actingAs($this->staff)
+        ->get(route('sparepart.request.index', ['tab' => 'kejar-po', 'bagian' => 'ei']))
+        ->assertOk()
+        ->assertSee($eiPo->kode)
+        ->assertDontSee($mekanikPo->kode);
+});
+
 test('Staff CM/PM dapat menghapus request yang belum punya PR beserta fotonya', function () {
     $path = 'sparepart-requests/hapus.jpg';
     Storage::disk('telegram_photos')->put($path, 'foto');

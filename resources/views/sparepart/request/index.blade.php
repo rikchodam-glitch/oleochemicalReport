@@ -25,22 +25,24 @@
         return rtrim(rtrim($teks, '0'), ',') ?: '0';
     };
 
-    $tautanTab = function (string $tab) use ($cari, $dari, $sampai): string {
+    $tautanTab = function (string $tab) use ($cari, $dari, $sampai, $bagian): string {
         return route('sparepart.request.index', array_filter([
             'tab'    => $tab,
             'q'      => $cari,
             'dari'   => $dari,
             'sampai' => $sampai,
+            'bagian' => $bagian,
         ], static fn ($nilai): bool => $nilai !== '' && $nilai !== null));
     };
 
-    $tautanStatus = function (string $status) use ($cari, $dari, $sampai): string {
+    $tautanStatus = function (string $status) use ($cari, $dari, $sampai, $bagian): string {
         return route('sparepart.request.index', array_filter([
             'tab'    => 'pengajuan',
             'status' => $status,
             'q'      => $cari,
             'dari'   => $dari,
             'sampai' => $sampai,
+            'bagian' => $bagian,
         ], static fn ($nilai): bool => $nilai !== '' && $nilai !== null));
     };
 
@@ -110,12 +112,24 @@
             @if($tab === 'pengajuan')
                 <input type="hidden" name="status" value="{{ $statusPengajuan }}">
             @endif
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-5">
                 <div class="md:col-span-2">
                     <label for="cariRequest" class="mb-1 block text-xs font-medium text-slate-500">Pencarian</label>
                     <input id="cariRequest" name="q" value="{{ $cari }}" type="search"
                            placeholder="Kode, keterangan, teknisi, nomor PR, atau PO"
                            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
+                </div>
+                <div>
+                    <label for="bagianRequest" class="mb-1 block text-xs font-medium text-slate-500">Bagian</label>
+                    <select id="bagianRequest" name="bagian"
+                            class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
+                        <option value="">Semua bagian</option>
+                        @foreach(\App\Models\Technician::SECTIONS as $kodeBagian => $labelBagian)
+                            <option value="{{ $kodeBagian }}" {{ $bagian === $kodeBagian ? 'selected' : '' }}>
+                                {{ $labelBagian }}
+                            </option>
+                        @endforeach
+                    </select>
                 </div>
                 <div>
                     <label for="dariRequest" class="mb-1 block text-xs font-medium text-slate-500">Dari tanggal</label>

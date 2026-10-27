@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\SpRequest;
+use App\Models\Technician;
 use App\Services\Sparepart\SparepartRequestService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -61,6 +62,7 @@ class SparepartRequestController extends Controller
         $cari            = trim((string) $request->query('q', ''));
         $dari            = (string) $request->query('dari', '');
         $sampai          = (string) $request->query('sampai', '');
+        $bagian          = (string) $request->query('bagian', '');
 
         if (! in_array($tab, self::TAB, true)) {
             $tab = 'pengajuan';
@@ -68,6 +70,10 @@ class SparepartRequestController extends Controller
 
         if (! in_array($statusPengajuan, self::STATUS_PENGAJUAN, true)) {
             $statusPengajuan = SpRequest::STATUS_MENUNGGU;
+        }
+
+        if ($bagian !== '' && ! array_key_exists($bagian, Technician::SECTIONS)) {
+            $bagian = '';
         }
 
         $dasar = SpRequest::query()
@@ -87,6 +93,12 @@ class SparepartRequestController extends Controller
 
         if ($sampai !== '') {
             $dasar->whereDate('created_at', '<=', $sampai);
+        }
+
+        if ($bagian !== '') {
+            $dasar->whereHas('technician', function ($teknisi) use ($bagian): void {
+                $teknisi->where('section', $bagian);
+            });
         }
 
         $daftar = (clone $dasar)->status($this->statusTab($tab, $statusPengajuan))
@@ -109,8 +121,7 @@ class SparepartRequestController extends Controller
             'selesai'        => (int) ($jumlahStatus[SpRequest::STATUS_SELESAI] ?? 0),
         ];
 
-        $prMenungguPo = SpRequest::query()
-            ->with(['technician:id,name,nik,group,section'])
+        $prMenungguPo = (clone $dasar)
             ->status(SpRequest::STATUS_KEJAR_PO)
             ->orderBy('pr_at')
             ->orderBy('id')
@@ -122,6 +133,7 @@ class SparepartRequestController extends Controller
             'cari'            => $cari,
             'dari'            => $dari,
             'sampai'          => $sampai,
+            'bagian'          => $bagian,
             'daftar'          => $daftar,
             'jumlahStatus'    => $jumlahStatus,
             'jumlahTab'       => $jumlahTab,
