@@ -19,6 +19,7 @@ class CmFinding extends Model
         'deskripsi',
         'analysis',
         'action',
+        'remark',
         'status',
         'pic',
         'tanggal_temuan',

@@ -80,6 +80,7 @@ Semua berkas di bawah ini ada di `docs/`.
 | [29-hierarki-lokasi-dropdown.md](docs/29-hierarki-lokasi-dropdown.md) | Opsi PT/Dept/Area/SubArea dari Functional Location untuk Assets, Teknisi, Laporan, Bot | Mengubah dropdown/filter lokasi |
 | [30-request-sparepart.md](docs/30-request-sparepart.md) | Request spare part lewat bot Telegram, tab Request di halaman Sparepart, status PR/PO/delivery, hak akses Staff CM/PM | Menyentuh request spare part, bot `/req`, atau halaman request |
 | [31-import-dokumentasi-asset.md](docs/31-import-dokumentasi-asset.md) | Import dokumentasi foto equipment ke assets.photos: dry-run/apply, pencocokan folder/file, laporan, lokasi D: PROD | Mengimpor atau memeriksa dokumentasi foto aset |
+| [32-tampilan-riwayat-pembacaan-dan-temuan.md](docs/32-tampilan-riwayat-pembacaan-dan-temuan.md) | Tampilan semua sumbu vibrasi NDE/DE, penanda nilai Danger/Alarm, remark utuh, kolom remark finding, modal edit finding, tautan edit laporan | Mengubah tabel riwayat pembacaan/temuan atau edit finding |
 
 ## Dokumen pendukung di `docs/`
 

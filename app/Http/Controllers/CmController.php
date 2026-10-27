@@ -218,7 +218,7 @@ class CmController extends Controller
      */
     public function findingShow(string $kodeFinding)
     {
-        $finding = CmFinding::with(['equipment', 'workOrder'])
+        $finding = CmFinding::with(['equipment', 'workOrder', 'reading'])
             ->where('kode_finding', $kodeFinding)
             ->firstOrFail();
 
@@ -402,7 +402,13 @@ class CmController extends Controller
         $vibThresholds = config('cm.vibration_insight.thresholds', ['alarm' => 7.1, 'danger' => 11.2]);
         $tempThreshold = config('cm.temperature_high_threshold', 80); // konsisten dengan card stat Temp Maks
 
-        $equipment = CmEquipment::with(['asset.company', 'findings'])
+        $equipment = CmEquipment::with([
+            'asset.company',
+            // Relasi finding dipakai tabel Temuan: reading menyediakan remark
+            // pembacaan, workOrder menentukan tombol WO pada kolom aksi.
+            'findings.reading',
+            'findings.workOrder',
+        ])
             ->where('equipment_tag', $tag)
             ->firstOrFail();
 
@@ -809,6 +815,61 @@ class CmController extends Controller
             ],
             ['status' => $adaStart ? 'sudah' : 'free']
         );
+    }
+
+    /**
+     * Perbarui satu finding dari modal Edit Finding.
+     *
+     * Remark disimpan di kolom sendiri supaya bisa dibaca terpisah dari
+     * deskripsi/analisa/tindakan. Hari open dihitung ulang dari tanggal temuan
+     * dan tanggal tindakan (bila sudah closed) agar angka umur temuan tidak
+     * basi setelah status diubah.
+     *
+     * @param  Request   $request Data form edit finding
+     * @param  CmFinding $finding Finding yang akan diperbarui
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function findingUpdate(Request $request, CmFinding $finding)
+    {
+        $validated = $request->validate([
+            'severity'       => 'required|in:low,medium,high',
+            'kategori'       => 'required|string|max:255',
+            'deskripsi'      => 'nullable|string',
+            'analysis'       => 'nullable|string',
+            'action'         => 'nullable|string',
+            'remark'         => 'nullable|string|max:2000',
+            'status'         => 'required|in:open,closed',
+            'pic'            => 'nullable|string|max:100',
+            'tanggal_temuan' => 'required|date',
+            'date_action'    => 'nullable|date|after_or_equal:tanggal_temuan',
+        ]);
+
+        $validated['deskripsi'] = trim((string) ($validated['deskripsi'] ?? '')) ?: '-';
+        $validated['remark']    = filled($validated['remark'] ?? null)
+            ? trim((string) $validated['remark'])
+            : null;
+
+        $tanggalMulai = Carbon::parse($validated['tanggal_temuan'])->startOfDay();
+        $tanggalAkhir = $validated['status'] === 'closed' && ! empty($validated['date_action'])
+            ? Carbon::parse($validated['date_action'])->startOfDay()
+            : now()->startOfDay();
+
+        $validated['hari_open'] = max(0, (int) $tanggalMulai->diffInDays($tanggalAkhir));
+
+        $finding->update($validated);
+
+        $kode = $finding->kode_finding ?? '#' . $finding->id;
+        $tag  = $finding->equipment?->equipment_tag;
+
+        if ($tag) {
+            return redirect()
+                ->route('cm.equipment-show', $tag)
+                ->with('success', "Finding {$kode} berhasil diperbarui.");
+        }
+
+        return redirect()
+            ->route('cm.findings')
+            ->with('success', "Finding {$kode} berhasil diperbarui.");
     }
 
     /**

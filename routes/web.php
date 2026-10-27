@@ -202,6 +202,7 @@ Route::post('/assets/unlinked-funcloc/run-sync', [AssetController::class, 'runAu
         Route::get('/equipment/{tag}', [CmController::class, 'equipmentShow'])->name('equipment-show');
         Route::put('/equipment/{tag}', [CmController::class, 'equipmentUpdate'])->name('equipment-update');
         Route::delete('/readings/{reading}', [CmController::class, 'readingDestroy'])->name('readings.destroy');
+        Route::put('/findings/{finding}', [CmController::class, 'findingUpdate'])->name('findings.update');
         Route::delete('/findings/{finding}', [CmController::class, 'findingDestroy'])->name('findings.destroy');
         Route::post('/sync-google-sheets', [CmController::class, 'syncGoogleSheets'])->name('sync-google-sheets');
         Route::get('/report-analysis', [CmController::class, 'reportAnalysis'])->name('report-analysis');

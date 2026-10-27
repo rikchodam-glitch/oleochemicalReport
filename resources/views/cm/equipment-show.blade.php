@@ -5,6 +5,17 @@
 
 @section("content")
 
+@if($errors->any())
+    <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p class="font-medium">Perubahan finding belum tersimpan.</p>
+        <ul class="mt-1 list-disc pl-5 space-y-0.5">
+            @foreach($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+    </div>
+@endif
+
 <div class="bg-white rounded-xl border border-slate-200 p-6 mb-6">
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div class="min-w-0">
@@ -483,21 +494,64 @@
 </div>
 @endif
 
+@php
+    // Kolom Vibrasi Screw hanya ditampilkan bila halaman ini memang punya
+    // pembacaan screw, supaya tabel pompa biasa tidak melebar tanpa isi.
+    $adaScrew = $readings->getCollection()->contains(function ($r) {
+        return collect([
+            $r->ndev_screw, $r->ndeh_screw, $r->ndea_screw,
+            $r->dev_screw,  $r->deh_screw,  $r->dea_screw,
+        ])->contains(fn ($nilai) => $nilai !== null);
+    });
+@endphp
 <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
-    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-slate-900">Riwayat Pembacaan</h3>
-        <span class="text-xs text-slate-400">10 entri per halaman</span>
+    <div class="px-5 py-4 border-b border-slate-100 flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3">
+        <div class="min-w-0">
+            <h3 class="text-sm font-semibold text-slate-900">Riwayat Pembacaan</h3>
+            <p class="text-xs text-slate-500 mt-1 leading-relaxed max-w-3xl">
+                Nilai vibrasi dalam <span class="font-medium text-slate-700">mm/s</span>.
+                Tiap baris berisi 3 sumbu: <span class="font-mono text-slate-700">V</span> vertikal,
+                <span class="font-mono text-slate-700">H</span> horizontal,
+                <span class="font-mono text-slate-700">A</span> aksial.
+                Nilai tertinggi pada baris diberi warna dan sumbernya ditulis di kolom Kondisi.
+            </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 text-[11px] shrink-0">
+            @foreach([
+                ['label' => 'Good', 'badge' => 'bg-green-100 text-green-700', 'dot' => 'bg-green-500'],
+                ['label' => 'Alarm', 'badge' => 'bg-amber-100 text-amber-700', 'dot' => 'bg-amber-500'],
+                ['label' => 'Danger', 'badge' => 'bg-red-100 text-red-700', 'dot' => 'bg-red-500'],
+                ['label' => 'Visual bad', 'badge' => 'bg-purple-100 text-purple-700', 'dot' => 'bg-purple-500'],
+            ] as $legenda)
+                <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium {{ $legenda['badge'] }}">
+                    <span class="w-1.5 h-1.5 rounded-full {{ $legenda['dot'] }}"></span>
+                    {{ $legenda['label'] }}
+                </span>
+            @endforeach
+            <span class="text-slate-400">10 entri/halaman</span>
+        </div>
     </div>
     <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="w-full {{ $adaScrew ? 'min-w-[1320px]' : 'min-w-[1180px]' }} text-sm">
             <thead>
                 <tr class="bg-slate-50 border-b border-slate-100">
                     <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Tanggal</th>
-                    <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Kondisi</th>
+                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Kondisi</th>
                     <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Status</th>
-                    <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Motor Vib</th>
-                    <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Mesin Vib</th>
-                    <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Temp</th>
+                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">
+                        Vibrasi Motor <span class="font-normal normal-case text-slate-400">(mm/s)</span>
+                    </th>
+                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">
+                        Vibrasi Mesin <span class="font-normal normal-case text-slate-400">(mm/s)</span>
+                    </th>
+                    @if($adaScrew)
+                        <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">
+                            Vibrasi Screw <span class="font-normal normal-case text-slate-400">(mm/s)</span>
+                        </th>
+                    @endif
+                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">
+                        Temp <span class="font-normal normal-case text-slate-400">(&deg;C)</span>
+                    </th>
                     <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Ampere</th>
                     <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Pressure</th>
                     <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Remark</th>
@@ -505,57 +559,7 @@
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-50">
-                @forelse($readings as $r)
-                    @php
-                        $mv = collect([$r->ndev_motor, $r->ndeh_motor, $r->ndea_motor, $r->dev_motor, $r->deh_motor, $r->dea_motor])->filter(fn($v) => $v !== null)->values();
-                        $mvStr = $mv->isNotEmpty() ? $mv->take(3)->map(fn($v) => number_format($v, 1))->implode(" / ") : "—";
-                        $pv = collect([$r->ndev_pompa, $r->ndeh_pompa, $r->ndea_pompa, $r->dev_pompa, $r->deh_pompa, $r->dea_pompa])->filter(fn($v) => $v !== null)->values();
-                        $pvStr = $pv->isNotEmpty() ? $pv->take(3)->map(fn($v) => number_format($v, 1))->implode(" / ") : "—";
-                        $temps = collect([$r->temp_de_motor, $r->temp_nde_motor, $r->temp_de_pompa, $r->temp_nde_pompa])->filter(fn($t) => $t !== null)->values();
-                        $tempStr = $temps->isNotEmpty() ? $temps->max() . "&deg;C" : "—";
-                        $rs = $r->kondisi;
-                        $bc = ["good" => "bg-green-100 text-green-700", "alarm" => "bg-amber-100 text-amber-700", "danger" => "bg-red-100 text-red-700", "visual_bad" => "bg-purple-100 text-purple-700"];
-                        $bcColor = $bc[$rs] ?? "bg-slate-100 text-slate-600";
-                        $delDate = \Carbon\Carbon::parse($r->tanggal)->format("d/m/Y");
-                    @endphp
-                    <tr class="hover:bg-slate-50 transition-colors">
-                        <td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{{ \Carbon\Carbon::parse($r->tanggal)->format("d M Y") }}</td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full {{ $bcColor }}">{{ ucfirst(str_replace("_", " ", $rs)) }}</span></td>
-                        @php
-                            $isRunning = $r->status && strtoupper(trim((string) $r->status)) === "START";
-                        @endphp
-                        <td class="px-4 py-3 text-center">
-                            @if($r->status)
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full {{ $isRunning ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-600" }}">
-                                    <span class="w-1.5 h-1.5 rounded-full {{ $isRunning ? "bg-green-500" : "bg-slate-400" }}"></span>
-                                    {{ trim((string) $r->status) }}
-                                </span>
-                            @else
-                                <span class="text-slate-300">—</span>
-                            @endif
-                        </td>
-                        <td class="px-4 py-3 text-center font-mono text-xs text-slate-700">{{ $mvStr }}</td>
-                        <td class="px-4 py-3 text-center font-mono text-xs text-slate-700">{{ $pvStr }}</td>
-                        <td class="px-4 py-3 text-center font-mono text-xs text-slate-700">{!! $tempStr !!}</td>
-                        <td class="px-4 py-3 text-right font-mono text-xs text-slate-700">{{ $r->ampere ? number_format($r->ampere, 1) : "—" }}</td>
-                        <td class="px-4 py-3 text-right font-mono text-xs text-slate-700">{{ $r->discharge_pressure ? number_format($r->discharge_pressure, 2) : "—" }}</td>
-                        <td class="px-4 py-3 text-xs text-slate-500 max-w-[200px] truncate" title="{{ $r->remark ?? "" }}">{{ $r->remark ?? "—" }}</td>
-                        <td class="px-4 py-3 text-center whitespace-nowrap">
-                            <form method="POST" action="{{ route('cm.readings.destroy', $r) }}" class="inline"
-                                  onsubmit="return confirm('Hapus reading tanggal {{ $delDate }}? Data tidak bisa dikembalikan.')">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="text-red-500 hover:text-red-700 transition-colors" title="Hapus reading tanggal {{ $delDate }}">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                    </svg>
-                                </button>
-                            </form>
-                        </td>
-                    </tr>
-                @empty
-                    <tr><td colspan="10" class="px-5 py-8 text-center text-slate-400 text-sm">Belum ada data pembacaan untuk equipment ini.</td></tr>
-                @endforelse
+                @include('cm._riwayat-pembacaan-rows')
             </tbody>
         </table>
     </div>
@@ -618,9 +622,9 @@
                             @endif
                         </td>
                         <td class="px-4 py-3 text-xs text-slate-700 max-w-[420px]">
-                            <span class="block truncate" title="{{ $laporan->work_description }}">{{ $laporan->work_description ?: '—' }}</span>
+                            <span class="block whitespace-normal break-words leading-relaxed">{{ $laporan->work_description ?: '—' }}</span>
                             @if($laporan->root_cause)
-                                <span class="block text-[11px] text-slate-400 truncate" title="{{ $laporan->root_cause }}">Penyebab: {{ $laporan->root_cause }}</span>
+                                <span class="block mt-1 text-[11px] text-slate-400 whitespace-normal break-words">Penyebab: {{ $laporan->root_cause }}</span>
                             @endif
                         </td>
                         <td class="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">
@@ -643,6 +647,14 @@
                                 </svg>
                                 Detail
                             </a>
+                            <a href="{{ route('reports.show', ['report' => $laporan, 'edit' => 1]) }}"
+                               class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-medium rounded-lg transition-colors"
+                               title="Buka laporan dalam mode edit">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                                Edit
+                            </a>
                         </td>
                     </tr>
                 @empty
@@ -660,62 +672,50 @@
     @endif
 </div>
 
-<div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
-    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-slate-900">Temuan (Findings)</h3>
-        <span class="text-xs text-slate-400">{{ $equipment->findings->count() }} total</span>
+<div id="temuan" class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
+    <div class="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div class="min-w-0">
+            <h3 class="text-sm font-semibold text-slate-900">Temuan (Findings)</h3>
+            <p class="text-xs text-slate-500 mt-1 leading-relaxed max-w-3xl">
+                Uraian, remark, status, dan PIC ditampilkan penuh. Klik
+                <span class="font-medium text-slate-700">Edit</span> untuk memperbarui finding.
+                Remark manual tidak dikosongkan saat sinkronisasi bila kolom Remark di sheet kosong.
+            </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 shrink-0 text-[11px]">
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                {{ $equipment->findings->where('status', 'open')->count() }} open
+            </span>
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 font-medium text-green-700">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                {{ $equipment->findings->where('status', 'closed')->count() }} closed
+            </span>
+            <span class="text-slate-400">{{ $equipment->findings->count() }} total</span>
+        </div>
     </div>
     <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="w-full min-w-[1120px] text-sm">
             <thead>
                 <tr class="bg-slate-50 border-b border-slate-100">
-                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Kode Finding</th>
-                    <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Severity</th>
+                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Finding</th>
+                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Severity</th>
                     <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Kategori</th>
-                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Deskripsi</th>
-                    <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Status</th>
-                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">PIC</th>
-                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Tgl Temuan</th>
-                    <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Hari Open</th>
+                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Uraian &amp; Tindakan</th>
+                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Remark</th>
+                    <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Status / PIC</th>
+                    <th class="text-right text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Umur</th>
                     <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3">Aksi</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-50">
-                @forelse($equipment->findings->sortByDesc('tanggal_temuan') as $f)
-                    @php
-                        $sevColors = ["low" => "bg-blue-100 text-blue-700", "medium" => "bg-amber-100 text-amber-700", "high" => "bg-red-100 text-red-700"];
-                        $sevColor = $sevColors[$f->severity] ?? "bg-slate-100 text-slate-600";
-                        $isOpen = $f->status === "open";
-                    @endphp
-                    <tr class="hover:bg-slate-50 transition-colors">
-                        <td class="px-4 py-3"><a href="{{ route('cm.findings.show', $f->kode_finding) }}" class="font-mono text-xs text-teal-700 font-medium hover:text-teal-900 hover:underline transition-colors">{{ $f->kode_finding }}</a></td>
-                        <td class="px-4 py-3 text-center"><span class="inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full {{ $sevColor }}">{{ ucfirst($f->severity) }}</span></td>
-                        <td class="px-4 py-3 text-xs text-slate-600">{{ $f->kategori ?? "—" }}</td>
-                        <td class="px-4 py-3 text-xs text-slate-700 max-w-[250px] truncate" title="{{ $f->deskripsi }}">{{ $f->deskripsi ?? "—" }}</td>
-                        <td class="px-4 py-3 text-center">@if($isOpen)<span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700"><span class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>Open</span>@else<span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700"><span class="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5"></span>Closed</span>@endif</td>
-                        <td class="px-4 py-3 text-xs text-slate-600">{{ $f->pic ?? "—" }}</td>
-                        <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{{ $f->tanggal_temuan ? \Carbon\Carbon::parse($f->tanggal_temuan)->format("d M Y") : "—" }}</td>
-                        <td class="px-4 py-3 text-right text-xs {{ $isOpen && $f->hari_open > 7 ? "text-red-600 font-semibold" : "text-slate-600" }}">{{ $f->hari_open ?? "—" }}</td>
-                        <td class="px-4 py-3 text-center whitespace-nowrap">
-                            <form method="POST" action="{{ route('cm.findings.destroy', $f) }}" class="inline"
-                                  onsubmit="return confirm('Hapus finding {{ $f->kode_finding }}? Data tidak bisa dikembalikan.')">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="text-red-500 hover:text-red-700 transition-colors" title="Hapus finding {{ $f->kode_finding }}">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                    </svg>
-                                </button>
-                            </form>
-                        </td>
-                    </tr>
-                @empty
-                    <tr><td colspan="9" class="px-5 py-8 text-center text-slate-400 text-sm">Belum ada temuan untuk equipment ini.</td></tr>
-                @endforelse
+                @include('cm._temuan-rows')
             </tbody>
         </table>
     </div>
 </div>
+@include('cm._modal-edit-finding')
+
 {{-- Modal Edit Informasi Spek --}}
 <div id="editSpekModal" class="fixed inset-0 z-50 hidden bg-black/40 flex items-center justify-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -944,4 +944,85 @@
     renderChart('pressureChart', ['discharge_pressure'], 'Pressure');
 })();
 </script>
+<script>
+/**
+ * Buka modal edit finding dan isi seluruh field dari data baris.
+ *
+ * Parameter: button = tombol Edit yang membawa atribut data-finding (JSON).
+ * Return  : tidak ada.
+ */
+function bukaEditFinding(button) {
+    if (!button) return;
+
+    var data = {};
+    try {
+        data = JSON.parse(button.dataset.finding || '{}');
+    } catch (error) {
+        return;
+    }
+
+    var modal = document.getElementById('editFindingModal');
+    var form = document.getElementById('editFindingForm');
+    if (!modal || !form) return;
+
+    form.action = data.update_url || '#';
+
+    var isi = function (id, nilai) {
+        var field = document.getElementById(id);
+        if (field) field.value = nilai || '';
+    };
+
+    isi('ef_severity', data.severity || 'low');
+    isi('ef_status', data.status || 'open');
+    isi('ef_kategori', data.kategori);
+    isi('ef_pic', data.pic);
+    isi('ef_tanggal_temuan', data.tanggal_temuan);
+    isi('ef_date_action', data.date_action);
+    isi('ef_deskripsi', data.deskripsi);
+    isi('ef_analysis', data.analysis);
+    isi('ef_action', data.action);
+    isi('ef_remark', data.remark);
+
+    var kode = document.getElementById('ef_kode');
+    if (kode) kode.textContent = data.kode || '';
+
+    modal.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+
+    setTimeout(function () {
+        var field = document.getElementById('ef_severity');
+        if (field) field.focus();
+    }, 50);
+}
+
+/**
+ * Tutup modal edit finding dan kembalikan scroll halaman.
+ *
+ * Return: tidak ada.
+ */
+function tutupEditFinding() {
+    var modal = document.getElementById('editFindingModal');
+    if (modal) modal.classList.add('hidden');
+    document.body.classList.remove('overflow-hidden');
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    // Dukungan tautan dari halaman detail finding: ?edit_finding=<id>#temuan
+    var params = new URLSearchParams(window.location.search);
+    var id = params.get('edit_finding');
+    if (!id) return;
+
+    var tombol = document.querySelector('[data-edit-finding="' + id + '"]');
+    if (!tombol) return;
+
+    tombol.click();
+    var baris = document.getElementById('finding-' + id);
+    if (baris) baris.scrollIntoView({ block: 'center' });
+});
+
+document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') tutupEditFinding();
+});
+</script>
+
 @endpush

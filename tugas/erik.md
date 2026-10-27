@@ -1,24 +1,23 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-27 08:11 WIB
+Diperbarui: 2026-10-27 12:12 WIB
 
-- Cabang aktif: `tugas/erik/filter-bagian-request-sparepart`
-- Mulai: 2026-10-27 08:11
-- Status: SELESAI DIUJI, SIAP PR
+- Cabang aktif: `tugas/erik/perbaiki-tampilan-riwayat-pembacaan-dan-temuan-equipment-cm`
+- Mulai: 2026-10-27 12:12
+- Status: SELESAI DIKERJAKAN (menunggu PR)
 - Modul/berkas yang disentuh:
-  - Filter Bagian pada tabel Request Spare Part (Pengajuan, Kejar PO, Kejar Delivery, Selesai)
-  - Kolom Bagian + Group pada semua tabel request; filter berlaku juga untuk tabel PR Menunggu PO
-  - `app/Http/Controllers/SparepartRequestController.php`
-  - `resources/views/sparepart/request/index.blade.php`
-  - `resources/views/sparepart/request/partials/_pengajuan.blade.php`
-  - `resources/views/sparepart/request/partials/_kejar-po.blade.php`
-  - `resources/views/sparepart/request/partials/_kejar-delivery.blade.php`
-  - `resources/views/sparepart/request/partials/_selesai.blade.php`
-  - `resources/views/sparepart/request/partials/_teknisi.blade.php`
-  - `resources/views/sparepart/request/partials/_bagian.blade.php` (baru)
-  - `tests/Feature/SparepartRequestWebTest.php`
-  - `docs/30-request-sparepart.md`
-- Catatan: 29 test request hijau, 110 assertions; seluruh suite 771 test hijau, 3.833 assertions; `view:cache` sukses.
+  - `resources/views/cm/equipment-show.blade.php` — tabel riwayat pembacaan & temuan
+  - `resources/views/cm/finding-show.blade.php` — tombol edit & tampilan remark
+  - `resources/views/cm/_findings-list.blade.php` — tautan edit finding
+  - `resources/views/reports/show.blade.php` — dukung `?edit=1`
+  - `app/Http/Controllers/CmController.php` — update finding & eager load relasi
+  - `app/Models/CmFinding.php` — kolom `remark`
+  - `app/Jobs/ProcessCmFindingsImport.php` & `app/Console/Commands/CmImportFindings.php` — impor remark terpisah
+  - `database/migrations/2026_10_27_000001_add_remark_to_cm_findings_table.php`
+  - `routes/web.php` — rute update finding
+  - `tests/Feature/` — penjaga tampilan & edit finding
+  - `docs/32-tampilan-riwayat-pembacaan-dan-temuan.md`
+- Catatan: `php artisan test` 776 passed (3859 assertions); `view:cache` sukses. Remark finding disimpan terpisah supaya tidak tertimpa sinkronisasi saat kolom sheet kosong.
 
 ## Riwayat
-- tugas/erik/import-dokumentasi-asset (mulai 2026-10-26 10:49) -> dilanjutkan 2026-10-27 08:11
+- tugas/erik/filter-bagian-request-sparepart (mulai 2026-10-27 08:11) -> dilanjutkan 2026-10-27 12:12
