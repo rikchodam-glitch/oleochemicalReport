@@ -23,9 +23,9 @@ uses(RefreshDatabase::class);
  *   - ada tombol "Cek Overtime" berisi rincian per tanggal beserta laporannya
  *     dalam popup.
  *
- * Tanggal laporan dibuat dinamis (Senin pertama bulan berjalan) supaya hasilnya
- * tidak bergantung hari saat suite dijalankan, tetapi tetap berada di dalam
- * periode man hour halaman profil (bulan berjalan).
+ * Tanggal laporan dibuat dinamis (Senin pertama dalam periode man hour 26-25
+ * berjalan) supaya hasilnya tidak bergantung hari saat suite dijalankan,
+ * tetapi tetap berada di dalam periode yang dihitung halaman profil.
  */
 
 beforeEach(function () {
@@ -40,8 +40,13 @@ beforeEach(function () {
         'status' => 'active',
     ]);
 
-    // Senin pertama bulan berjalan (jendela kerja reguler 08:00-16:00).
-    $this->tanggal = Carbon::now()->startOfMonth();
+    // Senin pertama dalam periode 26-25 berjalan (jendela kerja 08:00-16:00).
+    $hariIni       = Carbon::now()->startOfDay();
+    $mulaiPeriode  = $hariIni->day >= 26
+        ? $hariIni->copy()->startOfMonth()->addDays(25)
+        : $hariIni->copy()->subMonthNoOverflow()->startOfMonth()->addDays(25);
+
+    $this->tanggal = $mulaiPeriode->copy();
 
     while ($this->tanggal->dayOfWeek !== Carbon::MONDAY) {
         $this->tanggal->addDay();

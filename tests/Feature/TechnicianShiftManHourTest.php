@@ -260,28 +260,37 @@ test('halaman teknisi menampilkan man hour, rincian harian, dan kolom jam kerja'
         ->assertSee('4,0 j', false);
 });
 
-test('man hour detail memakai periode jadwal 26-25 dengan data sebelum/sesudah dan bisa digeser', function () {
+test('man hour otomatis memakai periode 26-25 berjalan dengan data sebelum/sesudah dan bisa digeser', function () {
+    // Jadwal import lama tidak boleh mengunci periode halaman.
     ShiftSchedule::create([
         'periode_mulai'   => '2026-09-26',
         'periode_selesai' => '2026-10-25',
         'nama_file'       => 'jadwal-uji.xlsx',
     ]);
 
+    $hariIni = now()->startOfDay();
+    $mulai   = $hariIni->day >= 26
+        ? $hariIni->copy()->startOfMonth()->addDays(25)
+        : $hariIni->copy()->subMonthNoOverflow()->startOfMonth()->addDays(25);
+    $selesai = $mulai->copy()->addMonthNoOverflow()->subDay();
+    $sebelum = $mulai->copy()->subMonthNoOverflow();
+    $sesudah = $selesai->copy()->addMonthNoOverflow();
+
     $response = $this->actingAs($this->admin)
         ->get('/technicians/' . $this->teknisiStaf->id)
         ->assertStatus(200)
-        ->assertSee('26/09/2026 - 25/10/2026', false)
-        ->assertSee('26/09/2026', false)
-        ->assertSee('25/10/2026', false)
-        ->assertSee('26/08/2026', false)
-        ->assertSee('25/11/2026', false)
+        ->assertSee($mulai->format('d/m/Y') . ' - ' . $selesai->format('d/m/Y'), false)
+        ->assertSee($mulai->format('d/m/Y'), false)
+        ->assertSee($selesai->format('d/m/Y'), false)
+        ->assertSee($sebelum->format('d/m/Y'), false)
+        ->assertSee($sesudah->format('d/m/Y'), false)
         ->assertSee('grafikManHourScroll', false)
         ->assertSee('data-indeks-mulai=', false)
         ->assertSee('overflow-x-auto', false)
         ->assertSee('min-width:', false)
         ->assertSee('Geser ke kiri/kanan', false)
         ->assertSee('max-h-[32rem]', false)
-        ->assertSee('data-tanggal-fokus="2026-10-25"', false)
+        ->assertSee('data-tanggal-fokus="' . $selesai->toDateString() . '"', false)
         ->assertSee('sticky top-0', false)
         ->assertSee('gulir ke atas/bawah', false);
 
@@ -291,8 +300,8 @@ test('man hour detail memakai periode jadwal 26-25 dengan data sebelum/sesudah d
     $akhirBody = strpos($html, '</tbody>', $awalBody);
     $tabel     = substr($html, $awalBody, $akhirBody - $awalBody);
 
-    expect(strpos($tabel, '25/10/2026'))
-        ->toBeLessThan(strpos($tabel, '26/09/2026'));
+    expect(strpos($tabel, $selesai->format('d/m/Y')))
+        ->toBeLessThan(strpos($tabel, $mulai->format('d/m/Y')));
 });
 
 test('upload jadwal shift lewat halaman teknisi menyimpan hasil import', function () {
