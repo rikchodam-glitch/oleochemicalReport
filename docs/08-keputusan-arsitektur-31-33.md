@@ -245,3 +245,19 @@
   ke atas/bawah.
 - Uji: `TechnicianShiftManHourTest` **17 test hijau, 167 assertions**; seluruh
   suite **772 test hijau, 3.849 assertions**; `view:cache` sukses.
+
+## PERIODE MAN HOUR OTOMATIS 26-25 — 27/10/2026
+
+- `TechnicianController::rentangManHour()` sekarang menghitung periode dari
+  tanggal berjalan, bukan dari file jadwal shift terakhir:
+  - tanggal 1-25  -> mulai tanggal 26 bulan lalu;
+  - tanggal 26-akhir bulan -> mulai tanggal 26 bulan ini.
+  Selesai selalu tanggal 25 bulan berikutnya, sehingga periode otomatis
+  bergeser saat tanggal 26 tiba.
+- Grafik/tabel tetap memuat satu bulan sebelum dan sesudah periode berjalan;
+  tampilan awal tetap di 26-25. Ringkasan, target, dan rincian lembur mengikuti
+  periode berjalan.
+- Baris shift masa depan tetap dibuat otomatis oleh scheduler
+  `shifts:generate --execute`; data lama TIDAK dihapus dan masih bisa dilihat
+  dengan menggeser grafik/menggulir tabel.
+- Uji: seluruh suite **772 test hijau, 3.849 assertions**; `view:cache` sukses.

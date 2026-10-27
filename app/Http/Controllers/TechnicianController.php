@@ -140,26 +140,32 @@ class TechnicianController extends Controller
     }
 
     /**
-     * Rentang tanggal untuk perhitungan man hour daftar/detail teknisi:
-     * periode file jadwal shift terakhir (umumnya 26-25), atau bulan berjalan
-     * bila jadwal belum pernah diimpor.
+     * Rentang tanggal man hour daftar/detail teknisi: periode 26-25 berjalan.
+     *
+     * Periode dihitung dari tanggal hari ini, bukan dari file jadwal terakhir:
+     * - tanggal 26 sampai akhir bulan  -> mulai tanggal 26 bulan ini;
+     * - tanggal 1 sampai 25           -> mulai tanggal 26 bulan lalu.
+     * Selesai selalu tanggal 25 bulan berikutnya. Dengan begitu periode
+     * bergeser otomatis saat tanggal 26 tiba.
      *
      * @return array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon, 2: string}
      *         [tanggal mulai, tanggal selesai, label periode]
      */
     private function rentangManHour(): array
     {
-        $jadwal = ShiftSchedule::latest('id')->first();
+        $hariIni = now()->startOfDay();
 
-        if ($jadwal?->periode_mulai !== null && $jadwal?->periode_selesai !== null) {
-            return [
-                $jadwal->periode_mulai->copy()->startOfDay(),
-                $jadwal->periode_selesai->copy()->startOfDay(),
-                (string) $jadwal->periode_label,
-            ];
-        }
+        $mulai = $hariIni->day >= 26
+            ? $hariIni->copy()->startOfMonth()->addDays(25)
+            : $hariIni->copy()->subMonthNoOverflow()->startOfMonth()->addDays(25);
 
-        return [now()->startOfMonth(), now()->endOfMonth(), now()->translatedFormat('F Y')];
+        $selesai = $mulai->copy()->addMonthNoOverflow()->subDay();
+
+        return [
+            $mulai,
+            $selesai,
+            $mulai->format('d/m/Y') . ' - ' . $selesai->format('d/m/Y'),
+        ];
     }
 
     public function create()
