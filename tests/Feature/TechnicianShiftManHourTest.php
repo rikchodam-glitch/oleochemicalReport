@@ -260,7 +260,7 @@ test('halaman teknisi menampilkan man hour, rincian harian, dan kolom jam kerja'
         ->assertSee('4,0 j', false);
 });
 
-test('man hour detail memakai periode jadwal 26-25 dan grafik/tabel bisa digeser', function () {
+test('man hour detail memakai periode jadwal 26-25 dengan data sebelum/sesudah dan bisa digeser', function () {
     ShiftSchedule::create([
         'periode_mulai'   => '2026-09-26',
         'periode_selesai' => '2026-10-25',
@@ -273,13 +273,17 @@ test('man hour detail memakai periode jadwal 26-25 dan grafik/tabel bisa digeser
         ->assertSee('26/09/2026 - 25/10/2026', false)
         ->assertSee('26/09/2026', false)
         ->assertSee('25/10/2026', false)
+        ->assertSee('26/08/2026', false)
+        ->assertSee('25/11/2026', false)
         ->assertSee('grafikManHourScroll', false)
+        ->assertSee('data-indeks-mulai=', false)
         ->assertSee('overflow-x-auto', false)
         ->assertSee('min-width:', false)
-        ->assertSee('Geser grafik ke kiri atau ke kanan', false)
+        ->assertSee('Geser ke kiri/kanan', false)
         ->assertSee('max-h-[32rem]', false)
+        ->assertSee('data-tanggal-fokus="2026-10-25"', false)
         ->assertSee('sticky top-0', false)
-        ->assertSee('Gulir tabel ke atas/bawah', false);
+        ->assertSee('gulir ke atas/bawah', false);
 
     $html      = $response->getContent();
     $awalTabel = strpos($html, 'Rincian Man Hour Harian');

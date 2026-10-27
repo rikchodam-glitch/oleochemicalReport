@@ -355,7 +355,8 @@
                 {{-- Grafik dibuat lebih lebar dari kartu agar seluruh tanggal
                      bulan berjalan (28-31 hari) muat; wadah ini bisa digeser
                      ke kiri/kanan dengan scrollbar atau drag mouse. --}}
-                <div id="grafikManHourScroll" class="overflow-x-auto cursor-grab pb-2">
+                <div id="grafikManHourScroll" class="overflow-x-auto cursor-grab pb-2"
+                     data-indeks-mulai="{{ $indeksFokusGrafik }}">
                     <div class="relative h-64" style="min-width: {{ max(720, count($manHourHarian) * 42) }}px;">
                         <canvas id="grafikManHour"></canvas>
                     </div>
@@ -365,7 +366,7 @@
                     garis putus-putus = target harian. Tanggal berwarna merah menandakan ada laporan pada hari libur/OFF.
                 </p>
                 <p class="text-xs text-slate-400 mt-1">
-                    Geser grafik ke kiri atau ke kanan untuk melihat tanggal sebelum dan sesudahnya.
+                    Grafik memuat satu bulan sebelum dan sesudah periode. Geser ke kiri/kanan untuk melihat tanggal sebelum dan sesudahnya.
                 </p>
             </div>
         </div>
@@ -376,10 +377,10 @@
                 <h3 class="font-medium text-slate-900">Rincian Man Hour Harian</h3>
                 <p class="text-xs text-slate-400 mt-0.5">
                     Periode {{ $labelPeriodeManHour }}. Klik baris untuk melihat laporan pada hari itu.
-                    Gulir tabel ke atas/bawah untuk melihat tanggal sebelum dan sesudahnya.
+                    Tabel memuat satu bulan sebelum dan sesudah periode; gulir ke atas/bawah untuk melihat tanggal sebelum dan sesudahnya.
                 </p>
             </div>
-            <div class="max-h-[32rem] overflow-auto">
+            <div class="max-h-[32rem] overflow-auto" data-tanggal-fokus="{{ $tanggalFokusTabel }}">
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="sticky top-0 z-10 bg-slate-50 border-b border-slate-100">
@@ -425,6 +426,7 @@
                                         : 'bg-teal-50 text-teal-700 border border-teal-100');
                             @endphp
                             <tr class="{{ $tautanHari ? 'hover:bg-slate-50 transition-colors cursor-pointer' : '' }}"
+                                data-tanggal="{{ $hari['tanggal'] }}"
                                 @if($tautanHari)
                                     title="Lihat laporan {{ $tanggalHari->format('d/m/Y') }}"
                                     onclick="window.location='{{ $tautanHari }}'"
