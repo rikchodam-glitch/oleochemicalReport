@@ -376,13 +376,13 @@
                 <h3 class="font-medium text-slate-900">Rincian Man Hour Harian</h3>
                 <p class="text-xs text-slate-400 mt-0.5">
                     Periode {{ $labelPeriodeManHour }}. Klik baris untuk melihat laporan pada hari itu.
-                    Urutan terbaru di atas; tanggal 1 berada di paling bawah.
+                    Gulir tabel ke atas/bawah untuk melihat tanggal sebelum dan sesudahnya.
                 </p>
             </div>
-            <div class="overflow-x-auto">
+            <div class="max-h-[32rem] overflow-auto">
                 <table class="w-full text-sm">
                     <thead>
-                        <tr class="bg-slate-50 border-b border-slate-100">
+                        <tr class="sticky top-0 z-10 bg-slate-50 border-b border-slate-100">
                             <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-5 py-3 whitespace-nowrap">Tanggal</th>
                             <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Shift</th>
                             <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Target</th>
