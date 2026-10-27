@@ -234,11 +234,14 @@
 - Koreksi permintaan user: periode grafik/tabel TETAP memakai periode jadwal
   shift terakhir (umumnya 26-25), bukan bulan kalender 1-31. Bila jadwal belum
   pernah diimpor, fallback tetap bulan berjalan.
-- Grafik `grafikManHour` tetap selebar 42 px per hari dan bisa digeser
-  horizontal (scrollbar/drag mouse) untuk melihat tanggal lain dalam periode
-  26-25.
+- Data grafik/tabel diperluas satu bulan SEBELUM dan SESUDAH periode 26-25,
+  sehingga tanggal di luar periode tetap bisa dilihat. Tampilan awal tetap
+  di 26-25: grafik di-scroll ke tanggal 26, tabel di-scroll ke tanggal 25.
+  Ringkasan, target, dan rincian lembur tetap dihitung untuk periode 26-25.
+- Grafik `grafikManHour` selebar 42 px per hari dan bisa digeser horizontal
+  (scrollbar/drag mouse); area sebelum/sesudah periode tersedia untuk digeser.
 - Rincian Man Hour Harian memakai `max-h-[32rem] overflow-auto` dengan header
-  sticky, sehingga tabel bisa digulir ke atas/bawah untuk melihat tanggal
-  sebelum dan sesudahnya.
-- Uji: `TechnicianShiftManHourTest` **17 test hijau, 163 assertions**; seluruh
-  suite **772 test hijau, 3.845 assertions**; `view:cache` sukses.
+  sticky; tabel memuat data sebelum/sesudah periode dan bisa digulir
+  ke atas/bawah.
+- Uji: `TechnicianShiftManHourTest` **17 test hijau, 167 assertions**; seluruh
+  suite **772 test hijau, 3.849 assertions**; `view:cache` sukses.

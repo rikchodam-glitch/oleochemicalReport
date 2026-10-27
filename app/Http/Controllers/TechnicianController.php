@@ -322,11 +322,38 @@ class TechnicianController extends Controller
 
         [$mulaiManHour, $selesaiManHour, $labelPeriodeManHour] = $this->rentangManHour();
 
-        $manHourHarian    = $manHour->harian($technician, $mulaiManHour, $selesaiManHour);
-        $manHourRingkasan = $manHour->ringkasan($manHourHarian);
+        // Grafik/tabel memuat satu bulan sebelum dan sesudah periode utama
+        // (26-25), supaya pengguna bisa menggeser ke tanggal sebelum/sesudahnya.
+        // Ringkasan, target, dan rincian lembur tetap dihitung untuk periode
+        // utama 26-25 saja.
+        $mulaiDataManHour   = $mulaiManHour->copy()->subMonthNoOverflow()->startOfDay();
+        $selesaiDataManHour = $selesaiManHour->copy()->addMonthNoOverflow()->endOfDay();
+        $manHourHarian      = $manHour->harian($technician, $mulaiDataManHour, $selesaiDataManHour);
+
+        $harianPeriode = array_values(array_filter(
+            $manHourHarian,
+            static fn (array $hari): bool => $hari['tanggal'] >= $mulaiManHour->toDateString()
+                && $hari['tanggal'] <= $selesaiManHour->toDateString()
+        ));
+
+        $manHourRingkasan = $manHour->ringkasan($harianPeriode);
         // Rincian lembur per tanggal untuk tombol "Cek Overtime" (popup): memuat
         // laporan penyebab lembur beserta jamnya.
         $lemburRincian    = $manHour->lemburPerTanggal($technician, $mulaiManHour, $selesaiManHour);
+
+        // Titik awal tampilan grafik: indeks tanggal mulai periode utama di
+        // dalam data yang diperluas. Dipakai JavaScript untuk mengatur scroll
+        // awal tanpa harus menghitung ulang di browser.
+        $indeksFokusGrafik = 0;
+
+        foreach ($manHourHarian as $indeksHari => $hari) {
+            if ($hari['tanggal'] >= $mulaiManHour->toDateString()) {
+                $indeksFokusGrafik = $indeksHari;
+                break;
+            }
+        }
+
+        $tanggalFokusTabel = $selesaiManHour->toDateString();
         $shiftHariIni = $technician->shifts()->untukTanggal(now()->toDateString())->first();
 
         // Bila belum ada baris jadwal (mis. periode berjalan belum diupload),
@@ -354,6 +381,8 @@ class TechnicianController extends Controller
             'manHourRingkasan',
             'lemburRincian',
             'labelPeriodeManHour',
+            'indeksFokusGrafik',
+            'tanggalFokusTabel',
             'shiftHariIni'
         ));
     }
