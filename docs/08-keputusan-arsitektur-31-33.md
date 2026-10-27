@@ -210,3 +210,21 @@
       keterangan "Batang teal = jam kerja normal"; blok `<script>` grafik yang
       benar-benar disajikan (8.982 karakter) lolos `node --check`, dan popup
       "Cek Overtime" memuat tanggal 27 September 2026 dengan "lembur 8,0 j".
+
+## MAN HOUR BULANAN DAN GRAFIK GESER — 27/10/2026
+
+- `TechnicianController::rentangManHour()` sekarang SELALU memakai bulan
+  berjalan (awal sampai akhir bulan), bukan periode file jadwal shift terakhir.
+  Alasan: periode import terakhir berakhir di tanggal 26, sehingga tanggal 27
+  sampai akhir bulan tidak tampil di daftar maupun detail teknisi.
+- `technicians/show.blade.php`: Rincian Man Hour Harian diurutkan terbaru di
+  atas memakai `array_reverse($manHourHarian)`, sehingga tanggal 1 berada di
+  paling bawah.
+- Grafik `grafikManHour` dibungkus `#grafikManHourScroll` dengan
+  `overflow-x-auto`, lebar minimum 42 px per hari (minimal 720 px). Seluruh
+  tanggal 28-31 hari muat dan grafik bisa digeser horizontal memakai scrollbar
+  atau drag mouse; layar sentuh memakai scroll native.
+- Uji baru di `TechnicianShiftManHourTest`: periode bulan berjalan, tanggal 1
+  di bawah, wadah grafik bisa digeser, dan label bulan tampil.
+- Uji: `TechnicianShiftManHourTest` **17 test hijau, 160 assertions**; seluruh
+  suite **772 test hijau, 3.842 assertions**; `view:cache` sukses.

@@ -352,12 +352,20 @@
             </div>
 
             <div class="px-5 py-4">
-                <div class="relative h-64">
-                    <canvas id="grafikManHour"></canvas>
+                {{-- Grafik dibuat lebih lebar dari kartu agar seluruh tanggal
+                     bulan berjalan (28-31 hari) muat; wadah ini bisa digeser
+                     ke kiri/kanan dengan scrollbar atau drag mouse. --}}
+                <div id="grafikManHourScroll" class="overflow-x-auto cursor-grab pb-2">
+                    <div class="relative h-64" style="min-width: {{ max(720, count($manHourHarian) * 42) }}px;">
+                        <canvas id="grafikManHour"></canvas>
+                    </div>
                 </div>
                 <p class="text-xs text-slate-400 mt-3">
                     Batang teal = jam kerja normal, batang oranye = lembur (termasuk seluruh jam pada hari libur/OFF),
                     garis putus-putus = target harian. Tanggal berwarna merah menandakan ada laporan pada hari libur/OFF.
+                </p>
+                <p class="text-xs text-slate-400 mt-1">
+                    Geser grafik ke kiri atau ke kanan untuk melihat tanggal sebelum dan sesudahnya.
                 </p>
             </div>
         </div>
@@ -368,6 +376,7 @@
                 <h3 class="font-medium text-slate-900">Rincian Man Hour Harian</h3>
                 <p class="text-xs text-slate-400 mt-0.5">
                     Periode {{ $labelPeriodeManHour }}. Klik baris untuk melihat laporan pada hari itu.
+                    Urutan terbaru di atas; tanggal 1 berada di paling bawah.
                 </p>
             </div>
             <div class="overflow-x-auto">
@@ -385,7 +394,7 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
-                        @forelse($manHourHarian as $hari)
+                        @forelse(array_reverse($manHourHarian) as $hari)
                             @php
                                 $tautanHari = $hari['jumlah_pekerjaan'] > 0
                                     ? route('reports.index', array_merge($parameterLaporan, ['tanggal' => $hari['tanggal']]))
