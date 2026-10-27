@@ -1,17 +1,24 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-26 10:49 WIB
+Diperbarui: 2026-10-27 08:11 WIB
 
-- Cabang aktif: `tugas/erik/import-dokumentasi-asset`
-- Mulai: 2026-10-26 10:49
+- Cabang aktif: `tugas/erik/filter-bagian-request-sparepart`
+- Mulai: 2026-10-27 08:11
 - Status: SELESAI DIUJI, SIAP PR
 - Modul/berkas yang disentuh:
-  - Perintah `assets:import-dokumentasi` untuk impor foto equipment ke `assets.photos` (dry-run/apply)
-  - `app/Console/Commands/ImportAssetDocumentation.php`
-  - `app/Services/Assets/AssetDocumentationImportService.php`
-  - `tests/Feature/AssetDocumentationImportTest.php`
-  - `docs/31-import-dokumentasi-asset.md`, `docs/28-assets-management.md`, `AGENTS.md`
-- Catatan: Dry-run DEV berhasil: 2.221 berkas, 2.069 gambar, 1.672 foto unik untuk 180 aset, 168 belum cocok, 228 duplikat, perkiraan 3,79 GB. PROD menulis ke D:\storage\app\public. Seluruh suite 770 test hijau, 3.826 assertions; view:cache sukses. Apply PROD belum dijalankan.
+  - Filter Bagian pada tabel Request Spare Part (Pengajuan, Kejar PO, Kejar Delivery, Selesai)
+  - Kolom Bagian + Group pada semua tabel request; filter berlaku juga untuk tabel PR Menunggu PO
+  - `app/Http/Controllers/SparepartRequestController.php`
+  - `resources/views/sparepart/request/index.blade.php`
+  - `resources/views/sparepart/request/partials/_pengajuan.blade.php`
+  - `resources/views/sparepart/request/partials/_kejar-po.blade.php`
+  - `resources/views/sparepart/request/partials/_kejar-delivery.blade.php`
+  - `resources/views/sparepart/request/partials/_selesai.blade.php`
+  - `resources/views/sparepart/request/partials/_teknisi.blade.php`
+  - `resources/views/sparepart/request/partials/_bagian.blade.php` (baru)
+  - `tests/Feature/SparepartRequestWebTest.php`
+  - `docs/30-request-sparepart.md`
+- Catatan: 29 test request hijau, 110 assertions; seluruh suite 771 test hijau, 3.833 assertions; `view:cache` sukses.
 
 ## Riwayat
-- tugas/erik/hapus-start-dari-menu-bot (mulai 2026-10-26 09:25) -> dilanjutkan 2026-10-26 10:49
+- tugas/erik/import-dokumentasi-asset (mulai 2026-10-26 10:49) -> dilanjutkan 2026-10-27 08:11

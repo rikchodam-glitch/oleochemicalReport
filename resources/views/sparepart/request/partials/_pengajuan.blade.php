@@ -37,6 +37,7 @@
                 <tr class="border-b border-slate-100 bg-slate-50">
                     <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Kode / Tanggal</th>
                     <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Teknisi</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Bagian</th>
                     <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Keterangan</th>
                     <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Jumlah</th>
                     <th class="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-slate-500">Foto</th>
@@ -53,6 +54,9 @@
                         </td>
                         <td class="px-4 py-3">
                             @include('sparepart.request.partials._teknisi', ['row' => $row])
+                        </td>
+                        <td class="px-4 py-3">
+                            @include('sparepart.request.partials._bagian', ['row' => $row])
                         </td>
                         <td class="max-w-[22rem] px-4 py-3">
                             <span class="block text-xs text-slate-700">{{ $row->keterangan }}</span>
@@ -129,7 +133,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="7" class="px-4 py-10 text-center text-sm text-slate-400">
+                        <td colspan="8" class="px-4 py-10 text-center text-sm text-slate-400">
                             Tidak ada request pada filter ini.
                         </td>
                     </tr>

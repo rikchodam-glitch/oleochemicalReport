@@ -86,6 +86,10 @@ Sub-tab:
 - **Kejar Delivery**: daftar PO menunggu barang dan tombol **Barang diterima**.
 - **Selesai**: arsip request yang sudah diterima.
 
+Semua tabel request menampilkan kolom **Bagian** (section teknisi) dengan
+Group di bawahnya. Form saringan di atas tabel memiliki pilihan **Bagian**;
+pilihan itu berlaku untuk daftar utama dan tabel **Daftar PR Menunggu PO**.
+
 ### Hapus request
 
 - Request boleh dihapus selama belum punya nomor PR, yaitu status `menunggu`,
@@ -98,7 +102,8 @@ Sub-tab:
   meminta konfirmasi sebelum menghapus.
 
 Pencarian mencakup kode, keterangan, nama/NIK teknisi, nomor PR, dan nomor PO.
-Filter tanggal memakai `created_at`.
+Filter **Bagian** memakai `technicians.section` (label dari
+`Technician::SECTIONS`). Filter tanggal memakai `created_at`.
 
 ## Hak akses
 
@@ -159,9 +164,9 @@ ada bila akun/teknisi dihapus.
 
 ## Uji
 
-- `php artisan test --filter=SparepartRequest`: **28 test hijau,
-  103 assertions**.
-- Seluruh suite: **766 test hijau, 3.780 assertions**.
+- `php artisan test --filter=SparepartRequest`: **29 test hijau,
+  110 assertions**.
+- Seluruh suite: **771 test hijau, 3.833 assertions**.
 - `php artisan view:cache` sukses.
 - Migrasi DEV `2026_10_24_000001_create_sp_requests_table` sudah dijalankan.
 

@@ -19,6 +19,7 @@
                 <tr class="border-b border-slate-100 bg-slate-50">
                     <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Kode</th>
                     <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Teknisi</th>
+                    <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Bagian</th>
                     <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Keterangan</th>
                     <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-slate-500">No PR</th>
                     <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Aksi</th>
@@ -29,6 +30,7 @@
                     <tr class="align-top hover:bg-slate-50/70">
                         <td class="px-4 py-2.5 font-mono text-xs font-semibold text-slate-800">{{ $row->kode }}</td>
                         <td class="px-4 py-2.5">@include('sparepart.request.partials._teknisi', ['row' => $row])</td>
+                        <td class="px-4 py-2.5">@include('sparepart.request.partials._bagian', ['row' => $row])</td>
                         <td class="max-w-[20rem] px-4 py-2.5 text-xs text-slate-700">
                             {{ $row->keterangan }}
                             <span class="mt-0.5 block text-[11px] text-slate-400">
@@ -58,7 +60,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="5" class="px-4 py-8 text-center text-sm text-slate-400">
+                        <td colspan="6" class="px-4 py-8 text-center text-sm text-slate-400">
                             Tidak ada PR yang menunggu PO.
                         </td>
                     </tr>
@@ -80,6 +82,7 @@
                 <tr class="border-b border-slate-100 bg-slate-50">
                     <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Kode / Tanggal</th>
                     <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Teknisi</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Bagian</th>
                     <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Keterangan</th>
                     <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Jumlah</th>
                     <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">No PR</th>
@@ -94,6 +97,7 @@
                             <span class="block text-[11px] text-slate-400">{{ $row->created_at?->format('d M Y H:i') }}</span>
                         </td>
                         <td class="px-4 py-3">@include('sparepart.request.partials._teknisi', ['row' => $row])</td>
+                        <td class="px-4 py-3">@include('sparepart.request.partials._bagian', ['row' => $row])</td>
                         <td class="max-w-[22rem] px-4 py-3">
                             <span class="block text-xs text-slate-700">{{ $row->keterangan }}</span>
                             @if($row->deskripsi_ukuran)
@@ -126,7 +130,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="px-4 py-10 text-center text-sm text-slate-400">
+                        <td colspan="7" class="px-4 py-10 text-center text-sm text-slate-400">
                             Tidak ada request pada Kejar PO.
                         </td>
                     </tr>
