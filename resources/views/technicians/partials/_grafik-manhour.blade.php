@@ -110,7 +110,7 @@
         }
     };
 
-    new Chart(kanvas, {
+    var grafikManHour = new Chart(kanvas, {
         type: 'bar',
         plugins: [pluginPemisahSesi],
         data: {
@@ -157,17 +157,6 @@
             responsive: true,
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
-            onClick: function (kejadian, elements) {
-                if (baruGeser || !elements.length) {
-                    return;
-                }
-
-                var baris = dataHarian[elements[0].index];
-
-                if (baris && baris.url) {
-                    window.location.href = baris.url;
-                }
-            },
             onHover: function (kejadian, elements) {
                 if (!kejadian.native || !kejadian.native.target) {
                     return;
@@ -330,8 +319,30 @@
         });
 
         var aktif = false;
+        var tertangkap = false;
         var mulaiX = 0;
         var mulaiScroll = 0;
+
+        // Klik ditangani di wadah, bukan di canvas: drag memakai pointer capture
+        // sehingga event click bisa berpindah target ke wadah. Dengan begitu klik
+        // batang tetap membuka laporan tanpa mengganggu drag.
+        wadah.addEventListener('click', function (kejadian) {
+            if (baruGeser) {
+                return;
+            }
+
+            var elemen = grafikManHour.getElementsAtEventForMode(
+                kejadian,
+                'nearest',
+                { intersect: true },
+                false
+            );
+            var baris = elemen.length ? dataHarian[elemen[0].index] : null;
+
+            if (baris && baris.url) {
+                window.location.href = baris.url;
+            }
+        });
 
         wadah.addEventListener('pointerdown', function (kejadian) {
             if (kejadian.pointerType !== 'mouse') {
@@ -339,15 +350,12 @@
             }
 
             aktif = true;
+            tertangkap = false;
             baruGeser = false;
             mulaiX = kejadian.clientX;
             mulaiScroll = wadah.scrollLeft;
             wadah.classList.add('cursor-grabbing');
             wadah.classList.remove('cursor-grab');
-
-            if (wadah.setPointerCapture) {
-                wadah.setPointerCapture(kejadian.pointerId);
-            }
         });
 
         wadah.addEventListener('pointermove', function (kejadian) {
@@ -357,6 +365,13 @@
 
             if (Math.abs(kejadian.clientX - mulaiX) > 5) {
                 baruGeser = true;
+
+                // Pointer capture baru dipasang setelah gerakan melewati batas
+                // drag; klik biasa tidak perlu capture.
+                if (!tertangkap && wadah.setPointerCapture) {
+                    wadah.setPointerCapture(kejadian.pointerId);
+                    tertangkap = true;
+                }
             }
 
             wadah.scrollLeft = mulaiScroll - (kejadian.clientX - mulaiX);
@@ -368,6 +383,7 @@
             }
 
             aktif = false;
+            tertangkap = false;
             wadah.classList.add('cursor-grab');
             wadah.classList.remove('cursor-grabbing');
 

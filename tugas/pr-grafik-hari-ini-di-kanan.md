@@ -11,7 +11,8 @@
 - **Batang grafik bisa diklik** untuk membuka halaman Laporan dengan filter
   teknisi, tampilan, grub (bila shift), dan tanggal. Hanya tanggal yang punya
   laporan yang memiliki tautan. Tooltip dan hover tetap tersedia; drag grafik
-  tidak memicu klik.
+  tidak memicu klik. Klik ditangani di wadah grafik agar pointer capture saat
+  drag tidak menelan event klik.
 - Popup **Cek Overtime** kini memiliki satu bagian untuk setiap periode grafik.
   Saat halaman pertama dibuka, badge dan bagian periode berjalan yang tampil;
   setelah grafik digeser, periode di tengah tampilan menentukan bagian yang

@@ -290,6 +290,8 @@
   menggambar garis putus-putus di awal tiap periode, klik batang membuka
   `reports.index` dengan filter teknisi/tampilan/grub/tanggal (hanya tanggal yang
   punya laporan), tooltip dan hover tetap ada, dan drag tidak memicu klik.
+  Klik ditangani pada wadah grafik (bukan `onClick` canvas) supaya pointer
+  capture saat drag tidak menelan event klik.
 - `_modal-lembur.blade.php`: 12 bagian `data-lembur-sesi` (satu per periode),
   bagian periode berjalan terlihat; periode di tengah tampilan grafik menentukan
   bagian yang ditampilkan. Badge `Lembur: X j`, header periode, total jam, dan
