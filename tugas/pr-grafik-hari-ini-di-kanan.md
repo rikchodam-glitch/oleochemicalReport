@@ -1,56 +1,62 @@
-# Man Hour: grafik setahun, hari ini di kanan, dan Cek Overtime per periode
+# Man Hour: tahun kalender, tabel dimuat saat digulir, dan klik batang
 
 ## Ringkasan
 
-- Grafik man hour pada detail teknisi kini memuat **12 periode 26-25** (periode
-  berjalan + 11 periode sebelumnya, satu tahun penuh).
-- Saat halaman pertama dibuka, grafik di-scroll sehingga **tanggal hari ini
-  berada di sisi kanan**. Tabel tetap memuat satu bulan sebelum/sesudah periode
-  berjalan dan tetap fokus ke baris hari ini di paling atas.
-- Setiap awal periode 26-25 diberi **garis pemisah** putus-putus.
+- Grafik dan tabel man hour pada detail teknisi kini memakai **tahun kalender
+  berjalan (01/01-31/12)**, bukan jendela 12 periode 26-25. Tahun berganti
+  otomatis saat halaman dibuka pada tahun baru.
+- Tampilan awal: grafik di-scroll sehingga **tanggal hari ini berada di sisi
+  kanan**; tabel di-scroll sehingga **baris hari ini berada di paling atas**.
+  Grafik tetap bisa digeser ke kiri sampai 01/01 dan ke kanan sampai 31/12.
+- Tabel diurutkan terbaru -> terlama. Baris awal hanya bulan sebelumnya + bulan
+  berjalan + bulan berikutnya; bulan lain dimuat lewat endpoint
+  `technicians.man-hour-bulan` saat tabel digulir, supaya setahun penuh tidak
+  dirender sekaligus. Tinggi tabel dipasang inline (`max-height: 32rem`) agar
+  wadah benar-benar bisa digulir; kelas arbitrary Tailwind tidak ikut build.
+- Setiap awal periode 26-25 tetap diberi **garis pemisah** putus-putus.
+  Satu tahun kalender menyentuh 13 periode payroll, sehingga popup Cek Overtime
+  berisi 13 bagian.
 - **Batang grafik bisa diklik** untuk membuka halaman Laporan dengan filter
   teknisi, tampilan, grub (bila shift), dan tanggal. Hanya tanggal yang punya
-  laporan yang memiliki tautan. Tooltip dan hover tetap tersedia; drag grafik
-  tidak memicu klik. Klik ditangani di wadah grafik agar pointer capture saat
-  drag tidak menelan event klik.
-- Popup **Cek Overtime** kini memiliki satu bagian untuk setiap periode grafik.
-  Saat halaman pertama dibuka, badge dan bagian periode berjalan yang tampil;
-  setelah grafik digeser, periode di tengah tampilan menentukan bagian yang
-  ditampilkan. Badge `Lembur: X j`, header periode, total jam, dan total tanggal
-  ikut diperbarui.
-- Ringkasan, target, dan data tabel tetap mengikuti aturan sebelumnya (periode
-  berjalan untuk ringkasan; satu bulan sebelum/sesudah untuk tabel).
+  laporan yang memiliki tautan. Tooltip/hover tetap ada; drag tidak memicu klik.
+  Klik ditangani di wadah grafik agar pointer capture saat drag tidak menelan
+  event klik.
+- Ringkasan kartu Man Hour tetap memakai periode 26-25 berjalan.
 
 ## Berkas yang disentuh
 
 - `app/Http/Controllers/TechnicianController.php`
+- `routes/web.php`
 - `resources/views/technicians/show.blade.php`
 - `resources/views/technicians/partials/_grafik-manhour.blade.php`
 - `resources/views/technicians/partials/_modal-lembur.blade.php`
+- `resources/views/technicians/partials/_baris-manhour.blade.php`
+- `resources/views/technicians/partials/_daftar-baris-manhour.blade.php`
 - `tests/Feature/TechnicianShiftManHourTest.php`
 - `docs/08-keputusan-arsitektur-31-33.md`
 
 ## Bukti uji
 
-- `php artisan test --filter=TechnicianShiftManHourTest`: **18 test hijau,
-  184 assertions**.
-- `php artisan test --filter="TechnicianShiftManHourTest|TechnicianLemburTest"`:
-  **23 test hijau, 211 assertions**.
-- Seluruh suite: **773 test hijau, 3.866 assertions**.
-- `php artisan view:cache` sukses.
+- `php artisan test --filter=TechnicianShiftManHourTest`: **19 test hijau,
+  194 assertions**.
+- `php artisan test --filter="TechnicianShiftManHourTest|TechnicianLemburTest|TechnicianTautanTampilanTest|TechnicianGrafikHariOffTest"`:
+  **36 test hijau, 270 assertions**.
+- Seluruh suite: **774 test hijau, 3.876 assertions**.
+- `php artisan view:cache` dan pemeriksaan sintaks JavaScript sukses.
 
 ## Checklist
 
-- [x] Grafik memuat 12 periode 26-25 / satu tahun.
-- [x] Tanggal hari ini tampil di sisi kanan saat halaman pertama dibuka.
-- [x] Garis pemisah tampil di awal setiap periode.
+- [x] Grafik memuat tahun kalender 01/01-31/12 dan otomatis mengikuti tahun.
+- [x] Tanggal hari ini tampil di sisi kanan grafik saat halaman dibuka.
+- [x] Tabel terurut terbaru -> terlama dan default fokus ke hari ini.
+- [x] Tabel memuat bulan lain saat digulir lewat endpoint bulanan.
+- [x] Garis pemisah periode 26-25 tetap tampil.
 - [x] Batang grafik yang punya laporan bisa diklik menuju daftar laporan.
-- [x] Cek Overtime memiliki 12 bagian dan mengikuti periode yang terlihat.
-- [x] Tabel tetap fokus ke hari ini dan memuat satu bulan sebelum/sesudah.
+- [x] Cek Overtime memiliki 13 bagian dan mengikuti periode yang terlihat.
 - [x] Uji otomatis hijau dan `view:cache` sukses.
 
 ## Catatan deploy
 
 - Tidak ada migrasi baru.
-- Setelah deploy, buka detail teknisi; grafik akan tampil setahun dengan hari ini
-  di kanan, dan Cek Overtime mengikuti periode yang sedang dilihat.
+- Setelah deploy, buka detail teknisi; grafik tampil setahun dengan hari ini di
+  kanan, tabel fokus ke hari ini, dan bulan lain dimuat saat digulir.

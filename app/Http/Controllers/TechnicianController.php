@@ -168,6 +168,26 @@ class TechnicianController extends Controller
         ];
     }
 
+    /**
+     * Parameter halaman Laporan yang sesuai tipe jadwal teknisi.
+     *
+     * Pekerja shift dibuka pada tampilan Shift beserta grubnya; teknisi lain
+     * pada tampilan Reguler. Dipakai tautan tabel, grafik, dan pemuatan bulan.
+     *
+     * @param  Technician $technician Teknisi yang dibuka
+     * @return array<string, mixed>   Parameter query halaman Laporan
+     */
+    private function parameterLaporan(Technician $technician): array
+    {
+        $tampilan = Technician::grupShift($technician->group) ? 'shift' : 'reguler';
+
+        return array_filter([
+            'technician_id' => $technician->id,
+            'tampilan'      => $tampilan,
+            'grub'          => $tampilan === 'shift' ? $technician->group : null,
+        ], fn ($nilai) => $nilai !== null && $nilai !== '');
+    }
+
     public function create()
     {
         $departments = app(\App\Services\LocationHierarchyService::class)->semuaDepartemen();
@@ -328,26 +348,23 @@ class TechnicianController extends Controller
 
         [$mulaiManHour, $selesaiManHour, $labelPeriodeManHour] = $this->rentangManHour();
 
-        // Tabel: satu bulan sebelum/sesudah periode berjalan.
-        $mulaiDataManHour   = $mulaiManHour->copy()->subMonthNoOverflow()->startOfDay();
-        $selesaiDataManHour = $selesaiManHour->copy()->addMonthNoOverflow()->endOfDay();
-        $manHourHarian      = $manHour->harian($technician, $mulaiDataManHour, $selesaiDataManHour);
-
-        $harianPeriode = array_values(array_filter(
-            $manHourHarian,
-            static fn (array $hari): bool => $hari['tanggal'] >= $mulaiManHour->toDateString()
-                && $hari['tanggal'] <= $selesaiManHour->toDateString()
-        ));
-
+        // Ringkasan kartu Man Hour tetap memakai periode 26-25 berjalan.
+        $harianPeriode    = $manHour->harian($technician, $mulaiManHour, $selesaiManHour);
         $manHourRingkasan = $manHour->ringkasan($harianPeriode);
 
-        // Grafik: 12 periode 26-25 (satu tahun penuh). Setiap tanggal membawa
-        // kunci sesi agar grafik bisa diberi garis pemisah dan popup Cek
-        // Overtime bisa mengikuti sesi yang sedang terlihat.
-        $sesiGrafik = [];
+        // Grafik dan tabel memakai satu tahun kalender berjalan (01/01-31/12).
+        $tahunManHour = (int) now()->year;
+        $awalTahun    = Carbon::create($tahunManHour, 1, 1)->startOfDay();
+        $akhirTahun   = Carbon::create($tahunManHour, 12, 31)->endOfDay();
+        $grafikHarian = $manHour->harian($technician, $awalTahun, $akhirTahun);
 
-        for ($mundur = 11; $mundur >= 0; $mundur--) {
-            $mulaiSesi   = $mulaiManHour->copy()->subMonthsNoOverflow($mundur);
+        // Sesi pembagi grafik tetap periode 26-25, termasuk sesi yang mulai
+        // sebelum 01/01 dan sesi yang berakhir setelah 31/12.
+        $mulaiSesiPertama = $awalTahun->copy()->subMonthNoOverflow()->startOfMonth()->addDays(25);
+        $sesiGrafik       = [];
+        $mulaiSesi        = $mulaiSesiPertama->copy();
+
+        while ($mulaiSesi->lte($akhirTahun)) {
             $selesaiSesi = $mulaiSesi->copy()->addMonthNoOverflow()->subDay();
 
             $sesiGrafik[] = [
@@ -356,24 +373,25 @@ class TechnicianController extends Controller
                 'selesai' => $selesaiSesi->toDateString(),
                 'label'   => $mulaiSesi->format('d/m/Y') . ' - ' . $selesaiSesi->format('d/m/Y'),
             ];
-        }
 
-        $grafikMulai   = Carbon::parse($sesiGrafik[0]['mulai'])->startOfDay();
-        $grafikSelesai = Carbon::parse($sesiGrafik[count($sesiGrafik) - 1]['selesai'])->endOfDay();
-        $grafikHarian  = $manHour->harian($technician, $grafikMulai, $grafikSelesai);
+            $mulaiSesi->addMonthNoOverflow();
+        }
 
         foreach ($grafikHarian as &$hariGrafik) {
             $tanggalHari = Carbon::parse($hariGrafik['tanggal']);
-            $mulaiSesi   = $tanggalHari->day >= 26
+            $sesiHari    = $tanggalHari->day >= 26
                 ? $tanggalHari->copy()->startOfMonth()->addDays(25)
                 : $tanggalHari->copy()->subMonthNoOverflow()->startOfMonth()->addDays(25);
 
-            $hariGrafik['sesi']       = $mulaiSesi->toDateString();
+            $hariGrafik['sesi']       = $sesiHari->toDateString();
             $hariGrafik['mulai_sesi'] = $tanggalHari->day === 26;
         }
         unset($hariGrafik);
 
-        $lemburSemua  = $manHour->lemburPerTanggal($technician, $grafikMulai, $grafikSelesai);
+        // Popup Cek Overtime memuat seluruh sesi 26-25 yang menyentuh tahun ini.
+        $lemburMulai   = Carbon::parse($sesiGrafik[0]['mulai'])->startOfDay();
+        $lemburSelesai = Carbon::parse($sesiGrafik[count($sesiGrafik) - 1]['selesai'])->endOfDay();
+        $lemburSemua   = $manHour->lemburPerTanggal($technician, $lemburMulai, $lemburSelesai);
         $lemburPerSesi = [];
 
         foreach ($sesiGrafik as $sesi) {
@@ -394,8 +412,8 @@ class TechnicianController extends Controller
             ];
         }
 
-        // Tampilan awal grafik: tanggal HARI INI di sisi kanan. Tabel tetap
-        // fokus ke baris HARI INI (paling atas).
+        // Tampilan awal grafik: tanggal HARI INI di sisi kanan. Tabel fokus ke
+        // baris HARI INI (paling atas), lalu memuat bulan lain saat digulir.
         $tanggalHariIni    = now()->toDateString();
         $indeksFokusGrafik = 0;
 
@@ -406,21 +424,28 @@ class TechnicianController extends Controller
             }
         }
 
-        if ($indeksFokusGrafik === 0 && ($grafikHarian[0]['tanggal'] ?? null) !== $tanggalHariIni) {
-            foreach ($grafikHarian as $indeksHari => $hariGrafik) {
-                if ($hariGrafik['tanggal'] >= $mulaiManHour->toDateString()) {
-                    $indeksFokusGrafik = $indeksHari;
-                    break;
-                }
-            }
-        }
-
         $tanggalFokusTabel = $tanggalHariIni;
         $currentKey        = $mulaiManHour->toDateString();
 
-        if (! in_array($tanggalHariIni, array_column($manHourHarian, 'tanggal'), true)) {
-            $tanggalFokusTabel = $selesaiManHour->toDateString();
-        }
+        // Baris awal tabel = bulan sebelumnya + bulan berjalan + bulan
+        // berikutnya; bulan lain dimuat oleh JavaScript saat tabel digulir.
+        $bulanSekarang   = (int) now()->month;
+        $bulanAwalTabel  = max(1, $bulanSekarang - 1);
+        $bulanAkhirTabel = min(12, $bulanSekarang + 1);
+        $bulanTabelAwal  = range($bulanAwalTabel, $bulanAkhirTabel);
+
+        $harianTabelAwal = array_values(array_filter(
+            $grafikHarian,
+            static fn (array $hari): bool => in_array(
+                (int) Carbon::parse($hari['tanggal'])->month,
+                $bulanTabelAwal,
+                true
+            )
+        ));
+        $harianTabelAwal = array_reverse($harianTabelAwal);
+
+        $parameterLaporan = $this->parameterLaporan($technician);
+
         $shiftHariIni = $technician->shifts()->untukTanggal(now()->toDateString())->first();
 
         // Bila belum ada baris jadwal (mis. periode berjalan belum diupload),
@@ -444,8 +469,12 @@ class TechnicianController extends Controller
             'stats',
             'botStats',
             'laporanTerbaru',
-            'manHourHarian',
             'grafikHarian',
+            'harianTabelAwal',
+            'tahunManHour',
+            'bulanAwalTabel',
+            'bulanAkhirTabel',
+            'parameterLaporan',
             'manHourRingkasan',
             'lemburPerSesi',
             'currentKey',
@@ -454,6 +483,39 @@ class TechnicianController extends Controller
             'tanggalFokusTabel',
             'shiftHariIni'
         ));
+    }
+
+    /**
+     * Ambil baris Rincian Man Hour Harian untuk satu bulan.
+     *
+     * Dipakai saat tabel digulir supaya seluruh bulan tidak dirender sekaligus.
+     * Rentang tetap dibatasi tahun kalender berjalan di halaman.
+     *
+     * @param  Request   $request   Request (query tahun opsional)
+     * @param  Technician $technician Teknisi yang dibuka
+     * @param  int       $bulan     Bulan 1-12
+     * @return \Illuminate\Http\Response
+     */
+    public function manHourBulan(Request $request, Technician $technician, int $bulan)
+    {
+        if ($bulan < 1 || $bulan > 12) {
+            abort(404);
+        }
+
+        $tahun = (int) $request->query('tahun', now()->year);
+
+        if ($tahun < 2000 || $tahun > 2100) {
+            abort(404);
+        }
+
+        $mulai   = Carbon::create($tahun, $bulan, 1)->startOfDay();
+        $selesai = $mulai->copy()->endOfMonth();
+        $harian  = app(ManHourService::class)->harian($technician, $mulai, $selesai);
+
+        return response()->view('technicians.partials._daftar-baris-manhour', [
+            'harian'           => array_reverse($harian),
+            'parameterLaporan' => $this->parameterLaporan($technician),
+        ]);
     }
 
     public function approve(Technician $technician)

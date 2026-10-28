@@ -13,12 +13,13 @@
          sebelah kanan sehingga grafik menyesatkan,
        - tanggal hari libur/OFF yang ada laporannya diberi warna merah supaya
          kerja pada hari libur langsung terlihat,
-       - grafik memuat 12 periode 26-25 dengan garis pemisah tiap periode,
+       - grafik memuat tahun kalender berjalan (01/01-31/12) dengan garis
+         pemisah periode 26-25,
        - klik batang membuka daftar laporan pada tanggal itu; popup Cek Overtime
          mengikuti periode yang sedang terlihat.
 
      Parameter:
-       - $grafikHarian     = rincian harian satu tahun (12 periode 26-25)
+       - $grafikHarian     = rincian harian tahun kalender berjalan
        - $parameterLaporan = parameter filter halaman Laporan untuk tautan klik
 --}}
 @push('scripts')
@@ -412,14 +413,19 @@
         });
     }
 
-    // Tabel man hour dimulai dari baris HARI INI (paling atas), sehingga
-    // pengguna bisa menggulir ke atas untuk tanggal sesudahnya dan ke bawah
-    // untuk tanggal sebelumnya.
-    var tabelWadah = document.querySelector('[data-tanggal-fokus]');
+    // Tabel man hour diurutkan terbaru -> terlama. Baris hari ini langsung
+    // ditampilkan paling atas; bulan lain dimuat saat pengguna menggulir.
+    var tabelWadah = document.getElementById('tabelManHourScroll');
 
     if (tabelWadah) {
+        var tabelIsi     = tabelWadah.querySelector('tbody');
         var tanggalFokus = tabelWadah.getAttribute('data-tanggal-fokus');
         var barisFokus   = tabelWadah.querySelector('tr[data-tanggal="' + tanggalFokus + '"]');
+        var tahunTabel   = parseInt(tabelWadah.getAttribute('data-tahun') || '0', 10);
+        var bulanAwal    = parseInt(tabelWadah.getAttribute('data-bulan-awal') || '1', 10);
+        var bulanAkhir   = parseInt(tabelWadah.getAttribute('data-bulan-akhir') || '12', 10);
+        var polaUrlBulan = tabelWadah.getAttribute('data-url-bulan') || '';
+        var memuatBulan  = false;
 
         if (barisFokus) {
             requestAnimationFrame(function () {
@@ -430,6 +436,83 @@
                 tabelWadah.scrollTop = Math.max(0, posisiBaris - 40);
             });
         }
+
+        function muatBulanTabel(bulan, posisi) {
+            if (memuatBulan || !tabelIsi || !polaUrlBulan) {
+                return;
+            }
+
+            memuatBulan = true;
+
+            var url = polaUrlBulan.replace('__BULAN__', String(bulan))
+                + '?tahun=' + encodeURIComponent(String(tahunTabel));
+
+            fetch(url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin'
+            })
+                .then(function (respons) {
+                    if (!respons.ok) {
+                        throw new Error('Gagal memuat bulan ' + bulan);
+                    }
+
+                    return respons.text();
+                })
+                .then(function (html) {
+                    if (posisi === 'atas') {
+                        var tinggiSebelum = tabelWadah.scrollHeight;
+
+                        tabelIsi.insertAdjacentHTML('afterbegin', html);
+                        tabelWadah.scrollTop += tabelWadah.scrollHeight - tinggiSebelum;
+                        bulanAkhir = bulan;
+                        tabelWadah.setAttribute('data-bulan-akhir', String(bulanAkhir));
+                    } else {
+                        tabelIsi.insertAdjacentHTML('beforeend', html);
+                        bulanAwal = bulan;
+                        tabelWadah.setAttribute('data-bulan-awal', String(bulanAwal));
+                    }
+                })
+                .catch(function () {
+                    // Biarkan data yang sudah ada; pengguna dapat menggulir
+                    // lagi untuk mencoba memuat bulan tersebut.
+                })
+                .finally(function () {
+                    memuatBulan = false;
+                });
+        }
+
+        function cekTepiTabel() {
+            if (memuatBulan) {
+                return;
+            }
+
+            if (tabelWadah.scrollTop <= 80 && bulanAkhir < 12) {
+                muatBulanTabel(bulanAkhir + 1, 'atas');
+                return;
+            }
+
+            var mentokBawah = tabelWadah.scrollTop + tabelWadah.clientHeight
+                >= tabelWadah.scrollHeight - 80;
+
+            if (mentokBawah && bulanAwal > 1) {
+                muatBulanTabel(bulanAwal - 1, 'bawah');
+            }
+        }
+
+        var tepiTertunda = false;
+
+        tabelWadah.addEventListener('scroll', function () {
+            if (tepiTertunda) {
+                return;
+            }
+
+            tepiTertunda = true;
+
+            requestAnimationFrame(function () {
+                tepiTertunda = false;
+                cekTepiTabel();
+            });
+        }, { passive: true });
     }
 })();
 </script>

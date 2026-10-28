@@ -138,6 +138,10 @@ Route::post('/assets/unlinked-funcloc/run-sync', [AssetController::class, 'runAu
     // resource agar tidak ditimpa wildcard {technician}).
     Route::post('/technicians/hari-libur', [HariLiburController::class, 'store'])->name('technicians.hari-libur.store');
     Route::delete('/technicians/hari-libur/{hariLibur}', [HariLiburController::class, 'destroy'])->name('technicians.hari-libur.destroy');
+    // Baris tabel man hour per bulan untuk pemuatan saat digulir.
+    Route::get('/technicians/{technician}/man-hour/{bulan}', [TechnicianController::class, 'manHourBulan'])
+        ->where('bulan', '[0-9]{1,2}')
+        ->name('technicians.man-hour-bulan');
     Route::resource('technicians', TechnicianController::class);
     Route::post('/technicians/{technician}/approve', [TechnicianController::class, 'approve'])->name('technicians.approve');
     Route::post('/technicians/{technician}/suspend', [TechnicianController::class, 'suspend'])->name('technicians.suspend');

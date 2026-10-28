@@ -274,32 +274,38 @@
 - Uji: `TechnicianShiftManHourTest` **17 test hijau, 168 assertions**; seluruh
   suite **772 test hijau, 3.850 assertions**; `view:cache` sukses.
 
-## GRAFIK MAN HOUR SETAHUN + HARI INI DI KANAN — 28/10/2026
+## GRAFIK & TABEL MAN HOUR TAHUN KALENDER — 28/10/2026
 
-- Grafik detail teknisi memuat **12 periode 26-25** (periode berjalan + 11
-  sebelumnya, satu tahun penuh) dan di-scroll agar tanggal HARI INI berada di
-  sisi KANAN saat pertama dibuka. Tabel tetap memuat satu bulan sebelum/sesudah
-  periode berjalan dan tetap fokus ke baris hari ini di paling atas.
-- `TechnicianController::show()` memisahkan data:
-  - `$manHourHarian` untuk tabel (satu bulan sebelum/sesudah),
-  - `$grafikHarian` untuk grafik (satu tahun, dengan `sesi` dan `mulai_sesi`),
-  - `$lemburPerSesi` untuk popup Cek Overtime per periode,
-  - `$currentKey`, `$indeksFokusGrafik`, dan `$tanggalFokusTabel` untuk fokus awal.
-  `$manHourRingkasan` tetap dihitung dari periode berjalan.
-- `_grafik-manhour.blade.php`: lebar 42 px per hari, plugin `pemisahSesi`
-  menggambar garis putus-putus di awal tiap periode, klik batang membuka
-  `reports.index` dengan filter teknisi/tampilan/grub/tanggal (hanya tanggal yang
-  punya laporan), tooltip dan hover tetap ada, dan drag tidak memicu klik.
-  Klik ditangani pada wadah grafik (bukan `onClick` canvas) supaya pointer
-  capture saat drag tidak menelan event klik.
-- `_modal-lembur.blade.php`: 12 bagian `data-lembur-sesi` (satu per periode),
-  bagian periode berjalan terlihat; periode di tengah tampilan grafik menentukan
-  bagian yang ditampilkan. Badge `Lembur: X j`, header periode, total jam, dan
-  total tanggal ikut diperbarui saat grafik digeser.
-- `show.blade.php`: badge lembur diberi `id="lembur-badge"`, lebar grafik memakai
-  jumlah data setahun, dan partial grafik menerima `grafikHarian` +
-  `parameterLaporan`.
-- Uji: `TechnicianShiftManHourTest` **18 test hijau, 184 assertions** (termasuk
-  data 12 periode, tautan klik laporan, dan 12 bagian popup); seluruh suite
-  **773 test hijau, 3.866 assertions**; `view:cache` sukses (28/10/2026).
+- Grafik dan tabel detail teknisi memakai **tahun kalender berjalan**
+  (01/01-31/12), bukan lagi jendela 12 periode 26-25. Tahun otomatis berganti
+  saat halaman dibuka pada tahun baru.
+- Tampilan awal: grafik di-scroll sehingga tanggal HARI INI berada di sisi
+  KANAN; tabel di-scroll sehingga baris HARI INI berada di paling atas. Grafik
+  tetap bisa digeser ke kiri sampai 01/01 dan ke kanan sampai 31/12.
+- Tabel diurutkan terbaru -> terlama (31/12 paling atas, 01/01 paling bawah).
+  Baris awal hanya bulan sebelumnya + bulan berjalan + bulan berikutnya; bulan
+  lain dimuat lewat endpoint `technicians.man-hour-bulan` saat tabel digulir,
+  supaya setahun penuh tidak dirender sekaligus. Tinggi `32rem` dipasang
+  inline karena kelas arbitrary Tailwind `max-h-[32rem]` tidak ikut build;
+  tanpa tinggi itu tabel tidak bisa digulir dan fokus hari ini tidak bekerja.
+- `TechnicianController::show()` memakai `$grafikHarian` (365/366 hari),
+  `$harianTabelAwal` (tiga bulan awal), `$tahunManHour`, `$bulanAwalTabel`,
+  `$bulanAkhirTabel`, `$indeksFokusGrafik`, dan `$tanggalFokusTabel`.
+  `$manHourRingkasan` tetap dihitung dari periode 26-25 berjalan.
+- Garis pemisah grafik tetap memakai **periode 26-25**. Karena satu tahun
+  kalender menyentuh 13 periode payroll (sesi pertama mulai Desember tahun
+  sebelumnya dan sesi terakhir berakhir Januari tahun berikutnya), popup Cek
+  Overtime berisi 13 bagian; badge dan popup mengikuti periode di tengah
+  tampilan setelah grafik digeser.
+- Baris tabel dipindah ke partial `_baris-manhour.blade.php` agar markup yang
+  sama dipakai render awal dan endpoint pemuatan bulan. `_daftar-baris-manhour`
+  membungkus hasil endpoint. Parameter link laporan dipusatkan di
+  `TechnicianController::parameterLaporan()`.
+- Klik batang ditangani pada wadah grafik (bukan `onClick` canvas) supaya
+  pointer capture saat drag tidak menelan event klik. Tooltip/hover tetap ada;
+  klik hanya membuka laporan pada tanggal yang punya laporan.
+- Uji: `TechnicianShiftManHourTest` **19 test hijau, 194 assertions** (termasuk
+  data 01/01-31/12, 12 pemisah sesi, 13 bagian popup, dan endpoint bulanan);
+  seluruh suite **774 test hijau, 3.876 assertions**; `view:cache` sukses
+  (28/10/2026).
 - Tidak ada migrasi baru.
