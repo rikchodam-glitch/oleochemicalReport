@@ -275,7 +275,8 @@ test('man hour otomatis memakai periode 26-25 berjalan dengan data sebelum/sesud
     $selesai = $mulai->copy()->addMonthNoOverflow()->subDay();
     $sebelum = $mulai->copy()->subMonthNoOverflow();
     $sesudah = $selesai->copy()->addMonthNoOverflow();
-    $indeksHariIni = (int) $sebelum->copy()->startOfDay()->diffInDays($hariIni);
+    $grafikMulai   = $mulai->copy()->subMonthsNoOverflow(11)->startOfDay();
+    $indeksHariIni = (int) $grafikMulai->copy()->diffInDays($hariIni);
 
     $response = $this->actingAs($this->admin)
         ->get('/technicians/' . $this->teknisiStaf->id)
@@ -290,7 +291,12 @@ test('man hour otomatis memakai periode 26-25 berjalan dengan data sebelum/sesud
         ->assertSee('data-indeks-fokus="' . $indeksHariIni . '"', false)
         ->assertSee('overflow-x-auto', false)
         ->assertSee('min-width:', false)
+        ->assertSee('sisi kanan', false)
         ->assertSee('geser ke kiri/kanan', false)
+        ->assertSee('12 periode 26-25', false)
+        ->assertSee('pemisahSesi', false)
+        ->assertSee('Klik untuk membuka daftar laporan', false)
+        ->assertSee('data-lembur-sesi="' . $mulai->toDateString() . '"', false)
         ->assertSee('max-h-[32rem]', false)
         ->assertSee('data-tanggal-fokus="' . $hariIni->toDateString() . '"', false)
         ->assertSee('sticky top-0', false)
@@ -298,12 +304,58 @@ test('man hour otomatis memakai periode 26-25 berjalan dengan data sebelum/sesud
 
     $html      = $response->getContent();
     $awalTabel = strpos($html, 'Rincian Man Hour Harian');
+
+    // Popup Cek Overtime memuat satu bagian untuk setiap periode grafik.
+    expect(substr_count($html, '<div data-lembur-sesi='))->toBe(12);
     $awalBody  = strpos($html, '<tbody class="divide-y divide-slate-50">', $awalTabel);
     $akhirBody = strpos($html, '</tbody>', $awalBody);
     $tabel     = substr($html, $awalBody, $akhirBody - $awalBody);
 
     expect(strpos($tabel, $selesai->format('d/m/Y')))
         ->toBeLessThan(strpos($tabel, $mulai->format('d/m/Y')));
+});
+
+test('grafik memuat satu tahun 12 periode, pemisah sesi, dan tautan klik laporan', function () {
+    $hariIni = now()->startOfDay();
+    $mulai   = $hariIni->day >= 26
+        ? $hariIni->copy()->startOfMonth()->addDays(25)
+        : $hariIni->copy()->subMonthNoOverflow()->startOfMonth()->addDays(25);
+    $selesai = $mulai->copy()->addMonthNoOverflow()->subDay();
+    $grafikMulai = $mulai->copy()->subMonthsNoOverflow(11)->startOfDay();
+
+    TechnicianShift::create([
+        'technician_id' => $this->teknisiStaf->id,
+        'nik'           => 'NIK-STAF-1',
+        'nama'          => 'Teknisi Staf Uji',
+        'section_label' => 'NAME STAF',
+        'shift_date'    => $hariIni->toDateString(),
+        'shift_code'    => 'R',
+    ]);
+
+    buatLaporanManHour($this->teknisiStaf, $hariIni->toDateString(), 240, '08:00');
+
+    $response = $this->actingAs($this->admin)
+        ->get('/technicians/' . $this->teknisiStaf->id)
+        ->assertStatus(200)
+        ->assertSee('data-lembur-sesi="' . $mulai->toDateString() . '"', false);
+
+    $html = $response->getContent();
+
+    preg_match('/var dataHarian = (\[.*?\]);/s', $html, $cocok);
+
+    expect($cocok)->toHaveCount(2);
+
+    $dataGrafik = json_decode($cocok[1], true, 512, JSON_THROW_ON_ERROR);
+    $indeksHariIni = (int) $grafikMulai->copy()->diffInDays($hariIni);
+
+    expect($dataGrafik)->toHaveCount((int) $grafikMulai->diffInDays($selesai) + 1)
+        ->and($dataGrafik[0]['tanggal'])->toBe($grafikMulai->format('d/m'))
+        ->and($dataGrafik[$indeksHariIni]['tanggal'])->toBe($hariIni->format('d/m'))
+        ->and($dataGrafik[$indeksHariIni]['sesi'])->toBe($mulai->toDateString())
+        ->and($dataGrafik[$indeksHariIni]['url'])
+        ->toContain('technician_id=' . $this->teknisiStaf->id)
+        ->toContain('tanggal=' . $hariIni->toDateString())
+        ->and(count(array_filter(array_column($dataGrafik, 'mulai_sesi'))))->toBe(12);
 });
 
 test('upload jadwal shift lewat halaman teknisi menyimpan hasil import', function () {

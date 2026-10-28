@@ -328,10 +328,7 @@ class TechnicianController extends Controller
 
         [$mulaiManHour, $selesaiManHour, $labelPeriodeManHour] = $this->rentangManHour();
 
-        // Grafik/tabel memuat satu bulan sebelum dan sesudah periode utama
-        // (26-25), supaya pengguna bisa menggeser ke tanggal sebelum/sesudahnya.
-        // Ringkasan, target, dan rincian lembur tetap dihitung untuk periode
-        // utama 26-25 saja.
+        // Tabel: satu bulan sebelum/sesudah periode berjalan.
         $mulaiDataManHour   = $mulaiManHour->copy()->subMonthNoOverflow()->startOfDay();
         $selesaiDataManHour = $selesaiManHour->copy()->addMonthNoOverflow()->endOfDay();
         $manHourHarian      = $manHour->harian($technician, $mulaiDataManHour, $selesaiDataManHour);
@@ -343,37 +340,86 @@ class TechnicianController extends Controller
         ));
 
         $manHourRingkasan = $manHour->ringkasan($harianPeriode);
-        // Rincian lembur per tanggal untuk tombol "Cek Overtime" (popup): memuat
-        // laporan penyebab lembur beserta jamnya.
-        $lemburRincian    = $manHour->lemburPerTanggal($technician, $mulaiManHour, $selesaiManHour);
 
-        // Tampilan awal: grafik dimulai dari tanggal HARI INI (paling kiri)
-        // dan tabel dimulai dari baris tanggal HARI INI (paling atas), supaya
-        // teknisi tidak perlu mencari/menggeser saat pertama membuka halaman.
-        // Bila tanggal hari ini tidak ada di data (seharusnya tidak terjadi
-        // karena data mencakup periode berjalan), pakai awal/akhir periode.
-        $tanggalHariIni   = now()->toDateString();
-        $indeksFokusGrafik = null;
-        $tanggalFokusTabel = null;
+        // Grafik: 12 periode 26-25 (satu tahun penuh). Setiap tanggal membawa
+        // kunci sesi agar grafik bisa diberi garis pemisah dan popup Cek
+        // Overtime bisa mengikuti sesi yang sedang terlihat.
+        $sesiGrafik = [];
 
-        foreach ($manHourHarian as $indeksHari => $hari) {
-            if ($hari['tanggal'] === $tanggalHariIni) {
+        for ($mundur = 11; $mundur >= 0; $mundur--) {
+            $mulaiSesi   = $mulaiManHour->copy()->subMonthsNoOverflow($mundur);
+            $selesaiSesi = $mulaiSesi->copy()->addMonthNoOverflow()->subDay();
+
+            $sesiGrafik[] = [
+                'key'     => $mulaiSesi->toDateString(),
+                'mulai'   => $mulaiSesi->toDateString(),
+                'selesai' => $selesaiSesi->toDateString(),
+                'label'   => $mulaiSesi->format('d/m/Y') . ' - ' . $selesaiSesi->format('d/m/Y'),
+            ];
+        }
+
+        $grafikMulai   = Carbon::parse($sesiGrafik[0]['mulai'])->startOfDay();
+        $grafikSelesai = Carbon::parse($sesiGrafik[count($sesiGrafik) - 1]['selesai'])->endOfDay();
+        $grafikHarian  = $manHour->harian($technician, $grafikMulai, $grafikSelesai);
+
+        foreach ($grafikHarian as &$hariGrafik) {
+            $tanggalHari = Carbon::parse($hariGrafik['tanggal']);
+            $mulaiSesi   = $tanggalHari->day >= 26
+                ? $tanggalHari->copy()->startOfMonth()->addDays(25)
+                : $tanggalHari->copy()->subMonthNoOverflow()->startOfMonth()->addDays(25);
+
+            $hariGrafik['sesi']       = $mulaiSesi->toDateString();
+            $hariGrafik['mulai_sesi'] = $tanggalHari->day === 26;
+        }
+        unset($hariGrafik);
+
+        $lemburSemua  = $manHour->lemburPerTanggal($technician, $grafikMulai, $grafikSelesai);
+        $lemburPerSesi = [];
+
+        foreach ($sesiGrafik as $sesi) {
+            $rincian = array_filter(
+                $lemburSemua,
+                static fn (string $tanggal): bool => $tanggal >= $sesi['mulai'] && $tanggal <= $sesi['selesai'],
+                ARRAY_FILTER_USE_KEY
+            );
+            ksort($rincian);
+
+            $totalMenit = array_sum(array_column($rincian, 'menit'));
+
+            $lemburPerSesi[$sesi['key']] = $sesi + [
+                'total_menit'    => $totalMenit,
+                'total_jam'      => number_format($totalMenit / 60, 1, ',', '.'),
+                'jumlah_tanggal' => count($rincian),
+                'rincian'        => $rincian,
+            ];
+        }
+
+        // Tampilan awal grafik: tanggal HARI INI di sisi kanan. Tabel tetap
+        // fokus ke baris HARI INI (paling atas).
+        $tanggalHariIni    = now()->toDateString();
+        $indeksFokusGrafik = 0;
+
+        foreach ($grafikHarian as $indeksHari => $hariGrafik) {
+            if ($hariGrafik['tanggal'] === $tanggalHariIni) {
                 $indeksFokusGrafik = $indeksHari;
-                $tanggalFokusTabel = $tanggalHariIni;
                 break;
             }
         }
 
-        if ($indeksFokusGrafik === null) {
-            $tanggalFokusTabel = $selesaiManHour->toDateString();
-            $indeksFokusGrafik = 0;
-
-            foreach ($manHourHarian as $indeksHari => $hari) {
-                if ($hari['tanggal'] >= $mulaiManHour->toDateString()) {
+        if ($indeksFokusGrafik === 0 && ($grafikHarian[0]['tanggal'] ?? null) !== $tanggalHariIni) {
+            foreach ($grafikHarian as $indeksHari => $hariGrafik) {
+                if ($hariGrafik['tanggal'] >= $mulaiManHour->toDateString()) {
                     $indeksFokusGrafik = $indeksHari;
                     break;
                 }
             }
+        }
+
+        $tanggalFokusTabel = $tanggalHariIni;
+        $currentKey        = $mulaiManHour->toDateString();
+
+        if (! in_array($tanggalHariIni, array_column($manHourHarian, 'tanggal'), true)) {
+            $tanggalFokusTabel = $selesaiManHour->toDateString();
         }
         $shiftHariIni = $technician->shifts()->untukTanggal(now()->toDateString())->first();
 
@@ -399,8 +445,10 @@ class TechnicianController extends Controller
             'botStats',
             'laporanTerbaru',
             'manHourHarian',
+            'grafikHarian',
             'manHourRingkasan',
-            'lemburRincian',
+            'lemburPerSesi',
+            'currentKey',
             'labelPeriodeManHour',
             'indeksFokusGrafik',
             'tanggalFokusTabel',

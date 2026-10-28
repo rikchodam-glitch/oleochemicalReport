@@ -273,3 +273,31 @@
 - Ringkasan, target, dan rincian lembur tetap mengikuti periode 26-25 berjalan.
 - Uji: `TechnicianShiftManHourTest` **17 test hijau, 168 assertions**; seluruh
   suite **772 test hijau, 3.850 assertions**; `view:cache` sukses.
+
+## GRAFIK MAN HOUR SETAHUN + HARI INI DI KANAN — 28/10/2026
+
+- Grafik detail teknisi memuat **12 periode 26-25** (periode berjalan + 11
+  sebelumnya, satu tahun penuh) dan di-scroll agar tanggal HARI INI berada di
+  sisi KANAN saat pertama dibuka. Tabel tetap memuat satu bulan sebelum/sesudah
+  periode berjalan dan tetap fokus ke baris hari ini di paling atas.
+- `TechnicianController::show()` memisahkan data:
+  - `$manHourHarian` untuk tabel (satu bulan sebelum/sesudah),
+  - `$grafikHarian` untuk grafik (satu tahun, dengan `sesi` dan `mulai_sesi`),
+  - `$lemburPerSesi` untuk popup Cek Overtime per periode,
+  - `$currentKey`, `$indeksFokusGrafik`, dan `$tanggalFokusTabel` untuk fokus awal.
+  `$manHourRingkasan` tetap dihitung dari periode berjalan.
+- `_grafik-manhour.blade.php`: lebar 42 px per hari, plugin `pemisahSesi`
+  menggambar garis putus-putus di awal tiap periode, klik batang membuka
+  `reports.index` dengan filter teknisi/tampilan/grub/tanggal (hanya tanggal yang
+  punya laporan), tooltip dan hover tetap ada, dan drag tidak memicu klik.
+- `_modal-lembur.blade.php`: 12 bagian `data-lembur-sesi` (satu per periode),
+  bagian periode berjalan terlihat; periode di tengah tampilan grafik menentukan
+  bagian yang ditampilkan. Badge `Lembur: X j`, header periode, total jam, dan
+  total tanggal ikut diperbarui saat grafik digeser.
+- `show.blade.php`: badge lembur diberi `id="lembur-badge"`, lebar grafik memakai
+  jumlah data setahun, dan partial grafik menerima `grafikHarian` +
+  `parameterLaporan`.
+- Uji: `TechnicianShiftManHourTest` **18 test hijau, 184 assertions** (termasuk
+  data 12 periode, tautan klik laporan, dan 12 bagian popup); seluruh suite
+  **773 test hijau, 3.866 assertions**; `view:cache` sukses (28/10/2026).
+- Tidak ada migrasi baru.

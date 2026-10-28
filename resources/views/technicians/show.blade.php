@@ -270,7 +270,9 @@
                             Hari ini: {{ $shiftHariIni->label() }}
                         </span>
                     @endif
-                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                    <span id="lembur-badge"
+                          title="Periode {{ $labelPeriodeManHour }}"
+                          class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                         Lembur: {{ number_format(($manHourRingkasan['total_lembur_menit'] ?? 0) / 60, 1, ',', '.') }} j
                     </span>
                     <button type="button" onclick="bukaModalLembur()"
@@ -352,12 +354,12 @@
             </div>
 
             <div class="px-5 py-4">
-                {{-- Grafik dibuat lebih lebar dari kartu agar seluruh tanggal
-                     bulan berjalan (28-31 hari) muat; wadah ini bisa digeser
-                     ke kiri/kanan dengan scrollbar atau drag mouse. --}}
+                {{-- Grafik memuat 12 periode 26-25 (satu tahun penuh) dan dibuat
+                     lebih lebar dari kartu; wadah ini bisa digeser ke kiri/kanan
+                     dengan scrollbar atau drag mouse. --}}
                 <div id="grafikManHourScroll" class="overflow-x-auto cursor-grab pb-2"
                      data-indeks-fokus="{{ $indeksFokusGrafik }}">
-                    <div class="relative h-64" style="min-width: {{ max(720, count($manHourHarian) * 42) }}px;">
+                    <div class="relative h-64" style="min-width: {{ max(720, count($grafikHarian) * 42) }}px;">
                         <canvas id="grafikManHour"></canvas>
                     </div>
                 </div>
@@ -366,7 +368,7 @@
                     garis putus-putus = target harian. Tanggal berwarna merah menandakan ada laporan pada hari libur/OFF.
                 </p>
                 <p class="text-xs text-slate-400 mt-1">
-                    Tampilan awal di tanggal hari ini. Grafik memuat satu bulan sebelum dan sesudah periode; geser ke kiri/kanan untuk melihat tanggal lain.
+                    Tampilan awal di tanggal hari ini (sisi kanan). Grafik memuat 12 periode 26-25 (satu tahun penuh) dengan garis pemisah tiap periode; geser ke kiri/kanan untuk melihat periode lain.
                 </p>
             </div>
         </div>
@@ -778,4 +780,7 @@ function broadcastMessage() {
 {{-- Grafik man hour harian (batang jam kerja + lembur, garis target) dirender
      dari partial `technicians.partials._grafik-manhour` supaya berkas ini tidak
      perlu ditulis ulang setiap kali grafik disesuaikan. --}}
-@include('technicians.partials._grafik-manhour', ['manHourHarian' => $manHourHarian])
+@include('technicians.partials._grafik-manhour', [
+    'grafikHarian'     => $grafikHarian,
+    'parameterLaporan' => $parameterLaporan,
+])
