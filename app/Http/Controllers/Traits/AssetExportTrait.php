@@ -269,7 +269,7 @@ trait AssetExportTrait
      * @param  Request  $request
      * @return string  Contoh: "PT EPE | Status: active | Pencarian: AC" atau "(semua data)"
      */
-    private function ringkasanFilterExport(Request $request): string
+    protected function ringkasanFilterExport(Request $request): string
     {
         $bagian = [];
 
@@ -307,19 +307,21 @@ trait AssetExportTrait
 
     /**
      * Bangun query Asset dengan filter dari request.
-     * Dipakai bersama oleh exportExcel() dan exportCsv().
+     * Dipakai bersama oleh exportExcel(), exportCsv(), dan export lengkap.
      *
-     * @param  Request  $request
+     * @param  Request $request
+     * @param  bool    $sertakanCermin true = ikutkan baris cermin IT Assets
      * @return \Illuminate\Database\Eloquent\Builder
      */
-    private function buildExportQuery(Request $request)
+    protected function buildExportQuery(Request $request, bool $sertakanCermin = false)
     {
-        $query = Asset::with(['company', 'department', 'area', 'subArea'])
-            // Perangkat IT (baris cermin dari modul IT Assets, data_source
-            // 'it_sync') TIDAK ikut diexport: datanya dikelola di halaman
-            // IT Assets, sedangkan file ini dipakai untuk memutar data asset
-            // industri (export -> sesuaikan -> import).
-            ->where('assets.data_source', '!=', 'it_sync');
+        $query = Asset::with(['company', 'department', 'area', 'subArea']);
+
+        if (! $sertakanCermin) {
+            // Export format lama (untuk import ulang) tetap tidak menyertakan
+            // baris cermin IT: datanya dikelola di halaman IT Assets.
+            $query->where('assets.data_source', '!=', 'it_sync');
+        }
 
         if ($request->filled('search')) {
             $search = $request->search;

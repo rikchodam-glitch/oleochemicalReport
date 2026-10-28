@@ -1,23 +1,20 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-28 10:29 WIB
+Diperbarui: 2026-10-28 11:21 WIB
 
-- Cabang aktif: `tugas/erik/grafik-hari-ini-di-kanan`
-- Mulai: 2026-10-27 14:39
+- Cabang aktif: `tugas/erik/export-excel-lengkap-assets-mengikuti-filter-dan-snapshot`
+- Mulai: 2026-10-28 11:14
 - Status: SELESAI DIUJI, SIAP PR
 - Modul/berkas yang disentuh:
-  - `app/Http/Controllers/TechnicianController.php` - data tahun kalender, tabel bertahap, lembur per sesi, endpoint bulanan
-  - `routes/web.php` - endpoint `technicians.man-hour-bulan`
-  - `resources/views/technicians/show.blade.php` - wrapper grafik setahun, tabel fokus hari ini, badge lembur
-  - `resources/views/technicians/partials/_grafik-manhour.blade.php` - scroll hari ini di kanan, pemisah sesi, klik batang, overtime dinamis, pemuatan tabel
-  - `resources/views/technicians/partials/_modal-lembur.blade.php` - 13 bagian Cek Overtime
-  - `resources/views/technicians/partials/_baris-manhour.blade.php` - markup baris tabel bersama
-  - `resources/views/technicians/partials/_daftar-baris-manhour.blade.php` - pembungkus baris endpoint
-  - `tests/Feature/TechnicianShiftManHourTest.php` - uji tahun kalender, tabel bertahap, tautan, dan endpoint
-  - `docs/08-keputusan-arsitektur-31-33.md` - dokumentasi perubahan
-  - `tugas/pr-grafik-hari-ini-di-kanan.md` - catatan PR
-- Catatan: 19 test `TechnicianShiftManHourTest` hijau, 194 assertions; seluruh suite 774 test hijau, 3.876 assertions; `view:cache` sukses.
+  - `app/Http/Controllers/Traits/AssetExportLengkapTrait.php` - export Excel lengkap mengikuti filter, data IT, snapshot/foto
+  - `app/Http/Controllers/Traits/AssetExportTrait.php` - query export dapat menyertakan baris cermin IT
+  - `app/Http/Controllers/AssetController.php` - memakai trait export lengkap
+  - `routes/web.php` - route export Excel lengkap
+  - `resources/views/assets/index.blade.php` - tombol export lengkap
+  - `tests/Feature/AssetExportLengkapTest.php` - uji filter CCTV, switch, snapshot, dan kolom dinamis
+  - `docs/28-assets-management.md`, `docs/PROMPT.md` - dokumentasi fitur
+  - `tugas/pr-export-excel-lengkap-assets-mengikuti-filter-dan-snapshot.md` - catatan PR
+- Catatan: 3 test export lengkap hijau, 32 assertions; seluruh suite 777 test hijau, 3.908 assertions; `view:cache` sukses.
 
 ## Riwayat
-- tugas/erik/fokus-hari-ini-man-hour (mulai 2026-10-27 14:29) -> dilanjutkan 2026-10-27 14:39
-- tugas/erik/grafik-hari-ini-di-kanan (mulai 2026-10-27 14:39)
+- tugas/erik/grafik-hari-ini-di-kanan (mulai 2026-10-27 14:39) -> dilanjutkan 2026-10-28 11:14

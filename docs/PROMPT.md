@@ -474,7 +474,8 @@ kartu provider (model di header kartu, kuota pada blok "Kuota per menit (menurut
 | `GET /assets/import` | ImportController@showImport | Upload Excel |
 | `POST /assets/import/preview` | ImportController@previewImport | Preview pra-import |
 | `POST /assets/import/execute` | ImportController@executeImport | Eksekusi import |
-| `GET /assets/export/excel` | AssetController@exportExcel | Export Excel |
+| `GET /assets/export/excel` | AssetController@exportExcel | Export Excel format import |
+| `GET /assets/export/excel-lengkap` | AssetController@exportExcelLengkap | Export Excel lengkap sesuai filter + snapshot/foto |
 | `GET /assets/export/csv` | AssetController@exportCsv | Export CSV |
 | `POST /assets/{asset}/technicians/assign` | AssetController@assignTechnician | Assign teknisi ke asset |
 | `DELETE /assets/{asset}/technicians/{technician}` | AssetController@removeTechnician | Lepas assignment |
