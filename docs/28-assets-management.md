@@ -201,3 +201,36 @@ Perubahan:
   halaman CM Equipment tetap lihat-saja.
 - Uji: `AssetCmIntegrationTest` **4 test hijau, 30 assertions**; seluruh suite
   **738 test hijau, 3.677 assertions**; `view:cache` sukses.
+
+## EXPORT EXCEL LENGKAP MENGIKUTI FILTER + SNAPSHOT - 28/10/2026
+
+- Tombol baru **Export Excel Lengkap** di halaman Assets Management memakai
+  seluruh filter aktif (pencarian, status, PT, departemen, area, sub area,
+  equipment type). Berbeda dari tombol lama **Export Excel (Import)**, export
+  lengkap ikut menyertakan baris cermin IT Assets (data_source = it_sync),
+  sehingga filter CCTV, switch, PC, dan perangkat IT lain tidak kosong.
+- Kolom tambahan mengikuti kategori filter:
+  - **CCTV/NVR**: NVR (Show), Channel, Pointing, Header, PIC, Connect To,
+    snapshot, waktu snapshot, dan tautan snapshot.
+  - **Switch managed/unmanaged**: Connect To, VLAN, Port.
+  - **PC/Laptop**: Monitor Model/Serial, CPU Model/Serial, Processor, RAM,
+    Penyimpanan.
+  - Semua kategori: identitas IT (device type, nama, brand, model, serial, IP),
+    plant/departemen/lokasi IT, spesifikasi, status ping, latency, laporan,
+    teknisi, tanggal import/update, link foto equipment, dan koordinat.
+- Snapshot/foto disematkan sebagai thumbnail JPEG di kolom terakhir. Sumber
+  utama snapshot CCTV adalah `it_assets.last_snapshot_path` (disk
+  `cctv_snapshots`); bila tidak ada, dipakai foto pertama `assets.photos`.
+  Tautan snapshot/foto tetap ditulis sebagai teks. Untuk verifikasi DEV,
+  pembaca file memakai fallback baca-saja ke `D:\storage\app\public` bila file
+  tidak ada di storage DEV.
+- Realisasi DEV: export filter CCTV menghasilkan 95 asset, 90 gambar snapshot,
+  file sekitar 923 KB (thumbnail, bukan gambar asli).
+- Berkas: `app/Http/Controllers/Traits/AssetExportLengkapTrait.php` (baru),
+  `app/Http/Controllers/Traits/AssetExportTrait.php`,
+  `app/Http/Controllers/AssetController.php`, `routes/web.php`,
+  `resources/views/assets/index.blade.php`,
+  `tests/Feature/AssetExportLengkapTest.php` (baru).
+- Uji: `AssetExportLengkapTest` **3 test hijau, 32 assertions**; seluruh suite
+  **777 test hijau, 3.908 assertions**; `view:cache` sukses (28/10/2026).
+- Tidak ada migrasi baru dan tidak ada perubahan data.

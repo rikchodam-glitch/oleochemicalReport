@@ -44,11 +44,20 @@
         </button>
     </form>
     <a href="{{ route('assets.export-excel', request()->query()) }}"
-       class="inline-flex items-center gap-2 px-4 py-2 border border-green-300 hover:bg-green-50 text-green-700 text-sm font-medium rounded-lg transition-colors">
+       class="inline-flex items-center gap-2 px-4 py-2 border border-green-300 hover:bg-green-50 text-green-700 text-sm font-medium rounded-lg transition-colors"
+       title="Export format import (tanpa baris cermin IT)">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
         </svg>
-        Export Excel
+        Export Excel (Import)
+    </a>
+    <a href="{{ route('assets.export-excel-lengkap', request()->query()) }}"
+       class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors"
+       title="Export semua data yang cocok dengan filter aktif, termasuk snapshot/foto dan perangkat IT">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+        </svg>
+        Export Excel Lengkap
     </a>
     <a href="{{ route('assets.export-csv', request()->query()) }}"
        class="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">

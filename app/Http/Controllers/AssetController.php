@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ResolvesReportAnalytics;
 use App\Http\Controllers\Concerns\ResolvesReportFilters;
+use App\Http\Controllers\Traits\AssetExportLengkapTrait;
 use App\Http\Controllers\Traits\AssetExportTrait;
 use App\Http\Controllers\Traits\AssetLocationTrait;
 use App\Http\Controllers\Traits\AssetTechnicianTrait;
@@ -28,6 +29,7 @@ use Illuminate\Support\Facades\Storage;
 class AssetController extends Controller
 {
     use AssetExportTrait;
+    use AssetExportLengkapTrait;
     use AssetTechnicianTrait;
     use AssetLocationTrait;
     use ResolvesReportFilters;

@@ -90,6 +90,7 @@ Route::middleware(['admin', 'akses', 'hanya_baca'])->group(function () {
     Route::post('/assets/import/execute', [ImportController::class, 'executeImport'])->name('assets.import.execute');
     Route::get('/assets/import/template', [ImportController::class, 'downloadTemplate'])->name('assets.import.template');
     Route::get('/assets/export/excel', [AssetController::class, 'exportExcel'])->name('assets.export-excel');
+    Route::get('/assets/export/excel-lengkap', [AssetController::class, 'exportExcelLengkap'])->name('assets.export-excel-lengkap');
     Route::get('/assets/export/csv', [AssetController::class, 'exportCsv'])->name('assets.export-csv');
     Route::get('/assets/locations/departments', [AssetController::class, 'getDepartments'])->name('assets.locations.departments');
     Route::get('/assets/locations/areas', [AssetController::class, 'getAreas'])->name('assets.locations.areas');
