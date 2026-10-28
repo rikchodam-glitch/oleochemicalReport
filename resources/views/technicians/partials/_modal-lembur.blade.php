@@ -2,13 +2,23 @@
      beserta laporan penyebabnya, supaya angka lembur bisa ditelusuri tanpa
      membuka halaman laporan satu per satu.
 
+     Popup memuat bagian untuk setiap sesi 26-25 pada grafik satu tahun. Bagian
+     yang terlihat mengikuti posisi grafik; JavaScript menampilkan bagian yang
+     sesuai dan memperbarui jumlah di header.
+
      Parameter:
-       $lemburRincian      = hasil ManHourService::lemburPerTanggal()
-       $technician         = teknisi yang sedang dibuka
-       $labelPeriodeManHour = label periode man hour (mis. "26 Sep - 25 Okt 2026") --}}
+       $lemburPerSesi       = rincian lembur per sesi 26-25 (dari controller)
+       $currentKey          = kunci sesi berjalan (tanggal mulai 26)
+       $technician          = teknisi yang sedang dibuka
+       $labelPeriodeManHour = label periode man hour berjalan --}}
 
 @php
-    $totalLembur = collect($lemburRincian)->sum('menit');
+    $sesiBerjalan = $lemburPerSesi[$currentKey] ?? [
+        'label'          => $labelPeriodeManHour,
+        'total_jam'      => '0,0',
+        'jumlah_tanggal' => 0,
+        'rincian'        => [],
+    ];
 @endphp
 
 <div id="modal_lembur" class="hidden fixed inset-0 z-50 overflow-y-auto">
@@ -19,10 +29,12 @@
             <div>
                 <h3 class="font-medium text-slate-900">Cek Overtime — {{ $technician->name }}</h3>
                 <p class="text-xs text-slate-400 mt-0.5">
-                    Periode {{ $labelPeriodeManHour }}. Lembur adalah jam kerja di luar jam kerja terjadwal
+                    Periode <span id="lembur-periode">{{ $sesiBerjalan['label'] }}</span>.
+                    Lembur adalah jam kerja di luar jam kerja terjadwal
                     (sebelum jam masuk dan sesudah jam pulang) serta seluruh jam pada hari libur/OFF.
                     Jam istirahat tidak dihitung lembur: menitnya sudah dipotong dari durasi man hour.
-                    Total {{ number_format($totalLembur / 60, 1, ',', '.') }} jam dari {{ count($lemburRincian) }} tanggal.
+                    Total <span id="lembur-total-jam">{{ $sesiBerjalan['total_jam'] }}</span> jam dari
+                    <span id="lembur-total-tanggal">{{ $sesiBerjalan['jumlah_tanggal'] }}</span> tanggal.
                 </p>
             </div>
             <button type="button" onclick="tutupModalLembur()"
@@ -31,45 +43,53 @@
             </button>
         </div>
 
-        <div class="max-h-[70vh] overflow-y-auto px-5 py-4 space-y-4">
-            @forelse($lemburRincian as $tanggal => $baris)
-                <div class="rounded-lg border border-slate-200 overflow-hidden">
-                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2">
-                        <p class="text-sm font-medium text-slate-800">
-                            {{ \Illuminate\Support\Carbon::parse($tanggal)->locale('id')->translatedFormat('d F Y') }}
-                            <span class="text-xs font-normal text-slate-400">
-                                {{ \Illuminate\Support\Carbon::parse($tanggal)->locale('id')->translatedFormat('l') }}
-                                &middot; {{ $baris['label_shift'] }}
-                            </span>
-                        </p>
-                        <span class="text-xs font-semibold text-amber-600">
-                            Lembur {{ number_format($baris['menit'] / 60, 1, ',', '.') }} j
-                        </span>
-                    </div>
-                    <ul class="divide-y divide-slate-50">
-                        @foreach($baris['laporan'] as $laporan)
-                            <li class="px-4 py-2 flex flex-wrap items-start justify-between gap-2">
-                                <div class="min-w-0">
-                                    <a href="{{ route('reports.show', $laporan['id']) }}"
-                                       class="text-sm text-teal-700 hover:underline font-medium">
-                                        {{ $laporan['kode'] }}
-                                    </a>
-                                    <p class="text-xs text-slate-500">{{ \Illuminate\Support\Str::limit($laporan['deskripsi'] ?? '-', 90) }}</p>
-                                    <p class="text-xs text-slate-400">
-                                        Jam {{ $laporan['mulai'] ?? '-' }} - {{ $laporan['selesai'] ?? '-' }}
-                                        &middot; jam kerja {{ number_format(($laporan['menit'] ?? 0) / 60, 1, ',', '.') }} j
-                                    </p>
-                                </div>
-                                <span class="text-xs font-semibold text-amber-600 whitespace-nowrap">
-                                    lembur {{ number_format($laporan['lembur'] / 60, 1, ',', '.') }} j
+        <div class="max-h-[70vh] overflow-y-auto px-5 py-4">
+            @foreach($lemburPerSesi as $sesiKey => $sesi)
+                <div data-lembur-sesi="{{ $sesiKey }}"
+                     data-label="{{ $sesi['label'] }}"
+                     data-total-jam="{{ $sesi['total_jam'] }}"
+                     data-jumlah-tanggal="{{ $sesi['jumlah_tanggal'] }}"
+                     class="{{ $sesiKey === $currentKey ? '' : 'hidden' }} space-y-4">
+                    @forelse($sesi['rincian'] as $tanggal => $baris)
+                        <div class="rounded-lg border border-slate-200 overflow-hidden">
+                            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2">
+                                <p class="text-sm font-medium text-slate-800">
+                                    {{ \Illuminate\Support\Carbon::parse($tanggal)->locale('id')->translatedFormat('d F Y') }}
+                                    <span class="text-xs font-normal text-slate-400">
+                                        {{ \Illuminate\Support\Carbon::parse($tanggal)->locale('id')->translatedFormat('l') }}
+                                        &middot; {{ $baris['label_shift'] }}
+                                    </span>
+                                </p>
+                                <span class="text-xs font-semibold text-amber-600">
+                                    Lembur {{ number_format($baris['menit'] / 60, 1, ',', '.') }} j
                                 </span>
-                            </li>
-                        @endforeach
-                    </ul>
+                            </div>
+                            <ul class="divide-y divide-slate-50">
+                                @foreach($baris['laporan'] as $laporan)
+                                    <li class="px-4 py-2 flex flex-wrap items-start justify-between gap-2">
+                                        <div class="min-w-0">
+                                            <a href="{{ route('reports.show', $laporan['id']) }}"
+                                               class="text-sm text-teal-700 hover:underline font-medium">
+                                                {{ $laporan['kode'] }}
+                                            </a>
+                                            <p class="text-xs text-slate-500">{{ \Illuminate\Support\Str::limit($laporan['deskripsi'] ?? '-', 90) }}</p>
+                                            <p class="text-xs text-slate-400">
+                                                Jam {{ $laporan['mulai'] ?? '-' }} - {{ $laporan['selesai'] ?? '-' }}
+                                                &middot; jam kerja {{ number_format(($laporan['menit'] ?? 0) / 60, 1, ',', '.') }} j
+                                            </p>
+                                        </div>
+                                        <span class="text-xs font-semibold text-amber-600 whitespace-nowrap">
+                                            lembur {{ number_format($laporan['lembur'] / 60, 1, ',', '.') }} j
+                                        </span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @empty
+                        <p class="py-6 text-center text-sm text-slate-400">Tidak ada lembur pada periode ini.</p>
+                    @endforelse
                 </div>
-            @empty
-                <p class="py-6 text-center text-sm text-slate-400">Tidak ada lembur pada periode ini.</p>
-            @endforelse
+            @endforeach
         </div>
     </div>
 </div>

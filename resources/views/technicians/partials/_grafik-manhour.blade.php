@@ -1,9 +1,9 @@
 {{-- Grafik man hour harian pada halaman detail teknisi.
 
-     Dipisah menjadi partial supaya halaman `show.blade.php` (813 baris) tidak
-     perlu ditulis ulang setiap kali grafik disesuaikan.
+     Dipisah menjadi partial supaya halaman `show.blade.php` tidak perlu ditulis
+     ulang setiap kali grafik disesuaikan.
 
-     Aturan tampilan (13/10/2026, disempurnakan 14/10/2026):
+     Aturan tampilan:
        - batang teal   = jam kerja NORMAL (menit di dalam jendela kerja dikurangi
          istirahat),
        - batang oranye = LEMBUR (di luar jendela kerja DITAMBAH seluruh jam pada
@@ -12,15 +12,24 @@
          karena batang target membuat Chart.js menaruh kelompok batang kedua di
          sebelah kanan sehingga grafik menyesatkan,
        - tanggal hari libur/OFF yang ada laporannya diberi warna merah supaya
-         kerja pada hari libur langsung terlihat.
+         kerja pada hari libur langsung terlihat,
+       - grafik memuat tahun kalender berjalan (01/01-31/12) dengan garis
+         pemisah periode 26-25,
+       - klik batang membuka daftar laporan pada tanggal itu; popup Cek Overtime
+         mengikuti periode yang sedang terlihat.
 
-     Parameter: $manHourHarian = daftar rincian harian dari ManHourService::harian().
+     Parameter:
+       - $grafikHarian     = rincian harian tahun kalender berjalan
+       - $parameterLaporan = parameter filter halaman Laporan untuk tautan klik
 --}}
 @push('scripts')
 @php
+    $parameterLaporan = $parameterLaporan ?? [];
+
     // Data grafik disiapkan di server agar tidak bergantung pada parsing directive.
-    $dataGrafik = array_map(function (array $hari): array {
+    $dataGrafik = array_map(function (array $hari) use ($parameterLaporan): array {
         $target = (int) $hari['target_menit'];
+        $jumlahPekerjaan = (int) $hari['jumlah_pekerjaan'];
 
         return [
             'tanggal'   => \Illuminate\Support\Carbon::parse($hari['tanggal'])->format('d/m'),
@@ -32,10 +41,15 @@
             // Hari tanpa target = hari libur/OFF (Minggu reguler, Sabtu-Minggu
             // reguler staff, atau kode shift 'x').
             'libur'     => $target <= 0,
-            'pekerjaan' => (int) $hari['jumlah_pekerjaan'],
+            'pekerjaan' => $jumlahPekerjaan,
             'catatan'   => (string) ($hari['catatan'][0] ?? ''),
+            'sesi'      => (string) ($hari['sesi'] ?? ''),
+            'mulai_sesi'=> (bool) ($hari['mulai_sesi'] ?? false),
+            'url'       => $jumlahPekerjaan > 0
+                ? route('reports.index', array_merge($parameterLaporan, ['tanggal' => $hari['tanggal']]))
+                : null,
         ];
-    }, $manHourHarian);
+    }, $grafikHarian);
 
     $dataGrafikJson = json_encode($dataGrafik, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 @endphp
@@ -50,6 +64,8 @@
 
     // Data harian berasal dari perhitungan man hour di server.
     var dataHarian = {!! $dataGrafikJson !!};
+    var baruGeser = false;
+    var abaikanPerbaruan = true;
 
     /**
      * Ubah menit menjadi jam dengan satu angka di belakang koma.
@@ -61,8 +77,43 @@
         return Math.round(((menit || 0) / 60) * 10) / 10;
     }
 
-    new Chart(kanvas, {
+    // Garis pemisah vertikal di awal setiap sesi 26-25. Indeks 0 dilewati
+    // karena berimpit dengan sumbu Y.
+    var pluginPemisahSesi = {
+        id: 'pemisahSesi',
+        afterDraw: function (grafik) {
+            var sumbuX = grafik.scales.x;
+            var area   = grafik.chartArea;
+
+            if (!sumbuX || !area) {
+                return;
+            }
+
+            var konteks = grafik.ctx;
+            konteks.save();
+            konteks.strokeStyle = 'rgba(100, 116, 139, 0.35)';
+            konteks.lineWidth = 1;
+            konteks.setLineDash([4, 4]);
+
+            dataHarian.forEach(function (baris, indeks) {
+                if (indeks === 0 || !baris.mulai_sesi) {
+                    return;
+                }
+
+                var posisi = sumbuX.getPixelForValue(indeks);
+                konteks.beginPath();
+                konteks.moveTo(posisi, area.top);
+                konteks.lineTo(posisi, area.bottom);
+                konteks.stroke();
+            });
+
+            konteks.restore();
+        }
+    };
+
+    var grafikManHour = new Chart(kanvas, {
         type: 'bar',
+        plugins: [pluginPemisahSesi],
         data: {
             labels: dataHarian.map(function (baris) { return baris.tanggal; }),
             datasets: [
@@ -107,6 +158,14 @@
             responsive: true,
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
+            onHover: function (kejadian, elements) {
+                if (!kejadian.native || !kejadian.native.target) {
+                    return;
+                }
+
+                var baris = elements.length ? dataHarian[elements[0].index] : null;
+                kejadian.native.target.style.cursor = (baris && baris.url) ? 'pointer' : 'default';
+            },
             plugins: {
                 legend: {
                     position: 'bottom',
@@ -138,6 +197,10 @@
 
                             if (baris.catatan) {
                                 keterangan.push(baris.catatan);
+                            }
+
+                            if (baris.url) {
+                                keterangan.push('Klik untuk membuka daftar laporan');
                             }
 
                             return keterangan;
@@ -173,22 +236,114 @@
         }
     });
 
-    // Geser grafik secara horizontal dengan drag mouse. Pada layar sentuh,
-    // scroll native dari wadah overflow-x-auto yang dipakai.
     var wadah = document.getElementById('grafikManHourScroll');
+
+    /**
+     * Periode 26-25 yang berada di tengah tampilan grafik.
+     *
+     * @returns {string|null} Kunci sesi (tanggal mulai sesi)
+     */
+    function sesiTerlihat() {
+        if (!wadah || !dataHarian.length) {
+            return null;
+        }
+
+        var indeks = Math.floor((wadah.scrollLeft + (wadah.clientWidth / 2)) / 42);
+        indeks = Math.max(0, Math.min(dataHarian.length - 1, indeks));
+
+        return dataHarian[indeks] ? dataHarian[indeks].sesi : null;
+    }
+
+    /**
+     * Tampilkan bagian Cek Overtime untuk sesi yang sedang terlihat.
+     *
+     * @returns {void}
+     */
+    function perbaruiLemburTerlihat() {
+        var sesi = sesiTerlihat();
+
+        if (!sesi) {
+            return;
+        }
+
+        var bagian = document.querySelector('[data-lembur-sesi="' + sesi + '"]');
+
+        if (!bagian) {
+            return;
+        }
+
+        document.querySelectorAll('[data-lembur-sesi]').forEach(function (el) {
+            el.classList.toggle('hidden', el !== bagian);
+        });
+
+        var label        = bagian.getAttribute('data-label') || '';
+        var totalJam     = bagian.getAttribute('data-total-jam') || '0,0';
+        var totalTanggal = bagian.getAttribute('data-jumlah-tanggal') || '0';
+        var badge        = document.getElementById('lembur-badge');
+
+        if (badge) {
+            badge.textContent = 'Lembur: ' + totalJam + ' j';
+            badge.title = 'Periode ' + label;
+        }
+
+        var periode = document.getElementById('lembur-periode');
+        if (periode) {
+            periode.textContent = label;
+        }
+
+        var totalJamEl = document.getElementById('lembur-total-jam');
+        if (totalJamEl) {
+            totalJamEl.textContent = totalJam;
+        }
+
+        var totalTanggalEl = document.getElementById('lembur-total-tanggal');
+        if (totalTanggalEl) {
+            totalTanggalEl.textContent = totalTanggal;
+        }
+    }
 
     if (wadah) {
         var indeksFokus = parseInt(wadah.getAttribute('data-indeks-fokus') || '0', 10);
 
-        // Mulai dari tanggal HARI INI, bukan dari data paling kiri, supaya
-        // tanggal hari ini langsung tampil di sisi kiri saat halaman dibuka.
+        // Tampilkan tanggal HARI INI di sisi KANAN: posisi slot hari ini
+        // dikurangi lebar tampilan, ditambah satu slot agar seluruh slot
+        // tanggal hari ini terlihat saat halaman pertama dibuka.
         requestAnimationFrame(function () {
-            wadah.scrollLeft = Math.max(0, indeksFokus * 42 - 8);
+            var posisiHariIni = indeksFokus * 42;
+
+            wadah.scrollLeft = Math.max(0, posisiHariIni - wadah.clientWidth + 42);
+
+            // Badge dan bagian modal sudah berisi periode berjalan dari server.
+            // Abaikan scroll programatik ini; setelah pengguna menggeser grafik,
+            // periode di tengah tampilan yang menentukan isi Cek Overtime.
+            setTimeout(function () { abaikanPerbaruan = false; }, 250);
         });
 
         var aktif = false;
+        var tertangkap = false;
         var mulaiX = 0;
         var mulaiScroll = 0;
+
+        // Klik ditangani di wadah, bukan di canvas: drag memakai pointer capture
+        // sehingga event click bisa berpindah target ke wadah. Dengan begitu klik
+        // batang tetap membuka laporan tanpa mengganggu drag.
+        wadah.addEventListener('click', function (kejadian) {
+            if (baruGeser) {
+                return;
+            }
+
+            var elemen = grafikManHour.getElementsAtEventForMode(
+                kejadian,
+                'nearest',
+                { intersect: true },
+                false
+            );
+            var baris = elemen.length ? dataHarian[elemen[0].index] : null;
+
+            if (baris && baris.url) {
+                window.location.href = baris.url;
+            }
+        });
 
         wadah.addEventListener('pointerdown', function (kejadian) {
             if (kejadian.pointerType !== 'mouse') {
@@ -196,19 +351,28 @@
             }
 
             aktif = true;
+            tertangkap = false;
+            baruGeser = false;
             mulaiX = kejadian.clientX;
             mulaiScroll = wadah.scrollLeft;
             wadah.classList.add('cursor-grabbing');
             wadah.classList.remove('cursor-grab');
-
-            if (wadah.setPointerCapture) {
-                wadah.setPointerCapture(kejadian.pointerId);
-            }
         });
 
         wadah.addEventListener('pointermove', function (kejadian) {
             if (!aktif) {
                 return;
+            }
+
+            if (Math.abs(kejadian.clientX - mulaiX) > 5) {
+                baruGeser = true;
+
+                // Pointer capture baru dipasang setelah gerakan melewati batas
+                // drag; klik biasa tidak perlu capture.
+                if (!tertangkap && wadah.setPointerCapture) {
+                    wadah.setPointerCapture(kejadian.pointerId);
+                    tertangkap = true;
+                }
             }
 
             wadah.scrollLeft = mulaiScroll - (kejadian.clientX - mulaiX);
@@ -220,23 +384,48 @@
             }
 
             aktif = false;
+            tertangkap = false;
             wadah.classList.add('cursor-grab');
             wadah.classList.remove('cursor-grabbing');
+
+            if (baruGeser) {
+                setTimeout(function () { baruGeser = false; }, 250);
+            }
         }
 
         wadah.addEventListener('pointerup', selesaiGeser);
         wadah.addEventListener('pointercancel', selesaiGeser);
         wadah.addEventListener('pointerleave', selesaiGeser);
+
+        var pembaruanTertunda = false;
+
+        wadah.addEventListener('scroll', function () {
+            if (abaikanPerbaruan || pembaruanTertunda) {
+                return;
+            }
+
+            pembaruanTertunda = true;
+
+            requestAnimationFrame(function () {
+                pembaruanTertunda = false;
+                perbaruiLemburTerlihat();
+            });
+        });
     }
 
-    // Tabel man hour dimulai dari baris HARI INI (paling atas), sehingga
-    // pengguna bisa menggulir ke atas untuk tanggal sesudahnya dan ke bawah
-    // untuk tanggal sebelumnya.
-    var tabelWadah = document.querySelector('[data-tanggal-fokus]');
+    // Tabel man hour diurutkan terbaru -> terlama. Baris hari ini langsung
+    // ditampilkan paling atas; bulan lain dimuat saat pengguna menggulir.
+    var tabelWadah = document.getElementById('tabelManHourScroll');
 
     if (tabelWadah) {
+        var tabelIsi     = tabelWadah.querySelector('tbody');
         var tanggalFokus = tabelWadah.getAttribute('data-tanggal-fokus');
         var barisFokus   = tabelWadah.querySelector('tr[data-tanggal="' + tanggalFokus + '"]');
+        var tahunTabel   = parseInt(tabelWadah.getAttribute('data-tahun') || '0', 10);
+        var bulanAwal    = parseInt(tabelWadah.getAttribute('data-bulan-awal') || '1', 10);
+        var bulanAkhir   = parseInt(tabelWadah.getAttribute('data-bulan-akhir') || '12', 10);
+        var polaUrlBulan = tabelWadah.getAttribute('data-url-bulan') || '';
+        var memuatBulan  = false;
 
         if (barisFokus) {
             requestAnimationFrame(function () {
@@ -247,6 +436,83 @@
                 tabelWadah.scrollTop = Math.max(0, posisiBaris - 40);
             });
         }
+
+        function muatBulanTabel(bulan, posisi) {
+            if (memuatBulan || !tabelIsi || !polaUrlBulan) {
+                return;
+            }
+
+            memuatBulan = true;
+
+            var url = polaUrlBulan.replace('__BULAN__', String(bulan))
+                + '?tahun=' + encodeURIComponent(String(tahunTabel));
+
+            fetch(url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin'
+            })
+                .then(function (respons) {
+                    if (!respons.ok) {
+                        throw new Error('Gagal memuat bulan ' + bulan);
+                    }
+
+                    return respons.text();
+                })
+                .then(function (html) {
+                    if (posisi === 'atas') {
+                        var tinggiSebelum = tabelWadah.scrollHeight;
+
+                        tabelIsi.insertAdjacentHTML('afterbegin', html);
+                        tabelWadah.scrollTop += tabelWadah.scrollHeight - tinggiSebelum;
+                        bulanAkhir = bulan;
+                        tabelWadah.setAttribute('data-bulan-akhir', String(bulanAkhir));
+                    } else {
+                        tabelIsi.insertAdjacentHTML('beforeend', html);
+                        bulanAwal = bulan;
+                        tabelWadah.setAttribute('data-bulan-awal', String(bulanAwal));
+                    }
+                })
+                .catch(function () {
+                    // Biarkan data yang sudah ada; pengguna dapat menggulir
+                    // lagi untuk mencoba memuat bulan tersebut.
+                })
+                .finally(function () {
+                    memuatBulan = false;
+                });
+        }
+
+        function cekTepiTabel() {
+            if (memuatBulan) {
+                return;
+            }
+
+            if (tabelWadah.scrollTop <= 80 && bulanAkhir < 12) {
+                muatBulanTabel(bulanAkhir + 1, 'atas');
+                return;
+            }
+
+            var mentokBawah = tabelWadah.scrollTop + tabelWadah.clientHeight
+                >= tabelWadah.scrollHeight - 80;
+
+            if (mentokBawah && bulanAwal > 1) {
+                muatBulanTabel(bulanAwal - 1, 'bawah');
+            }
+        }
+
+        var tepiTertunda = false;
+
+        tabelWadah.addEventListener('scroll', function () {
+            if (tepiTertunda) {
+                return;
+            }
+
+            tepiTertunda = true;
+
+            requestAnimationFrame(function () {
+                tepiTertunda = false;
+                cekTepiTabel();
+            });
+        }, { passive: true });
     }
 })();
 </script>

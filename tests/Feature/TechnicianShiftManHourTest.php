@@ -260,41 +260,55 @@ test('halaman teknisi menampilkan man hour, rincian harian, dan kolom jam kerja'
         ->assertSee('4,0 j', false);
 });
 
-test('man hour otomatis memakai periode 26-25 berjalan dengan data sebelum/sesudah dan bisa digeser', function () {
-    // Jadwal import lama tidak boleh mengunci periode halaman.
+test('grafik dan tabel memakai tahun kalender berjalan serta bisa digeser dan dimuat bertahap', function () {
+    // Jadwal import lama tidak boleh mengunci tahun halaman.
     ShiftSchedule::create([
         'periode_mulai'   => '2026-09-26',
         'periode_selesai' => '2026-10-25',
         'nama_file'       => 'jadwal-uji.xlsx',
     ]);
 
-    $hariIni = now()->startOfDay();
-    $mulai   = $hariIni->day >= 26
+    $hariIni      = now()->startOfDay();
+    $tahun        = (int) $hariIni->year;
+    $awalTahun    = Carbon::create($tahun, 1, 1)->startOfDay();
+    $akhirTahun   = Carbon::create($tahun, 12, 31)->endOfDay();
+    $indeksHariIni = (int) $awalTahun->copy()->diffInDays($hariIni);
+
+    $mulai = $hariIni->day >= 26
         ? $hariIni->copy()->startOfMonth()->addDays(25)
         : $hariIni->copy()->subMonthNoOverflow()->startOfMonth()->addDays(25);
-    $selesai = $mulai->copy()->addMonthNoOverflow()->subDay();
-    $sebelum = $mulai->copy()->subMonthNoOverflow();
-    $sesudah = $selesai->copy()->addMonthNoOverflow();
-    $indeksHariIni = (int) $sebelum->copy()->startOfDay()->diffInDays($hariIni);
+
+    $bulanSekarang   = (int) $hariIni->month;
+    $bulanAwalTabel  = max(1, $bulanSekarang - 1);
+    $bulanAkhirTabel = min(12, $bulanSekarang + 1);
+    $barisAtasTabel  = Carbon::create($tahun, $bulanAkhirTabel, 1)->endOfMonth();
+    $barisBawahTabel = Carbon::create($tahun, $bulanAwalTabel, 1);
 
     $response = $this->actingAs($this->admin)
         ->get('/technicians/' . $this->teknisiStaf->id)
         ->assertStatus(200)
-        ->assertSee($mulai->format('d/m/Y') . ' - ' . $selesai->format('d/m/Y'), false)
-        ->assertSee($mulai->format('d/m/Y'), false)
-        ->assertSee($selesai->format('d/m/Y'), false)
-        ->assertSee($sebelum->format('d/m/Y'), false)
-        ->assertSee($sesudah->format('d/m/Y'), false)
+        ->assertSee('Tahun ' . $tahun, false)
         ->assertSee($hariIni->format('d/m/Y'), false)
         ->assertSee('grafikManHourScroll', false)
         ->assertSee('data-indeks-fokus="' . $indeksHariIni . '"', false)
         ->assertSee('overflow-x-auto', false)
         ->assertSee('min-width:', false)
+        ->assertSee('sisi kanan', false)
         ->assertSee('geser ke kiri/kanan', false)
+        ->assertSee('01/01-31/12', false)
+        ->assertSee('pemisahSesi', false)
+        ->assertSee('Klik untuk membuka daftar laporan', false)
+        ->assertSee('data-lembur-sesi="' . $mulai->toDateString() . '"', false)
         ->assertSee('max-h-[32rem]', false)
+        ->assertSee('style="max-height: 32rem;"', false)
         ->assertSee('data-tanggal-fokus="' . $hariIni->toDateString() . '"', false)
-        ->assertSee('sticky top-0', false)
-        ->assertSee('gulir ke atas/bawah', false);
+        ->assertSee('data-tahun="' . $tahun . '"', false)
+        ->assertSee('data-bulan-awal="' . $bulanAwalTabel . '"', false)
+        ->assertSee('data-bulan-akhir="' . $bulanAkhirTabel . '"', false)
+        ->assertSee('data-url-bulan=', false)
+        ->assertSee('Bulan lain dimuat saat tabel digulir', false)
+        ->assertSee('gulir ke atas', false)
+        ->assertSee('sticky top-0', false);
 
     $html      = $response->getContent();
     $awalTabel = strpos($html, 'Rincian Man Hour Harian');
@@ -302,8 +316,88 @@ test('man hour otomatis memakai periode 26-25 berjalan dengan data sebelum/sesud
     $akhirBody = strpos($html, '</tbody>', $awalBody);
     $tabel     = substr($html, $awalBody, $akhirBody - $awalBody);
 
-    expect(strpos($tabel, $selesai->format('d/m/Y')))
-        ->toBeLessThan(strpos($tabel, $mulai->format('d/m/Y')));
+    // Cek Overtime tetap memakai periode 26-25; tahun kalender menyentuh 13 sesi.
+    expect(substr_count($html, '<div data-lembur-sesi='))->toBe(13);
+
+    preg_match_all('/<tr[^>]*data-tanggal="([^"]+)"/', $tabel, $tanggalTabel);
+
+    expect($tanggalTabel[1])->toHaveCount(
+        (int) $barisBawahTabel->diffInDays($barisAtasTabel) + 1
+    )
+        ->and($tanggalTabel[1][0])->toBe($barisAtasTabel->toDateString())
+        ->and(end($tanggalTabel[1]))->toBe($barisBawahTabel->toDateString());
+
+    if ($bulanAwalTabel > 1) {
+        expect($tabel)->not->toContain(
+            Carbon::create($tahun, $bulanAwalTabel, 1)->subDay()->toDateString()
+        );
+    }
+});
+
+test('grafik tahun kalender memuat tautan klik, pemisah sesi, dan data 01/01-31/12', function () {
+    $hariIni  = now()->startOfDay();
+    $tahun    = (int) $hariIni->year;
+    $awalTahun  = Carbon::create($tahun, 1, 1)->startOfDay();
+    $akhirTahun = Carbon::create($tahun, 12, 31)->endOfDay();
+    $mulai      = $hariIni->day >= 26
+        ? $hariIni->copy()->startOfMonth()->addDays(25)
+        : $hariIni->copy()->subMonthNoOverflow()->startOfMonth()->addDays(25);
+
+    TechnicianShift::create([
+        'technician_id' => $this->teknisiStaf->id,
+        'nik'           => 'NIK-STAF-1',
+        'nama'          => 'Teknisi Staf Uji',
+        'section_label' => 'NAME STAF',
+        'shift_date'    => $hariIni->toDateString(),
+        'shift_code'    => 'R',
+    ]);
+
+    buatLaporanManHour($this->teknisiStaf, $hariIni->toDateString(), 240, '08:00');
+
+    $response = $this->actingAs($this->admin)
+        ->get('/technicians/' . $this->teknisiStaf->id)
+        ->assertStatus(200)
+        ->assertSee('data-lembur-sesi="' . $mulai->toDateString() . '"', false);
+
+    $html = $response->getContent();
+
+    preg_match('/var dataHarian = (\[.*?\]);/s', $html, $cocok);
+
+    expect($cocok)->toHaveCount(2);
+
+    $dataGrafik    = json_decode($cocok[1], true, 512, JSON_THROW_ON_ERROR);
+    $indeksHariIni = (int) $awalTahun->copy()->diffInDays($hariIni);
+
+    expect($dataGrafik)->toHaveCount((int) $awalTahun->diffInDays($akhirTahun) + 1)
+        ->and($dataGrafik[0]['tanggal'])->toBe('01/01')
+        ->and(end($dataGrafik)['tanggal'])->toBe('31/12')
+        ->and($dataGrafik[$indeksHariIni]['tanggal'])->toBe($hariIni->format('d/m'))
+        ->and($dataGrafik[$indeksHariIni]['sesi'])->toBe($mulai->toDateString())
+        ->and($dataGrafik[$indeksHariIni]['url'])
+        ->toContain('technician_id=' . $this->teknisiStaf->id)
+        ->toContain('tanggal=' . $hariIni->toDateString())
+        ->and(count(array_filter(array_column($dataGrafik, 'mulai_sesi'))))->toBe(12);
+});
+
+test('endpoint man hour bulanan mengembalikan baris satu bulan terurut terbaru', function () {
+    $tahun = (int) now()->year;
+    $bulan = 9;
+
+    $response = $this->actingAs($this->admin)
+        ->get(route('technicians.man-hour-bulan', [
+            'technician' => $this->teknisiStaf->id,
+            'bulan'      => $bulan,
+        ]) . '?tahun=' . $tahun)
+        ->assertStatus(200);
+
+    preg_match_all('/data-tanggal="([^"]+)"/', $response->getContent(), $cocok);
+
+    $awalBulan  = Carbon::create($tahun, $bulan, 1)->startOfDay();
+    $akhirBulan = $awalBulan->copy()->endOfMonth();
+
+    expect($cocok[1])->toHaveCount((int) $awalBulan->daysInMonth)
+        ->and($cocok[1][0])->toBe($akhirBulan->toDateString())
+        ->and(end($cocok[1]))->toBe($awalBulan->toDateString());
 });
 
 test('upload jadwal shift lewat halaman teknisi menyimpan hasil import', function () {
