@@ -799,9 +799,9 @@
 @endsection
 
 @push('scripts')
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-(function() {
+// Ditunda sampai DOMContentLoaded agar Chart.js dari bundel Vite sudah siap.
+document.addEventListener('DOMContentLoaded', function() {
     function hasNonNullData(data, keys) {
         return data.some(function(d) { return keys.some(function(k) { return d[k] !== null && d[k] !== undefined; }); });
     }
@@ -942,6 +942,6 @@
 
     // Chart 5: Discharge Pressure
     renderChart('pressureChart', ['discharge_pressure'], 'Pressure');
-})();
+});
 </script>
 @endpush

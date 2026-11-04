@@ -2,12 +2,12 @@
      jenis pekerjaan) + komposisi jenis pekerjaan (donut).
      Data disiapkan oleh App\Http\Controllers\Concerns\ResolvesReportAnalytics
      lewat AssetController::show() dan LocationController::show(). --}}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 /**
  * Gambar grafik tren perbaikan dan komposisi jenis pekerjaan.
+ * Ditunda sampai DOMContentLoaded agar Chart.js dari bundel Vite sudah siap.
  */
-(function () {
+document.addEventListener('DOMContentLoaded', function () {
     if (typeof Chart === 'undefined') {
         return;
     }
@@ -139,5 +139,5 @@
             },
         });
     }
-})();
+});
 </script>

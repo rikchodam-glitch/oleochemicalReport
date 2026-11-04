@@ -1,20 +1,26 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-10-28 11:21 WIB
+Diperbarui: 2026-11-04 09:53 WIB
 
-- Cabang aktif: `tugas/erik/export-excel-lengkap-assets-mengikuti-filter-dan-snapshot`
-- Mulai: 2026-10-28 11:14
+- Cabang aktif: `tugas/erik/aset-js-lokal-tanpa-cdn`
+- Mulai: 2026-11-04 09:53
 - Status: SELESAI DIUJI, SIAP PR
 - Modul/berkas yang disentuh:
-  - `app/Http/Controllers/Traits/AssetExportLengkapTrait.php` - export Excel lengkap mengikuti filter, data IT, snapshot/foto
-  - `app/Http/Controllers/Traits/AssetExportTrait.php` - query export dapat menyertakan baris cermin IT
-  - `app/Http/Controllers/AssetController.php` - memakai trait export lengkap
-  - `routes/web.php` - route export Excel lengkap
-  - `resources/views/assets/index.blade.php` - tombol export lengkap
-  - `tests/Feature/AssetExportLengkapTest.php` - uji filter CCTV, switch, snapshot, dan kolom dinamis
-  - `docs/28-assets-management.md`, `docs/PROMPT.md` - dokumentasi fitur
-  - `tugas/pr-export-excel-lengkap-assets-mengikuti-filter-dan-snapshot.md` - catatan PR
-- Catatan: 3 test export lengkap hijau, 32 assertions; seluruh suite 777 test hijau, 3.908 assertions; `view:cache` sukses.
+  - `resources/js/app.js` - impor Alpine.js dan Chart.js sebagai bundel lokal Vite
+  - `resources/js/pdfjs.js` - entry Vite PDF.js lokal beserta worker
+  - `resources/views/layouts/app.blade.php` - pakai app.js Vite, hapus CDN Alpine
+  - `resources/views/partials/_grafik-perbaikan-script.blade.php` - hapus CDN Chart.js
+  - `resources/views/reliability/index.blade.php` - hapus CDN Chart.js
+  - `resources/views/reports/partials/_kartu-teknisi.blade.php` - hapus CDN Chart.js
+  - `resources/views/dashboard/index.blade.php` - hapus CDN Chart.js
+  - `resources/views/technicians/partials/_grafik-manhour.blade.php` - hapus CDN Chart.js
+  - `resources/views/cm/equipment-show.blade.php` - hapus CDN Chart.js
+  - `resources/views/it-assets/layouts/show.blade.php` - pakai PDF.js Vite, hapus CDN unpkg
+  - `package.json`, `package-lock.json` - dependensi alpinejs, chart.js, pdfjs-dist
+  - `vite.config.js` - entry bundel `resources/js/pdfjs.js`
+  - `docs/01-ikhtisar-dev-prod-dan-deploy.md` - catatan aset Vite tanpa CDN
+  - `tugas/pr-aset-js-lokal-tanpa-cdn.md` - catatan PR
+- Catatan: `npm run build` sukses, `view:cache` sukses, seluruh suite 777 test hijau (3.908 assertions).
 
 ## Riwayat
-- tugas/erik/grafik-hari-ini-di-kanan (mulai 2026-10-27 14:39) -> dilanjutkan 2026-10-28 11:14
+- tugas/erik/export-excel-lengkap-assets-mengikuti-filter-dan-snapshot (mulai 2026-10-28 11:14) -> dilanjutkan 2026-11-04 09:53

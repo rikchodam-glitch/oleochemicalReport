@@ -67,6 +67,14 @@ Sejak 28/09/2026 project ini SENGAJA ada dalam DUA copy di satu komputer
   Skrip itu memanggil skrip lain lewat PROSES TERPISAH (`powershell.exe -File`)
   supaya masalah stderr git pada `deploy-prod.ps1` (lihat catatan di bawah)
   tidak menular.
+- **Aset JS/CSS dibundel Vite, bukan CDN (sejak 04/11/2026).** Alpine.js,
+  Chart.js, dan PDF.js diambil dari `node_modules` lewat
+  `resources/js/app.js` dan `resources/js/pdfjs.js`, sehingga halaman tetap
+  berjalan di komputer yang tidak bisa me-resolve domain CDN. Setelah mengubah
+  CSS/JS, jalankan `npm run build` di DEV untuk memperbarui `public/build`
+  (atau `npm run dev` selama pengembangan); deploy PROD menjalankan
+  `npm run build` otomatis lewat `-BangunAset`, jadi tidak ada langkah manual
+  tambahan saat deploy.
 
 - Service latar (`queue:work`, `schedule:work`, `telegram:poll`) dan web
   `artisan serve` port 8000 HANYA jalan di PROD; dua poller Telegram sekaligus =

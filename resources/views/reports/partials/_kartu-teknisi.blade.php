@@ -118,8 +118,6 @@
 @endif
 
 @push('scripts')
-{{-- Chart.js dipakai juga oleh halaman Teknisi; dimuat sekali di sini. --}}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
     // Komponen Alpine kartu "Teknisi Pelaksana": memilih teknisi aktif dan
     // menggambar grafik jumlah laporan per bulan. Seluruh data sudah dihitung

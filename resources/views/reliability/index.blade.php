@@ -180,7 +180,6 @@
 @endsection
 
 @push('scripts')
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 var mtbfTrend    = @json($mtbfTrend);
 var distribution = @json($distribution);
@@ -197,11 +196,11 @@ var AP = {
     font: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif"
 };
 
-Chart.defaults.font.family = AP.font;
-Chart.defaults.font.size = 11;
-Chart.defaults.color = AP.muted;
-
 document.addEventListener('DOMContentLoaded', function() {
+    Chart.defaults.font.family = AP.font;
+    Chart.defaults.font.size = 11;
+    Chart.defaults.color = AP.muted;
+
     renderMtbfChart();
     renderDistributionChart();
     renderParetoChart();
