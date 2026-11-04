@@ -53,9 +53,9 @@
 
     $dataGrafikJson = json_encode($dataGrafik, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 @endphp
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-(function () {
+// Ditunda sampai DOMContentLoaded agar Chart.js dari bundel Vite sudah siap.
+document.addEventListener('DOMContentLoaded', function () {
     var kanvas = document.getElementById('grafikManHour');
 
     if (!kanvas || typeof Chart === 'undefined') {
@@ -514,6 +514,6 @@
             });
         }, { passive: true });
     }
-})();
+});
 </script>
 @endpush

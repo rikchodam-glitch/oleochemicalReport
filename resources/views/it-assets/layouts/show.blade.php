@@ -141,7 +141,7 @@
 </div>
 
 @push('scripts')
-    <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+    @vite('resources/js/pdfjs.js')
     <script>
         'use strict';
 
@@ -459,7 +459,6 @@
             }
 
             showRenderBar();
-            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
             const loadTask = pdfjsLib.getDocument(LAYOUT.file_url);
             // Progres unduh dokumen (0-40%).
             loadTask.onProgress = function (p) {
@@ -1366,7 +1365,9 @@
             refreshView();
         }
 
-        init();
+        // Modul PDF.js (Vite) selesai dimuat sebelum DOMContentLoaded, jadi
+        // inisialisasi denah ditunda ke event tersebut agar worker sudah siap.
+        document.addEventListener('DOMContentLoaded', init);
     </script>
 @endpush
 
