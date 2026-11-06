@@ -1,26 +1,24 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-11-04 09:53 WIB
+Diperbarui: 2026-11-06 08:51 WIB
 
-- Cabang aktif: `tugas/erik/aset-js-lokal-tanpa-cdn`
-- Mulai: 2026-11-04 09:53
+- Cabang aktif: `tugas/erik/halaman-service-it`
+- Mulai: 2026-11-06 08:51
 - Status: SELESAI DIUJI, SIAP PR
 - Modul/berkas yang disentuh:
-  - `resources/js/app.js` - impor Alpine.js dan Chart.js sebagai bundel lokal Vite
-  - `resources/js/pdfjs.js` - entry Vite PDF.js lokal beserta worker
-  - `resources/views/layouts/app.blade.php` - pakai app.js Vite, hapus CDN Alpine
-  - `resources/views/partials/_grafik-perbaikan-script.blade.php` - hapus CDN Chart.js
-  - `resources/views/reliability/index.blade.php` - hapus CDN Chart.js
-  - `resources/views/reports/partials/_kartu-teknisi.blade.php` - hapus CDN Chart.js
-  - `resources/views/dashboard/index.blade.php` - hapus CDN Chart.js
-  - `resources/views/technicians/partials/_grafik-manhour.blade.php` - hapus CDN Chart.js
-  - `resources/views/cm/equipment-show.blade.php` - hapus CDN Chart.js
-  - `resources/views/it-assets/layouts/show.blade.php` - pakai PDF.js Vite, hapus CDN unpkg
-  - `package.json`, `package-lock.json` - dependensi alpinejs, chart.js, pdfjs-dist
-  - `vite.config.js` - entry bundel `resources/js/pdfjs.js`
-  - `docs/01-ikhtisar-dev-prod-dan-deploy.md` - catatan aset Vite tanpa CDN
-  - `tugas/pr-aset-js-lokal-tanpa-cdn.md` - catatan PR
-- Catatan: `npm run build` sukses, `view:cache` sukses, seluruh suite 777 test hijau (3.908 assertions).
+  - `database/migrations/2026_11_06_000001_create_it_service_records_table.php` - tabel kasus service IT
+  - `app/Models/ItServiceRecord.php` - model kasus service IT
+  - `app/Models/ItAsset.php` - relasi serviceRecords()
+  - `app/Services/ItServiceSyncService.php` - sinkronisasi laporan continue/done ke kasus service
+  - `app/Http/Controllers/ItServiceController.php` - halaman, tambah manual, ubah, pencarian aset
+  - `routes/web.php` - route it-service.*
+  - `config/akses.php` - modul Service IT
+  - `resources/views/it-service/index.blade.php` - halaman Service IT
+  - `resources/views/layouts/app.blade.php` - menu Service IT
+  - `tests/Feature/ItServiceTest.php` - uji fitur
+  - `docs/32-service-it.md`, `AGENTS.md` - dokumentasi
+  - `tugas/pr-halaman-service-it.md` - catatan PR
+- Catatan: seluruh suite 785 test hijau (3.965 assertions), `view:cache` sukses, migrasi DEV sukses.
 
 ## Riwayat
-- tugas/erik/export-excel-lengkap-assets-mengikuti-filter-dan-snapshot (mulai 2026-10-28 11:14) -> dilanjutkan 2026-11-04 09:53
+- tugas/erik/aset-js-lokal-tanpa-cdn (mulai 2026-11-04 09:53) -> dilanjutkan 2026-11-06 08:51

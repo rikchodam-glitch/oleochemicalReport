@@ -13,6 +13,7 @@ use App\Http\Controllers\ImportController;
 use App\Http\Controllers\IpAddressController;
 use App\Http\Controllers\ItAssetController;
 use App\Http\Controllers\ItLayoutController;
+use App\Http\Controllers\ItServiceController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\PanelRuanganController;
@@ -289,6 +290,11 @@ Route::post('/assets/unlinked-funcloc/run-sync', [AssetController::class, 'runAu
     Route::post('/it-assets/{itAsset}/ping', [ItAssetController::class, 'ping'])->name('it-assets.ping');
     Route::put('/it-assets/{itAsset}/snapshot-settings', [ItAssetController::class, 'updateSnapshotSettings'])->name('it-assets.snapshot-settings');
     Route::post('/it-assets/{itAsset}/snapshot', [ItAssetController::class, 'snapshot'])->name('it-assets.snapshot');
+    // Service IT: kasus perangkat IT dari laporan continue/done + entri manual.
+    Route::get('/it-service', [ItServiceController::class, 'index'])->name('it-service.index');
+    Route::get('/it-service/asset-search', [ItServiceController::class, 'assetSearch'])->name('it-service.asset-search');
+    Route::post('/it-service', [ItServiceController::class, 'store'])->name('it-service.store');
+    Route::put('/it-service/{itService}', [ItServiceController::class, 'update'])->name('it-service.update');
     // Bot
     Route::get('/bot', [BotController::class, 'index'])->name('bot.index');
     Route::post('/bot/settings', [BotController::class, 'updateSettings'])->name('bot.settings.update');
