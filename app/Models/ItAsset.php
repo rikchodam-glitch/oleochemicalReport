@@ -203,6 +203,16 @@ class ItAsset extends Model
     }
 
     /**
+     * Kasus Service IT milik perangkat ini.
+     *
+     * @return HasMany<ItServiceRecord>
+     */
+    public function serviceRecords(): HasMany
+    {
+        return $this->hasMany(ItServiceRecord::class, 'it_asset_id');
+    }
+
+    /**
      * Kode object_type untuk baris cermin di tabel assets.
      *
      * @return string
@@ -291,6 +301,28 @@ class ItAsset extends Model
     public function displayName(): string
     {
         return $this->tag_name ?: ($this->name ?: ('#' . $this->id));
+    }
+
+    /**
+     * Label lokasi perangkat: Functional Location bila ada, jika tidak
+     * gabungan plant/department/location. Dipakai halaman Service IT dan
+     * pengelompokan pilihan aset manual.
+     *
+     * @return string
+     */
+    public function locationLabel(): string
+    {
+        if ($this->functionalLocation !== null) {
+            return trim($this->functionalLocation->code . ' - ' . $this->functionalLocation->name);
+        }
+
+        $bagian = array_filter([
+            $this->plant,
+            $this->department,
+            $this->location,
+        ], fn ($nilai) => filled($nilai));
+
+        return $bagian === [] ? 'Tanpa Lokasi' : implode(' / ', $bagian);
     }
 
     /**

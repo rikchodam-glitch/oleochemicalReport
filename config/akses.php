@@ -87,6 +87,12 @@ return [
             'pola'  => ['it-assets.ip-addresses.*'],
             'link'  => 'it-assets.ip-addresses.index',
         ],
+        'it_service' => [
+            'label' => 'Service IT',
+            'grup'  => 'IT & Jaringan',
+            'pola'  => ['it-service.*'],
+            'link'  => 'it-service.index',
+        ],
         'cm' => [
             'label' => 'Condition Monitoring',
             'grup'  => 'Reliability & Maintenance',
