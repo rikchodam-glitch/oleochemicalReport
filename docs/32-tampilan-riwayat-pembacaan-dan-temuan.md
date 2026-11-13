@@ -158,6 +158,35 @@ baris salinan kolaborasi tetap tidak bisa diedit langsung).
 - `tests/Feature/CmEquipmentTrendPressureAmpereTest.php` disesuaikan karena
   padding sel Pressure berubah dari `py-3` menjadi `py-4`.
 
+## Verifikasi Data CM 13/11/2026
+
+- Perbandingan langsung dengan Google Sheets: 3.721 kombinasi equipment+tanggal
+  di `Data AppSheet`/`Status CM` semuanya ada di DB; kondisi dan Max
+  Vibration/Temp cocok 100% dengan sheet `Status CM`.
+- `Master Equipment`: 434 tag di sheet semuanya ada dan aktif di DB, PT/Plant
+  cocok.
+- `Finding CM`: 587 finding di sheet semuanya ada di DB; severity, status, PIC,
+  tanggal, analysis/action/remark, dan foto cocok. Setelah pembersihan:
+  174 open, 413 closed.
+- Monitoring bulanan equipment aktif: 3.906 baris cocok dengan hasil hitung
+  reading (0 selisih).
+- Data stale yang dihapus: 8 finding open lama yang sudah tidak ada di sheet
+  dan 9 reading yang barisnya sudah dihapus dari sheet (2 di antaranya
+  November 2026).
+- 737 reading milik equipment yang sudah nonaktif tetap disimpan sebagai
+  histori, tetapi tidak lagi dihitung/ditampilkan di Overview, Report &
+  Analysis, maupun export karena semua query reading memakai equipment aktif.
+- 888 baris `cm_monthly_tracking` milik equipment nonaktif tetap disimpan;
+  halaman CM Monitoring dan export hanya membaca equipment aktif.
+- 12 finding closed di sheet tidak diimpor karena tag equipment-nya tidak ada
+  di `Master Equipment` (mis. BR01, 802C, CB5, R02). Ini tetap menjadi aturan
+  skip import.
+- Fallback `computeStatusCondition` disamakan dengan formula sheet:
+  danger/alarm berdasarkan vibrasi didahulukan, baru visual bad.
+- 3 reading Maret 2026 masih tercatat di sheet untuk equipment yang sudah tidak
+  ada di Master; karena halaman memakai equipment aktif, angka Overview Maret
+  lebih kecil 3 dari sheet. Ini konsekuensi aturan aktif dan bukan data stale.
+
 ## Catatan
 
 - Nilai kondisi tetap mengikuti sheet `Status CM`. Yang berubah adalah cara

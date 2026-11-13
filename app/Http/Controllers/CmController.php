@@ -48,7 +48,8 @@ class CmController extends Controller
         // Hanya baris dengan minimal satu nilai pengukuran aktual (> 0) yang
         // dihitung — baris semua 0/strip dianggap tidak ada pembacaan.
         $baseQuery = CmReading::query()
-            ->whereRaw($this->measureSql());
+            ->whereRaw($this->measureSql())
+            ->whereHas('equipment', fn($q) => $q->active());
         if ($filterPt) {
             $baseQuery->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
         }
@@ -83,7 +84,8 @@ class CmController extends Controller
 
         // Breakdown status per PT untuk donut chart
         $donutQuery = CmReading::selectRaw('cm_equipment.pt_location, cm_readings.kondisi, COUNT(*) as total')
-            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id');
+            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true);
 
         if ($filterPt) {
             $donutQuery->where('cm_equipment.pt_location', $filterPt);
@@ -105,7 +107,8 @@ class CmController extends Controller
             ->groupBy('pt_location');
 
         // Trend bulanan stacked
-        $trendQuery = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total');
+        $trendQuery = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total')
+            ->whereHas('equipment', fn($q) => $q->active());
 
         if ($filterPt) {
             $trendQuery->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
@@ -129,6 +132,7 @@ class CmController extends Controller
         // Top 10 vibrasi tertinggi — latest reading per equipment yg masih DANGER
         // Subquery: ambil (cm_equipment_id, tanggal_max) per equipment
         $latestSub = CmReading::selectRaw('cm_equipment_id, MAX(tanggal) as tanggal_max')
+            ->whereHas('equipment', fn($q) => $q->active())
             ->groupBy('cm_equipment_id');
 
         if ($filterTahun) {
@@ -145,6 +149,7 @@ class CmController extends Controller
                      ->on('r.tanggal', '=', 'latest.tanggal_max');
             })
             ->join('cm_equipment', 'cm_equipment.id', '=', 'r.cm_equipment_id')
+            ->where('cm_equipment.is_active', true)
             ->where('r.kondisi', 'danger');
 
         if ($filterPt) {
@@ -161,6 +166,7 @@ class CmController extends Controller
 
         // Tahun untuk filter
         $tahunList = CmReading::selectRaw('YEAR(tanggal) as tahun')
+            ->whereHas('equipment', fn($q) => $q->active())
             ->distinct()
             ->orderBy('tahun', 'desc')
             ->pluck('tahun');
@@ -1131,6 +1137,7 @@ class CmController extends Controller
         // Threshold dari config
         $vibThreshold = config('cm.high_vibration.threshold', 4.5);
         $statusFilter = config('cm.high_vibration.status_filter', ['alarm', 'danger']);
+        $activeEquipmentIds = CmEquipment::active()->pluck('id');
 
         // ---------------------------------------------------------------
         // SECTION 1: Equipment Vibrasi Tinggi per PT (LATEST PER EQUIPMENT)
@@ -1145,6 +1152,7 @@ class CmController extends Controller
         // tanggal (ada anomali — id lebih besar tapi tanggal lebih kecil).
         $latestReadingIds = DB::table('cm_readings as r1')
             ->select('r1.id')
+            ->whereIn('r1.cm_equipment_id', $activeEquipmentIds)
             ->whereRaw('r1.tanggal = (
                 select MAX(r2.tanggal) from cm_readings r2
                 where r2.cm_equipment_id = r1.cm_equipment_id
@@ -1155,6 +1163,7 @@ class CmController extends Controller
         // per equipment (untuk fallback Opsi A)
         $lastAlarmDangerIds = DB::table('cm_readings as r1')
             ->select(DB::raw('MAX(r1.id) as id'))
+            ->whereIn('r1.cm_equipment_id', $activeEquipmentIds)
             ->whereIn('r1.kondisi', $statusFilter)
             ->where('r1.max_vibration', '>', $vibThreshold)
             ->groupBy('r1.cm_equipment_id')
@@ -1164,6 +1173,7 @@ class CmController extends Controller
         // (untuk fallback analysis jika reading hasil fallback analysis-nya kosong)
         $latestAnalysisIds = DB::table('cm_readings as r1')
             ->select(DB::raw('MAX(r1.id) as id'))
+            ->whereIn('r1.cm_equipment_id', $activeEquipmentIds)
             ->whereNotNull('r1.analysis')
             ->where('r1.analysis', '!=', '')
             ->groupBy('r1.cm_equipment_id')
@@ -1174,6 +1184,7 @@ class CmController extends Controller
         // Set B: Latest GOOD/VISUAL_BAD vib≤0.5, fallback ke alarm/danger terakhir
         $alarmDangerLatest = DB::table('cm_readings')
             ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true)
             ->whereIn('cm_readings.id', $latestReadingIds)
             ->whereIn('cm_readings.kondisi', $statusFilter)
             ->where('cm_readings.max_vibration', '>', $vibThreshold);
@@ -1188,6 +1199,7 @@ class CmController extends Controller
 
         $fallbackSet = DB::table('cm_readings')
             ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true)
             ->whereIn('cm_readings.id', $lastAlarmDangerIds)
             ->whereIn('cm_readings.cm_equipment_id', $goodLowLatestIds);
 
@@ -1262,6 +1274,7 @@ class CmController extends Controller
         if ($filterBulan) {
             $monthlyIds = DB::table('cm_readings')
                 ->select(DB::raw('MAX(id) as id'))
+                ->whereIn('cm_equipment_id', $activeEquipmentIds)
                 ->whereIn('kondisi', $statusFilter)
                 ->where('max_vibration', '>', $vibThreshold)
                 ->whereYear('tanggal', (int) $filterTahun)
@@ -1271,6 +1284,7 @@ class CmController extends Controller
 
             $latestRows = DB::table('cm_readings')
                 ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+                ->where('cm_equipment.is_active', true)
                 ->whereIn('cm_readings.id', $monthlyIds)
                 ->whereNotNull('cm_readings.analysis')
                 ->where('cm_readings.analysis', '!=', '')
@@ -1352,6 +1366,7 @@ class CmController extends Controller
         // membaik di bulan berikutnya.
         $trendAllQuery = CmReading::query()
             ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true)
             ->whereIn('cm_readings.kondisi', $statusFilter)
             ->where('cm_readings.max_vibration', '>', $vibThreshold)
             ->whereNotNull('cm_readings.analysis')
@@ -1479,7 +1494,9 @@ class CmController extends Controller
         // ---------------------------------------------------------------
         $totalEquipment = CmEquipment::active()->when($filterPt, fn($q) => $q->where('pt_location', $filterPt))->count();
 
-        $totalReadingsQuery = CmReading::when($filterPt, fn($q) => $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt)));
+        $totalReadingsQuery = CmReading::query()
+            ->whereHas('equipment', fn($q) => $q->active())
+            ->when($filterPt, fn($q) => $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt)));
         if ($filterTahun) { $totalReadingsQuery->whereYear('tanggal', $filterTahun); }
         $totalReadings = $totalReadingsQuery->count();
 
@@ -1535,7 +1552,8 @@ class CmController extends Controller
         $filterBulan = $this->bulanFilter($request->input('bulan'));
         $filterStatus = $request->get('status', '');
 
-        $query = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total');
+        $query = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total')
+            ->whereHas('equipment', fn($q) => $q->active());
 
         if ($filterPt) {
             $query->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
@@ -1584,7 +1602,8 @@ class CmController extends Controller
         $filterStatus = $request->get('status', '');
 
         $query = CmReading::selectRaw('cm_equipment.pt_location, cm_readings.kondisi, COUNT(*) as total')
-            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id');
+            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true);
 
         if ($filterPt) {
             $query->where('cm_equipment.pt_location', $filterPt);
@@ -1627,7 +1646,8 @@ class CmController extends Controller
         $filterStatus = $request->get('status', '');
 
         $query = CmReading::query()
-            ->whereRaw($this->measureSql());
+            ->whereRaw($this->measureSql())
+            ->whereHas('equipment', fn($q) => $q->active());
         if ($filterPt) {
             $query->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
         }
@@ -1939,7 +1959,9 @@ class CmController extends Controller
      */
     private function bulanTerakhirDenganData(?string $pt, $tahun): ?int
     {
-        $query = CmReading::query()->whereRaw($this->measureSql());
+        $query = CmReading::query()
+            ->whereRaw($this->measureSql())
+            ->whereHas('equipment', fn($q) => $q->active());
 
         if ($pt) {
             $query->whereHas('equipment', fn($q) => $q->where('pt_location', $pt));
@@ -2052,10 +2074,12 @@ class CmController extends Controller
 
         $vibThreshold = config('cm.high_vibration.threshold', 4.5);
         $statusFilter = config('cm.high_vibration.status_filter', ['alarm', 'danger']);
+        $activeEquipmentIds = CmEquipment::active()->pluck('id');
 
         // --- Sheet 1: Breakdown per PT ---
         // Hanya equipment dengan reading terakhir alarm/danger
         $latestReadingSub = CmReading::selectRaw('cm_equipment_id, MAX(tanggal) as max_tanggal')
+            ->whereIn('cm_equipment_id', $activeEquipmentIds)
             ->groupBy('cm_equipment_id');
 
         $vibEqIds = CmReading::select('cm_readings.cm_equipment_id')
@@ -2063,6 +2087,7 @@ class CmController extends Controller
                 $join->on('cm_readings.cm_equipment_id', '=', 'latest.cm_equipment_id')
                      ->on('cm_readings.tanggal', '=', 'latest.max_tanggal');
             })
+            ->whereIn('cm_readings.cm_equipment_id', $activeEquipmentIds)
             ->whereIn('cm_readings.kondisi', $statusFilter)
             ->where('cm_readings.max_vibration', '>', $vibThreshold)
             ->whereNotNull('cm_readings.analysis')
@@ -2079,6 +2104,7 @@ class CmController extends Controller
         $vibEqIds = $vibEqIds->distinct()->pluck('cm_equipment_id');
 
         $baseQuery = CmReading::join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true)
             ->whereIn('cm_readings.cm_equipment_id', $vibEqIds)
             ->whereIn('cm_readings.kondisi', $statusFilter)
             ->where('cm_readings.max_vibration', '>', $vibThreshold)
@@ -2115,6 +2141,7 @@ class CmController extends Controller
 
         // --- Sheet 2: Ranking Bulanan ---
         $trendBase = CmReading::join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true)
             ->whereIn('cm_readings.kondisi', $statusFilter)
             ->where('cm_readings.max_vibration', '>', $vibThreshold)
             ->whereNotNull('cm_readings.analysis')

@@ -33,6 +33,17 @@ Halaman detail equipment CM (`/cm/equipment/{tag}`) sekarang lebih mudah dibaca:
   terpisah.
 - Overview menambah panel tindak lanjut finding (open, >7 hari, tanpa PIC,
   equipment terdampak) bergaya dashboard PM engineer.
+- Audit data 13/11/2026: 3.721 key reading sheet ada semua di DB, kondisi dan
+  max value cocok 100%; 434 tag Master Equipment cocok; 587 finding cocok;
+  tracking equipment aktif 0 selisih.
+- Pembersihan data stale: 8 finding open lama dan 9 reading yang sudah dihapus
+  dari sheet (2 di antaranya November 2026). Setelah bersih: 587 finding
+  (174 open, 413 closed).
+- Query reading untuk Overview, Report & Analysis, chart, dan export sekarang
+  hanya memakai equipment aktif. Histori equipment nonaktif tetap disimpan
+  tetapi tidak ikut dihitung.
+- Fallback kondisi import disamakan dengan formula sheet: danger/alarm
+  didahulukan, baru visual bad.
 
 ## Berkas utama
 
@@ -49,12 +60,15 @@ Halaman detail equipment CM (`/cm/equipment/{tag}`) sekarang lebih mudah dibaca:
 - `app/Http/Controllers/CmController.php`
 - `app/Models/CmFinding.php`
 - `app/Jobs/ProcessCmFindingsImport.php`
+- `app/Jobs/ProcessCmExcelImport.php`
 - `app/Console/Commands/CmImportFindings.php`
 - `app/Exports/CmFindingsExport.php`
+- `app/Exports/CmReadingsExport.php`
 - `database/migrations/2026_10_27_000001_add_remark_to_cm_findings_table.php`
 - `routes/web.php`
 - `tests/Feature/CmEquipmentDetailFindingTest.php` (baru)
 - `tests/Feature/CmFindingPagesTest.php` (baru)
+- `tests/Feature/CmOverviewVisualBadTest.php` (baru)
 - `docs/32-tampilan-riwayat-pembacaan-dan-temuan.md` (baru)
 
 ## Remark dan sinkronisasi
@@ -70,6 +84,8 @@ Halaman detail equipment CM (`/cm/equipment/{tag}`) sekarang lebih mudah dibaca:
 
 - `php artisan test` → **799 passed (4038 assertions)**
 - `php artisan view:cache` → sukses
+- Audit data 13/11/2026 setelah cleanup: tidak ada reading/finding stale yang
+  tersisa; tracking bulanan equipment aktif 0 selisih.
 - Test baru: `tests/Feature/CmEquipmentDetailFindingTest.php`
   (5 test, 26 assertion), `tests/Feature/CmFindingPagesTest.php`
   (7 test, 38 assertion), dan `tests/Feature/CmOverviewVisualBadTest.php`

@@ -18,7 +18,9 @@ class CmReadingsExport
      */
     public function export(?string $filterPt = null, ?string $filterTahun = null, ?string $filterBulan = null, ?string $filterStatus = null)
     {
-        $query = CmReading::with('equipment')->orderBy('tanggal', 'desc');
+        $query = CmReading::with('equipment')
+            ->whereHas('equipment', fn($q) => $q->active())
+            ->orderBy('tanggal', 'desc');
 
         if ($filterPt) {
             $query->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));

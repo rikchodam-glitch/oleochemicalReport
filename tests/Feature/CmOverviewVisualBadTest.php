@@ -35,6 +35,24 @@ beforeEach(function () {
     $reading('2026-10-01', 'good', 1.10);
     $reading('2026-10-02', 'visual_bad', 2.20);
     $reading('2026-10-03', 'alarm', 5.50);
+
+    // Reading dari equipment yang sudah tidak ada di Master Equipment tidak
+    // boleh ikut dihitung di Overview.
+    $inactive = CmEquipment::create([
+        'equipment_tag'  => 'TEST-VISUAL-OFF',
+        'pt_location'    => 'PT-TEST',
+        'plant'          => 'PLANT-1',
+        'tipe_lubrikasi' => 'oli',
+        'is_active'      => false,
+    ]);
+
+    CmReading::create([
+        'cm_equipment_id' => $inactive->id,
+        'tanggal'         => '2026-10-04',
+        'status'          => 'start',
+        'kondisi'         => 'danger',
+        'ndev_motor'      => 9.90,
+    ]);
 });
 
 test('overview menghitung visual bad sebagai kondisi baik dan menampilkan catatan', function () {
