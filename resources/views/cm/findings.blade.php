@@ -74,6 +74,16 @@
                     <option value="closed" {{ $filterStatus === 'closed' ? 'selected' : '' }}>Closed</option>
                 </select>
             </div>
+            <div class="ap-field">
+                <label class="ap-field-label" for="findingsPic">PIC</label>
+                <select id="findingsPic" name="pic" class="findings-filter ap-select">
+                    <option value="">Semua PIC</option>
+                    <option value="__none" {{ $filterPic === '__none' ? 'selected' : '' }}>Tanpa PIC</option>
+                    @foreach($picList as $pic)
+                        <option value="{{ $pic }}" {{ $filterPic === $pic ? 'selected' : '' }}>{{ $pic }}</option>
+                    @endforeach
+                </select>
+            </div>
             <div class="ap-field ap-field--grow">
                 <label class="ap-field-label" for="findingsSearch">Cari</label>
                 <input type="text" name="search" id="findingsSearch" value="{{ $search }}"
@@ -86,7 +96,7 @@
             <a href="{{ route('cm.findings') }}" class="ap-btn ap-btn--glass">
                 Reset
             </a>
-            <a href="{{ route('cm.export-findings', ['pt' => $filterPt, 'status' => $filterStatus]) }}"
+            <a href="{{ route('cm.export-findings', ['pt' => $filterPt, 'status' => $filterStatus, 'pic' => $filterPic]) }}"
                class="ap-btn ap-btn--glass">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>

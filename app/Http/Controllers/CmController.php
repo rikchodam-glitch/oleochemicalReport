@@ -174,6 +174,7 @@ class CmController extends Controller
     {
         $filterPt     = $request->input('pt');
         $filterStatus = $request->get('status', '');
+        $filterPic    = (string) $request->input('pic', '');
         $search       = $request->get('search', '');
 
         $query = CmFinding::with('equipment');
@@ -183,6 +184,13 @@ class CmController extends Controller
         }
         if ($filterStatus) {
             $query->where('status', $filterStatus);
+        }
+        if ($filterPic === '__none') {
+            $query->where(function ($q) {
+                $q->whereNull('pic')->orWhere('pic', '');
+            });
+        } elseif ($filterPic !== '') {
+            $query->where('pic', $filterPic);
         }
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -206,9 +214,18 @@ class CmController extends Controller
 
         $ptList = CmEquipment::active()->select('pt_location')->distinct()->pluck('pt_location');
 
+        // Daftar PIC diambil dari data finding (sesuai kolom PIC di sheet
+        // Finding CM) supaya filter hanya menampilkan tim yang benar-benar ada.
+        $picList = CmFinding::query()
+            ->whereNotNull('pic')
+            ->where('pic', '!=', '')
+            ->distinct()
+            ->orderBy('pic')
+            ->pluck('pic');
+
         return view('cm.findings', compact(
-            'findings', 'ptList',
-            'filterPt', 'filterStatus', 'search',
+            'findings', 'ptList', 'picList',
+            'filterPt', 'filterStatus', 'filterPic', 'search',
             'totalOpen', 'openOver7', 'totalClosed', 'totalFindings'
         ));
     }
@@ -218,7 +235,7 @@ class CmController extends Controller
      */
     public function findingShow(string $kodeFinding)
     {
-        $finding = CmFinding::with(['equipment', 'workOrder', 'reading'])
+        $finding = CmFinding::with(['equipment.asset', 'workOrder', 'reading'])
             ->where('kode_finding', $kodeFinding)
             ->firstOrFail();
 
@@ -860,6 +877,14 @@ class CmController extends Controller
 
         $kode = $finding->kode_finding ?? '#' . $finding->id;
         $tag  = $finding->equipment?->equipment_tag;
+
+        // Edit dari halaman detail finding: kembali ke detail supaya pengguna
+        // tetap melihat konteks yang baru diperbarui.
+        if ($request->input('redirect') === 'finding' && $finding->kode_finding) {
+            return redirect()
+                ->route('cm.findings.show', $finding->kode_finding)
+                ->with('success', "Finding {$kode} berhasil diperbarui.");
+        }
 
         if ($tag) {
             return redirect()
@@ -1934,11 +1959,13 @@ class CmController extends Controller
     {
         $filterPt     = $request->input('pt');
         $filterStatus = $request->get('status', '');
+        $filterPic    = $request->input('pic');
 
         $exporter = new CmFindingsExport();
         return $exporter->export(
             $filterPt ?: null,
-            $filterStatus ?: null
+            $filterStatus ?: null,
+            $filterPic ?: null
         );
     }
 

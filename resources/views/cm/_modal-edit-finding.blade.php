@@ -23,6 +23,9 @@
         <form id="editFindingForm" method="POST" action="#" class="p-6 space-y-5">
             @csrf
             @method('PUT')
+            @if(!empty($redirectTo))
+                <input type="hidden" name="redirect" value="{{ $redirectTo }}">
+            @endif
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                     <label class="block text-xs font-medium text-slate-600 mb-1">Severity</label>

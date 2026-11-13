@@ -51,16 +51,33 @@ Perubahan tampilan:
   severity, status, tanggal temuan, kategori, PIC, tanggal tindakan,
   deskripsi, analisa, tindakan, dan remark.
 - Tombol **Detail**, **WO/+WO**, dan hapus tetap tersedia di kolom Aksi.
-- Halaman detail finding juga punya tombol **Edit Finding** yang membuka
-  halaman equipment dengan `?edit_finding={id}#temuan`; modal edit langsung
-  terbuka.
+- Halaman detail finding punya tombol **Edit Finding** yang langsung membuka
+  modal edit di halaman itu (tanpa berpindah ke halaman equipment). Setelah
+  disimpan, pengguna kembali ke halaman detail finding.
 - Export Finding CM ikut memuat kolom Analisa, Tindakan, dan Remark.
 
 Partial/modal:
 
 - `resources/views/cm/_temuan-rows.blade.php`
 - `resources/views/cm/_modal-edit-finding.blade.php`
-- `resources/views/cm/finding-show.blade.php` (tombol edit + kartu remark)
+- `resources/views/cm/finding-show.blade.php` (detail lengkap + modal edit)
+
+## Halaman Daftar Finding CM
+
+- Filter baru **PIC** memakai nilai `cm_findings.pic` yang berasal dari kolom
+  PIC di sheet Finding CM. Pilihan **Tanpa PIC** menyaring finding yang PIC-nya
+  kosong.
+- Filter PIC juga dipakai saat **Export Excel**.
+- Setiap baris finding bisa diklik untuk membuka halaman detail finding.
+  Klik pada **tag equipment** tetap membuka halaman status/detail equipment
+  (`/cm/equipment/{tag}`), bukan halaman finding.
+- Tombol **Edit** pada baris membuka halaman detail finding dengan `?edit=1`
+  sehingga modal edit langsung terbuka.
+- Halaman detail menampilkan PIC, kategori, severity, status, tanggal temuan,
+  hari open, tanggal tindakan, informasi equipment, konteks pembacaan, seluruh
+  foto, remark, dan Work Order terkait.
+- Bila finding belum punya foto, halaman detail menampilkan keadaan kosong
+  "Belum ada foto untuk finding ini." agar area foto tetap informatif.
 
 ## Remark dan Sinkronisasi
 
@@ -78,10 +95,14 @@ Partial/modal:
 ## Rute dan Controller
 
 - `PUT /cm/findings/{finding}` → `CmController::findingUpdate()`
-  dengan nama rute `cm.findings.update`.
+  dengan nama rute `cm.findings.update`. Bila form mengirim
+  `redirect=finding`, pengguna diarahkan kembali ke halaman detail finding.
 - `CmController::equipmentShow()` eager-load `findings.reading` dan
   `findings.workOrder` supaya tabel tidak N+1.
-- `CmController::findingShow()` eager-load `reading` untuk kartu remark.
+- `CmController::findingShow()` eager-load `equipment.asset`, `reading`, dan
+  `workOrder` untuk kartu informasi detail finding.
+- `CmController::findings()` menyaring PIC dan menyediakan daftar PIC untuk
+  dropdown. `CmFindingsExport` menerima filter PIC yang sama.
 
 ## Tautan Edit Laporan Teknisi
 
@@ -98,6 +119,11 @@ baris salinan kolaborasi tetap tidak bisa diedit langsung).
   - update finding menghitung ulang `hari_open`;
   - validasi status/tanggal tindakan;
   - tautan edit laporan membuka `editMode: true`.
+- `tests/Feature/CmFindingPagesTest.php`
+  - filter PIC dan filter Tanpa PIC;
+  - baris finding menaut ke detail, tag equipment menaut ke halaman equipment;
+  - detail finding menampilkan PIC, foto, konteks pembacaan, dan tombol edit;
+  - edit dari detail kembali ke halaman detail.
 - `tests/Feature/CmEquipmentTrendPressureAmpereTest.php` disesuaikan karena
   padding sel Pressure berubah dari `py-3` menjadi `py-4`.
 
