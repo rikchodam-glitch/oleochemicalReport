@@ -164,6 +164,7 @@ return [
     'route_bebas_modul' => [
         'login',
         'logout',
+        'keep-alive',
         'telegram.webhook',
         'debug.login',
         // Halaman cuti milik teknisi: hanya butuh login + users.technician_id.

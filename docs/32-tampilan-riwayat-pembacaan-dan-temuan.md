@@ -187,6 +187,24 @@ baris salinan kolaborasi tetap tidak bisa diedit langsung).
   ada di Master; karena halaman memakai equipment aktif, angka Overview Maret
   lebih kecil 3 dari sheet. Ini konsekuensi aturan aktif dan bukan data stale.
 
+## Sync Google Sheets dan Sesi Login
+
+- Tombol **Sync Google Sheets** di Overview memakai `fetch` POST dengan token
+  CSRF. Jika sesi login sudah melewati `SESSION_LIFETIME` (120 menit), Laravel
+  mengembalikan **HTTP 419** berupa HTML; sebelumnya ini memunculkan pesan
+  "Unexpected token <" dan sync terlihat gagal.
+- Penanganan sekarang: status 419 atau redirect ke `/login` menampilkan pesan
+  sesi habis dan mengarahkan user login ulang; respons non-JSON lain
+  menampilkan status HTTP yang sebenarnya.
+- Layout panel memasang **keep-alive** setiap 10 menit ke route `keep-alive`
+  selama tab terbuka, sehingga sesi dan token CSRF tidak kedaluwarsa saat
+  halaman dibiarkan lama. Route ini masuk `route_bebas_modul` karena hanya
+  menyegarkan sesi.
+- Sync tetap berjalan di mode `inline` untuk DEV dan `queue` untuk PROD seperti
+  sebelumnya. Log Apache 13/11/2026 menunjukkan POST sync 10:57 berhasil (200),
+  sedangkan POST 15:46 gagal 419 karena sesi kedaluwarsa — bukan karena URL
+  Google Sheets.
+
 ## Catatan
 
 - Nilai kondisi tetap mengikuti sheet `Status CM`. Yang berubah adalah cara

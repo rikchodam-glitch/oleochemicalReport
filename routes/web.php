@@ -83,6 +83,10 @@ if (app()->environment('local')) {
 
 // Admin routes (with auth)
 Route::middleware(['admin', 'akses', 'hanya_baca'])->group(function () {
+    // Penjaga sesi: dipanggil berkala oleh layout selama tab panel terbuka
+    // agar token CSRF tidak kedaluwarsa saat user membiarkan halaman lama.
+    Route::get('/keep-alive', fn() => response()->noContent())->name('keep-alive');
+
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     // Assets - import routes MUST be before resource to avoid 404

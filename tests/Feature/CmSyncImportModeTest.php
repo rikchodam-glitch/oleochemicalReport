@@ -179,3 +179,31 @@ test('mode queue hanya menjadwalkan import seperti semula (butuh queue:work)', f
         ->and(ImportLog::query()->latest('id')->first()->status)->toBe('processing')
         ->and(DB::table('cm_findings')->count())->toBe(0);
 });
+
+// ============================================================
+// SESI DAN CSRF
+// ============================================================
+
+test('keep-alive mengembalikan 204 untuk user yang login', function () {
+    cmSiapkanDataSync();
+    $user = User::where('username', 'adminsyncuji')->firstOrFail();
+
+    $this->actingAs($user)
+        ->get('/keep-alive')
+        ->assertNoContent();
+});
+
+test('keep-alive mengarahkan tamu ke halaman login', function () {
+    $this->get('/keep-alive')->assertRedirect('/login');
+});
+
+test('halaman overview menangani sesi kedaluwarsa dan memasang keep-alive', function () {
+    cmSiapkanDataSync();
+    $user = User::where('username', 'adminsyncuji')->firstOrFail();
+
+    $this->actingAs($user)
+        ->get('/cm/overview')
+        ->assertOk()
+        ->assertSee('r.status === 419', false)
+        ->assertSee('keep-alive', false);
+});

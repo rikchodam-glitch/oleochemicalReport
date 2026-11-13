@@ -44,6 +44,10 @@ Halaman detail equipment CM (`/cm/equipment/{tag}`) sekarang lebih mudah dibaca:
   tetapi tidak ikut dihitung.
 - Fallback kondisi import disamakan dengan formula sheet: danger/alarm
   didahulukan, baru visual bad.
+- Tombol Sync Google Sheets sekarang menangani sesi kedaluwarsa (HTTP 419):
+  user diarahkan login ulang, bukan melihat error JSON. Layout memasang
+  keep-alive 10 menit agar token CSRF tidak kedaluwarsa saat tab dibiarkan
+  terbuka.
 
 ## Berkas utama
 
@@ -66,9 +70,12 @@ Halaman detail equipment CM (`/cm/equipment/{tag}`) sekarang lebih mudah dibaca:
 - `app/Exports/CmReadingsExport.php`
 - `database/migrations/2026_10_27_000001_add_remark_to_cm_findings_table.php`
 - `routes/web.php`
+- `config/akses.php`
+- `resources/views/layouts/app.blade.php`
 - `tests/Feature/CmEquipmentDetailFindingTest.php` (baru)
 - `tests/Feature/CmFindingPagesTest.php` (baru)
 - `tests/Feature/CmOverviewVisualBadTest.php` (baru)
+- `tests/Feature/CmSyncImportModeTest.php`
 - `docs/32-tampilan-riwayat-pembacaan-dan-temuan.md` (baru)
 
 ## Remark dan sinkronisasi
@@ -82,10 +89,12 @@ Halaman detail equipment CM (`/cm/equipment/{tag}`) sekarang lebih mudah dibaca:
 
 ## Uji
 
-- `php artisan test` → **799 passed (4038 assertions)**
+- `php artisan test` → **802 passed (4045 assertions)**
 - `php artisan view:cache` → sukses
 - Audit data 13/11/2026 setelah cleanup: tidak ada reading/finding stale yang
   tersisa; tracking bulanan equipment aktif 0 selisih.
+- Uji baru sesi sync: keep-alive 204 untuk user login, redirect untuk tamu,
+  dan halaman Overview memuat penanganan 419.
 - Test baru: `tests/Feature/CmEquipmentDetailFindingTest.php`
   (5 test, 26 assertion), `tests/Feature/CmFindingPagesTest.php`
   (7 test, 38 assertion), dan `tests/Feature/CmOverviewVisualBadTest.php`

@@ -300,13 +300,44 @@ function syncGoogleSheets() {
 
     fetch('{{ route('cm.sync-google-sheets') }}', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
             'Accept': 'application/json'
         }
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+        // Sesi login kedaluwarsa: Laravel mengembalikan HTML 419, bukan JSON.
+        // Arahkan ke login agar user tidak melihat error "Unexpected token <".
+        if (r.status === 419) {
+            alert('Sesi login sudah habis. Halaman akan diarahkan ke login, lalu silakan klik Sync lagi.');
+            window.location.href = '{{ route('login') }}';
+            return null;
+        }
+
+        // Sesi benar-benar hilang: middleware mengalihkan ke /login (HTML).
+        if (r.redirected && r.url.indexOf('/login') !== -1) {
+            alert('Sesi login sudah habis. Halaman akan diarahkan ke login, lalu silakan klik Sync lagi.');
+            window.location.href = '{{ route('login') }}';
+            return null;
+        }
+
+        var contentType = r.headers.get('content-type') || '';
+        if (!r.ok) {
+            return r.text().then(function(text) {
+                throw new Error('HTTP ' + r.status + (text ? ': ' + text.substring(0, 160) : ''));
+            });
+        }
+        if (contentType.indexOf('application/json') === -1) {
+            return r.text().then(function() {
+                throw new Error('Respons server bukan JSON (HTTP ' + r.status + '). Coba muat ulang halaman.');
+            });
+        }
+
+        return r.json();
+    })
     .then(function(data) {
+        if (!data) return;
         alert(data.message || 'Sync selesai.');
         if (data.success) window.location.reload();
     })
