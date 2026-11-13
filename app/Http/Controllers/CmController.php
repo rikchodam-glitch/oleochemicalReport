@@ -74,6 +74,13 @@ class CmController extends Controller
         $dangerPct = $totalRecords > 0 ? round(($dangerCount / $totalRecords) * 100, 1) : 0;
         $visualBadPct = $totalRecords > 0 ? round(($visualBadCount / $totalRecords) * 100, 1) : 0;
 
+        // Permintaan user: visual bad adalah temuan visual, sedangkan nilai
+        // vibrasinya masih baik. Untuk persentase kondisi utama, visual bad
+        // dihitung sebagai kondisi baik tetapi tetap ditampilkan terpisah
+        // sebagai catatan tindak lanjut.
+        $baikCount = $goodCount + $visualBadCount;
+        $baikPct = $totalRecords > 0 ? round(($baikCount / $totalRecords) * 100, 1) : 0;
+
         // Breakdown status per PT untuk donut chart
         $donutQuery = CmReading::selectRaw('cm_equipment.pt_location, cm_readings.kondisi, COUNT(*) as total')
             ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id');
@@ -158,12 +165,24 @@ class CmController extends Controller
             ->orderBy('tahun', 'desc')
             ->pluck('tahun');
 
+        // Ringkasan finding untuk panel tindak lanjut PM engineer. Angka ini
+        // adalah kondisi finding saat ini, bukan agregasi reading per periode.
+        $findingOpen = CmFinding::where('status', 'open')->count();
+        $findingOpenOver7 = CmFinding::where('status', 'open')->where('hari_open', '>', 7)->count();
+        $findingOpenTanpaPic = CmFinding::where('status', 'open')
+            ->where(function ($q) {
+                $q->whereNull('pic')->orWhere('pic', '');
+            })
+            ->count();
+        $findingEquipmentOpen = CmFinding::where('status', 'open')->distinct()->count('cm_equipment_id');
+
         return view('cm.overview', compact(
             'totalRecords', 'goodCount', 'alarmCount', 'dangerCount', 'visualBadCount',
-            'goodPct', 'alarmPct', 'dangerPct', 'visualBadPct',
+            'goodPct', 'alarmPct', 'dangerPct', 'visualBadPct', 'baikCount', 'baikPct',
             'statusPerPt', 'trendData', 'topVibrasi',
             'ptList', 'tahunList', 'bulanTerakhir',
-            'filterPt', 'filterTahun', 'filterBulan', 'filterStatus'
+            'filterPt', 'filterTahun', 'filterBulan', 'filterStatus',
+            'findingOpen', 'findingOpenOver7', 'findingOpenTanpaPic', 'findingEquipmentOpen'
         ));
     }
 
@@ -212,6 +231,27 @@ class CmController extends Controller
         $totalClosed    = CmFinding::where('status', 'closed')->count();
         $totalFindings  = CmFinding::count();
 
+        // Beban open per PIC dipakai untuk ringkasan di atas tabel. Nilai PIC
+        // kosong digabung menjadi "Tanpa PIC" supaya pekerjaan yang belum
+        // punya penanggung jawab tetap terlihat.
+        $openByPic = CmFinding::query()
+            ->selectRaw("COALESCE(NULLIF(pic, ''), 'Tanpa PIC') as pic_label, COUNT(*) as open_count, SUM(CASE WHEN hari_open > 7 THEN 1 ELSE 0 END) as over7_count")
+            ->where('status', 'open')
+            ->groupByRaw("COALESCE(NULLIF(pic, ''), 'Tanpa PIC')")
+            ->orderByDesc('open_count')
+            ->get();
+
+        $maxOpenPic = max(1, (int) $openByPic->max('open_count'));
+        $openTanpaPic = (int) ($openByPic->firstWhere('pic_label', 'Tanpa PIC')?->open_count ?? 0);
+
+        $openAging = [
+            '0-7'   => CmFinding::where('status', 'open')->where('hari_open', '<=', 7)->count(),
+            '8-30'  => CmFinding::where('status', 'open')->whereBetween('hari_open', [8, 30])->count(),
+            '>30'   => CmFinding::where('status', 'open')->where('hari_open', '>', 30)->count(),
+        ];
+
+        $openEquipmentCount = CmFinding::where('status', 'open')->distinct()->count('cm_equipment_id');
+
         $ptList = CmEquipment::active()->select('pt_location')->distinct()->pluck('pt_location');
 
         // Daftar PIC diambil dari data finding (sesuai kolom PIC di sheet
@@ -226,7 +266,8 @@ class CmController extends Controller
         return view('cm.findings', compact(
             'findings', 'ptList', 'picList',
             'filterPt', 'filterStatus', 'filterPic', 'search',
-            'totalOpen', 'openOver7', 'totalClosed', 'totalFindings'
+            'totalOpen', 'openOver7', 'totalClosed', 'totalFindings',
+            'openByPic', 'maxOpenPic', 'openTanpaPic', 'openAging', 'openEquipmentCount'
         ));
     }
 
@@ -1611,11 +1652,15 @@ class CmController extends Controller
         $dangerPct   = $totalRecords > 0 ? round(($dangerCount / $totalRecords) * 100, 1) : 0;
         $visualBadPct = $totalRecords > 0 ? round(($visualBadCount / $totalRecords) * 100, 1) : 0;
 
+        $baikCount = $goodCount + $visualBadCount;
+        $baikPct = $totalRecords > 0 ? round(($baikCount / $totalRecords) * 100, 1) : 0;
+
         return view('cm._overview-cards', compact(
             'totalRecords', 'goodCount', 'goodPct',
             'alarmCount', 'alarmPct',
             'dangerCount', 'dangerPct',
-            'visualBadCount', 'visualBadPct'
+            'visualBadCount', 'visualBadPct',
+            'baikCount', 'baikPct'
         ));
     }
 

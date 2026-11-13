@@ -16,7 +16,7 @@
         $periodeOverview = $filterBulan
             ? \DateTime::createFromFormat('!m', $filterBulan)->format('F') . ' ' . $filterTahun
             : 'Semua bulan ' . $filterTahun;
-        $perluPerhatian = $alarmCount + $dangerCount + $visualBadCount;
+        $perluPerhatian = $alarmCount + $dangerCount;
     @endphp
 
     <div class="ap">
@@ -28,29 +28,45 @@
                 <div class="ap-hero-top">
                     <div>
                         <p class="ap-eyebrow">Condition Monitoring &middot; {{ $periodeOverview }}</p>
-                        <h2 class="ap-display" style="margin-top:10px;">{{ $goodPct }}% kondisi good.</h2>
+                        <h2 class="ap-display" style="margin-top:10px;">{{ $baikPct }}% kondisi vibrasi baik.</h2>
                         <p class="ap-lede" style="margin-top:14px;">
                             {{ number_format($totalRecords) }} reading tercatat &mdash;
-                            {{ number_format($alarmCount) }} alarm, {{ number_format($dangerCount) }} danger,
-                            {{ number_format($visualBadCount) }} visual bad.
+                            {{ number_format($baikCount) }} baik ({{ number_format($goodCount) }} good +
+                            {{ number_format($visualBadCount) }} visual bad),
+                            {{ number_format($alarmCount) }} alarm, {{ number_format($dangerCount) }} danger.
                         </p>
                     </div>
                 </div>
 
-                <div class="ap-stats">
+                <div class="ap-stats ap-stats--4">
                     <div class="ap-stat ap-stat--static">
                         <span class="ap-stat-num">{{ number_format($totalRecords) }}</span>
                         <span class="ap-stat-label">Total reading pada periode ini</span>
                     </div>
                     <div class="ap-stat ap-stat--static">
-                        <span class="ap-stat-num">{{ $goodPct }}<small>%</small></span>
-                        <span class="ap-stat-label">{{ number_format($goodCount) }} reading berstatus good</span>
+                        <span class="ap-stat-num">{{ $baikPct }}<small>%</small></span>
+                        <span class="ap-stat-label">{{ number_format($baikCount) }} reading kondisi baik (termasuk {{ number_format($visualBadCount) }} visual bad)</span>
                     </div>
                     <div class="ap-stat ap-stat--static">
                         <span class="ap-stat-num">{{ number_format($perluPerhatian) }}</span>
-                        <span class="ap-stat-label">Perlu perhatian &mdash; alarm, danger, visual bad</span>
+                        <span class="ap-stat-label">Perlu perhatian &mdash; alarm &amp; danger</span>
+                    </div>
+                    <div class="ap-stat ap-stat--static">
+                        <span class="ap-stat-num">{{ number_format($visualBadCount) }}</span>
+                        <span class="ap-stat-label">Visual bad &mdash; vibrasi baik, temuan visual tetap dicatat</span>
                     </div>
                 </div>
+
+                @if($visualBadCount > 0)
+                    <div style="display:flex;gap:10px;align-items:flex-start;margin-top:18px;padding:12px 14px;border-radius:12px;background:rgba(191,90,242,.09);">
+                        <span class="ap-dot" style="margin-top:5px;background:#bf5af2;"></span>
+                        <p class="ap-caption" style="color:rgba(0,0,0,.65);line-height:1.45;">
+                            <strong style="color:#562680;">Catatan visual bad:</strong>
+                            {{ number_format($visualBadCount) }} reading visual bad dihitung sebagai kondisi baik karena nilai vibrasinya masih dalam batas.
+                            Temuan visual tetap perlu ditindaklanjuti oleh tim terkait.
+                        </p>
+                    </div>
+                @endif
             </section>
 
             {{-- ============ FILTER ============ --}}
@@ -109,11 +125,45 @@
                 @include('cm._overview-cards', [
                     'totalRecords' => $totalRecords,
                     'goodCount' => $goodCount, 'goodPct' => $goodPct,
+                    'baikCount' => $baikCount, 'baikPct' => $baikPct,
                     'alarmCount' => $alarmCount, 'alarmPct' => $alarmPct,
                     'dangerCount' => $dangerCount, 'dangerPct' => $dangerPct,
                     'visualBadCount' => $visualBadCount, 'visualBadPct' => $visualBadPct,
                 ])
             </div>
+
+            {{-- ============ TINDAK LANJUT FINDING (PM) ============ --}}
+            <section class="ap-section">
+                <div class="ap-section-head">
+                    <div>
+                        <h3 class="ap-h2">Tindak lanjut finding</h3>
+                        <p class="ap-caption" style="margin-top:6px;">Kondisi finding CM saat ini, tidak mengikuti filter periode reading.</p>
+                    </div>
+                    <a href="{{ route('cm.findings', ['status' => 'open']) }}" class="ap-btn ap-btn--quiet">Buka Finding CM</a>
+                </div>
+                <div class="ap-grid-4">
+                    <a href="{{ route('cm.findings', ['status' => 'open']) }}" class="ap-tile ap-tile--warn" style="display:block;text-decoration:none;color:inherit;">
+                        <p class="ap-micro"><span class="ap-dot ap-dot--warn"></span> Finding open</p>
+                        <p class="ap-num" style="margin-top:8px;">{{ number_format($findingOpen) }}</p>
+                        <p class="ap-micro" style="margin-top:4px;">Perlu ditindaklanjuti</p>
+                    </a>
+                    <a href="{{ route('cm.findings', ['status' => 'open']) }}" class="ap-tile ap-tile--bad" style="display:block;text-decoration:none;color:inherit;">
+                        <p class="ap-micro"><span class="ap-dot ap-dot--bad"></span> Open &gt; 7 hari</p>
+                        <p class="ap-num" style="margin-top:8px;">{{ number_format($findingOpenOver7) }}</p>
+                        <p class="ap-micro" style="margin-top:4px;">Prioritas aging</p>
+                    </a>
+                    <a href="{{ route('cm.findings', ['pic' => '__none']) }}" class="ap-tile ap-tile--info" style="display:block;text-decoration:none;color:inherit;">
+                        <p class="ap-micro"><span class="ap-dot"></span> Tanpa PIC</p>
+                        <p class="ap-num" style="margin-top:8px;">{{ number_format($findingOpenTanpaPic) }}</p>
+                        <p class="ap-micro" style="margin-top:4px;">Belum ada penanggung jawab</p>
+                    </a>
+                    <a href="{{ route('cm.findings', ['status' => 'open']) }}" class="ap-tile ap-tile--neutral" style="display:block;text-decoration:none;color:inherit;">
+                        <p class="ap-micro">Equipment terdampak</p>
+                        <p class="ap-num" style="margin-top:8px;">{{ number_format($findingEquipmentOpen) }}</p>
+                        <p class="ap-micro" style="margin-top:4px;">Equipment dengan finding open</p>
+                    </a>
+                </div>
+            </section>
 
             {{-- Loading indicator --}}
             <div id="loadingIndicator" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/10">

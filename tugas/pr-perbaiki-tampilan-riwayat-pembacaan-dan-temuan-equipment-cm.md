@@ -25,6 +25,14 @@ Halaman detail equipment CM (`/cm/equipment/{tag}`) sekarang lebih mudah dibaca:
   Work Order terkait. Tombol **Edit Finding** membuka modal edit langsung di
   halaman itu dan kembali ke detail setelah disimpan.
 - Filter PIC juga diterapkan pada Export Excel Finding CM.
+- Header Finding CM menampilkan beban open per PIC (termasuk Tanpa PIC), jumlah
+  open lebih dari 7 hari, equipment terdampak, dan distribusi umur open.
+- Overview kini menghitung **visual bad sebagai kondisi baik** pada persentase
+  utama karena vibrasinya masih baik, dengan catatan visual bad tetap perlu
+  ditindaklanjuti. Visual bad tetap tampil sebagai kartu dan segmen grafik
+  terpisah.
+- Overview menambah panel tindak lanjut finding (open, >7 hari, tanpa PIC,
+  equipment terdampak) bergaya dashboard PM engineer.
 
 ## Berkas utama
 
@@ -35,6 +43,8 @@ Halaman detail equipment CM (`/cm/equipment/{tag}`) sekarang lebih mudah dibaca:
 - `resources/views/cm/finding-show.blade.php`
 - `resources/views/cm/findings.blade.php`
 - `resources/views/cm/_findings-list.blade.php`
+- `resources/views/cm/overview.blade.php`
+- `resources/views/cm/_overview-cards.blade.php`
 - `resources/views/reports/show.blade.php`
 - `app/Http/Controllers/CmController.php`
 - `app/Models/CmFinding.php`
@@ -58,11 +68,12 @@ Halaman detail equipment CM (`/cm/equipment/{tag}`) sekarang lebih mudah dibaca:
 
 ## Uji
 
-- `php artisan test` → **796 passed (4021 assertions)**
+- `php artisan test` → **799 passed (4038 assertions)**
 - `php artisan view:cache` → sukses
 - Test baru: `tests/Feature/CmEquipmentDetailFindingTest.php`
-  (5 test, 26 assertion) dan `tests/Feature/CmFindingPagesTest.php`
-  (6 test, 30 assertion).
+  (5 test, 26 assertion), `tests/Feature/CmFindingPagesTest.php`
+  (7 test, 38 assertion), dan `tests/Feature/CmOverviewVisualBadTest.php`
+  (2 test, 9 assertion).
 - Satu assertion lama di `CmEquipmentTrendPressureAmpereTest.php` disesuaikan
   karena padding sel Pressure berubah dari `py-3` menjadi `py-4`.
 

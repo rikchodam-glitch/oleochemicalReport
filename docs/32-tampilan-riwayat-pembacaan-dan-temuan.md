@@ -79,6 +79,32 @@ Partial/modal:
 - Bila finding belum punya foto, halaman detail menampilkan keadaan kosong
   "Belum ada foto untuk finding ini." agar area foto tetap informatif.
 
+## Ringkasan Beban Finding
+
+- Header halaman Finding CM menampilkan **beban open per PIC**, termasuk
+  kelompok **Tanpa PIC**, lengkap dengan jumlah open dan jumlah yang sudah
+  lebih dari 7 hari.
+- Klik baris PIC pada ringkasan langsung membuka daftar finding dengan filter
+  PIC tersebut.
+- Panel **Fokus tindak lanjut** menampilkan jumlah finding tanpa PIC,
+  equipment terdampak, finding open lebih dari 30 hari, dan distribusi umur
+  open (0-7, 8-30, lebih dari 30 hari).
+
+## Overview: Visual Bad dan Kondisi Baik
+
+- Permintaan user: **visual bad** adalah temuan visual, sedangkan nilai
+  vibrasinya masih baik. Karena itu visual bad dihitung sebagai kondisi baik
+  pada persentase utama Overview.
+- Persentase utama dan kartu **Baik (vibrasi)** memakai
+  `good + visual_bad`. Visual bad tetap ditampilkan sebagai kartu terpisah
+  dengan label "sudah termasuk di Baik" agar temuan visual tidak hilang.
+- Hero Overview menampilkan catatan jumlah reading visual bad dan alasan
+  penggolongannya.
+- Grafik status dan tren tetap menampilkan visual bad sebagai segmen sendiri.
+- Panel **Tindak lanjut finding** di Overview menampilkan finding open,
+  open lebih dari 7 hari, finding tanpa PIC, dan jumlah equipment terdampak.
+  Angka finding ini adalah kondisi saat ini, bukan agregasi periode reading.
+
 ## Remark dan Sinkronisasi
 
 - Kolom `cm_findings.remark` ditambahkan lewat migrasi
@@ -123,13 +149,19 @@ baris salinan kolaborasi tetap tidak bisa diedit langsung).
   - filter PIC dan filter Tanpa PIC;
   - baris finding menaut ke detail, tag equipment menaut ke halaman equipment;
   - detail finding menampilkan PIC, foto, konteks pembacaan, dan tombol edit;
-  - edit dari detail kembali ke halaman detail.
+  - edit dari detail kembali ke halaman detail;
+  - ringkasan beban open per PIC dan panel fokus tindak lanjut tampil.
+- `tests/Feature/CmOverviewVisualBadTest.php`
+  - visual bad dihitung sebagai kondisi baik pada persentase Overview;
+  - kartu ringkasan "Baik (vibrasi)" mencakup good + visual bad;
+  - catatan visual bad dan panel tindak lanjut finding tampil.
 - `tests/Feature/CmEquipmentTrendPressureAmpereTest.php` disesuaikan karena
   padding sel Pressure berubah dari `py-3` menjadi `py-4`.
 
 ## Catatan
 
-- Tidak ada perubahan pada nilai sumber atau threshold bisnis. Nilai kondisi
-  tetap mengikuti sheet `Status CM`.
+- Nilai kondisi tetap mengikuti sheet `Status CM`. Yang berubah adalah cara
+  agregasi tampilan: `visual_bad` ikut dihitung sebagai kondisi baik pada
+  persentase utama Overview, sesuai keputusan user 13/11/2026.
 - Tidak perlu deploy manual dari sesi ini; deploy tetap dilakukan integrator
   setelah PR di-merge dan DEV kembali sejajar `main`.

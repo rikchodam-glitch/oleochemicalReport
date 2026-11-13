@@ -106,6 +106,17 @@ test('baris finding mengarah ke detail dan tag equipment mengarah ke status equi
         ->assertSee('Buka detail finding', false);
 });
 
+test('halaman finding menampilkan ringkasan beban open per PIC', function () {
+    $response = $this->actingAs($this->admin)->get('/cm/findings');
+
+    $response->assertOk()
+        ->assertSee('Beban open per PIC', false)
+        ->assertSee('Fokus tindak lanjut', false)
+        ->assertSee('Equipment terdampak', false)
+        ->assertSee('Umur open', false)
+        ->assertSee(route('cm.findings', ['pic' => 'Mechanic']), false);
+});
+
 test('halaman detail finding menampilkan PIC foto dan tombol edit', function () {
     $response = $this->actingAs($this->admin)
         ->get(route('cm.findings.show', 'UI-PIC-001'));
