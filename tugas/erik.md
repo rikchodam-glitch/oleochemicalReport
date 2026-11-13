@@ -14,8 +14,9 @@ Diperbarui: 2026-11-13 09:30 WIB
   - `app/Exports/CmFindingsExport.php` — filter PIC pada export
   - `tests/Feature/CmFindingPagesTest.php` — penjaga filter PIC, navigasi, dan detail
   - `docs/32-tampilan-riwayat-pembacaan-dan-temuan.md`
-- Catatan: `php artisan test` 782 passed (3889 assertions); `view:cache` sukses. Filter PIC memakai nilai `cm_findings.pic` dari sheet Finding CM; pilihan "Tanpa PIC" untuk finding yang belum diisi PIC.
+- Catatan: `php artisan test` 796 passed (4021 assertions); `view:cache` sukses. Filter PIC memakai nilai `cm_findings.pic` dari sheet Finding CM; pilihan "Tanpa PIC" untuk finding yang belum diisi PIC.
 
 ## Riwayat
+- tugas/erik/aset-js-lokal-tanpa-cdn (mulai 2026-11-04 09:53) -> dilanjutkan 2026-11-06 08:51
 - tugas/erik/filter-bagian-request-sparepart (mulai 2026-10-27 08:11) -> dilanjutkan 2026-10-27 12:12
 - tugas/erik/perbaiki-tampilan-riwayat-pembacaan-dan-temuan-equipment-cm (lanjutan halaman Finding CM) -> 2026-11-13 09:30
