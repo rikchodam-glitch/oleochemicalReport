@@ -242,6 +242,31 @@ Aturan:
    `unggah-tugas.ps1`/`buat-pr-tugas.ps1` selesai, atau karena PR sudah
    di-merge, tanpa memeriksa cabang dan `SEJAJAR=1` di copy DEV.
 
+### 6e. Deploy saat sesi lain masih di cabang tugas (16/11/2026)
+
+Kejadian 16/11/2026: PR #76 sudah di-merge (`967b96b`), tetapi deploy dibatalkan
+karena copy DEV berada di cabang `tugas/erik/halaman-service-it` (`8e78102`) dan
+`app/Jobs/ProcessCmFindingsImport.php` belum di-commit. Berkas itu juga berubah
+di `main`, sehingga fast-forward terhalang. Pesan penjaga waktu itu hanya
+menyuruh `tools\siapkan-deploy.ps1`, padahal skrip itu menolak berjalan di
+cabang tugas.
+
+Urutan yang benar bila deploy terhalang pekerjaan sesi lain:
+
+1. `tools\kembalikan-ke-main.ps1 -PindahkanPerubahan`
+   - menyimpan perubahan yang menghalangi ke git stash, pindah ke `main`, lalu
+     mengembalikannya sebagai perubahan yang tetap belum di-commit.
+2. `tools\siapkan-deploy.ps1`
+   - bila fast-forward masih terhalang berkas yang juga berubah di `main`,
+     berkas dicadangkan ke `C:\laragon\backup-oleochemical\siapkan-deploy`,
+     dipindahkan sementara ke git stash, fast-forward dijalankan, lalu
+     perubahannya dikembalikan.
+3. `Deploy-Laporan.bat`.
+
+Jangan memakai `git reset --hard`, `git checkout --`, atau `git stash drop`
+untuk menghilangkan penghalang. Jangan menjalankan `siapkan-deploy.ps1` sebelum
+copy DEV berada di `main`; skrip itu akan berhenti.
+
 ### 7. Setelan GitHub yang harus dipasang integrator (sekali, manual di web)
 
 Repo ini PUBLIK (dibuktikan `git ls-remote` tanpa kredensial, 13/10/2026), jadi
