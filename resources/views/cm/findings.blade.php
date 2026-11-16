@@ -54,6 +54,94 @@
 
 
 
+    {{-- Ringkasan beban kerja finding --}}
+    <div class="ap-grid-2" style="margin-bottom:24px;">
+        <div class="ap-card">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+                <div>
+                    <h3 class="ap-h3">Beban open per PIC</h3>
+                    <p class="ap-caption" style="margin-top:4px;">Klik PIC untuk menyaring daftar finding.</p>
+                </div>
+                <p class="ap-micro">{{ number_format($totalOpen) }} open</p>
+            </div>
+            <div style="margin-top:18px;display:flex;flex-direction:column;gap:14px;">
+                @forelse($openByPic as $row)
+                    @php
+                        $isTanpaPic = $row->pic_label === 'Tanpa PIC';
+                        $filterPicValue = $isTanpaPic ? '__none' : $row->pic_label;
+                        $openCount = (int) $row->open_count;
+                        $over7Count = (int) $row->over7_count;
+                        $barWidth = $maxOpenPic > 0 ? round(($openCount / $maxOpenPic) * 100) : 0;
+                    @endphp
+                    <a href="{{ route('cm.findings', ['pic' => $filterPicValue]) }}" style="display:block;text-decoration:none;color:inherit;">
+                        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;">
+                            <span style="font-size:13px;font-weight:600;color:#1d1d1f;">{{ $row->pic_label }}</span>
+                            <span class="ap-micro">
+                                <strong style="color:#1d1d1f;">{{ $openCount }}</strong> open
+                                @if($over7Count > 0)
+                                    &middot; <span style="color:#cf3327;">{{ $over7Count }} &gt; 7 hari</span>
+                                @endif
+                            </span>
+                        </div>
+                        <div style="margin-top:6px;height:6px;border-radius:999px;background:#edeff2;overflow:hidden;">
+                            <div style="height:100%;width:{{ $barWidth }}%;border-radius:999px;background:{{ $isTanpaPic ? '#86868b' : '#2f6fbf' }};"></div>
+                        </div>
+                    </a>
+                @empty
+                    <p class="ap-caption">Tidak ada finding open.</p>
+                @endforelse
+            </div>
+        </div>
+
+        <div class="ap-card">
+            <h3 class="ap-h3">Fokus tindak lanjut</h3>
+            <p class="ap-caption" style="margin-top:4px;">Prioritas PM engineer dari finding yang masih open.</p>
+            <div class="ap-grid-3" style="margin-top:16px;">
+                <a href="{{ route('cm.findings', ['pic' => '__none']) }}" class="ap-tile ap-tile--info" style="display:block;text-decoration:none;color:inherit;">
+                    <p class="ap-micro"><span class="ap-dot"></span> Tanpa PIC</p>
+                    <p class="ap-num" style="margin-top:8px;">{{ number_format($openTanpaPic) }}</p>
+                    <p class="ap-micro" style="margin-top:4px;">Tentukan PIC</p>
+                </a>
+                <div class="ap-tile ap-tile--neutral">
+                    <p class="ap-micro">Equipment terdampak</p>
+                    <p class="ap-num" style="margin-top:8px;">{{ number_format($openEquipmentCount) }}</p>
+                    <p class="ap-micro" style="margin-top:4px;">Punya finding open</p>
+                </div>
+                <div class="ap-tile ap-tile--bad">
+                    <p class="ap-micro"><span class="ap-dot ap-dot--bad"></span> Open &gt; 30 hari</p>
+                    <p class="ap-num" style="margin-top:8px;">{{ number_format($openAging['>30']) }}</p>
+                    <p class="ap-micro" style="margin-top:4px;">Perlu eskalasi</p>
+                </div>
+            </div>
+
+            <div style="margin-top:20px;">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;">
+                    <p class="ap-micro" style="font-weight:600;color:#1d1d1f;">Umur open</p>
+                    <p class="ap-micro">{{ number_format($totalOpen) }} finding</p>
+                </div>
+                @php
+                    $agingMeta = [
+                        '0-7'  => ['label' => '0-7 hari', 'color' => '#30d158'],
+                        '8-30' => ['label' => '8-30 hari', 'color' => '#ff9f0a'],
+                        '>30'  => ['label' => '> 30 hari', 'color' => '#ff453a'],
+                    ];
+                    $maxAging = max(1, max($openAging));
+                @endphp
+                <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+                    @foreach($agingMeta as $key => $meta)
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <span class="ap-micro" style="width:64px;flex-shrink:0;">{{ $meta['label'] }}</span>
+                            <div style="flex:1;height:6px;border-radius:999px;background:#edeff2;overflow:hidden;">
+                                <div style="height:100%;width:{{ round(($openAging[$key] / $maxAging) * 100) }}%;border-radius:999px;background:{{ $meta['color'] }};"></div>
+                            </div>
+                            <span class="ap-micro" style="width:34px;text-align:right;color:#1d1d1f;font-weight:600;">{{ $openAging[$key] }}</span>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Filters --}}
     <div class="ap-card p-4 mb-6">
         <form id="findingsFilterForm" class="ap-toolbar">
@@ -74,6 +162,16 @@
                     <option value="closed" {{ $filterStatus === 'closed' ? 'selected' : '' }}>Closed</option>
                 </select>
             </div>
+            <div class="ap-field">
+                <label class="ap-field-label" for="findingsPic">PIC</label>
+                <select id="findingsPic" name="pic" class="findings-filter ap-select">
+                    <option value="">Semua PIC</option>
+                    <option value="__none" {{ $filterPic === '__none' ? 'selected' : '' }}>Tanpa PIC</option>
+                    @foreach($picList as $pic)
+                        <option value="{{ $pic }}" {{ $filterPic === $pic ? 'selected' : '' }}>{{ $pic }}</option>
+                    @endforeach
+                </select>
+            </div>
             <div class="ap-field ap-field--grow">
                 <label class="ap-field-label" for="findingsSearch">Cari</label>
                 <input type="text" name="search" id="findingsSearch" value="{{ $search }}"
@@ -86,7 +184,7 @@
             <a href="{{ route('cm.findings') }}" class="ap-btn ap-btn--glass">
                 Reset
             </a>
-            <a href="{{ route('cm.export-findings', ['pt' => $filterPt, 'status' => $filterStatus]) }}"
+            <a href="{{ route('cm.export-findings', ['pt' => $filterPt, 'status' => $filterStatus, 'pic' => $filterPic]) }}"
                class="ap-btn ap-btn--glass">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>

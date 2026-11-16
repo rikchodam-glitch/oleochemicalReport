@@ -12,9 +12,10 @@ class CmFindingsExport
      *
      * @param  string|null  $filterPt
      * @param  string|null  $filterStatus
+     * @param  string|null  $filterPic  Nama PIC, atau '__none' untuk finding tanpa PIC.
      * @return \Symfony\Component\HttpFoundation\BinaryFileResponse
      */
-    public function export(?string $filterPt = null, ?string $filterStatus = null)
+    public function export(?string $filterPt = null, ?string $filterStatus = null, ?string $filterPic = null)
     {
         $query = CmFinding::with('equipment')->orderBy('tanggal_temuan', 'desc');
 
@@ -23,6 +24,13 @@ class CmFindingsExport
         }
         if ($filterStatus) {
             $query->where('status', $filterStatus);
+        }
+        if ($filterPic === '__none') {
+            $query->where(function ($q) {
+                $q->whereNull('pic')->orWhere('pic', '');
+            });
+        } elseif ($filterPic) {
+            $query->where('pic', $filterPic);
         }
 
         $findings = $query->get();
@@ -35,6 +43,9 @@ class CmFindingsExport
                 'Severity'         => $f->severity ?? '-',
                 'Kategori'         => $f->kategori ?? '-',
                 'Deskripsi'        => $f->deskripsi ?? '-',
+                'Analisa'          => $f->analysis ?? '-',
+                'Tindakan'         => $f->action ?? '-',
+                'Remark'           => $f->remark ?? '-',
                 'Status'           => $f->status ?? '-',
                 'PIC'              => $f->pic ?? '-',
                 'Hari Open'        => $f->hari_open ?? 0,

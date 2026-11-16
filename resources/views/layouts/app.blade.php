@@ -608,6 +608,21 @@
         })();
     </script>
 
+    @auth
+    <script>
+        // Jaga sesi tetap hidup selama tab panel terbuka. Tanpa ini, halaman
+        // yang dibiarkan > SESSION_LIFETIME akan mengirim POST dengan token
+        // CSRF lama dan mendapat HTTP 419 (mis. tombol Sync Google Sheets).
+        setInterval(function () {
+            fetch('{{ route('keep-alive') }}', {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+                cache: 'no-store'
+            }).catch(function () {});
+        }, 10 * 60 * 1000);
+    </script>
+    @endauth
+
     @stack('modals')
     @stack('scripts')
 </body>

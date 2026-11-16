@@ -245,16 +245,14 @@ class ProcessCmFindingsImport implements ShouldQueue
             $fotoUrlFirst = !empty($fotoUrls) ? $fotoUrls[0] : null;
 
             $analysis = $this->cellVal($idxAnalysis !== null ? ($row[$idxAnalysis] ?? null) : null);
-            $action = $this->cellVal($idxAction !== null ? ($row[$idxAction] ?? null) : null);
+            $action   = $this->cellVal($idxAction !== null ? ($row[$idxAction] ?? null) : null);
+            $remark   = $idxRemark !== null ? $this->cellVal($row[$idxRemark] ?? null) : null;
 
+            // Deskripsi tetap berisi analisa + tindakan. Remark disimpan di
+            // kolom sendiri supaya bisa ditampilkan sebagai catatan terpisah.
             $deskripsi = '';
             if ($analysis) $deskripsi .= $analysis;
             if ($action) $deskripsi .= ($deskripsi ? "\n\n" : '') . $action;
-
-            if ($idxRemark !== null) {
-                $remark = $this->cellVal($row[$idxRemark] ?? null);
-                if ($remark) $deskripsi .= ($deskripsi ? "\n\n" : '') . 'Remark: ' . $remark;
-            }
 
             $pic = $this->cellVal($idxPic !== null ? ($row[$idxPic] ?? null) : null);
 
@@ -308,6 +306,7 @@ class ProcessCmFindingsImport implements ShouldQueue
                 'deskripsi'        => $deskripsi ?: '-',
                 'analysis'         => $analysis,
                 'action'           => $action,
+                'remark'           => $remark,
                 'status'           => $status,
                 'pic'              => $pic,
                 'tanggal_temuan'   => $tanggalTemuan,
@@ -319,7 +318,14 @@ class ProcessCmFindingsImport implements ShouldQueue
 
             $existing = CmFinding::where('kode_finding', $kodeFinding)->first();
             if ($existing) {
-                $existing->update($data);
+                // Jangan kosongkan remark manual ketika kolom Remark di sheet
+                // sedang kosong. Remark dari sheet tetap menang bila terisi.
+                $perubahan = $data;
+                if (blank($remark)) {
+                    unset($perubahan['remark']);
+                }
+
+                $existing->update($perubahan);
                 $result['update_existing']++;
             } else {
                 $created = CmFinding::create($data);

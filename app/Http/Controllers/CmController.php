@@ -48,7 +48,8 @@ class CmController extends Controller
         // Hanya baris dengan minimal satu nilai pengukuran aktual (> 0) yang
         // dihitung — baris semua 0/strip dianggap tidak ada pembacaan.
         $baseQuery = CmReading::query()
-            ->whereRaw($this->measureSql());
+            ->whereRaw($this->measureSql())
+            ->whereHas('equipment', fn($q) => $q->active());
         if ($filterPt) {
             $baseQuery->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
         }
@@ -74,9 +75,17 @@ class CmController extends Controller
         $dangerPct = $totalRecords > 0 ? round(($dangerCount / $totalRecords) * 100, 1) : 0;
         $visualBadPct = $totalRecords > 0 ? round(($visualBadCount / $totalRecords) * 100, 1) : 0;
 
+        // Permintaan user: visual bad adalah temuan visual, sedangkan nilai
+        // vibrasinya masih baik. Untuk persentase kondisi utama, visual bad
+        // dihitung sebagai kondisi baik tetapi tetap ditampilkan terpisah
+        // sebagai catatan tindak lanjut.
+        $baikCount = $goodCount + $visualBadCount;
+        $baikPct = $totalRecords > 0 ? round(($baikCount / $totalRecords) * 100, 1) : 0;
+
         // Breakdown status per PT untuk donut chart
         $donutQuery = CmReading::selectRaw('cm_equipment.pt_location, cm_readings.kondisi, COUNT(*) as total')
-            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id');
+            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true);
 
         if ($filterPt) {
             $donutQuery->where('cm_equipment.pt_location', $filterPt);
@@ -98,7 +107,8 @@ class CmController extends Controller
             ->groupBy('pt_location');
 
         // Trend bulanan stacked
-        $trendQuery = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total');
+        $trendQuery = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total')
+            ->whereHas('equipment', fn($q) => $q->active());
 
         if ($filterPt) {
             $trendQuery->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
@@ -122,6 +132,7 @@ class CmController extends Controller
         // Top 10 vibrasi tertinggi — latest reading per equipment yg masih DANGER
         // Subquery: ambil (cm_equipment_id, tanggal_max) per equipment
         $latestSub = CmReading::selectRaw('cm_equipment_id, MAX(tanggal) as tanggal_max')
+            ->whereHas('equipment', fn($q) => $q->active())
             ->groupBy('cm_equipment_id');
 
         if ($filterTahun) {
@@ -138,6 +149,7 @@ class CmController extends Controller
                      ->on('r.tanggal', '=', 'latest.tanggal_max');
             })
             ->join('cm_equipment', 'cm_equipment.id', '=', 'r.cm_equipment_id')
+            ->where('cm_equipment.is_active', true)
             ->where('r.kondisi', 'danger');
 
         if ($filterPt) {
@@ -154,16 +166,29 @@ class CmController extends Controller
 
         // Tahun untuk filter
         $tahunList = CmReading::selectRaw('YEAR(tanggal) as tahun')
+            ->whereHas('equipment', fn($q) => $q->active())
             ->distinct()
             ->orderBy('tahun', 'desc')
             ->pluck('tahun');
 
+        // Ringkasan finding untuk panel tindak lanjut PM engineer. Angka ini
+        // adalah kondisi finding saat ini, bukan agregasi reading per periode.
+        $findingOpen = CmFinding::where('status', 'open')->count();
+        $findingOpenOver7 = CmFinding::where('status', 'open')->where('hari_open', '>', 7)->count();
+        $findingOpenTanpaPic = CmFinding::where('status', 'open')
+            ->where(function ($q) {
+                $q->whereNull('pic')->orWhere('pic', '');
+            })
+            ->count();
+        $findingEquipmentOpen = CmFinding::where('status', 'open')->distinct()->count('cm_equipment_id');
+
         return view('cm.overview', compact(
             'totalRecords', 'goodCount', 'alarmCount', 'dangerCount', 'visualBadCount',
-            'goodPct', 'alarmPct', 'dangerPct', 'visualBadPct',
+            'goodPct', 'alarmPct', 'dangerPct', 'visualBadPct', 'baikCount', 'baikPct',
             'statusPerPt', 'trendData', 'topVibrasi',
             'ptList', 'tahunList', 'bulanTerakhir',
-            'filterPt', 'filterTahun', 'filterBulan', 'filterStatus'
+            'filterPt', 'filterTahun', 'filterBulan', 'filterStatus',
+            'findingOpen', 'findingOpenOver7', 'findingOpenTanpaPic', 'findingEquipmentOpen'
         ));
     }
 
@@ -174,6 +199,7 @@ class CmController extends Controller
     {
         $filterPt     = $request->input('pt');
         $filterStatus = $request->get('status', '');
+        $filterPic    = (string) $request->input('pic', '');
         $search       = $request->get('search', '');
 
         $query = CmFinding::with('equipment');
@@ -183,6 +209,13 @@ class CmController extends Controller
         }
         if ($filterStatus) {
             $query->where('status', $filterStatus);
+        }
+        if ($filterPic === '__none') {
+            $query->where(function ($q) {
+                $q->whereNull('pic')->orWhere('pic', '');
+            });
+        } elseif ($filterPic !== '') {
+            $query->where('pic', $filterPic);
         }
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -204,12 +237,43 @@ class CmController extends Controller
         $totalClosed    = CmFinding::where('status', 'closed')->count();
         $totalFindings  = CmFinding::count();
 
+        // Beban open per PIC dipakai untuk ringkasan di atas tabel. Nilai PIC
+        // kosong digabung menjadi "Tanpa PIC" supaya pekerjaan yang belum
+        // punya penanggung jawab tetap terlihat.
+        $openByPic = CmFinding::query()
+            ->selectRaw("COALESCE(NULLIF(pic, ''), 'Tanpa PIC') as pic_label, COUNT(*) as open_count, SUM(CASE WHEN hari_open > 7 THEN 1 ELSE 0 END) as over7_count")
+            ->where('status', 'open')
+            ->groupByRaw("COALESCE(NULLIF(pic, ''), 'Tanpa PIC')")
+            ->orderByDesc('open_count')
+            ->get();
+
+        $maxOpenPic = max(1, (int) $openByPic->max('open_count'));
+        $openTanpaPic = (int) ($openByPic->firstWhere('pic_label', 'Tanpa PIC')?->open_count ?? 0);
+
+        $openAging = [
+            '0-7'   => CmFinding::where('status', 'open')->where('hari_open', '<=', 7)->count(),
+            '8-30'  => CmFinding::where('status', 'open')->whereBetween('hari_open', [8, 30])->count(),
+            '>30'   => CmFinding::where('status', 'open')->where('hari_open', '>', 30)->count(),
+        ];
+
+        $openEquipmentCount = CmFinding::where('status', 'open')->distinct()->count('cm_equipment_id');
+
         $ptList = CmEquipment::active()->select('pt_location')->distinct()->pluck('pt_location');
 
+        // Daftar PIC diambil dari data finding (sesuai kolom PIC di sheet
+        // Finding CM) supaya filter hanya menampilkan tim yang benar-benar ada.
+        $picList = CmFinding::query()
+            ->whereNotNull('pic')
+            ->where('pic', '!=', '')
+            ->distinct()
+            ->orderBy('pic')
+            ->pluck('pic');
+
         return view('cm.findings', compact(
-            'findings', 'ptList',
-            'filterPt', 'filterStatus', 'search',
-            'totalOpen', 'openOver7', 'totalClosed', 'totalFindings'
+            'findings', 'ptList', 'picList',
+            'filterPt', 'filterStatus', 'filterPic', 'search',
+            'totalOpen', 'openOver7', 'totalClosed', 'totalFindings',
+            'openByPic', 'maxOpenPic', 'openTanpaPic', 'openAging', 'openEquipmentCount'
         ));
     }
 
@@ -218,7 +282,7 @@ class CmController extends Controller
      */
     public function findingShow(string $kodeFinding)
     {
-        $finding = CmFinding::with(['equipment', 'workOrder'])
+        $finding = CmFinding::with(['equipment.asset', 'workOrder', 'reading'])
             ->where('kode_finding', $kodeFinding)
             ->firstOrFail();
 
@@ -402,7 +466,13 @@ class CmController extends Controller
         $vibThresholds = config('cm.vibration_insight.thresholds', ['alarm' => 7.1, 'danger' => 11.2]);
         $tempThreshold = config('cm.temperature_high_threshold', 80); // konsisten dengan card stat Temp Maks
 
-        $equipment = CmEquipment::with(['asset.company', 'findings'])
+        $equipment = CmEquipment::with([
+            'asset.company',
+            // Relasi finding dipakai tabel Temuan: reading menyediakan remark
+            // pembacaan, workOrder menentukan tombol WO pada kolom aksi.
+            'findings.reading',
+            'findings.workOrder',
+        ])
             ->where('equipment_tag', $tag)
             ->firstOrFail();
 
@@ -812,6 +882,69 @@ class CmController extends Controller
     }
 
     /**
+     * Perbarui satu finding dari modal Edit Finding.
+     *
+     * Remark disimpan di kolom sendiri supaya bisa dibaca terpisah dari
+     * deskripsi/analisa/tindakan. Hari open dihitung ulang dari tanggal temuan
+     * dan tanggal tindakan (bila sudah closed) agar angka umur temuan tidak
+     * basi setelah status diubah.
+     *
+     * @param  Request   $request Data form edit finding
+     * @param  CmFinding $finding Finding yang akan diperbarui
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function findingUpdate(Request $request, CmFinding $finding)
+    {
+        $validated = $request->validate([
+            'severity'       => 'required|in:low,medium,high',
+            'kategori'       => 'required|string|max:255',
+            'deskripsi'      => 'nullable|string',
+            'analysis'       => 'nullable|string',
+            'action'         => 'nullable|string',
+            'remark'         => 'nullable|string|max:2000',
+            'status'         => 'required|in:open,closed',
+            'pic'            => 'nullable|string|max:100',
+            'tanggal_temuan' => 'required|date',
+            'date_action'    => 'nullable|date|after_or_equal:tanggal_temuan',
+        ]);
+
+        $validated['deskripsi'] = trim((string) ($validated['deskripsi'] ?? '')) ?: '-';
+        $validated['remark']    = filled($validated['remark'] ?? null)
+            ? trim((string) $validated['remark'])
+            : null;
+
+        $tanggalMulai = Carbon::parse($validated['tanggal_temuan'])->startOfDay();
+        $tanggalAkhir = $validated['status'] === 'closed' && ! empty($validated['date_action'])
+            ? Carbon::parse($validated['date_action'])->startOfDay()
+            : now()->startOfDay();
+
+        $validated['hari_open'] = max(0, (int) $tanggalMulai->diffInDays($tanggalAkhir));
+
+        $finding->update($validated);
+
+        $kode = $finding->kode_finding ?? '#' . $finding->id;
+        $tag  = $finding->equipment?->equipment_tag;
+
+        // Edit dari halaman detail finding: kembali ke detail supaya pengguna
+        // tetap melihat konteks yang baru diperbarui.
+        if ($request->input('redirect') === 'finding' && $finding->kode_finding) {
+            return redirect()
+                ->route('cm.findings.show', $finding->kode_finding)
+                ->with('success', "Finding {$kode} berhasil diperbarui.");
+        }
+
+        if ($tag) {
+            return redirect()
+                ->route('cm.equipment-show', $tag)
+                ->with('success', "Finding {$kode} berhasil diperbarui.");
+        }
+
+        return redirect()
+            ->route('cm.findings')
+            ->with('success', "Finding {$kode} berhasil diperbarui.");
+    }
+
+    /**
      * Hapus satu finding secara manual (dari halaman detail equipment atau
      * daftar finding). Work order yang terhubung otomatis ter-lepas
      * (FK linked_finding_id nullOnDelete) dan foto finding ikut dihapus
@@ -1004,6 +1137,7 @@ class CmController extends Controller
         // Threshold dari config
         $vibThreshold = config('cm.high_vibration.threshold', 4.5);
         $statusFilter = config('cm.high_vibration.status_filter', ['alarm', 'danger']);
+        $activeEquipmentIds = CmEquipment::active()->pluck('id');
 
         // ---------------------------------------------------------------
         // SECTION 1: Equipment Vibrasi Tinggi per PT (LATEST PER EQUIPMENT)
@@ -1018,6 +1152,7 @@ class CmController extends Controller
         // tanggal (ada anomali — id lebih besar tapi tanggal lebih kecil).
         $latestReadingIds = DB::table('cm_readings as r1')
             ->select('r1.id')
+            ->whereIn('r1.cm_equipment_id', $activeEquipmentIds)
             ->whereRaw('r1.tanggal = (
                 select MAX(r2.tanggal) from cm_readings r2
                 where r2.cm_equipment_id = r1.cm_equipment_id
@@ -1028,6 +1163,7 @@ class CmController extends Controller
         // per equipment (untuk fallback Opsi A)
         $lastAlarmDangerIds = DB::table('cm_readings as r1')
             ->select(DB::raw('MAX(r1.id) as id'))
+            ->whereIn('r1.cm_equipment_id', $activeEquipmentIds)
             ->whereIn('r1.kondisi', $statusFilter)
             ->where('r1.max_vibration', '>', $vibThreshold)
             ->groupBy('r1.cm_equipment_id')
@@ -1037,6 +1173,7 @@ class CmController extends Controller
         // (untuk fallback analysis jika reading hasil fallback analysis-nya kosong)
         $latestAnalysisIds = DB::table('cm_readings as r1')
             ->select(DB::raw('MAX(r1.id) as id'))
+            ->whereIn('r1.cm_equipment_id', $activeEquipmentIds)
             ->whereNotNull('r1.analysis')
             ->where('r1.analysis', '!=', '')
             ->groupBy('r1.cm_equipment_id')
@@ -1047,6 +1184,7 @@ class CmController extends Controller
         // Set B: Latest GOOD/VISUAL_BAD vib≤0.5, fallback ke alarm/danger terakhir
         $alarmDangerLatest = DB::table('cm_readings')
             ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true)
             ->whereIn('cm_readings.id', $latestReadingIds)
             ->whereIn('cm_readings.kondisi', $statusFilter)
             ->where('cm_readings.max_vibration', '>', $vibThreshold);
@@ -1061,6 +1199,7 @@ class CmController extends Controller
 
         $fallbackSet = DB::table('cm_readings')
             ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true)
             ->whereIn('cm_readings.id', $lastAlarmDangerIds)
             ->whereIn('cm_readings.cm_equipment_id', $goodLowLatestIds);
 
@@ -1135,6 +1274,7 @@ class CmController extends Controller
         if ($filterBulan) {
             $monthlyIds = DB::table('cm_readings')
                 ->select(DB::raw('MAX(id) as id'))
+                ->whereIn('cm_equipment_id', $activeEquipmentIds)
                 ->whereIn('kondisi', $statusFilter)
                 ->where('max_vibration', '>', $vibThreshold)
                 ->whereYear('tanggal', (int) $filterTahun)
@@ -1144,6 +1284,7 @@ class CmController extends Controller
 
             $latestRows = DB::table('cm_readings')
                 ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+                ->where('cm_equipment.is_active', true)
                 ->whereIn('cm_readings.id', $monthlyIds)
                 ->whereNotNull('cm_readings.analysis')
                 ->where('cm_readings.analysis', '!=', '')
@@ -1225,6 +1366,7 @@ class CmController extends Controller
         // membaik di bulan berikutnya.
         $trendAllQuery = CmReading::query()
             ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true)
             ->whereIn('cm_readings.kondisi', $statusFilter)
             ->where('cm_readings.max_vibration', '>', $vibThreshold)
             ->whereNotNull('cm_readings.analysis')
@@ -1352,7 +1494,9 @@ class CmController extends Controller
         // ---------------------------------------------------------------
         $totalEquipment = CmEquipment::active()->when($filterPt, fn($q) => $q->where('pt_location', $filterPt))->count();
 
-        $totalReadingsQuery = CmReading::when($filterPt, fn($q) => $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt)));
+        $totalReadingsQuery = CmReading::query()
+            ->whereHas('equipment', fn($q) => $q->active())
+            ->when($filterPt, fn($q) => $q->whereHas('equipment', fn($sq) => $sq->where('pt_location', $filterPt)));
         if ($filterTahun) { $totalReadingsQuery->whereYear('tanggal', $filterTahun); }
         $totalReadings = $totalReadingsQuery->count();
 
@@ -1408,7 +1552,8 @@ class CmController extends Controller
         $filterBulan = $this->bulanFilter($request->input('bulan'));
         $filterStatus = $request->get('status', '');
 
-        $query = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total');
+        $query = CmReading::selectRaw('YEAR(tanggal) as tahun, MONTH(tanggal) as bulan, kondisi, COUNT(*) as total')
+            ->whereHas('equipment', fn($q) => $q->active());
 
         if ($filterPt) {
             $query->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
@@ -1457,7 +1602,8 @@ class CmController extends Controller
         $filterStatus = $request->get('status', '');
 
         $query = CmReading::selectRaw('cm_equipment.pt_location, cm_readings.kondisi, COUNT(*) as total')
-            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id');
+            ->join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true);
 
         if ($filterPt) {
             $query->where('cm_equipment.pt_location', $filterPt);
@@ -1500,7 +1646,8 @@ class CmController extends Controller
         $filterStatus = $request->get('status', '');
 
         $query = CmReading::query()
-            ->whereRaw($this->measureSql());
+            ->whereRaw($this->measureSql())
+            ->whereHas('equipment', fn($q) => $q->active());
         if ($filterPt) {
             $query->whereHas('equipment', fn($q) => $q->where('pt_location', $filterPt));
         }
@@ -1525,11 +1672,15 @@ class CmController extends Controller
         $dangerPct   = $totalRecords > 0 ? round(($dangerCount / $totalRecords) * 100, 1) : 0;
         $visualBadPct = $totalRecords > 0 ? round(($visualBadCount / $totalRecords) * 100, 1) : 0;
 
+        $baikCount = $goodCount + $visualBadCount;
+        $baikPct = $totalRecords > 0 ? round(($baikCount / $totalRecords) * 100, 1) : 0;
+
         return view('cm._overview-cards', compact(
             'totalRecords', 'goodCount', 'goodPct',
             'alarmCount', 'alarmPct',
             'dangerCount', 'dangerPct',
-            'visualBadCount', 'visualBadPct'
+            'visualBadCount', 'visualBadPct',
+            'baikCount', 'baikPct'
         ));
     }
 
@@ -1808,7 +1959,9 @@ class CmController extends Controller
      */
     private function bulanTerakhirDenganData(?string $pt, $tahun): ?int
     {
-        $query = CmReading::query()->whereRaw($this->measureSql());
+        $query = CmReading::query()
+            ->whereRaw($this->measureSql())
+            ->whereHas('equipment', fn($q) => $q->active());
 
         if ($pt) {
             $query->whereHas('equipment', fn($q) => $q->where('pt_location', $pt));
@@ -1873,11 +2026,13 @@ class CmController extends Controller
     {
         $filterPt     = $request->input('pt');
         $filterStatus = $request->get('status', '');
+        $filterPic    = $request->input('pic');
 
         $exporter = new CmFindingsExport();
         return $exporter->export(
             $filterPt ?: null,
-            $filterStatus ?: null
+            $filterStatus ?: null,
+            $filterPic ?: null
         );
     }
 
@@ -1919,10 +2074,12 @@ class CmController extends Controller
 
         $vibThreshold = config('cm.high_vibration.threshold', 4.5);
         $statusFilter = config('cm.high_vibration.status_filter', ['alarm', 'danger']);
+        $activeEquipmentIds = CmEquipment::active()->pluck('id');
 
         // --- Sheet 1: Breakdown per PT ---
         // Hanya equipment dengan reading terakhir alarm/danger
         $latestReadingSub = CmReading::selectRaw('cm_equipment_id, MAX(tanggal) as max_tanggal')
+            ->whereIn('cm_equipment_id', $activeEquipmentIds)
             ->groupBy('cm_equipment_id');
 
         $vibEqIds = CmReading::select('cm_readings.cm_equipment_id')
@@ -1930,6 +2087,7 @@ class CmController extends Controller
                 $join->on('cm_readings.cm_equipment_id', '=', 'latest.cm_equipment_id')
                      ->on('cm_readings.tanggal', '=', 'latest.max_tanggal');
             })
+            ->whereIn('cm_readings.cm_equipment_id', $activeEquipmentIds)
             ->whereIn('cm_readings.kondisi', $statusFilter)
             ->where('cm_readings.max_vibration', '>', $vibThreshold)
             ->whereNotNull('cm_readings.analysis')
@@ -1946,6 +2104,7 @@ class CmController extends Controller
         $vibEqIds = $vibEqIds->distinct()->pluck('cm_equipment_id');
 
         $baseQuery = CmReading::join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true)
             ->whereIn('cm_readings.cm_equipment_id', $vibEqIds)
             ->whereIn('cm_readings.kondisi', $statusFilter)
             ->where('cm_readings.max_vibration', '>', $vibThreshold)
@@ -1982,6 +2141,7 @@ class CmController extends Controller
 
         // --- Sheet 2: Ranking Bulanan ---
         $trendBase = CmReading::join('cm_equipment', 'cm_equipment.id', '=', 'cm_readings.cm_equipment_id')
+            ->where('cm_equipment.is_active', true)
             ->whereIn('cm_readings.kondisi', $statusFilter)
             ->where('cm_readings.max_vibration', '>', $vibThreshold)
             ->whereNotNull('cm_readings.analysis')

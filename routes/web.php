@@ -83,6 +83,10 @@ if (app()->environment('local')) {
 
 // Admin routes (with auth)
 Route::middleware(['admin', 'akses', 'hanya_baca'])->group(function () {
+    // Penjaga sesi: dipanggil berkala oleh layout selama tab panel terbuka
+    // agar token CSRF tidak kedaluwarsa saat user membiarkan halaman lama.
+    Route::get('/keep-alive', fn() => response()->noContent())->name('keep-alive');
+
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     // Assets - import routes MUST be before resource to avoid 404
@@ -208,6 +212,7 @@ Route::post('/assets/unlinked-funcloc/run-sync', [AssetController::class, 'runAu
         Route::get('/equipment/{tag}', [CmController::class, 'equipmentShow'])->name('equipment-show');
         Route::put('/equipment/{tag}', [CmController::class, 'equipmentUpdate'])->name('equipment-update');
         Route::delete('/readings/{reading}', [CmController::class, 'readingDestroy'])->name('readings.destroy');
+        Route::put('/findings/{finding}', [CmController::class, 'findingUpdate'])->name('findings.update');
         Route::delete('/findings/{finding}', [CmController::class, 'findingDestroy'])->name('findings.destroy');
         Route::post('/sync-google-sheets', [CmController::class, 'syncGoogleSheets'])->name('sync-google-sheets');
         Route::get('/report-analysis', [CmController::class, 'reportAnalysis'])->name('report-analysis');

@@ -745,13 +745,16 @@ class ProcessCmExcelImport implements ShouldQueue
             }
         }
 
+        // Urutan ini mengikuti formula kolom "Status Condition" di sheet
+        // Status CM: danger dan alarm berdasarkan vibrasi lebih dulu, baru
+        // visual bad. Jangan dibalik, karena akan berbeda dari spreadsheet.
         $kondisi = 'good';
-        if ($adaVisualBad) {
-            $kondisi = 'visual_bad';
-        } elseif ($maxVibration !== null && $maxVibration > 7.1) {
+        if ($maxVibration !== null && $maxVibration > 7.1) {
             $kondisi = 'danger';
         } elseif ($maxVibration !== null && $maxVibration >= 4.5) {
             $kondisi = 'alarm';
+        } elseif ($adaVisualBad) {
+            $kondisi = 'visual_bad';
         }
 
         $updateData = ['kondisi' => $kondisi];
