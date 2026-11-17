@@ -249,8 +249,19 @@ if ($maju.Kode -ne 0) {
         Write-Host ''
         Tulis 'Pilih salah satu:'
         Tulis '  a. pemilik pekerjaan itu meng-commit/mengunggahnya lebih dulu (alur Pull Request), ATAU'
-        Tulis '  b. pindahkan sementara dengan aman (berkas DICADANGKAN lalu DIKEMBALIKAN):'
-        Write-Host ('     powershell -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $DevPath 'tools\siapkan-deploy.ps1') + '"')
+        Tulis '  b. pindahkan sementara dengan aman (berkas DICADANGKAN lalu DIKEMBALIKAN).'
+
+        if ($cabangDev -ne $Branch) {
+            # siapkan-deploy.ps1 menolak berjalan di cabang tugas. Karena itu
+            # kembalikan dulu ke main; -PindahkanPerubahan menjaga berkas yang
+            # belum di-commit agar tidak hilang.
+            Tulis ('Copy DEV berada di cabang ' + $cabangDev + ', jadi jalankan BERURUTAN:')
+            Write-Host ('     1. powershell -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $DevPath 'tools\kembalikan-ke-main.ps1') + '" -PindahkanPerubahan')
+            Write-Host ('     2. powershell -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $DevPath 'tools\siapkan-deploy.ps1') + '"')
+            Tulis 'Setelah keduanya selesai, klik Deploy-Laporan.bat.'
+        } else {
+            Write-Host ('     powershell -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $DevPath 'tools\siapkan-deploy.ps1') + '"')
+        }
         Write-Host ''
         Write-Host ('PENGHALANG=' + ($berkasTerhalang -join '; '))
         Penanda 0 1 'dibatalkan' $komitDev $komitGithub $cabangDev

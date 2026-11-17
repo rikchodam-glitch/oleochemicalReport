@@ -24,6 +24,13 @@ relevan dengan tugasnya.
   masih di cabang tugas, `Deploy-Laporan.bat` PASTI dibatalkan. Rincian:
   `docs/02-alur-kerja-banyak-teknisi.md` bagian 6c/6d. Commit/push tidak
   mengubah PROD.
+- Bila deploy dibatalkan karena copy DEV masih di cabang tugas dan/atau ada
+  berkas belum di-commit dari sesi lain, JANGAN buang pekerjaan itu. Urutannya:
+  `tools\kembalikan-ke-main.ps1 -PindahkanPerubahan` ->
+  `tools\siapkan-deploy.ps1` -> `Deploy-Laporan.bat`. `siapkan-deploy.ps1`
+  hanya boleh dijalankan setelah DEV berada di `main`; kedua skrip mencadangkan
+  lalu mengembalikan perubahan. Rincian: `docs/02-alur-kerja-banyak-teknisi.md`
+  bagian 6e.
 - **Verifikasi dulu, baru koding**: nama tabel/kolom/relasi wajib dicek lewat
   `php artisan model:show`, migration, atau model. Jangan berasumsi.
 - **Blade**: baca ulang dari disk sebelum edit; default **overwrite penuh**.

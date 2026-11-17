@@ -281,7 +281,17 @@ Write-Host ('[siapkan] commit DEV : ' + $komitDev)
 
 if ($cabang -ne $BranchUtama) {
     Tulis ('BERHENTI: copy DEV berada di cabang ' + $cabang + ', bukan ' + $BranchUtama + '.')
-    Tulis 'Pindahkan dulu ke cabang utama: powershell -File tools\kembalikan-ke-main.ps1'
+
+    $perintahKembali = 'powershell -ExecutionPolicy Bypass -File tools\kembalikan-ke-main.ps1'
+
+    if ((BarisKotor).Count -gt 0) {
+        $perintahKembali += ' -PindahkanPerubahan'
+        Tulis 'Ada berkas ter-track yang belum di-commit; opsi -PindahkanPerubahan menyimpannya ke git stash lalu mengembalikannya.'
+    }
+
+    Tulis ('Pindahkan dulu ke cabang utama: ' + $perintahKembali)
+    Tulis 'Setelah copy DEV di main, jalankan lagi tools\siapkan-deploy.ps1.'
+
     Penanda 'BELUM' $komitDev '' 0 ''
     exit 1
 }
