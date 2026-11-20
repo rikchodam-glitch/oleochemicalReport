@@ -1,18 +1,17 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-11-20 09:14 WIB
+Diperbarui: 2026-11-20 15:26 WIB
 
-- Cabang aktif: `tugas/erik/management-tools-dan-peminjaman-telegram`
-- Mulai: 2026-11-20 09:14
+- Cabang aktif: `tugas/erik/log-alat-dan-peminjaman-web`
+- Mulai: 2026-11-20 15:26
 - Status: SELESAI (PR siap, menunggu review/merge integrator)
 - Modul/berkas yang disentuh:
-  - Modul baru Management Tools: lokasi, rak, alat, foto, pinjaman, keeper
-  - Migration/model tools_* + kolom technicians.is_tool_keeper
-  - config/akses.php, routes/web.php, sidebar layouts/app.blade.php
-  - Controller/service/view tools + form token publik
-  - Bot Telegram: /pinjam, /pakai, /selesai, TelegramService, poller/webhook
-  - tests/Feature/Tool*, docs/33-management-tools.md, docs/27, AGENTS.md
-- Catatan: berkas kotor sesi lain (ProcessCmFindingsImport dkk) TIDAK ikut di-commit. PR: tugas/pr-management-tools-dan-peminjaman-telegram.md.
+  - Halaman detail alat + log pinjaman (filter tanggal, durasi) `alat.show`
+  - Halaman web akun teknisi/keeper: pinjam, pinjamkan, kembalikan
+  - ToolController/ToolLoanController view, routes, config akses, sidebar
+  - tests/Feature/AlatSayaTest.php, TelegramMenuTest
+  - docs/33-management-tools.md, docs/27, AGENTS.md
+- Catatan: berkas kotor sesi lain TIDAK ikut di-commit. PR: tugas/pr-log-alat-dan-peminjaman-web.md. Menu Telegram PROD sudah disinkronkan.
 
 ## Riwayat
-- tugas/erik/perbaiki-petunjuk-deploy-dari-cabang-tugas (mulai 2026-11-16 11:48) -> dilanjutkan 2026-11-20 09:14
+- tugas/erik/management-tools-dan-peminjaman-telegram (mulai 2026-11-20 09:14) -> dilanjutkan 2026-11-20 15:26
