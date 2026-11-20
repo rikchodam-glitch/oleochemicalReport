@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AiProviderController;
+use App\Http\Controllers\AlatSayaController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\BagianAccessController;
 use App\Http\Controllers\BotController;
@@ -85,6 +86,17 @@ Route::middleware('admin')->group(function () {
     Route::get('/cuti-kelola/{cuti}/edit', [CutiAdminController::class, 'edit'])->name('cuti.kelola.edit');
     Route::put('/cuti-kelola/{cuti}', [CutiAdminController::class, 'update'])->name('cuti.kelola.update');
     Route::delete('/cuti-kelola/{cuti}', [CutiAdminController::class, 'destroy'])->name('cuti.kelola.destroy');
+});
+
+// Peminjaman alat untuk akun teknisi/keeper. Sengaja di luar middleware modul
+// dan hanya-baca: hak aksi diperiksa controller (pinjam = teknisi aktif,
+// pinjamkan = keeper/administrator, kembalikan = pemilik/keeper/admin).
+Route::middleware('admin')->prefix('alat')->name('alat.')->group(function () {
+    Route::get('/', [AlatSayaController::class, 'index'])->name('index');
+    Route::post('/pinjamkan', [AlatSayaController::class, 'pinjamkan'])->name('pinjamkan');
+    Route::post('/pinjaman/{toolLoan}/kembali', [AlatSayaController::class, 'kembalikan'])->name('kembali');
+    Route::get('/{tool}', [AlatSayaController::class, 'show'])->name('show');
+    Route::post('/{tool}/pinjam', [AlatSayaController::class, 'pinjam'])->name('pinjam');
 });
 
 // DEBUG ONLY — auto-login untuk pengembangan lokal (hapus sebelum production!)

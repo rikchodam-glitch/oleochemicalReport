@@ -140,7 +140,10 @@
                                         <div class="p-3 space-y-2 flex-1 flex flex-col">
                                             <div class="flex items-start justify-between gap-2">
                                                 <div class="min-w-0">
-                                                    <p class="text-sm font-semibold text-slate-900 truncate">{{ $alat['name'] }}</p>
+                                                    <a href="{{ route('alat.show', $alat['id']) }}"
+                                                       class="block text-sm font-semibold text-slate-900 truncate hover:text-teal-700">
+                                                        {{ $alat['name'] }}
+                                                    </a>
                                                     <p class="text-xs text-slate-500">{{ $alat['code'] }}</p>
                                                 </div>
                                                 @if($bolehTulis && $alat['status'] === 'tersedia')
@@ -165,8 +168,13 @@
                                                 @endif
                                             </div>
 
-                                            @if($bolehTulis)
-                                                <div class="flex items-center gap-2 pt-2 border-t border-slate-100">
+                                            <div class="flex items-center gap-2 pt-2 border-t border-slate-100">
+                                                <a href="{{ route('alat.show', $alat['id']) }}"
+                                                   class="text-xs font-semibold text-slate-600 hover:text-slate-800">
+                                                    Log
+                                                </a>
+
+                                                @if($bolehTulis)
                                                     <button type="button"
                                                             class="tombol-edit-alat text-xs font-semibold text-blue-600 hover:text-blue-700"
                                                             data-id="{{ $alat['id'] }}"
@@ -187,8 +195,8 @@
                                                             <button type="submit" class="text-xs font-semibold text-rose-600 hover:text-rose-700">Hapus</button>
                                                         </form>
                                                     @endif
-                                                </div>
-                                            @endif
+                                                @endif
+                                            </div>
                                         </div>
                                     </div>
                                 @endforeach

@@ -10,7 +10,7 @@
             <button type="button" class="text-slate-400 hover:text-slate-600" data-tutup-modal-pinjam>&times;</button>
         </div>
 
-        <form method="POST" action="{{ route('tools.loans.store') }}" class="p-4 space-y-4 overflow-y-auto">
+        <form method="POST" action="{{ $aksiPinjamkan ?? route('tools.loans.store') }}" class="p-4 space-y-4 overflow-y-auto">
             @csrf
             <input type="hidden" name="_form" value="pinjam">
             <input type="hidden" name="tool_id" id="pinjam-tool-id" value="{{ old('tool_id') }}">

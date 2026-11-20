@@ -184,6 +184,12 @@ return [
         'laporan.selesai',
         'laporan.api.tipe',
         'laporan.api.alat',
+        // Peminjaman alat oleh akun teknisi/keeper (hak aksi di controller).
+        'alat.index',
+        'alat.show',
+        'alat.pinjam',
+        'alat.pinjamkan',
+        'alat.kembali',
     ],
 
     'pesan_tolak' => 'Bagian Anda tidak memiliki akses ke halaman ini.',

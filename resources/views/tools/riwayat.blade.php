@@ -122,17 +122,28 @@
                                 @endif
                             </td>
                             <td class="px-4 py-2.5 text-right">
-                                @if($bolehTulis && $pinjaman->masihDipinjam())
-                                    <form method="POST" action="{{ route('tools.loans.kembalikan', $pinjaman->id) }}"
-                                          onsubmit="return confirm('Tandai alat {{ $pinjaman->tool_name }} ({{ $pinjaman->tool_code }}) sudah dikembalikan?')">
-                                        @csrf
-                                        <button type="submit" class="text-xs font-semibold text-teal-700 hover:text-teal-800">
-                                            Kembalikan
-                                        </button>
-                                    </form>
-                                @else
-                                    <span class="text-xs text-slate-300">-</span>
-                                @endif
+                                <div class="flex items-center justify-end gap-2">
+                                    @if($pinjaman->tool_id)
+                                        <a href="{{ route('alat.show', $pinjaman->tool_id) }}"
+                                           class="text-xs font-semibold text-slate-600 hover:text-slate-800">
+                                            Log Alat
+                                        </a>
+                                    @endif
+
+                                    @if($bolehTulis && $pinjaman->masihDipinjam())
+                                        <form method="POST" action="{{ route('tools.loans.kembalikan', $pinjaman->id) }}"
+                                              onsubmit="return confirm('Tandai alat {{ $pinjaman->tool_name }} ({{ $pinjaman->tool_code }}) sudah dikembalikan?')">
+                                            @csrf
+                                            <button type="submit" class="text-xs font-semibold text-teal-700 hover:text-teal-800">
+                                                Kembalikan
+                                            </button>
+                                        </form>
+                                    @endif
+
+                                    @if(! $pinjaman->tool_id && ! ($bolehTulis && $pinjaman->masihDipinjam()))
+                                        <span class="text-xs text-slate-300">-</span>
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                     @empty

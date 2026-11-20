@@ -53,6 +53,34 @@ Form Pinjamkan di dashboard memakai pemilih peminjam:
   Bagian; hasil pencarian otomatis membuka grup.
 - **Non-Teknisi**: nama bebas + departemen dari master `departments`.
 
+## Halaman web teknisi/keeper `/alat`
+
+Halaman ini bisa dibuka semua akun yang login. Hak aksi diperiksa controller:
+
+- **Teknisi aktif** dapat meminjam satu unit untuk dirinya sendiri dari card
+  alat atau halaman detail alat.
+- **Tool keeper/administrator** dapat memakai tombol **Pinjamkan** dengan
+  pemilih peminjam Teknisi/Non-Teknisi yang sama seperti dashboard admin.
+- **Pemilik pinjaman, keeper, atau administrator** dapat menekan
+  **Kembalikan**.
+- Bagian **Pinjaman Saya** menampilkan pinjaman aktif akun tersebut beserta
+  durasinya; keeper/administrator juga melihat tabel **Pinjaman Aktif (Semua)**.
+- Halaman ini berada di luar modul hak akses dan middleware hanya-baca; hak
+  aksi tidak bergantung pada modul `tools`.
+
+## Log per alat `/alat/{id}`
+
+Setiap unit alat punya halaman detail yang dapat dibuka dari card dashboard,
+halaman `/alat`, atau tombol **Log Alat** di Riwayat Peminjaman admin. Halaman
+ini menampilkan:
+
+- identitas alat, foto, lokasi/rak, status, dan peminjam aktif/terakhir;
+- aksi pinjam/pinjamkan/kembalikan sesuai hak akun;
+- log lengkap pinjaman dengan filter **dari tanggal** dan **sampai tanggal**,
+  pagination 20 baris;
+- **durasi** tiap pinjaman (hari/jam/menit); pinjaman aktif dihitung sampai
+  waktu sekarang dan ditandai "(masih dipinjam)".
+
 ## Bot Telegram
 
 ### `/pinjam` (tool keeper)
@@ -135,9 +163,13 @@ pengembalian, serta catatan.
 ## Hak akses
 
 - Modul `tools` pada `config/akses.php`, pola route `tools.*`, menu
-  `tools.index`.
-- Penulisan halaman hanya administrator (`role_penulis`). Keeper tidak butuh
-  akun web; aksinya lewat token Telegram.
+  `tools.index`. Penulisan halaman master hanya administrator
+  (`role_penulis`).
+- Halaman `/alat` dan `/alat/{id}` sengaja berada di luar modul/hanya-baca;
+  route-nya terdaftar di `route_bebas_modul` dan hak aksi diperiksa controller
+  (teknisi aktif untuk meminjam, keeper/admin untuk meminjamkan).
+- Keeper tidak butuh akun web; aksinya bisa lewat token Telegram atau halaman
+  `/alat` bila akun web-nya terhubung ke teknisi keeper.
 - Penunjukan keeper tetap memeriksa `User::isAdmin()` di controller, sehingga
   supervisor (akses penuh tetapi hanya baca) tidak bisa mengubah keeper.
 - Route form token berada di luar middleware panel dan tidak butuh login.
@@ -151,8 +183,9 @@ pengembalian, serta catatan.
 - `app/Services/ToolLendingService.php`, `ToolTokenService.php`,
   `ToolLoanNotifier.php`, `ToolTelegramService.php`
 - `app/Http/Controllers/ToolController.php`, `ToolLoanController.php`,
-  `ToolKeeperController.php`, `ToolFormController.php`
-- `resources/views/tools/**`
+  `ToolKeeperController.php`, `ToolFormController.php`, `AlatSayaController.php`
+- `resources/views/tools/**`, `resources/views/alat/**`
+- `app/Models/ToolLoan.php` (durasi peminjaman)
 - `app/Services/TelegramService.php` (sendPhoto, editMessageText,
   answerCallbackQuery, menu command)
 - `app/Console/Commands/Traits/TelegramMessageHandlerTrait.php`
@@ -160,13 +193,13 @@ pengembalian, serta catatan.
 - `app/Http/Controllers/TelegramWebhookController.php`
 - `config/akses.php`, `routes/web.php`, `resources/views/layouts/app.blade.php`
 - `tests/Feature/ManagementToolsTest.php`, `ToolLendingTest.php`,
-  `ToolFormTest.php`, `ToolTelegramTest.php`
+  `ToolFormTest.php`, `ToolTelegramTest.php`, `AlatSayaTest.php`
 
 ## Uji
 
-- `ManagementToolsTest`, `ToolLendingTest`, `ToolFormTest`, `ToolTelegramTest`
-  hijau.
-- Seluruh suite: 832 test hijau, 4.210 assertion.
+- `ManagementToolsTest`, `ToolLendingTest`, `ToolFormTest`, `ToolTelegramTest`,
+  `AlatSayaTest`, `TelegramMenuTest` hijau.
+- Seluruh suite: 841 test hijau, 4.255 assertion.
 - `php artisan view:cache` sukses dan `npm run build` sukses.
 
 ## Checklist deploy
@@ -180,6 +213,9 @@ pengembalian, serta catatan.
 5. Pastikan `storage:link` ada dan `APP_URL` PROD memakai domain publik supaya
    foto/link form dapat dibuka dari Telegram.
 6. Uji `/pinjam`, `/pakai`, dan `/selesai` dari satu keeper dan satu teknisi.
+7. Untuk pemakaian web: buka `/alat` dengan akun teknisi (pinjam/kembali) dan
+   akun keeper (pinjamkan). Pastikan akun keeper terhubung ke teknisi yang
+   masih ditandai keeper.
 
 ## Batasan versi ini
 
