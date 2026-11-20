@@ -6,6 +6,7 @@ use App\Services\AiService;
 use App\Services\ReportFormService;
 use App\Services\Telegram\PhotoStorageService;
 use App\Services\Telegram\SparepartRequestWizardService;
+use App\Services\ToolTelegramService;
 use App\Models\BotRegistration;
 use App\Models\Report;
 use App\Models\Technician;
@@ -68,6 +69,28 @@ class TelegramWebhookController extends Controller
 
                 if (preg_match('/^\/cuti(?:@\S+)?\b/i', $text)) {
                     return $this->sendMessage($chatId, 'Cuti tidak lagi diajukan lewat bot. Hubungi Admin Reguler untuk mencatat cuti Anda.');
+                }
+
+                // Management Tools. Jalur webhook tidak menerima callback, jadi
+                // hierarki diganti tautan dashboard (dukungCallback=false).
+                $alatTelegram = app(ToolTelegramService::class);
+
+                if (preg_match('/^\/pakai(?:@\S+)?(?:\s+(.+))?$/isu', $text, $cocokPakai)) {
+                    $alatTelegram->pakai($chatId, $technician, trim((string) ($cocokPakai[1] ?? '')), false);
+
+                    return response('OK');
+                }
+
+                if (preg_match('/^\/pinjam(?:@\S+)?\b/i', $text)) {
+                    $alatTelegram->pinjam($chatId, $technician);
+
+                    return response('OK');
+                }
+
+                if (preg_match('/^\/selesai(?:@\S+)?\b/i', $text)) {
+                    $alatTelegram->selesai($chatId, $technician, false);
+
+                    return response('OK');
                 }
 
                 $requestWizard = app(SparepartRequestWizardService::class);

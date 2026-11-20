@@ -6,6 +6,7 @@ use App\Models\BotRegistration;
 use App\Models\Technician;
 use App\Services\ReportFormService;
 use App\Services\Telegram\AssetInfoService;
+use App\Services\ToolTelegramService;
 use App\Services\Telegram\PhotoNotificationBuffer;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -128,6 +129,26 @@ trait TelegramMessageHandlerTrait
         // /req atau /req <keterangan>: mulai wizard request spare part.
         if (preg_match('/^\/req(?:@\S+)?(?:\s+(.+))?$/isu', $text, $cocokReq)) {
             $this->handleRequestSparepart($chatId, $technician, trim((string) ($cocokReq[1] ?? '')));
+            return;
+        }
+
+        // Management Tools: /pakai <nama>, /pinjam (keeper), /selesai.
+        // Ditangani sebelum router wizard supaya tidak terbaca sebagai teks
+        // laporan ketika sesi laporan sedang aktif.
+        $alatTelegram = app(ToolTelegramService::class);
+
+        if (preg_match('/^\/pakai(?:@\S+)?(?:\s+(.+))?$/isu', $text, $cocokPakai)) {
+            $alatTelegram->pakai($chatId, $technician, trim((string) ($cocokPakai[1] ?? '')), true);
+            return;
+        }
+
+        if (preg_match('/^\/pinjam(?:@\S+)?\b/i', $text)) {
+            $alatTelegram->pinjam($chatId, $technician);
+            return;
+        }
+
+        if (preg_match('/^\/selesai(?:@\S+)?\b/i', $text)) {
+            $alatTelegram->selesai($chatId, $technician, true);
             return;
         }
 

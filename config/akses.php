@@ -45,6 +45,12 @@ return [
             'pola'  => ['technicians.*'],
             'link'  => 'technicians.index',
         ],
+        'tools' => [
+            'label' => 'Management Tools',
+            'grup'  => 'Menu Utama',
+            'pola'  => ['tools.*'],
+            'link'  => 'tools.index',
+        ],
         'cuti' => [
             'label' => 'Kelola Cuti Teknisi',
             'grup'  => 'Menu Utama',

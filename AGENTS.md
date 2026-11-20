@@ -88,6 +88,7 @@ Semua berkas di bawah ini ada di `docs/`.
 | [30-request-sparepart.md](docs/30-request-sparepart.md) | Request spare part lewat bot Telegram, tab Request di halaman Sparepart, status PR/PO/delivery, hak akses Staff CM/PM | Menyentuh request spare part, bot `/req`, atau halaman request |
 | [31-import-dokumentasi-asset.md](docs/31-import-dokumentasi-asset.md) | Import dokumentasi foto equipment ke assets.photos: dry-run/apply, pencocokan folder/file, laporan, lokasi D: PROD | Mengimpor atau memeriksa dokumentasi foto aset |
 | [32-service-it.md](docs/32-service-it.md) | Halaman Service IT: kasus dari laporan continue/done, entri manual, catatan, status proses/selesai/rusak | Menyentuh halaman Service IT atau sinkronisasi kasus dari laporan |
+| [33-management-tools.md](docs/33-management-tools.md) | Management Tools: lokasi/rak/unit alat, foto, peminjaman keeper/teknisi lewat Telegram, form token | Menyentuh halaman Management Tools, pinjaman alat, atau perintah /pakai /pinjam /selesai |
 
 ## Dokumen pendukung di `docs/`
 

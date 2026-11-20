@@ -62,6 +62,99 @@ class TelegramService
     }
 
     /**
+     * Kirim foto dengan caption HTML ke chat tertentu.
+     *
+     * Foto dikirim sebagai URL publik (Telegram yang mengunduh), sehingga
+     * berkas harus berada di disk public dan APP_URL dapat diakses Telegram.
+     *
+     * @param  int|string $chatId  ID chat tujuan
+     * @param  string     $photo   URL foto publik
+     * @param  string     $caption Caption (mendukung HTML)
+     * @param  array      $extra   Parameter tambahan (mis. reply_markup)
+     * @return bool
+     */
+    public function sendPhoto(int|string $chatId, string $photo, string $caption = '', array $extra = []): bool
+    {
+        if (! $this->isConfigured()) {
+            Log::info("[Telegram Mock] Would send photo to {$chatId}: {$photo}");
+
+            return false;
+        }
+
+        try {
+            $response = Http::timeout(15)->post("{$this->apiUrl}/sendPhoto", array_merge([
+                'chat_id'    => $chatId,
+                'photo'      => $photo,
+                'caption'    => $caption,
+                'parse_mode' => 'HTML',
+            ], $extra));
+
+            if (! $response->successful()) {
+                Log::warning("Telegram sendPhoto failed to {$chatId}: " . $response->body());
+            }
+
+            return $response->successful();
+        } catch (\Throwable $e) {
+            Log::error("Telegram sendPhoto exception to {$chatId}: " . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Jawab callback query agar indikator loading di Telegram berhenti.
+     */
+    public function answerCallbackQuery(string $callbackId, string $text = ''): bool
+    {
+        if (! $this->isConfigured()) {
+            return false;
+        }
+
+        try {
+            $payload = ['callback_query_id' => $callbackId];
+
+            if ($text !== '') {
+                $payload['text'] = $text;
+            }
+
+            return Http::timeout(10)->post("{$this->apiUrl}/answerCallbackQuery", $payload)->successful();
+        } catch (\Throwable $e) {
+            Log::warning('[Telegram] answerCallbackQuery error: ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Ubah teks pesan yang sudah dikirim (dipakai navigasi inline).
+     */
+    public function editMessageText(int|string $chatId, int $messageId, string $text, array $extra = []): bool
+    {
+        if (! $this->isConfigured()) {
+            return false;
+        }
+
+        try {
+            $response = Http::timeout(10)->post("{$this->apiUrl}/editMessageText", array_merge([
+                'chat_id'    => $chatId,
+                'message_id' => $messageId,
+                'text'       => $text,
+                'parse_mode' => 'HTML',
+            ], $extra));
+
+            if (! $response->successful()) {
+                Log::info('[Telegram] editMessageText tidak berhasil: ' . $response->body());
+            }
+
+            return $response->successful();
+        } catch (\Throwable $e) {
+            Log::warning('[Telegram] editMessageText error: ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
      * Kirim pesan ke banyak teknisi sekaligus (broadcast).
      * Hanya teknisi aktif dengan telegram_id yang akan dikirimi.
      *
@@ -144,6 +237,9 @@ class TelegramService
      */
     public const MENU_COMMANDS = [
         ['command' => 'laporan', 'description' => 'Buat laporan lewat form web'],
+        ['command' => 'pakai', 'description' => 'Pinjam alat untuk diri sendiri'],
+        ['command' => 'pinjam', 'description' => 'Pinjamkan alat (tool keeper)'],
+        ['command' => 'selesai', 'description' => 'Kembalikan alat yang dipinjam'],
         ['command' => 'req', 'description' => 'Request spare part'],
         ['command' => 'info', 'description' => 'Cari informasi perangkat'],
         ['command' => 'reset', 'description' => 'Batalkan sesi laporan atau request'],
