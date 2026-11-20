@@ -31,6 +31,24 @@ test('halaman management tools dapat dibuka administrator', function () {
     $this->actingAs($this->admin)->get(route('tools.keepers.index'))->assertOk()->assertSee('Tool Keeper');
 });
 
+test('dashboard admin menandai card dapat diklik dan rak dapat di-collapse', function () {
+    $lokasi = ToolLocation::create(['name' => 'Workshop Klik']);
+    $rak    = ToolRack::create(['tool_location_id' => $lokasi->id, 'name' => 'Rak Klik']);
+    $alat   = Tool::create([
+        'tool_rack_id' => $rak->id,
+        'name'         => 'Bor Klik',
+        'code'         => 'KLK001',
+        'status'       => Tool::STATUS_TERSEDIA,
+    ]);
+
+    $this->actingAs($this->admin)
+        ->get(route('tools.index'))
+        ->assertOk()
+        ->assertSee('data-href-card="' . route('alat.show', $alat->id) . '"', false)
+        ->assertSee('aria-controls="rak-' . $rak->id . '"', false)
+        ->assertSee('data-collapse-all="tutup"', false);
+});
+
 test('lokasi, rak, dan alat dapat ditambah diubah lalu dihapus', function () {
     $this->actingAs($this->admin)->post(route('tools.locations.store'), [
         'name'        => 'Workshop Mekanik',
@@ -84,7 +102,8 @@ test('lokasi, rak, dan alat dapat ditambah diubah lalu dihapus', function () {
     Storage::disk('public')->assertMissing($fotoLama);
     Storage::disk('public')->assertExists($alat->photo_path);
 
-    $this->actingAs($this->admin)->delete(route('tools.items.destroy', $alat->id))->assertRedirect();
+    $this->actingAs($this->admin)->delete(route('tools.items.destroy', $alat->id))
+        ->assertRedirect(route('tools.index'));
     $this->assertDatabaseMissing('tools', ['id' => $alat->id]);
     Storage::disk('public')->assertMissing($alat->photo_path);
 

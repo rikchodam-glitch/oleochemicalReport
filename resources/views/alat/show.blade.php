@@ -116,7 +116,32 @@
                         </form>
                     @endif
 
-                    @if(! $bolehPinjam && ! $bolehMeminjamkan && ! $bolehKembalikan)
+                    @if($bolehTulis)
+                        <button type="button"
+                                class="tombol-edit-alat px-3 py-2 rounded-lg border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-50"
+                                data-id="{{ $alat->id }}"
+                                data-nama="{{ $alat->name }}"
+                                data-kode="{{ $alat->code }}"
+                                data-rak="{{ $alat->tool_rack_id }}"
+                                data-status="{{ $alat->status }}"
+                                data-catatan="{{ $alat->note }}"
+                                data-ada-foto="{{ $alat->foto_url ? '1' : '0' }}">
+                            Edit Alat
+                        </button>
+
+                        @if($aktif === null)
+                            <form method="POST" action="{{ route('tools.items.destroy', $alat->id) }}"
+                                  onsubmit="return confirm('Hapus alat {{ $alat->name }} ({{ $alat->code }})?')">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="px-3 py-2 rounded-lg border border-rose-300 text-rose-700 text-sm font-semibold hover:bg-rose-50">
+                                    Hapus
+                                </button>
+                            </form>
+                        @endif
+                    @endif
+
+                    @if(! $bolehPinjam && ! $bolehMeminjamkan && ! $bolehKembalikan && ! $bolehTulis)
                         <span class="text-xs text-slate-400">Tidak ada aksi yang tersedia untuk akun ini.</span>
                     @endif
                 </div>
@@ -213,5 +238,9 @@
         'daftarDepartemen' => $daftarDepartemen,
         'aksiPinjamkan'    => route('alat.pinjamkan'),
     ])
+@endif
+
+@if($bolehTulis)
+    @include('tools.partials._modal-alat', ['grup' => $grupRak])
 @endif
 @endsection

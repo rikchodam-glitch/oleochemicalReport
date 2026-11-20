@@ -84,12 +84,27 @@
         </button>
     </div>
 
+    <div class="flex flex-wrap items-center justify-end gap-2">
+        <button type="button" data-collapse-all="buka"
+                class="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            Buka semua
+        </button>
+        <button type="button" data-collapse-all="tutup"
+                class="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            Tutup semua
+        </button>
+    </div>
+
     <div id="wadah-grup" class="space-y-4">
         @forelse($grup as $lokasi)
             <section class="bg-white rounded-xl border border-slate-200 overflow-hidden" data-grup-lokasi="{{ $lokasi['id'] }}">
-                <button type="button" class="w-full flex items-center justify-between gap-3 px-4 py-3 bg-slate-50 hover:bg-slate-100 text-left grup-toggle">
+                <button type="button"
+                        class="w-full flex items-center justify-between gap-3 px-4 py-3 bg-slate-50 hover:bg-slate-100 text-left"
+                        data-collapse-toggle
+                        aria-expanded="true"
+                        aria-controls="lokasi-{{ $lokasi['id'] }}">
                     <span class="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                        <svg class="w-4 h-4 chevron transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg data-collapse-chevron class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                         </svg>
                         {{ $lokasi['name'] }}
@@ -97,15 +112,24 @@
                     <span class="text-xs text-slate-500">{{ collect($lokasi['rak'])->sum(fn($rak) => count($rak['tools'])) }} alat</span>
                 </button>
 
-                <div class="isi-grup px-4 py-3 space-y-4">
+                <div id="lokasi-{{ $lokasi['id'] }}" class="px-4 py-3 space-y-4">
                     @foreach($lokasi['rak'] as $rak)
                         <div data-grup-rak="{{ $rak['id'] }}" class="space-y-2">
-                            <div class="flex items-center justify-between gap-2">
-                                <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500">Rak: {{ $rak['name'] }}</h3>
+                            <button type="button"
+                                    class="w-full flex items-center justify-between gap-2 text-left"
+                                    data-collapse-toggle
+                                    aria-expanded="true"
+                                    aria-controls="rak-{{ $rak['id'] }}">
+                                <span class="flex items-center gap-2">
+                                    <svg data-collapse-chevron class="w-3.5 h-3.5 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                                    </svg>
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Rak: {{ $rak['name'] }}</span>
+                                </span>
                                 <span class="text-[11px] text-slate-400">{{ count($rak['tools']) }} alat</span>
-                            </div>
+                            </button>
 
-                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                            <div id="rak-{{ $rak['id'] }}" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                                 @foreach($rak['tools'] as $alat)
                                     @php
                                         $warnaStatus = [
@@ -115,8 +139,12 @@
                                         ][$alat['status']] ?? 'bg-slate-100 text-slate-600';
                                     @endphp
 
-                                    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col"
+                                    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col cursor-pointer transition-colors hover:border-teal-300"
                                          data-kartu-tool
+                                         data-href-card="{{ route('alat.show', $alat['id']) }}"
+                                         tabindex="0"
+                                         role="link"
+                                         aria-label="Buka detail {{ $alat['name'] }} ({{ $alat['code'] }})"
                                          data-cari="{{ strtolower($alat['name'] . ' ' . $alat['code']) }}"
                                          data-lokasi="{{ $lokasi['id'] }}"
                                          data-rak="{{ $rak['id'] }}"
@@ -168,34 +196,11 @@
                                                 @endif
                                             </div>
 
-                                            <div class="flex items-center gap-2 pt-2 border-t border-slate-100">
-                                                <a href="{{ route('alat.show', $alat['id']) }}"
-                                                   class="text-xs font-semibold text-slate-600 hover:text-slate-800">
-                                                    Log
-                                                </a>
-
-                                                @if($bolehTulis)
-                                                    <button type="button"
-                                                            class="tombol-edit-alat text-xs font-semibold text-blue-600 hover:text-blue-700"
-                                                            data-id="{{ $alat['id'] }}"
-                                                            data-nama="{{ $alat['name'] }}"
-                                                            data-kode="{{ $alat['code'] }}"
-                                                            data-rak="{{ $rak['id'] }}"
-                                                            data-status="{{ $alat['status'] }}"
-                                                            data-catatan="{{ $alat['note'] }}"
-                                                            data-ada-foto="{{ $alat['foto_url'] ? '1' : '0' }}">
-                                                        Edit
-                                                    </button>
-
-                                                    @if($alat['bisa_dihapus'])
-                                                        <form method="POST" action="{{ route('tools.items.destroy', $alat['id']) }}"
-                                                              onsubmit="return confirm('Hapus alat {{ $alat['name'] }} ({{ $alat['code'] }})?')">
-                                                            @csrf
-                                                            @method('DELETE')
-                                                            <button type="submit" class="text-xs font-semibold text-rose-600 hover:text-rose-700">Hapus</button>
-                                                        </form>
-                                                    @endif
-                                                @endif
+                                            <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                                                <span class="text-[11px] text-slate-400">Klik kartu untuk detail</span>
+                                                <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                                                </svg>
                                             </div>
                                         </div>
                                     </div>
@@ -232,6 +237,8 @@
 @endsection
 
 @push('scripts')
+@include('tools.partials._collapse-script')
+@include('tools.partials._card-klik-script')
 <script>
 (function () {
     const kartu = Array.from(document.querySelectorAll('[data-kartu-tool]'));
@@ -251,14 +258,6 @@
             opsi.hidden = !cocok;
             if (!cocok && filterRak.value === opsi.value) filterRak.value = '';
         });
-    }
-
-    function bukaGrup(lokasiEl) {
-        const isi = lokasiEl.querySelector('.isi-grup');
-        const chevron = lokasiEl.querySelector('.chevron');
-        if (!isi) return;
-        isi.classList.remove('hidden');
-        if (chevron) chevron.style.transform = 'rotate(90deg)';
     }
 
     function terapkan() {
@@ -290,10 +289,13 @@
                 return k.style.display !== 'none';
             });
             el.style.display = ada ? '' : 'none';
-            if (ada && (q || lokasi || rak || status)) bukaGrup(el);
         });
 
         if (pesanKosong) pesanKosong.classList.toggle('hidden', jumlahTampil > 0);
+
+        if ((q || lokasi || rak || status) && typeof window.bukaSemuaCollapse === 'function') {
+            window.bukaSemuaCollapse();
+        }
     }
 
     [cari, filterStatus].forEach(function (el) {
@@ -320,20 +322,6 @@
             terapkan();
         });
     }
-
-    document.querySelectorAll('.grup-toggle').forEach(function (tombol) {
-        tombol.addEventListener('click', function () {
-            const isi = tombol.parentElement.querySelector('.isi-grup');
-            const chevron = tombol.querySelector('.chevron');
-            if (!isi) return;
-            const tertutup = isi.classList.toggle('hidden');
-            if (chevron) chevron.style.transform = tertutup ? '' : 'rotate(90deg)';
-        });
-    });
-
-    document.querySelectorAll('.chevron').forEach(function (chevron) {
-        chevron.style.transform = 'rotate(90deg)';
-    });
 
     saringOpsiRak();
     terapkan();

@@ -224,6 +224,29 @@ test('durasi pinjaman aktif dihitung sampai sekarang', function () {
         ->and($pinjaman->durasiTeks())->toContain('masih dipinjam');
 });
 
+test('card alat dapat diklik dan rak dapat di-collapse', function () {
+    $this->actingAs($this->akunTeknisi)
+        ->get(route('alat.index'))
+        ->assertOk()
+        ->assertSee('data-href-card="' . route('alat.show', $this->alat->id) . '"', false)
+        ->assertSee('aria-controls="akun-rak-' . $this->rak->id . '"', false)
+        ->assertSee('data-collapse-toggle', false)
+        ->assertSee('Tutup semua');
+});
+
+test('halaman detail alat menampilkan edit hanya untuk administrator', function () {
+    $this->actingAs($this->admin)
+        ->get(route('alat.show', $this->alat->id))
+        ->assertOk()
+        ->assertSee('Edit Alat')
+        ->assertSee('data-id="' . $this->alat->id . '"', false);
+
+    $this->actingAs($this->akunTeknisi)
+        ->get(route('alat.show', $this->alat->id))
+        ->assertOk()
+        ->assertDontSee('Edit Alat');
+});
+
 test('riwayat peminjaman admin punya tombol menuju log alat', function () {
     $layanan = app(ToolLendingService::class);
     $layanan->pinjamkan($this->alat, $layanan->dataPeminjamTeknisi($this->teknisi), ToolLoan::HANDLED_SELF, $this->teknisi);
