@@ -169,6 +169,59 @@ class ToolLoan extends Model
     }
 
     /**
+     * Lama peminjaman dalam menit.
+     *
+     * Pinjaman aktif dihitung sampai waktu sekarang. Selisih negatif (mis.
+     * jam server mundur) dianggap nol.
+     */
+    public function durasiMenit(): int
+    {
+        if ($this->borrowed_at === null) {
+            return 0;
+        }
+
+        $selesai = $this->returned_at ?? now();
+
+        return max(0, (int) floor($this->borrowed_at->diffInMinutes($selesai, true)));
+    }
+
+    /**
+     * Lama peminjaman dalam teks ringkas, mis. "2 hari 3 jam".
+     */
+    public function durasiTeks(): string
+    {
+        $menit = $this->durasiMenit();
+
+        if ($menit < 1) {
+            $teks = 'kurang dari 1 menit';
+        } elseif ($menit < 60) {
+            $teks = $menit . ' menit';
+        } else {
+            $hari = intdiv($menit, 1440);
+            $sisa = $menit % 1440;
+            $jam  = intdiv($sisa, 60);
+            $sisaMenit = $sisa % 60;
+            $bagian = [];
+
+            if ($hari > 0) {
+                $bagian[] = $hari . ' hari';
+            }
+
+            if ($jam > 0) {
+                $bagian[] = $jam . ' jam';
+            }
+
+            if ($sisaMenit > 0 || $bagian === []) {
+                $bagian[] = $sisaMenit . ' menit';
+            }
+
+            $teks = implode(' ', $bagian);
+        }
+
+        return $this->masihDipinjam() ? $teks . ' (masih dipinjam)' : $teks;
+    }
+
+    /**
      * Buat kode pinjaman harian: PJM-YYYYMMDD-XXXX.
      */
     public static function generateKode(): string
