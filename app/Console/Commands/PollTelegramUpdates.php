@@ -9,6 +9,7 @@ use App\Services\AiService;
 use App\Services\Telegram\PhotoStorageService;
 use App\Services\Telegram\ReportWizardService;
 use App\Services\Telegram\SparepartRequestWizardService;
+use App\Services\ToolTelegramService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -307,6 +308,14 @@ class PollTelegramUpdates extends Command
                         $this->editMessageTextSimple($chatId, $messageId, $editMessage);
                     }
                 }
+
+                return;
+            }
+
+            // Tombol Management Tools (hierarki alat dan pengembalian) berdiri
+            // sendiri, tidak membutuhkan sesi wizard laporan.
+            if (str_starts_with($data, 'alat:')) {
+                app(ToolTelegramService::class)->handleCallback($callback, $chatId, $messageId);
 
                 return;
             }

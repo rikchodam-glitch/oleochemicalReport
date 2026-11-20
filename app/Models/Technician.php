@@ -19,6 +19,7 @@ class Technician extends Model
         'group',
         'section',
         'status',
+        'is_tool_keeper',
         'approved_by',
         'approved_at',
         'last_active_at',
@@ -28,6 +29,7 @@ class Technician extends Model
     {
         return [
             'area_ids'       => 'array',
+            'is_tool_keeper' => 'boolean',
             'approved_at'    => 'datetime',
             'last_active_at' => 'datetime',
         ];
@@ -253,5 +255,29 @@ class Technician extends Model
     public function scopePending($query)
     {
         return $query->where('status', 'pending');
+    }
+
+    /**
+     * Batasi ke teknisi yang ditunjuk sebagai tool keeper.
+     */
+    public function scopeToolKeeper($query)
+    {
+        return $query->where('is_tool_keeper', true);
+    }
+
+    /**
+     * Apakah teknisi ini tool keeper aktif.
+     */
+    public function toolKeeperAktif(): bool
+    {
+        return $this->is_tool_keeper && $this->status === 'active';
+    }
+
+    /**
+     * Pinjaman alat yang dilakukan teknisi ini sebagai peminjam.
+     */
+    public function toolLoans(): HasMany
+    {
+        return $this->hasMany(ToolLoan::class);
     }
 }

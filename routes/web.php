@@ -33,6 +33,10 @@ use App\Http\Controllers\StorageController;
 use App\Http\Controllers\ShiftScheduleController;
 use App\Http\Controllers\TechnicianController;
 use App\Http\Controllers\TelegramWebhookController;
+use App\Http\Controllers\ToolController;
+use App\Http\Controllers\ToolFormController;
+use App\Http\Controllers\ToolKeeperController;
+use App\Http\Controllers\ToolLoanController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WorkOrderController;
 use Illuminate\Support\Facades\Auth;
@@ -53,6 +57,16 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::get('/laporan/selesai', [ReportFormController::class, 'selesai'])->name('laporan.selesai');
     Route::get('/laporan/{token}/tipe-alat', [ReportFormController::class, 'tipeAlat'])->name('laporan.api.tipe');
     Route::get('/laporan/{token}/cari-alat', [ReportFormController::class, 'cariAlat'])->name('laporan.api.alat');
+});
+
+// Form Management Tools publik dari token /pinjam, /pakai, dan /selesai
+// (tanpa login panel; identitas selalu dari token).
+Route::middleware('throttle:60,1')->group(function () {
+    Route::get('/tools/form/{token}', [ToolFormController::class, 'show'])->name('tools.form');
+    Route::post('/tools/form/{token}/pinjam', [ToolFormController::class, 'pinjam'])->name('tools.form.pinjam');
+    Route::post('/tools/form/{token}/kembali/{toolLoan}', [ToolFormController::class, 'kembalikan'])->name('tools.form.kembali');
+    Route::post('/tools/form/{token}/kembali-semua', [ToolFormController::class, 'kembalikanSemua'])->name('tools.form.kembali-semua');
+    Route::get('/tools/selesai', [ToolFormController::class, 'selesai'])->name('tools.form.selesai');
 });
 
 // Cuti teknisi:
@@ -300,6 +314,29 @@ Route::post('/assets/unlinked-funcloc/run-sync', [AssetController::class, 'runAu
     Route::get('/it-service/asset-search', [ItServiceController::class, 'assetSearch'])->name('it-service.asset-search');
     Route::post('/it-service', [ItServiceController::class, 'store'])->name('it-service.store');
     Route::put('/it-service/{itService}', [ItServiceController::class, 'update'])->name('it-service.update');
+
+    // Management Tools: master lokasi/rak/alat, peminjaman, dan penunjukan
+    // tool keeper. Transaksi keeper/teknisi lewat bot memakai route form token
+    // publik di atas.
+    Route::prefix('tools')->name('tools.')->group(function () {
+        Route::get('/', [ToolController::class, 'index'])->name('index');
+        Route::get('/lokasi-rak', [ToolController::class, 'lokasiRak'])->name('locations.index');
+        Route::post('/lokasi', [ToolController::class, 'simpanLokasi'])->name('locations.store');
+        Route::put('/lokasi/{toolLocation}', [ToolController::class, 'ubahLokasi'])->name('locations.update');
+        Route::delete('/lokasi/{toolLocation}', [ToolController::class, 'hapusLokasi'])->name('locations.destroy');
+        Route::post('/rak', [ToolController::class, 'simpanRak'])->name('racks.store');
+        Route::put('/rak/{toolRack}', [ToolController::class, 'ubahRak'])->name('racks.update');
+        Route::delete('/rak/{toolRack}', [ToolController::class, 'hapusRak'])->name('racks.destroy');
+        Route::post('/alat', [ToolController::class, 'simpanTool'])->name('items.store');
+        Route::put('/alat/{tool}', [ToolController::class, 'ubahTool'])->name('items.update');
+        Route::delete('/alat/{tool}', [ToolController::class, 'hapusTool'])->name('items.destroy');
+        Route::get('/riwayat', [ToolLoanController::class, 'index'])->name('loans.index');
+        Route::post('/pinjamkan', [ToolLoanController::class, 'store'])->name('loans.store');
+        Route::post('/pinjaman/{toolLoan}/kembali', [ToolLoanController::class, 'kembalikan'])->name('loans.kembalikan');
+        Route::get('/keeper', [ToolKeeperController::class, 'index'])->name('keepers.index');
+        Route::post('/keeper/{technician}', [ToolKeeperController::class, 'toggle'])->name('keepers.toggle');
+    });
+
     // Bot
     Route::get('/bot', [BotController::class, 'index'])->name('bot.index');
     Route::post('/bot/settings', [BotController::class, 'updateSettings'])->name('bot.settings.update');
