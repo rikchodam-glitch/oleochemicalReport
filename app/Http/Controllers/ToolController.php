@@ -318,7 +318,7 @@ class ToolController extends Controller
 
         $tool->delete();
 
-        return back()->with('success', 'Alat berhasil dihapus.');
+        return redirect()->route('tools.index')->with('success', 'Alat berhasil dihapus.');
     }
 
     /**

@@ -39,12 +39,27 @@
         </div>
     </div>
 
+    <div class="flex flex-wrap items-center justify-end gap-2">
+        <button type="button" data-collapse-all="buka"
+                class="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            Buka semua
+        </button>
+        <button type="button" data-collapse-all="tutup"
+                class="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            Tutup semua
+        </button>
+    </div>
+
     <div id="wadah-grup-form" class="space-y-4">
         @forelse($grup as $lokasi)
             <section class="bg-white rounded-xl border border-slate-200 overflow-hidden" data-grup-lokasi="{{ $lokasi['id'] }}">
-                <button type="button" class="toggle-lokasi-form w-full px-4 py-3 bg-slate-50 flex items-center justify-between text-left hover:bg-slate-100">
+                <button type="button"
+                        class="w-full px-4 py-3 bg-slate-50 flex items-center justify-between text-left hover:bg-slate-100"
+                        data-collapse-toggle
+                        aria-expanded="true"
+                        aria-controls="form-lokasi-{{ $lokasi['id'] }}">
                     <span class="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                        <svg class="chevron-lokasi-form w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg data-collapse-chevron class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                         </svg>
                         {{ $lokasi['name'] }}
@@ -52,17 +67,24 @@
                     <span class="text-xs text-slate-500">{{ collect($lokasi['rak'])->sum(fn($rak) => count($rak['tools'])) }} alat</span>
                 </button>
 
-                <div class="isi-lokasi-form px-4 py-3 space-y-4">
+                <div id="form-lokasi-{{ $lokasi['id'] }}" class="px-4 py-3 space-y-4">
                     @foreach($lokasi['rak'] as $rak)
                         <div data-grup-rak="{{ $rak['id'] }}" class="space-y-2">
-                            <button type="button" class="toggle-rak-form w-full flex items-center gap-2 text-left">
-                                <svg class="chevron-rak-form w-3.5 h-3.5 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                                </svg>
-                                <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Rak: {{ $rak['name'] }}</span>
+                            <button type="button"
+                                    class="w-full flex items-center justify-between gap-2 text-left"
+                                    data-collapse-toggle
+                                    aria-expanded="true"
+                                    aria-controls="form-rak-{{ $rak['id'] }}">
+                                <span class="flex items-center gap-2">
+                                    <svg data-collapse-chevron class="w-3.5 h-3.5 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                                    </svg>
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Rak: {{ $rak['name'] }}</span>
+                                </span>
+                                <span class="text-[11px] text-slate-400">{{ count($rak['tools']) }} alat</span>
                             </button>
 
-                            <div class="isi-rak-form grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                            <div id="form-rak-{{ $rak['id'] }}" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                                 @foreach($rak['tools'] as $alat)
                                     @php
                                         $warna = [
@@ -220,6 +242,8 @@
     </div>
 </form>
 
+@include('tools.partials._collapse-script')
+
 <script>
 (function () {
     const form = document.getElementById('form-pinjam-alat');
@@ -280,36 +304,10 @@
 
         if (pesanKosong) pesanKosong.classList.toggle('hidden', jumlah > 0);
 
-        if (q || lokasi || rak || status) {
-            document.querySelectorAll('.isi-lokasi-form, .isi-rak-form').forEach(function (el) {
-                el.classList.remove('hidden');
-            });
+        if ((q || lokasi || rak || status) && typeof window.bukaSemuaCollapse === 'function') {
+            window.bukaSemuaCollapse();
         }
     }
-
-    document.querySelectorAll('.toggle-lokasi-form').forEach(function (tombol) {
-        tombol.addEventListener('click', function () {
-            const isi = tombol.parentElement.querySelector('.isi-lokasi-form');
-            const chevron = tombol.querySelector('.chevron-lokasi-form');
-            if (!isi) return;
-            const tertutup = isi.classList.toggle('hidden');
-            if (chevron) chevron.style.transform = tertutup ? '' : 'rotate(90deg)';
-        });
-    });
-
-    document.querySelectorAll('.toggle-rak-form').forEach(function (tombol) {
-        tombol.addEventListener('click', function () {
-            const isi = tombol.parentElement.querySelector('.isi-rak-form');
-            const chevron = tombol.querySelector('.chevron-rak-form');
-            if (!isi) return;
-            const tertutup = isi.classList.toggle('hidden');
-            if (chevron) chevron.style.transform = tertutup ? '' : 'rotate(90deg)';
-        });
-    });
-
-    document.querySelectorAll('.chevron-lokasi-form, .chevron-rak-form').forEach(function (chevron) {
-        chevron.style.transform = 'rotate(90deg)';
-    });
 
     [cariAlat, filterStatus].forEach(function (el) {
         if (el) el.addEventListener('input', terapkan);

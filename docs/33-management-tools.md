@@ -38,9 +38,15 @@ Tab:
 1. **Dashboard Tools**
    - Ringkasan total/tersedia/dipakai/rusak.
    - Pencarian nama/kode yang responsif, filter Lokasi, Rak, dan status.
-   - Card 1:1 per unit, dikelompokkan dan dapat di-collapse per Lokasi > Rak.
-   - Card menampilkan foto, status, peminjam aktif atau peminjam terakhir,
-     tombol Pinjamkan/Edit/Hapus untuk administrator.
+   - Card 1:1 per unit, dikelompokkan dan dapat di-collapse per **Lokasi dan
+     Rak**. Tersedia tombol **Buka semua** dan **Tutup semua**; filter yang
+     aktif otomatis membuka panel yang diperlukan.
+   - Seluruh area card dapat diklik menuju halaman detail alat. Tombol aksi di
+     dalam card tidak ikut memicu navigasi.
+   - Card menampilkan foto, status, peminjam aktif atau peminjam terakhir, dan
+     tombol Pinjamkan untuk administrator.
+   - Edit dan hapus alat dilakukan dari halaman detail alat agar card tetap
+     ringkas.
 2. **Lokasi & Rak** — CRUD lokasi dan rak, termasuk aturan hapus.
 3. **Riwayat Peminjaman** — filter status/tanggal/lokasi/rak dan pencarian,
    tombol Kembalikan per pinjaman.
@@ -76,6 +82,8 @@ ini menampilkan:
 
 - identitas alat, foto, lokasi/rak, status, dan peminjam aktif/terakhir;
 - aksi pinjam/pinjamkan/kembalikan sesuai hak akun;
+- administrator dapat **Edit Alat** (modal yang sama dengan dashboard) dan
+  **Hapus** selama alat tidak sedang dipinjam;
 - log lengkap pinjaman dengan filter **dari tanggal** dan **sampai tanggal**,
   pagination 20 baris;
 - **durasi** tiap pinjaman (hari/jam/menit); pinjaman aktif dihitung sampai
@@ -184,7 +192,8 @@ pengembalian, serta catatan.
   `ToolLoanNotifier.php`, `ToolTelegramService.php`
 - `app/Http/Controllers/ToolController.php`, `ToolLoanController.php`,
   `ToolKeeperController.php`, `ToolFormController.php`, `AlatSayaController.php`
-- `resources/views/tools/**`, `resources/views/alat/**`
+- `resources/views/tools/**` (termasuk `partials/_collapse-script.blade.php`
+  dan `partials/_card-klik-script.blade.php`), `resources/views/alat/**`
 - `app/Models/ToolLoan.php` (durasi peminjaman)
 - `app/Services/TelegramService.php` (sendPhoto, editMessageText,
   answerCallbackQuery, menu command)
@@ -199,7 +208,7 @@ pengembalian, serta catatan.
 
 - `ManagementToolsTest`, `ToolLendingTest`, `ToolFormTest`, `ToolTelegramTest`,
   `AlatSayaTest`, `TelegramMenuTest` hijau.
-- Seluruh suite: 841 test hijau, 4.255 assertion.
+- Seluruh suite: 844 test hijau, 4.270 assertion.
 - `php artisan view:cache` sukses dan `npm run build` sukses.
 
 ## Checklist deploy

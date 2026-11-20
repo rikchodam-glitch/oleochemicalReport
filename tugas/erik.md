@@ -1,17 +1,16 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-11-20 15:26 WIB
+Diperbarui: 2026-11-20 15:43 WIB
 
-- Cabang aktif: `tugas/erik/log-alat-dan-peminjaman-web`
-- Mulai: 2026-11-20 15:26
+- Cabang aktif: `tugas/erik/card-detail-alat-dan-collapse-rak`
+- Mulai: 2026-11-20 15:43
 - Status: SELESAI (PR siap, menunggu review/merge integrator)
 - Modul/berkas yang disentuh:
-  - Halaman detail alat + log pinjaman (filter tanggal, durasi) `alat.show`
-  - Halaman web akun teknisi/keeper: pinjam, pinjamkan, kembalikan
-  - ToolController/ToolLoanController view, routes, config akses, sidebar
-  - tests/Feature/AlatSayaTest.php, TelegramMenuTest
-  - docs/33-management-tools.md, docs/27, AGENTS.md
-- Catatan: berkas kotor sesi lain TIDAK ikut di-commit. PR: tugas/pr-log-alat-dan-peminjaman-web.md. Menu Telegram PROD sudah disinkronkan.
+  - Card alat (admin dan /alat) dapat diklik ke halaman detail
+  - Halaman detail alat mendapat edit/hapus untuk admin
+  - Collapse rak di dashboard admin + script collapse bersama
+  - tools/index, alat/index, alat/show, partial collapse, docs/33
+- Catatan: berkas kotor sesi lain TIDAK ikut di-commit. PR: tugas/pr-card-detail-dan-collapse-rak.md.
 
 ## Riwayat
-- tugas/erik/management-tools-dan-peminjaman-telegram (mulai 2026-11-20 09:14) -> dilanjutkan 2026-11-20 15:26
+- tugas/erik/log-alat-dan-peminjaman-web (mulai 2026-11-20 15:26) -> dilanjutkan 2026-11-20 15:43

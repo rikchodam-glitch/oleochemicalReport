@@ -100,11 +100,13 @@ class AlatSayaController extends Controller
             'sampai'            => $sampai,
             'aktif'             => $aktif,
             'teknisi'           => $teknisi,
+            'bolehTulis'        => (bool) auth()->user()?->bolehMenulis(),
             'bolehMeminjamkan'  => $bolehMeminjamkan,
             'bolehPinjam'       => $teknisi !== null && $aktif === null && $tool->status === Tool::STATUS_TERSEDIA,
             'bolehKembalikan'   => $aktif !== null && ($admin || $bolehMeminjamkan || $milikSendiri),
             'daftarTeknisi'     => $bolehMeminjamkan ? $this->teknisiPerBagian() : [],
             'daftarDepartemen'  => $bolehMeminjamkan ? app(LocationHierarchyService::class)->semuaDepartemen() : collect(),
+            'grupRak'           => $this->pilihanRak(),
         ]);
     }
 
@@ -322,6 +324,29 @@ class AlatSayaController extends Controller
             ->orderByDesc('borrowed_at')
             ->limit(100)
             ->get();
+    }
+
+    /**
+     * Pilihan lokasi/rak untuk modal edit alat.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function pilihanRak(): array
+    {
+        return ToolLocation::query()
+            ->with(['racks' => fn ($query) => $query->orderBy('name')])
+            ->orderBy('name')
+            ->get()
+            ->map(fn (ToolLocation $lokasi): array => [
+                'id'   => $lokasi->id,
+                'name' => $lokasi->name,
+                'rak'  => $lokasi->racks->map(fn (ToolRack $rak): array => [
+                    'id'   => $rak->id,
+                    'name' => $rak->name,
+                ])->values()->all(),
+            ])
+            ->values()
+            ->all();
     }
 
     /**
