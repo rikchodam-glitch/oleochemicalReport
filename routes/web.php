@@ -41,6 +41,7 @@ use App\Http\Controllers\ToolController;
 use App\Http\Controllers\ToolFormController;
 use App\Http\Controllers\ToolKeeperController;
 use App\Http\Controllers\ToolLoanController;
+use App\Http\Controllers\ToolSearchController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WorkOrderController;
 use Illuminate\Support\Facades\Auth;
@@ -96,6 +97,9 @@ Route::middleware('admin')->group(function () {
 // pinjamkan = keeper/administrator, kembalikan = pemilik/keeper/admin).
 Route::middleware('admin')->prefix('alat')->name('alat.')->group(function () {
     Route::get('/', [AlatSayaController::class, 'index'])->name('index');
+    Route::get('/cari', ToolSearchController::class)->middleware('throttle:120,1')->name('cari');
+    Route::get('/kembali', [AlatSayaController::class, 'returns'])->name('returns.index');
+    Route::post('/kembali/{toolLoan}/terima', [AlatSayaController::class, 'terimaKembali'])->name('returns.terima');
     Route::post('/pinjamkan', [AlatSayaController::class, 'pinjamkan'])->name('pinjamkan');
     Route::post('/pinjaman/{toolLoan}/kembali', [AlatSayaController::class, 'kembalikan'])->name('kembali');
     Route::get('/{tool}', [AlatSayaController::class, 'show'])->name('show');
@@ -351,7 +355,17 @@ Route::post('/assets/unlinked-funcloc/run-sync', [AssetController::class, 'runAu
     // publik di atas.
     Route::prefix('tools')->name('tools.')->group(function () {
         Route::get('/', [ToolController::class, 'index'])->name('index');
+        Route::get('/cari', ToolSearchController::class)->middleware('throttle:120,1')->name('cari');
         Route::get('/lokasi-rak', [ToolController::class, 'lokasiRak'])->name('locations.index');
+        Route::get('/jenis-kelompok', [ToolController::class, 'katalog'])->name('catalog.index');
+        Route::post('/jenis', [ToolController::class, 'simpanJenis'])->name('types.store');
+        Route::put('/jenis/{toolType}', [ToolController::class, 'ubahJenis'])->name('types.update');
+        Route::delete('/jenis/{toolType}', [ToolController::class, 'hapusJenis'])->name('types.destroy');
+        Route::post('/kelompok', [ToolController::class, 'simpanKelompok'])->name('groups.store');
+        Route::put('/kelompok/{toolGroup}', [ToolController::class, 'ubahKelompok'])->name('groups.update');
+        Route::delete('/kelompok/{toolGroup}', [ToolController::class, 'hapusKelompok'])->name('groups.destroy');
+        Route::get('/kembali', [ToolController::class, 'returns'])->name('returns.index');
+        Route::post('/kembali/{toolLoan}/terima', [ToolController::class, 'terimaKembali'])->name('returns.terima');
         Route::post('/lokasi', [ToolController::class, 'simpanLokasi'])->name('locations.store');
         Route::put('/lokasi/{toolLocation}', [ToolController::class, 'ubahLokasi'])->name('locations.update');
         Route::delete('/lokasi/{toolLocation}', [ToolController::class, 'hapusLokasi'])->name('locations.destroy');

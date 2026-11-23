@@ -44,6 +44,10 @@ class ToolLoan extends Model
         'borrower_department_nama',
         'borrowed_at',
         'returned_at',
+        'return_requested_at',
+        'return_requested_by_type',
+        'return_requested_by_technician_id',
+        'return_requested_by_user_id',
         'handled_by_type',
         'handled_by_technician_id',
         'handled_by_user_id',
@@ -61,8 +65,9 @@ class ToolLoan extends Model
     protected function casts(): array
     {
         return [
-            'borrowed_at' => 'datetime',
-            'returned_at' => 'datetime',
+            'borrowed_at'         => 'datetime',
+            'returned_at'         => 'datetime',
+            'return_requested_at' => 'datetime',
         ];
     }
 
@@ -107,6 +112,22 @@ class ToolLoan extends Model
     }
 
     /**
+     * Teknisi yang mengajukan pengembalian.
+     */
+    public function returnRequesterTechnician(): BelongsTo
+    {
+        return $this->belongsTo(Technician::class, 'return_requested_by_technician_id');
+    }
+
+    /**
+     * User yang mengajukan pengembalian.
+     */
+    public function returnRequesterUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'return_requested_by_user_id');
+    }
+
+    /**
      * Teknisi yang menerima kembali alat.
      */
     public function returnerTechnician(): BelongsTo
@@ -139,6 +160,14 @@ class ToolLoan extends Model
     }
 
     /**
+     * Pinjaman yang sudah diajukan kembali tetapi belum diterima keeper.
+     */
+    public function scopeMenungguKembali(Builder $query): Builder
+    {
+        return $query->whereNull('returned_at')->whereNotNull('return_requested_at');
+    }
+
+    /**
      * Apakah pinjaman masih berjalan.
      */
     public function masihDipinjam(): bool
@@ -147,11 +176,23 @@ class ToolLoan extends Model
     }
 
     /**
+     * Apakah peminjam sudah mengajukan pengembalian dan menunggu keeper.
+     */
+    public function menungguPenerimaan(): bool
+    {
+        return $this->returned_at === null && $this->return_requested_at !== null;
+    }
+
+    /**
      * Label status pinjaman.
      */
     public function statusLabel(): string
     {
-        return $this->masihDipinjam() ? 'Dipinjam' : 'Dikembalikan';
+        if ($this->returned_at !== null) {
+            return 'Dikembalikan';
+        }
+
+        return $this->menungguPenerimaan() ? 'Menunggu diterima' : 'Dipinjam';
     }
 
     /**
@@ -216,6 +257,10 @@ class ToolLoan extends Model
             }
 
             $teks = implode(' ', $bagian);
+        }
+
+        if ($this->menungguPenerimaan()) {
+            return $teks . ' (menunggu diterima)';
         }
 
         return $this->masihDipinjam() ? $teks . ' (masih dipinjam)' : $teks;

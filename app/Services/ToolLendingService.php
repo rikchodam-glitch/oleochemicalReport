@@ -93,17 +93,71 @@ class ToolLendingService
     }
 
     /**
-     * Catat pengembalian satu pinjaman.
+     * Ajukan pengembalian alat; alat tetap berstatus dipakai sampai keeper
+     * menerima fisiknya.
      *
-     * @param  ToolLoan        $pinjaman       Pinjaman yang dikembalikan
-     * @param  string          $jenisPengembali ToolLoan::HANDLED_*
-     * @param  Technician|null $teknisi         Penerima/pengembali teknisi
+     * @param  ToolLoan        $pinjaman       Pinjaman yang diajukan kembali
+     * @param  string          $jenisPengaju   ToolLoan::HANDLED_*
+     * @param  Technician|null $teknisi         Pengaju teknisi
+     * @param  User|null       $user            Pengaju admin web
+     * @return ToolLoan
+     */
+    public function mintaKembali(
+        ToolLoan $pinjaman,
+        string $jenisPengaju,
+        ?Technician $teknisi = null,
+        ?User $user = null
+    ): ToolLoan {
+        $baruDiajukan = false;
+
+        $hasil = DB::transaction(function () use (
+            $pinjaman,
+            $jenisPengaju,
+            $teknisi,
+            $user,
+            &$baruDiajukan
+        ): ToolLoan {
+            $terkunci = ToolLoan::query()->lockForUpdate()->findOrFail($pinjaman->id);
+
+            if ($terkunci->returned_at !== null) {
+                return $terkunci;
+            }
+
+            if ($terkunci->return_requested_at === null) {
+                $terkunci->update([
+                    'return_requested_at'                  => now(),
+                    'return_requested_by_type'             => $jenisPengaju,
+                    'return_requested_by_technician_id'    => $teknisi?->id,
+                    'return_requested_by_user_id'          => $user?->id,
+                ]);
+
+                $baruDiajukan = true;
+            }
+
+            return $terkunci->load(['technician', 'tool', 'borrowerDepartment']);
+        });
+
+        if ($baruDiajukan) {
+            $this->notifier->kirimPermintaanKembali($hasil);
+        }
+
+        return $hasil;
+    }
+
+    /**
+     * Terima pengembalian (final): alat kembali tersedia.
+     *
+     * Dipakai keeper/administrator setelah memeriksa fisik alat.
+     *
+     * @param  ToolLoan        $pinjaman       Pinjaman yang diterima kembali
+     * @param  string          $jenisPenerima  ToolLoan::HANDLED_*
+     * @param  Technician|null $teknisi         Penerima teknisi
      * @param  User|null       $user            Penerima admin web
      * @return ToolLoan
      */
-    public function kembalikan(
+    public function terimaKembali(
         ToolLoan $pinjaman,
-        string $jenisPengembali,
+        string $jenisPenerima,
         ?Technician $teknisi = null,
         ?User $user = null
     ): ToolLoan {
@@ -111,7 +165,7 @@ class ToolLendingService
 
         $hasil = DB::transaction(function () use (
             $pinjaman,
-            $jenisPengembali,
+            $jenisPenerima,
             $teknisi,
             $user,
             &$baruDikembalikan
@@ -123,10 +177,11 @@ class ToolLendingService
             }
 
             $terkunci->update([
-                'returned_at'                => now(),
-                'returned_by_type'           => $jenisPengembali,
-                'returned_by_technician_id'  => $teknisi?->id,
-                'returned_by_user_id'        => $user?->id,
+                'return_requested_at'         => $terkunci->return_requested_at ?? now(),
+                'returned_at'                 => now(),
+                'returned_by_type'            => $jenisPenerima,
+                'returned_by_technician_id'   => $teknisi?->id,
+                'returned_by_user_id'         => $user?->id,
             ]);
 
             if ($terkunci->tool_id !== null) {
@@ -146,6 +201,42 @@ class ToolLendingService
         }
 
         return $hasil;
+    }
+
+    /**
+     * Alias lama: pengembalian final (keeper/administrator).
+     */
+    public function kembalikan(
+        ToolLoan $pinjaman,
+        string $jenisPengembali,
+        ?Technician $teknisi = null,
+        ?User $user = null
+    ): ToolLoan {
+        return $this->terimaKembali($pinjaman, $jenisPengembali, $teknisi, $user);
+    }
+
+    /**
+     * Ajukan pengembalian semua pinjaman aktif satu teknisi.
+     *
+     * @return int Jumlah pinjaman yang diajukan
+     */
+    public function mintaKembaliSemua(Technician $teknisi, string $jenisPengaju = ToolLoan::HANDLED_SELF): int
+    {
+        $daftar = ToolLoan::query()
+            ->where('technician_id', $teknisi->id)
+            ->aktif()
+            ->whereNull('return_requested_at')
+            ->orderBy('id')
+            ->get();
+
+        $jumlah = 0;
+
+        foreach ($daftar as $pinjaman) {
+            $this->mintaKembali($pinjaman, $jenisPengaju, $teknisi);
+            $jumlah++;
+        }
+
+        return $jumlah;
     }
 
     /**

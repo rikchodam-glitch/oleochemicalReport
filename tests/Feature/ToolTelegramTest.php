@@ -215,11 +215,12 @@ test('/selesai teknisi menampilkan daftar pinjaman dan tombol kembalikan', funct
 
     kirimCallbackAlat('55001', 'alat:ret:' . $pinjaman->id);
 
-    expect($pinjaman->fresh()->returned_at)->not->toBeNull()
-        ->and($this->alat->fresh()->status)->toBe(Tool::STATUS_TERSEDIA);
+    expect($pinjaman->fresh()->return_requested_at)->not->toBeNull()
+        ->and($pinjaman->fresh()->returned_at)->toBeNull()
+        ->and($this->alat->fresh()->status)->toBe(Tool::STATUS_DIPAKAI);
 
     Http::assertSent(fn ($http) => str_contains((string) $http->url(), '/editMessageText')
-        && str_contains((string) ($http['text'] ?? ''), 'sudah dikembalikan'));
+        && str_contains((string) ($http['text'] ?? ''), 'Pengajuan pengembalian'));
 });
 
 test('/selesai keeper mengirim tautan form pengembalian', function () {
@@ -232,7 +233,7 @@ test('/selesai keeper mengirim tautan form pengembalian', function () {
 
     Http::assertSent(fn ($http) => str_contains((string) $http->url(), '/sendMessage')
         && (string) ($http['chat_id'] ?? '') === '55002'
-        && str_contains((string) ($http['text'] ?? ''), 'Form Pengembalian Alat')
+        && str_contains((string) ($http['text'] ?? ''), 'Barang Kembali')
         && str_contains((string) ($http['text'] ?? ''), '/tools/form/'));
 });
 
@@ -244,7 +245,21 @@ test('callback mengembalikan semua hanya untuk pinjaman milik sendiri', function
     kirimCallbackAlat('55001', 'alat:retall');
     kirimCallbackAlat('55001', 'alat:retall:ya');
 
-    expect(ToolLoan::query()->aktif()->count())->toBe(0)
-        ->and($this->alat->fresh()->status)->toBe(Tool::STATUS_TERSEDIA)
-        ->and($this->alatKedua->fresh()->status)->toBe(Tool::STATUS_TERSEDIA);
+    expect(ToolLoan::query()->menungguKembali()->count())->toBe(2)
+        ->and($this->alat->fresh()->status)->toBe(Tool::STATUS_DIPAKAI)
+        ->and($this->alatKedua->fresh()->status)->toBe(Tool::STATUS_DIPAKAI);
+});
+
+test('keeper menerima pengembalian lewat callback Terima', function () {
+    $layanan = app(ToolLendingService::class);
+    $pinjaman = $layanan->pinjamkan($this->alat, $layanan->dataPeminjamTeknisi($this->teknisi), ToolLoan::HANDLED_SELF, $this->teknisi);
+    $layanan->mintaKembali($pinjaman, ToolLoan::HANDLED_SELF, $this->teknisi);
+
+    kirimCallbackAlat('55002', 'alat:terima:' . $pinjaman->id);
+
+    expect($pinjaman->fresh()->returned_at)->not->toBeNull()
+        ->and($this->alat->fresh()->status)->toBe(Tool::STATUS_TERSEDIA);
+
+    Http::assertSent(fn ($http) => str_contains((string) $http->url(), '/editMessageText')
+        && str_contains((string) ($http['text'] ?? ''), 'diterima kembali'));
 });

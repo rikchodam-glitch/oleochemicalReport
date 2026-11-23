@@ -187,6 +187,9 @@ return [
         // Peminjaman alat oleh akun teknisi/keeper (hak aksi di controller).
         'alat.index',
         'alat.show',
+        'alat.cari',
+        'alat.returns.index',
+        'alat.returns.terima',
         'alat.pinjam',
         'alat.pinjamkan',
         'alat.kembali',

@@ -33,6 +33,7 @@ class Tool extends Model
 
     protected $fillable = [
         'tool_rack_id',
+        'tool_group_id',
         'name',
         'code',
         'photo_path',
@@ -46,6 +47,14 @@ class Tool extends Model
     public function rack(): BelongsTo
     {
         return $this->belongsTo(ToolRack::class, 'tool_rack_id');
+    }
+
+    /**
+     * Kelompok alat (mis. Bor Batrai).
+     */
+    public function group(): BelongsTo
+    {
+        return $this->belongsTo(ToolGroup::class, 'tool_group_id');
     }
 
     /**

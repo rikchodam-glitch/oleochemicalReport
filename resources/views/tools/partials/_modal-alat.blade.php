@@ -30,19 +30,30 @@
                 @endif
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Nama alat</label>
-                    <input type="text" name="name" id="alat-nama" maxlength="150" required
-                           class="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500"
-                           placeholder="Bor Batrai">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Kode unit</label>
-                    <input type="text" name="code" id="alat-kode" maxlength="50" required
-                           class="w-full rounded-lg border-slate-300 text-sm uppercase focus:border-teal-500 focus:ring-teal-500"
-                           placeholder="BRBT001">
-                </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Kelompok alat</label>
+                <select name="tool_group_id" id="alat-kelompok" required
+                        class="w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500">
+                    @forelse(($daftarKelompok ?? collect())->groupBy(fn($g) => $g->type?->name ?? 'Tanpa Jenis') as $labelJenis => $kelompokJenis)
+                        <optgroup label="{{ $labelJenis }}">
+                            @foreach($kelompokJenis as $kelompok)
+                                <option value="{{ $kelompok->id }}">{{ $kelompok->name }}</option>
+                            @endforeach
+                        </optgroup>
+                    @empty
+                        <option value="">Belum ada kelompok</option>
+                    @endforelse
+                </select>
+                @if(($daftarKelompok ?? collect())->isEmpty())
+                    <p class="text-[11px] text-amber-700 mt-1">Buat Jenis dan Kelompok lebih dulu di tab Jenis &amp; Kelompok.</p>
+                @endif
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Kode unit</label>
+                <input type="text" name="code" id="alat-kode" maxlength="50" required
+                       class="w-full rounded-lg border-slate-300 text-sm uppercase focus:border-teal-500 focus:ring-teal-500"
+                       placeholder="BRBT001">
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -95,7 +106,7 @@
     const judul = document.getElementById('judul-modal-alat');
     const method = document.getElementById('alat-method');
     const rack = document.getElementById('alat-rack');
-    const nama = document.getElementById('alat-nama');
+    const kelompok = document.getElementById('alat-kelompok');
     const kode = document.getElementById('alat-kode');
     const status = document.getElementById('alat-status');
     const catatan = document.getElementById('alat-catatan');
@@ -125,7 +136,6 @@
             form.action = '{{ route('tools.items.store') }}';
             method.value = '';
             judul.textContent = 'Tambah Alat';
-            nama.value = '';
             kode.value = '';
             status.disabled = false;
             status.value = 'tersedia';
@@ -145,7 +155,7 @@
             method.value = 'PUT';
             judul.textContent = 'Edit Alat';
             rack.value = tombol.dataset.rak;
-            nama.value = tombol.dataset.nama;
+            kelompok.value = tombol.dataset.grup;
             kode.value = tombol.dataset.kode;
             catatan.value = tombol.dataset.catatan || '';
 

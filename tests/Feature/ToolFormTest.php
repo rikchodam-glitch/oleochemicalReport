@@ -182,8 +182,9 @@ test('teknisi mengembalikan satu alat lewat token dan token hangus', function ()
     $this->post(route('tools.form.kembali', ['token' => $asli, 'toolLoan' => $pinjaman->id]))
         ->assertRedirect(route('tools.form.selesai'));
 
-    expect($pinjaman->fresh()->returned_at)->not->toBeNull()
-        ->and($this->alat->fresh()->status)->toBe(Tool::STATUS_TERSEDIA)
+    expect($pinjaman->fresh()->return_requested_at)->not->toBeNull()
+        ->and($pinjaman->fresh()->returned_at)->toBeNull()
+        ->and($this->alat->fresh()->status)->toBe(Tool::STATUS_DIPAKAI)
         ->and($token->fresh()->used_at)->not->toBeNull();
 
     $this->get(route('tools.form', ['token' => $asli]))->assertStatus(410);
@@ -200,9 +201,9 @@ test('teknisi mengembalikan semua alat lewat token', function () {
         ->assertRedirect(route('tools.form.selesai'))
         ->assertSessionHas('hasil');
 
-    expect(ToolLoan::query()->aktif()->count())->toBe(0)
-        ->and($this->alat->fresh()->status)->toBe(Tool::STATUS_TERSEDIA)
-        ->and($this->alatKedua->fresh()->status)->toBe(Tool::STATUS_TERSEDIA)
+    expect(ToolLoan::query()->menungguKembali()->count())->toBe(2)
+        ->and($this->alat->fresh()->status)->toBe(Tool::STATUS_DIPAKAI)
+        ->and($this->alatKedua->fresh()->status)->toBe(Tool::STATUS_DIPAKAI)
         ->and($token->fresh()->used_at)->not->toBeNull();
 });
 

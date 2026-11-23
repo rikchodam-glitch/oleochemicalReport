@@ -2,6 +2,8 @@
     $tabs = [
         ['route' => 'tools.index', 'label' => 'Dashboard Tools', 'aktif' => 'tools.index'],
         ['route' => 'tools.locations.index', 'label' => 'Lokasi & Rak', 'aktif' => 'tools.locations.*'],
+        ['route' => 'tools.catalog.index', 'label' => 'Jenis & Kelompok', 'aktif' => 'tools.catalog.*'],
+        ['route' => 'tools.returns.index', 'label' => 'Barang Kembali', 'aktif' => 'tools.returns.*'],
         ['route' => 'tools.loans.index', 'label' => 'Riwayat Peminjaman', 'aktif' => 'tools.loans.*'],
     ];
 

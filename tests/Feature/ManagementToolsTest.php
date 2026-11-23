@@ -2,9 +2,11 @@
 
 use App\Models\Technician;
 use App\Models\Tool;
+use App\Models\ToolGroup;
 use App\Models\ToolLoan;
 use App\Models\ToolLocation;
 use App\Models\ToolRack;
+use App\Models\ToolType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -66,13 +68,17 @@ test('lokasi, rak, dan alat dapat ditambah diubah lalu dihapus', function () {
     $rak = ToolRack::firstOrFail();
     expect($rak->tool_location_id)->toBe($lokasi->id);
 
+    $jenis = ToolType::create(['name' => 'Bor']);
+    $grup  = ToolGroup::create(['tool_type_id' => $jenis->id, 'name' => 'Bor Batrai']);
+    $grupBaru = ToolGroup::create(['tool_type_id' => $jenis->id, 'name' => 'Bor Batrai 18V']);
+
     $this->actingAs($this->admin)->post(route('tools.items.store'), [
-        'tool_rack_id' => $rak->id,
-        'name'         => 'Bor Batrai',
-        'code'         => 'brbt001',
-        'status'       => Tool::STATUS_TERSEDIA,
-        'note'         => 'Bor cadangan',
-        'photo'        => UploadedFile::fake()->image('bor.jpg', 500, 500),
+        'tool_rack_id'  => $rak->id,
+        'tool_group_id' => $grup->id,
+        'code'          => 'brbt001',
+        'status'        => Tool::STATUS_TERSEDIA,
+        'note'          => 'Bor cadangan',
+        'photo'         => UploadedFile::fake()->image('bor.jpg', 500, 500),
     ])->assertRedirect();
 
     $alat = Tool::firstOrFail();
@@ -85,12 +91,12 @@ test('lokasi, rak, dan alat dapat ditambah diubah lalu dihapus', function () {
     $fotoLama = $alat->photo_path;
 
     $this->actingAs($this->admin)->put(route('tools.items.update', $alat->id), [
-        'tool_rack_id' => $rak->id,
-        'name'         => 'Bor Batrai 18V',
-        'code'         => 'BRBT001',
-        'status'       => Tool::STATUS_RUSAK,
-        'note'         => 'Perlu servis',
-        'photo'        => UploadedFile::fake()->image('bor-baru.jpg', 500, 500),
+        'tool_rack_id'  => $rak->id,
+        'tool_group_id' => $grupBaru->id,
+        'code'          => 'BRBT001',
+        'status'        => Tool::STATUS_RUSAK,
+        'note'          => 'Perlu servis',
+        'photo'         => UploadedFile::fake()->image('bor-baru.jpg', 500, 500),
     ])->assertRedirect();
 
     $alat->refresh();

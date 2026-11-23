@@ -169,24 +169,21 @@ class ToolFormController extends Controller
                 ->with('success', 'Pinjaman ini sudah dikembalikan sebelumnya.');
         }
 
-        $jenis = $model->purpose === ToolToken::PURPOSE_KEEPER_KEMBALI
-            ? ToolLoan::HANDLED_KEEPER
-            : ToolLoan::HANDLED_SELF;
+        if ($model->purpose === ToolToken::PURPOSE_KEEPER_KEMBALI) {
+            $this->peminjaman->terimaKembali($toolLoan, ToolLoan::HANDLED_KEEPER, $pemilik);
 
-        $this->peminjaman->kembalikan($toolLoan, $jenis, $pemilik);
-
-        if ($model->purpose === ToolToken::PURPOSE_TEKNISI_KEMBALI) {
-            $this->token->tandaiTerpakai($model);
-
-            return redirect()->route('tools.form.selesai')->with('hasil', [
-                'judul' => 'Pengembalian berhasil',
-                'pesan' => 'Alat ' . $toolLoan->tool_name . ' (' . $toolLoan->tool_code . ') sudah dikembalikan.',
-                'kode'  => $toolLoan->kode,
-            ]);
+            return redirect()->route('tools.form', ['token' => $token])
+                ->with('success', 'Alat ' . $toolLoan->tool_name . ' (' . $toolLoan->tool_code . ') diterima kembali.');
         }
 
-        return redirect()->route('tools.form', ['token' => $token])
-            ->with('success', 'Alat ' . $toolLoan->tool_name . ' (' . $toolLoan->tool_code . ') sudah dikembalikan.');
+        $this->peminjaman->mintaKembali($toolLoan, ToolLoan::HANDLED_SELF, $pemilik);
+        $this->token->tandaiTerpakai($model);
+
+        return redirect()->route('tools.form.selesai')->with('hasil', [
+            'judul' => 'Pengajuan pengembalian terkirim',
+            'pesan' => 'Alat ' . $toolLoan->tool_name . ' (' . $toolLoan->tool_code . ') menunggu diperiksa tool keeper.',
+            'kode'  => $toolLoan->kode,
+        ]);
     }
 
     /**
@@ -208,12 +205,12 @@ class ToolFormController extends Controller
                 ->withErrors(['token' => 'Akun pemilik tautan tidak lagi berhak memakai form ini.']);
         }
 
-        $jumlah = $this->peminjaman->kembalikanSemua($pemilik, ToolLoan::HANDLED_SELF);
+        $jumlah = $this->peminjaman->mintaKembaliSemua($pemilik, ToolLoan::HANDLED_SELF);
         $this->token->tandaiTerpakai($model);
 
         return redirect()->route('tools.form.selesai')->with('hasil', [
-            'judul' => 'Pengembalian berhasil',
-            'pesan' => $jumlah . ' pinjaman alat sudah dikembalikan.',
+            'judul' => 'Pengajuan pengembalian terkirim',
+            'pesan' => $jumlah . ' pinjaman alat menunggu diperiksa tool keeper.',
             'kode'  => null,
         ]);
     }
@@ -259,15 +256,25 @@ class ToolFormController extends Controller
         }
 
         $daftar = ToolLoan::query()
-            ->with(['tool.rack.location', 'technician', 'borrowerDepartment'])
+            ->with(['tool.group.type', 'tool.rack.location', 'technician', 'borrowerDepartment'])
             ->when($model->purpose === ToolToken::PURPOSE_TEKNISI_KEMBALI, function ($query) use ($pemilik): void {
                 $query->where('technician_id', $pemilik->id);
             })
             ->aktif()
+            ->whereNull('return_requested_at')
             ->orderByDesc('borrowed_at')
             ->get();
 
         $data['daftarPinjaman'] = $daftar;
+
+        $data['daftarMenunggu'] = ToolLoan::query()
+            ->menungguKembali()
+            ->with(['tool.group.type', 'tool.rack.location', 'technician', 'borrowerDepartment', 'returnRequesterTechnician'])
+            ->when($model->purpose === ToolToken::PURPOSE_TEKNISI_KEMBALI, function ($query) use ($pemilik): void {
+                $query->where('technician_id', $pemilik->id);
+            })
+            ->orderByDesc('return_requested_at')
+            ->get();
 
         return $data;
     }
@@ -281,6 +288,7 @@ class ToolFormController extends Controller
     {
         return ToolLocation::query()
             ->with([
+                'racks.tools.group.type',
                 'racks.tools.pinjamanAktif.technician',
                 'racks.tools.pinjamanAktif.borrowerDepartment',
                 'racks.tools.pinjamanTerakhir.technician',
@@ -303,6 +311,8 @@ class ToolFormController extends Controller
                                 return [
                                     'id'                => $alat->id,
                                     'name'              => $alat->name,
+                                    'group_name'        => $alat->group?->name ?? $alat->name,
+                                    'type_name'         => $alat->group?->type?->name,
                                     'code'              => $alat->code,
                                     'status'            => $alat->status,
                                     'status_label'      => $alat->statusLabel(),

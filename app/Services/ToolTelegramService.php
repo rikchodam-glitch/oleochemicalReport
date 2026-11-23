@@ -125,9 +125,9 @@ class ToolTelegramService
 
             $this->telegram->sendMessage(
                 $chatId,
-                "<b>Form Pengembalian Alat</b>\n"
-                . "Buka tautan berikut untuk menandai alat yang sudah kembali.\n"
-                . "Tautan berlaku " . ToolTokenService::MASA_BERLAKU_MENIT . " menit dan bisa dipakai beberapa pengembalian.\n\n"
+                "<b>Barang Kembali</b>\n"
+                . "Buka tautan berikut untuk memeriksa pengajuan pengembalian dan menekan Terima.\n"
+                . "Tautan berlaku " . ToolTokenService::MASA_BERLAKU_MENIT . " menit.\n\n"
                 . $tautan['url'],
                 ['disable_web_page_preview' => true]
             );
@@ -138,7 +138,17 @@ class ToolTelegramService
         $daftar = $this->pinjamanAktifTeknisi($teknisi);
 
         if ($daftar->isEmpty()) {
-            $this->telegram->sendMessage($chatId, 'Tidak ada alat yang sedang Anda pinjam.');
+            $menunggu = ToolLoan::query()
+                ->where('technician_id', $teknisi->id)
+                ->menungguKembali()
+                ->count();
+
+            $this->telegram->sendMessage(
+                $chatId,
+                $menunggu > 0
+                    ? 'Semua pengembalian Anda (' . $menunggu . ' alat) sedang menunggu diterima tool keeper.'
+                    : 'Tidak ada alat yang sedang Anda pinjam.'
+            );
 
             return;
         }
@@ -218,6 +228,12 @@ class ToolTelegramService
                 return;
             }
 
+            if (preg_match('/^alat:terima:(\d+)$/', $data, $cocok)) {
+                $this->terimaKembali($chatId, $messageId, $teknisi, (int) $cocok[1]);
+
+                return;
+            }
+
             if ($data === 'alat:retall') {
                 $daftar = $this->pinjamanAktifTeknisi($teknisi);
 
@@ -236,14 +252,14 @@ class ToolTelegramService
 
             if ($data === 'alat:retall:ya') {
                 $teknisi->loadMissing('department');
-                $jumlah = $this->peminjaman->kembalikanSemua($teknisi, ToolLoan::HANDLED_SELF);
+                $jumlah = $this->peminjaman->mintaKembaliSemua($teknisi, ToolLoan::HANDLED_SELF);
 
                 $this->telegram->editMessageText(
                     $chatId,
                     $messageId,
                     $jumlah > 0
-                        ? $jumlah . ' alat sudah dikembalikan. Terima kasih.'
-                        : 'Tidak ada pinjaman aktif yang bisa dikembalikan.'
+                        ? 'Pengajuan pengembalian ' . $jumlah . ' alat dikirim ke tool keeper untuk diperiksa.'
+                        : 'Tidak ada pinjaman aktif yang bisa diajukan kembali.'
                 );
 
                 return;
@@ -587,27 +603,66 @@ class ToolTelegramService
             return;
         }
 
-        $this->peminjaman->kembalikan($pinjaman, ToolLoan::HANDLED_SELF, $teknisi);
-
-        $sisa = $this->pinjamanAktifTeknisi($teknisi);
-
-        if ($sisa->isEmpty()) {
+        if ($pinjaman->menungguPenerimaan()) {
             $this->telegram->editMessageText(
                 $chatId,
                 $messageId,
-                'Alat <b>' . e($pinjaman->tool_name) . '</b> (' . e($pinjaman->tool_code) . ') sudah dikembalikan.'
-                . "\nTidak ada pinjaman lain. Terima kasih."
+                'Pengembalian alat ini sudah menunggu diterima tool keeper.'
             );
 
             return;
         }
 
+        $this->peminjaman->mintaKembali($pinjaman, ToolLoan::HANDLED_SELF, $teknisi);
+
+        $sisa = $this->pinjamanAktifTeknisi($teknisi);
+
+        $pesan = 'Pengajuan pengembalian <b>' . e($pinjaman->tool_name) . '</b> (' . e($pinjaman->tool_code) . ')'
+            . ' dikirim ke tool keeper. Alat akan kembali tersedia setelah diperiksa dan diterima keeper.';
+
+        if ($sisa->isNotEmpty()) {
+            $pesan .= "\n\n" . $this->teksDaftarPinjaman($sisa, 'Pinjaman lain yang masih bisa diajukan:');
+        }
+
         $this->telegram->editMessageText(
             $chatId,
             $messageId,
-            'Alat <b>' . e($pinjaman->tool_name) . '</b> (' . e($pinjaman->tool_code) . ') sudah dikembalikan.'
-            . "\n\n" . $this->teksDaftarPinjaman($sisa, 'Sisa pinjaman Anda:'),
-            ['reply_markup' => $this->keyboardDaftarPinjaman($sisa)]
+            $pesan,
+            $sisa->isEmpty() ? [] : ['reply_markup' => $this->keyboardDaftarPinjaman($sisa)]
+        );
+    }
+
+    /**
+     * Keeper menerima pengembalian lewat tombol notifikasi.
+     */
+    private function terimaKembali(int|string $chatId, int $messageId, Technician $teknisi, int $pinjamanId): void
+    {
+        if (! $teknisi->toolKeeperAktif()) {
+            $this->telegram->editMessageText($chatId, $messageId, 'Hanya tool keeper yang boleh menerima pengembalian alat.');
+
+            return;
+        }
+
+        $pinjaman = ToolLoan::query()->find($pinjamanId);
+
+        if ($pinjaman === null) {
+            $this->telegram->editMessageText($chatId, $messageId, 'Pinjaman tidak ditemukan.');
+
+            return;
+        }
+
+        if ($pinjaman->returned_at !== null) {
+            $this->telegram->editMessageText($chatId, $messageId, 'Alat ini sudah diterima sebelumnya.');
+
+            return;
+        }
+
+        $this->peminjaman->terimaKembali($pinjaman, ToolLoan::HANDLED_KEEPER, $teknisi);
+
+        $this->telegram->editMessageText(
+            $chatId,
+            $messageId,
+            'Alat <b>' . e($pinjaman->tool_name) . '</b> (' . e($pinjaman->tool_code) . ') diterima kembali dan sudah tersedia.'
         );
     }
 
@@ -619,9 +674,10 @@ class ToolTelegramService
     private function pinjamanAktifTeknisi(Technician $teknisi): Collection
     {
         return ToolLoan::query()
-            ->with(['tool.rack.location'])
+            ->with(['tool.rack.location', 'tool.group'])
             ->where('technician_id', $teknisi->id)
             ->aktif()
+            ->whereNull('return_requested_at')
             ->orderByDesc('borrowed_at')
             ->get();
     }
