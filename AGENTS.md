@@ -89,6 +89,7 @@ Semua berkas di bawah ini ada di `docs/`.
 | [31-import-dokumentasi-asset.md](docs/31-import-dokumentasi-asset.md) | Import dokumentasi foto equipment ke assets.photos: dry-run/apply, pencocokan folder/file, laporan, lokasi D: PROD | Mengimpor atau memeriksa dokumentasi foto aset |
 | [32-service-it.md](docs/32-service-it.md) | Halaman Service IT: kasus dari laporan continue/done, entri manual, catatan, status proses/selesai/rusak | Menyentuh halaman Service IT atau sinkronisasi kasus dari laporan |
 | [33-management-tools.md](docs/33-management-tools.md) | Management Tools: lokasi/rak/unit alat, foto, peminjaman keeper/teknisi lewat Telegram/web, log per alat, form token | Menyentuh halaman Management Tools, /alat, pinjaman alat, log alat, atau perintah /pakai /pinjam /selesai |
+| [34-pencarian-laporan.md](docs/34-pencarian-laporan.md) | Pencarian laporan pintar: seluruh tanggal + kedua tab, multi-kata, prioritas hasil, dropdown saran, endpoint reports.cari | Mengubah kotak pencarian halaman Laporan, filter tanggal/tab, atau endpoint saran |
 
 ## Dokumen pendukung di `docs/`
 

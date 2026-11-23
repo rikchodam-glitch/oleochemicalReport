@@ -9,6 +9,7 @@ use App\Models\Asset;
 use App\Models\FunctionalLocation;
 use App\Models\Report;
 use App\Models\Technician;
+use App\Services\PencarianLaporanService;
 use App\Services\ReportCopyService;
 use App\Services\Shift\JamKerjaService;
 use App\Services\TechnicianKinerjaService;
@@ -42,6 +43,9 @@ class ReportController extends Controller
     {
         $tampilan     = $request->get('tampilan') === 'shift' ? 'shift' : 'reguler';
         $grubAktif    = $tampilan === 'shift' ? $this->resolveGrub($request->get('grub')) : null;
+        $cariAktif    = $request->filled('search');
+        $kataKunci    = trim((string) $request->get('search', ''));
+        $cakupanSemua = $this->pakaiSemuaTanggal($request);
 
         // Bila daftar disaring ke SATU teknisi TANPA parameter tampilan (mis.
         // tautan lama atau isian filter teknisi di halaman Laporan), ikuti mode
@@ -57,6 +61,15 @@ class ReportController extends Controller
                 $grubAktif = $this->resolveGrub($request->get('grub')) ?? $this->resolveGrub($teknisiFilter->group);
             }
         }
+
+        // Mode pencarian/semua tanggal menampilkan Reguler DAN Shift sekaligus,
+        // kecuali daftar sedang disaring ke satu teknisi (tab teknisi itu
+        // dipertahankan agar jumlah man hour-nya tidak berubah).
+        if ($cakupanSemua && ! $request->filled('technician_id')) {
+            $tampilan  = 'semua';
+            $grubAktif = null;
+        }
+
         $tanggalAktif = $this->resolveTanggal($request->get('tanggal'));
         $pakaiRentang = $request->filled('date_from') || $request->filled('date_to');
 
@@ -78,14 +91,22 @@ class ReportController extends Controller
         $countDone      = (clone $queryRingkasan)->where('status', 'completed')->count();
 
         $reports = $query
-            ->with(['technician', 'area', 'asset', 'functionalLocation', 'linkedFinding', 'multiItems', 'collaboratorReports.technician'])
+            ->with(['technician', 'area', 'asset', 'functionalLocation', 'linkedFinding', 'multiItems', 'collaboratorReports.technician']);
+
+        if ($cariAktif) {
+            // Pencarian: yang paling relevan di atas, lalu tanggal terbaru.
+            // Urutan relevansi memakai SATU sumber aturan dengan dropdown saran.
+            app(PencarianLaporanService::class)->terapkanUrutan($reports, (string) $request->search);
+            $reports->orderByDesc('report_date')->orderByDesc('id');
+        } else {
             // Laporan terbaru di paling atas; dalam satu tanggal diurutkan dari
             // yang paling akhir dibuat (created_at, lalu id sebagai penentu).
-            ->orderByDesc('report_date')
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->paginate(25)
-            ->withQueryString();
+            $reports->orderByDesc('report_date')
+                ->orderByDesc('created_at')
+                ->orderByDesc('id');
+        }
+
+        $reports = $reports->paginate(25)->withQueryString();
 
         // Kartu "Total Pekerjaan" memakai angka paginator supaya DIJAMIN sama
         // dengan jumlah baris tabel ("Menampilkan 1-25 dari N pekerjaan") pada
@@ -98,10 +119,17 @@ class ReportController extends Controller
             $report->photo_doc_count = count($report->photo_documentation ?? []);
             $report->photo_hyg_count = count($report->photo_hygiene_clearance ?? []);
 
+            // Kolom hitung urutan pencarian tidak perlu ikut tampil/serialisasi.
+            $report->makeHidden('relevansi');
+
             return $report;
         });
 
-        $tanggalSekitar = $this->tanggalSekitar($request, $tampilan, $grubAktif, $tanggalAktif);
+        // Navigasi tanggal tidak dipakai pada mode semua tanggal/pencarian,
+        // jadi query tambahannya dilewati.
+        $tanggalSekitar = $cakupanSemua
+            ? ['sebelumnya' => null, 'berikutnya' => null, 'daftar' => collect()]
+            : $this->tanggalSekitar($request, $tampilan, $grubAktif, $tanggalAktif);
 
         $areas       = app(\App\Services\LocationHierarchyService::class)->semuaArea();
 
@@ -119,11 +147,18 @@ class ReportController extends Controller
         // staff masuk ke tampilan Reguler, bukan ke daftar grub.
         $grubOptions = array_intersect_key(Technician::GROUPS, array_flip(Technician::GRUP_SHIFT));
 
+        // Lokasi spesifik dari klik saran "Lokasi" tidak punya kotak sendiri
+        // di Filter Lanjutan; ditampilkan sebagai chip di banner pencarian.
+        $funclocAktif = $request->filled('funcloc_id')
+            ? FunctionalLocation::find($request->funcloc_id)
+            : null;
+
         return view('reports.index', compact(
             'reports', 'areas', 'technicians', 'grubOptions',
             'totalLaporan', 'countEI', 'countMekanik', 'countCmPm', 'countFabrikasi', 'countSipil',
             'countIT', 'countProject', 'countUmum', 'countContinue', 'countDone',
-            'tampilan', 'grubAktif', 'tanggalAktif', 'pakaiRentang', 'tanggalSekitar'
+            'tampilan', 'grubAktif', 'tanggalAktif', 'pakaiRentang', 'tanggalSekitar',
+            'cariAktif', 'cakupanSemua', 'kataKunci', 'funclocAktif'
         ));
     }
 
@@ -185,31 +220,31 @@ class ReportController extends Controller
             $query->where('area_id', $request->area_id);
         }
 
+        // Lokasi spesifik dari saran pencarian (klik item "Lokasi").
+        if ($request->filled('funcloc_id')) {
+            $query->where('funcloc_id', $request->funcloc_id);
+        }
+
         if ($request->filled('technician_id')) {
             $query->where('technician_id', $request->technician_id);
         }
 
         if ($request->filled('asset_code')) {
             $assetCode = $request->asset_code;
+            // Kode alat dari kotak "Kode Alat" maupun saran pencarian: cocokkan
+            // tech ident ATAU nomor equipment supaya alat yang belum punya tech
+            // ident tetap bisa dibuka dari saran.
             $query->whereHas('asset', function ($q) use ($assetCode) {
-                $q->where('tech_ident_no', 'like', '%' . $assetCode . '%');
+                $q->where('tech_ident_no', 'like', '%' . $assetCode . '%')
+                    ->orWhere('equipment_no', 'like', '%' . $assetCode . '%');
             });
         }
 
         if ($request->filled('search')) {
-            $search = trim((string) $request->search);
-
-            // Pencarian lapangan: deskripsi pekerjaan, kode laporan, kode lokasi
-            // (Functional Location), serta lokasi/kode alat — supaya pencarian
-            // seperti "EPE-PROD-BD02-6153" atau "LOK-P-01" ikut ketemu.
-            $query->where(function ($q) use ($search) {
-                $q->where('work_description', 'like', "%{$search}%")
-                    ->orWhere('report_code', 'like', "%{$search}%")
-                    ->orWhereHas('functionalLocation', fn ($sub) => $sub->where('code', 'like', "%{$search}%"))
-                    ->orWhereHas('asset', fn ($sub) => $sub
-                        ->where('functional_loc', 'like', "%{$search}%")
-                        ->orWhere('tech_ident_no', 'like', "%{$search}%"));
-            });
+            // Seluruh aturan kata kunci (multi-kata, sinonim, relasi) ada di
+            // PencarianLaporanService supaya daftar hasil dan dropdown saran
+            // memakai aturan yang sama.
+            app(PencarianLaporanService::class)->terapkan($query, (string) $request->search);
         }
 
         if ($request->filled('report_code')) {
@@ -254,14 +289,40 @@ class ReportController extends Controller
 
         if (! $request->filled('date_from') && ! $request->filled('date_to')) {
             // Khusus popup Export Laporan: centang "seluruh data" mengirim
-            // tanpa_batas=1 sehingga batas tanggal satu hari dilewati. Halaman
-            // Laporan tidak pernah mengirim kunci ini, jadi perilakunya utuh.
-            if (! $request->boolean('tanpa_batas')) {
+            // tanpa_batas=1 sehingga batas tanggal satu hari dilewati.
+            // Mode pencarian/semua tanggal (cakupan=semua) juga melewati batas
+            // satu hari supaya kata kunci mencari SELURUH riwayat. Rentang
+            // tanggal yang diisi eksplisit tetap menang (blok di atas).
+            if (! $request->boolean('tanpa_batas') && ! $this->pakaiSemuaTanggal($request)) {
                 $query->whereDate('report_date', $tanggalAktif->toDateString());
             }
         }
 
         return $query;
+    }
+
+    /**
+     * Apakah daftar laporan memakai cakupan SEMUA tanggal.
+     *
+     * Dinyalakan oleh kotak pencarian utama (cakupan=semua) atau oleh
+     * pencarian tanpa parameter tanggal/tampilan (tautan lama). Mode ini
+     * melewati batas satu hari dan menampilkan Reguler + Shift sekaligus,
+     * kecuali daftar sedang disaring ke satu teknisi.
+     *
+     * @param  Request  $request  Permintaan halaman laporan/export
+     * @return bool
+     */
+    private function pakaiSemuaTanggal(Request $request): bool
+    {
+        if ($request->input('cakupan') === 'semua') {
+            return true;
+        }
+
+        return $request->filled('search')
+            && ! $request->filled('tanggal')
+            && ! $request->filled('date_from')
+            && ! $request->filled('date_to')
+            && ! $request->filled('tampilan');
     }
 
     /**

@@ -95,3 +95,13 @@ global menyesatkan pada percobaan pertama.**
   `data-kartu="status-continue"` (31942) < `data-kartu="jenis-EI"` (41865).
 - Seluruh suite **635 test hijau (3113 assertions)** dan `php artisan view:cache`
   sukses (14/10/2026).
+
+## PENCARIAN UTAMA DI ATAS HALAMAN (23/11/2026)
+
+Sejak 23/11/2026 halaman Laporan memiliki kotak pencarian utama yang mencari
+SELURUH tanggal dan kedua tab (Reguler + Shift) dengan multi-kata + prioritas
+hasil. Input "Pekerjaan / Lokasi / Alat" di panel Filter Lanjutan sudah
+dihapus; kata kunci dan parameter cakupan=semua dibawa sebagai isian
+tersembunyi. Aturan lengkap ada di docs/34-pencarian-laporan.md.
+Aturan tanggal/tab pada dokumen ini tetap berlaku untuk tampilan tanggal biasa
+(tanpa kata kunci) dan untuk tautan lama yang mengirim 	anggal eksplisit.
