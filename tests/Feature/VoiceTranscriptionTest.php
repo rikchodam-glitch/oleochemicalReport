@@ -3,6 +3,9 @@
 use App\Console\Commands\PollTelegramUpdates;
 use App\Models\AiProvider;
 use App\Models\Technician;
+use App\Models\Tool;
+use App\Models\ToolLocation;
+use App\Models\ToolRack;
 use App\Models\VoiceTranscription;
 use App\Services\Telegram\ReportWizardService;
 use App\Services\Telegram\SparepartRequestWizardService;
@@ -129,6 +132,57 @@ test('voice note Telegram .oga disimpan sebagai .ogg agar diterima Groq', functi
     $storage->delete($hasil['path']);
 });
 
+test('prompt transkripsi tidak memuat daftar kode alat secara bawaan', function () {
+    $lokasi = ToolLocation::create(['name' => 'Workshop Prompt']);
+    $rak    = ToolRack::create(['tool_location_id' => $lokasi->id, 'name' => 'Rak Prompt']);
+
+    Tool::create([
+        'tool_rack_id' => $rak->id,
+        'name'         => 'Bor Batrai',
+        'code'         => 'BRBT001',
+        'status'       => Tool::STATUS_TERSEDIA,
+    ]);
+
+    config(['voice.glossary_enabled' => false]);
+
+    $bodyTranskripsi = '';
+
+    Http::swap(new \Illuminate\Http\Client\Factory());
+    Http::fake(function ($request) use (&$bodyTranskripsi) {
+        if (str_contains($request->url(), '/audio/transcriptions')) {
+            $bodyTranskripsi = $request->body();
+
+            return Http::response([
+                'text'     => 'pengembangan sistem maintenance',
+                'language' => 'id',
+                'duration' => 4,
+                'segments' => [['no_speech_prob' => 0.05, 'avg_logprob' => -0.2]],
+            ], 200);
+        }
+
+        if (str_contains($request->url(), '/getFile')) {
+            return Http::response([
+                'ok'     => true,
+                'result' => ['file_path' => 'voice/file_1.oga', 'file_size' => 100],
+            ], 200);
+        }
+
+        if (str_contains($request->url(), '/file/bot')) {
+            return Http::response('audio-bytes', 200);
+        }
+
+        return Http::response(['ok' => true, 'result' => []], 200);
+    });
+
+    kirimUpdateVoice('33001', [
+        'voice' => ['file_id' => 'voice-prompt', 'duration' => 4],
+    ]);
+
+    expect($bodyTranskripsi)->toContain('Transkripsi bahasa Indonesia')
+        ->and($bodyTranskripsi)->not->toContain('BRBT001')
+        ->and($bodyTranskripsi)->not->toContain('Nama alat dan kode');
+});
+
 test('voice note ditranskripsi dan menunggu persetujuan', function () {
     kirimUpdateVoice('33001', [
         'voice' => ['file_id' => 'voice-1', 'duration' => 5, 'mime_type' => 'audio/ogg', 'file_size' => 100],
@@ -152,6 +206,30 @@ test('teks GUNAKAN meneruskan transkrip seperti teks biasa', function () {
     ]);
 
     kirimUpdateVoice('33001', ['text' => 'GUNAKAN']);
+
+    expect(Cache::has('voice_pending:33001'))->toBeFalse()
+        ->and(app(ReportWizardService::class)->hasActiveWizard('33001'))->toBeTrue();
+});
+
+test('Ketik koreksi mengganti transkrip sebelum digunakan', function () {
+    kirimUpdateVoice('33001', [
+        'voice' => ['file_id' => 'voice-edit', 'duration' => 5],
+    ]);
+
+    kirimCallbackVoice('33001', 'suara:edit');
+    kirimUpdateVoice('33001', ['text' => 'pengembangan sistem maintenance']);
+
+    $pending = Cache::get('voice_pending:33001');
+
+    expect($pending['text'])->toBe('pengembangan sistem maintenance')
+        ->and($pending['confidence'])->toBe('koreksi')
+        ->and($pending['mode'])->toBe('confirm');
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/sendMessage')
+        && str_contains((string) ($request['text'] ?? ''), 'hasil koreksi')
+        && str_contains((string) ($request['text'] ?? ''), 'pengembangan sistem maintenance'));
+
+    kirimCallbackVoice('33001', 'suara:pakai');
 
     expect(Cache::has('voice_pending:33001'))->toBeFalse()
         ->and(app(ReportWizardService::class)->hasActiveWizard('33001'))->toBeTrue();
