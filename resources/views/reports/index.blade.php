@@ -591,6 +591,7 @@
                          laporan sendiri tidak lagi ditampilkan di tabel ini. --}}
                     <tr class="hover:bg-slate-50 transition-colors cursor-pointer"
                         data-laporan-id="{{ $report->id }}"
+                        data-buka-tab="{{ route('reports.show', $report) }}"
                         onclick="window.location='{{ route('reports.show', $report) }}'">
 
                         {{-- Pekerjaan: kolom utama --}}
@@ -958,5 +959,7 @@
 @include('reports.partials._popup-export')
 @include('reports.partials._popup-export-script')
 
+{{-- Klik tengah pada baris laporan membuka detail di tab baru. --}}
+@include('partials._buka-tab-tengah')
 
 @endsection
