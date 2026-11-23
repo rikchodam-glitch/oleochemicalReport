@@ -115,10 +115,12 @@
                                 {{ $pinjaman->returned_at?->format('d/m/Y H:i') ?? '-' }}
                             </td>
                             <td class="px-4 py-2.5">
-                                @if($pinjaman->masihDipinjam())
-                                    <span class="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Dipinjam</span>
-                                @else
+                                @if($pinjaman->returned_at !== null)
                                     <span class="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700">Dikembalikan</span>
+                                @elseif($pinjaman->menungguPenerimaan())
+                                    <span class="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Menunggu diterima</span>
+                                @else
+                                    <span class="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-700">Dipinjam</span>
                                 @endif
                             </td>
                             <td class="px-4 py-2.5 text-right">

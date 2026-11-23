@@ -5,13 +5,17 @@ namespace App\Http\Controllers;
 use App\Models\Department;
 use App\Models\Technician;
 use App\Models\Tool;
+use App\Models\ToolGroup;
 use App\Models\ToolLoan;
 use App\Models\ToolLocation;
 use App\Models\ToolRack;
+use App\Models\ToolType;
 use App\Services\LocationHierarchyService;
+use App\Services\PencarianToolService;
 use App\Services\ToolLendingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -22,32 +26,63 @@ use Illuminate\View\View;
  * punya akun. Hak aksi diperiksa di controller:
  * - meminjam untuk diri sendiri: semua teknisi aktif;
  * - meminjamkan: administrator atau teknisi yang masih tool keeper;
- * - mengembalikan: pemilik pinjaman, keeper, atau administrator.
+ * - mengembalikan: pemilik pinjaman (mengajukan), keeper/admin (menerima).
  */
 class AlatSayaController extends Controller
 {
-    public function __construct(private ToolLendingService $peminjaman)
-    {
+    public function __construct(
+        private ToolLendingService $peminjaman,
+        private PencarianToolService $pencarian
+    ) {
     }
 
     /**
      * Dashboard alat untuk teknisi/keeper.
      */
-    public function index(): View
+    public function index(Request $request): View
     {
-        $teknisi           = $this->teknisiAktif();
-        $bolehMeminjamkan  = $this->bolehMeminjamkan($teknisi);
+        $teknisi          = $this->teknisiAktif();
+        $bolehMeminjamkan = $this->bolehMeminjamkan($teknisi);
+        $admin            = (bool) auth()->user()?->isAdmin();
+        $kataKunci        = trim((string) $request->query('search', $request->query('q', '')));
+        $filter           = $this->filterDariRequest($request);
+
+        $query = Tool::query()->with([
+            'group.type',
+            'rack.location',
+            'pinjamanAktif.technician',
+            'pinjamanAktif.borrowerDepartment',
+            'pinjamanTerakhir.technician',
+            'pinjamanTerakhir.borrowerDepartment',
+        ]);
+
+        $this->pencarian->terapkan($query, $kataKunci);
+        $this->terapkanFilter($query, $filter);
+
+        if ($kataKunci !== '') {
+            $this->pencarian->terapkanUrutan($query, $kataKunci);
+        } else {
+            $query->orderBy('name')->orderBy('code');
+        }
+
+        $daftar = $query->paginate(36)->withQueryString();
 
         return view('alat.index', [
-            'teknisi'           => $teknisi,
-            'grup'              => $this->grupAlat($teknisi, $bolehMeminjamkan),
-            'pinjamanSaya'      => $teknisi !== null ? $this->pinjamanAktifTeknisi($teknisi->id) : collect(),
-            'pinjamanAktif'     => $bolehMeminjamkan ? $this->semuaPinjamanAktif() : collect(),
-            'bolehMeminjamkan'  => $bolehMeminjamkan,
-            'daftarTeknisi'     => $bolehMeminjamkan ? $this->teknisiPerBagian() : [],
-            'daftarDepartemen'  => $bolehMeminjamkan ? app(LocationHierarchyService::class)->semuaDepartemen() : collect(),
-            'daftarLokasi'      => ToolLocation::query()->orderBy('name')->get(['id', 'name']),
-            'daftarRak'         => ToolRack::query()->orderBy('name')->get(['id', 'tool_location_id', 'name']),
+            'teknisi'          => $teknisi,
+            'grup'             => $this->grupDariKoleksi($daftar->getCollection(), $teknisi, $bolehMeminjamkan, $admin),
+            'daftar'           => $daftar,
+            'kataKunci'        => $kataKunci,
+            'filter'           => $filter,
+            'pinjamanSaya'     => $teknisi !== null ? $this->pinjamanAktifTeknisi($teknisi->id) : collect(),
+            'pinjamanAktif'    => $bolehMeminjamkan ? $this->semuaPinjamanAktif() : collect(),
+            'jumlahKembali'    => $bolehMeminjamkan ? ToolLoan::query()->menungguKembali()->count() : 0,
+            'bolehMeminjamkan' => $bolehMeminjamkan,
+            'daftarTeknisi'    => $bolehMeminjamkan ? $this->teknisiPerBagian() : [],
+            'daftarDepartemen' => $bolehMeminjamkan ? app(LocationHierarchyService::class)->semuaDepartemen() : collect(),
+            'daftarLokasi'     => ToolLocation::query()->orderBy('name')->get(['id', 'name']),
+            'daftarRak'        => ToolRack::query()->with('location')->orderBy('name')->get(),
+            'daftarJenis'      => ToolType::query()->orderBy('name')->get(['id', 'name']),
+            'daftarKelompok'   => ToolGroup::query()->with('type')->orderBy('name')->get(),
         ]);
     }
 
@@ -67,7 +102,7 @@ class AlatSayaController extends Controller
 
         $filter = $request->validate($aturanFilter);
 
-        $tool->load('rack.location');
+        $tool->load(['rack.location', 'group.type']);
 
         $dari   = $filter['dari'] ?? null;
         $sampai = $filter['sampai'] ?? null;
@@ -103,11 +138,84 @@ class AlatSayaController extends Controller
             'bolehTulis'        => (bool) auth()->user()?->bolehMenulis(),
             'bolehMeminjamkan'  => $bolehMeminjamkan,
             'bolehPinjam'       => $teknisi !== null && $aktif === null && $tool->status === Tool::STATUS_TERSEDIA,
-            'bolehKembalikan'   => $aktif !== null && ($admin || $bolehMeminjamkan || $milikSendiri),
+            'bolehKembalikan'   => $aktif !== null
+                && ! $aktif->menungguPenerimaan()
+                && ($admin || $bolehMeminjamkan || $milikSendiri),
+            'menungguKembali'   => $aktif?->menungguPenerimaan() ?? false,
             'daftarTeknisi'     => $bolehMeminjamkan ? $this->teknisiPerBagian() : [],
             'daftarDepartemen'  => $bolehMeminjamkan ? app(LocationHierarchyService::class)->semuaDepartemen() : collect(),
+            'daftarKelompok'    => ToolGroup::query()->with('type')->orderBy('name')->get(),
             'grupRak'           => $this->pilihanRak(),
         ]);
+    }
+
+    /**
+     * Halaman Barang Kembali untuk keeper/administrator.
+     */
+    public function returns(Request $request): View
+    {
+        $teknisi          = $this->teknisiAktif();
+        $bolehMeminjamkan = $this->bolehMeminjamkan($teknisi);
+
+        if (! $bolehMeminjamkan) {
+            abort(403, 'Hanya tool keeper atau administrator yang boleh menerima pengembalian.');
+        }
+
+        $kataKunci = trim((string) $request->query('search', ''));
+        $filter    = $this->filterDariRequest($request);
+
+        $query = ToolLoan::query()
+            ->menungguKembali()
+            ->with(['tool.group.type', 'tool.rack.location', 'technician', 'borrowerDepartment', 'returnRequesterTechnician']);
+
+        if ($kataKunci !== '') {
+            $pola = '%' . $kataKunci . '%';
+            $query->where(function ($sub) use ($pola): void {
+                $sub->where('tool_name', 'like', $pola)
+                    ->orWhere('tool_code', 'like', $pola)
+                    ->orWhere('borrower_name', 'like', $pola);
+            });
+        }
+
+        $this->terapkanFilterKembali($query, $filter);
+
+        $daftar = $query->orderByDesc('return_requested_at')->paginate(36)->withQueryString();
+
+        return view('tools.returns', [
+            'daftar'         => $daftar,
+            'grup'           => $this->grupKembaliDariKoleksi($daftar->getCollection()),
+            'kataKunci'      => $kataKunci,
+            'filter'         => $filter,
+            'bolehTulis'     => $bolehMeminjamkan,
+            'tampilTabs'     => false,
+            'namaRuteTerima' => 'alat.returns.terima',
+            'daftarLokasi'   => ToolLocation::query()->orderBy('name')->get(['id', 'name']),
+            'daftarJenis'    => ToolType::query()->orderBy('name')->get(['id', 'name']),
+        ]);
+    }
+
+    /**
+     * Terima pengembalian (keeper/administrator).
+     */
+    public function terimaKembali(Request $request, ToolLoan $toolLoan): RedirectResponse
+    {
+        $teknisi          = $this->teknisiAktif();
+        $bolehMeminjamkan = $this->bolehMeminjamkan($teknisi);
+
+        if (! $bolehMeminjamkan) {
+            abort(403, 'Hanya tool keeper atau administrator yang boleh menerima pengembalian.');
+        }
+
+        $admin = (bool) $request->user()?->isAdmin();
+
+        $this->peminjaman->terimaKembali(
+            $toolLoan,
+            $admin ? ToolLoan::HANDLED_ADMIN : ToolLoan::HANDLED_KEEPER,
+            $teknisi,
+            $admin ? $request->user() : null
+        );
+
+        return back()->with('success', 'Alat ' . $toolLoan->tool_name . ' (' . $toolLoan->tool_code . ') diterima kembali.');
     }
 
     /**
@@ -189,6 +297,8 @@ class AlatSayaController extends Controller
 
     /**
      * Kembalikan satu pinjaman lewat halaman web.
+     *
+     * Teknisi pemilik mengajukan pengembalian; keeper/admin langsung menerima.
      */
     public function kembalikan(Request $request, ToolLoan $toolLoan): RedirectResponse
     {
@@ -201,18 +311,24 @@ class AlatSayaController extends Controller
             abort(403, 'Pinjaman ini bukan milik Anda.');
         }
 
-        $jenis = $admin
-            ? ToolLoan::HANDLED_ADMIN
-            : ($keeper ? ToolLoan::HANDLED_KEEPER : ToolLoan::HANDLED_SELF);
+        if ($admin || $keeper) {
+            $this->peminjaman->terimaKembali(
+                $toolLoan,
+                $admin ? ToolLoan::HANDLED_ADMIN : ToolLoan::HANDLED_KEEPER,
+                $teknisi,
+                $admin ? $request->user() : null
+            );
 
-        $this->peminjaman->kembalikan(
-            $toolLoan,
-            $jenis,
-            $teknisi,
-            $admin ? $request->user() : null
-        );
+            return back()->with('success', 'Alat ' . $toolLoan->tool_name . ' (' . $toolLoan->tool_code . ') diterima kembali.');
+        }
 
-        return back()->with('success', 'Alat ' . $toolLoan->tool_name . ' (' . $toolLoan->tool_code . ') sudah dikembalikan.');
+        if ($toolLoan->menungguPenerimaan()) {
+            return back()->with('success', 'Pengembalian alat ini sudah menunggu diterima tool keeper.');
+        }
+
+        $this->peminjaman->mintaKembali($toolLoan, ToolLoan::HANDLED_SELF, $teknisi);
+
+        return back()->with('success', 'Pengajuan pengembalian dikirim ke tool keeper untuk diperiksa.');
     }
 
     /**
@@ -227,7 +343,7 @@ class AlatSayaController extends Controller
     }
 
     /**
-     * Apakah akun berhak meminjamkan alat (admin atau keeper aktif).
+     * Apakah akun berhak meminjamkan/menerima alat (admin atau keeper aktif).
      */
     private function bolehMeminjamkan(?Technician $teknisi): bool
     {
@@ -235,65 +351,137 @@ class AlatSayaController extends Controller
     }
 
     /**
-     * Susun grup alat untuk dashboard teknisi/keeper.
+     * @return array{lokasi:int|null,rak:int|null,jenis:int|null,grup:int|null,status:string|null}
+     */
+    private function filterDariRequest(Request $request): array
+    {
+        $status = (string) $request->query('status', '');
+
+        return [
+            'lokasi' => (int) $request->query('lokasi', 0) ?: null,
+            'rak'    => (int) $request->query('rak', 0) ?: null,
+            'jenis'  => (int) $request->query('jenis', 0) ?: null,
+            'grup'   => (int) $request->query('grup', 0) ?: null,
+            'status' => in_array($status, ['tersedia', 'dipakai', 'rusak'], true) ? $status : null,
+        ];
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<Tool> $query
+     * @param  array<string,mixed> $filter
+     */
+    private function terapkanFilter($query, array $filter): void
+    {
+        $query->when($filter['lokasi'] !== null, fn ($q) => $q->whereHas('rack', fn ($rak) => $rak->where('tool_location_id', $filter['lokasi'])))
+            ->when($filter['rak'] !== null, fn ($q) => $q->where('tool_rack_id', $filter['rak']))
+            ->when($filter['jenis'] !== null, fn ($q) => $q->whereHas('group', fn ($grup) => $grup->where('tool_type_id', $filter['jenis'])))
+            ->when($filter['grup'] !== null, fn ($q) => $q->where('tool_group_id', $filter['grup']))
+            ->when($filter['status'] !== null, fn ($q) => $q->where('status', $filter['status']));
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<ToolLoan> $query
+     * @param  array<string,mixed> $filter
+     */
+    private function terapkanFilterKembali($query, array $filter): void
+    {
+        $query->when($filter['lokasi'] !== null, fn ($q) => $q->whereHas('tool.rack', fn ($rak) => $rak->where('tool_location_id', $filter['lokasi'])))
+            ->when($filter['rak'] !== null, fn ($q) => $q->whereHas('tool', fn ($alat) => $alat->where('tool_rack_id', $filter['rak'])))
+            ->when($filter['jenis'] !== null, fn ($q) => $q->whereHas('tool.group', fn ($grup) => $grup->where('tool_type_id', $filter['jenis'])))
+            ->when($filter['grup'] !== null, fn ($q) => $q->whereHas('tool', fn ($alat) => $alat->where('tool_group_id', $filter['grup'])));
+    }
+
+    /**
+     * Bentuk grup dari koleksi alat.
      *
+     * @param  Collection<int,Tool> $alat
      * @return array<int,array<string,mixed>>
      */
-    private function grupAlat(?Technician $teknisi, bool $bolehMeminjamkan): array
+    private function grupDariKoleksi(Collection $alat, ?Technician $teknisi, bool $bolehMeminjamkan, bool $admin): array
     {
-        $admin = (bool) auth()->user()?->isAdmin();
+        $hasil = [];
 
-        return ToolLocation::query()
-            ->with([
-                'racks.tools.pinjamanAktif.technician',
-                'racks.tools.pinjamanAktif.borrowerDepartment',
-                'racks.tools.pinjamanTerakhir.technician',
-                'racks.tools.pinjamanTerakhir.borrowerDepartment',
-            ])
-            ->orderBy('name')
-            ->get()
-            ->map(function (ToolLocation $lokasi) use ($teknisi, $bolehMeminjamkan, $admin): array {
-                return [
-                    'id'   => $lokasi->id,
-                    'name' => $lokasi->name,
-                    'rak'  => $lokasi->racks->map(function (ToolRack $rak) use ($teknisi, $bolehMeminjamkan, $admin): array {
-                        return [
-                            'id'    => $rak->id,
-                            'name'  => $rak->name,
-                            'tools' => $rak->tools->map(function (Tool $alat) use ($teknisi, $bolehMeminjamkan, $admin): array {
-                                $aktif     = $alat->pinjamanAktif;
-                                $terakhir  = $alat->pinjamanTerakhir;
-                                $milikSaya = $aktif !== null
-                                    && $teknisi !== null
-                                    && (int) $aktif->technician_id === (int) $teknisi->id;
+        foreach ($alat as $unit) {
+            $rak    = $unit->rack;
+            $lokasi = $rak?->location;
+            $idLokasi = $lokasi?->id ?? 0;
+            $idRak    = $rak?->id ?? 0;
 
-                                return [
-                                    'id'                => $alat->id,
-                                    'name'              => $alat->name,
-                                    'code'              => $alat->code,
-                                    'status'            => $alat->status,
-                                    'status_label'      => $alat->statusLabel(),
-                                    'foto_url'          => $alat->foto_url,
-                                    'note'              => $alat->note,
-                                    'peminjam'          => $aktif?->peminjamLabel(),
-                                    'peminjam_terakhir' => $aktif === null && $terakhir !== null ? $terakhir->peminjamLabel() : null,
-                                    'pinjaman_aktif_id' => $aktif?->id,
-                                    'boleh_pinjam'      => $teknisi !== null
-                                        && $aktif === null
-                                        && $alat->status === Tool::STATUS_TERSEDIA,
-                                    'boleh_pinjamkan'   => $bolehMeminjamkan
-                                        && $aktif === null
-                                        && $alat->status === Tool::STATUS_TERSEDIA,
-                                    'boleh_kembalikan'  => $aktif !== null
-                                        && ($admin || $bolehMeminjamkan || $milikSaya),
-                                ];
-                            })->values()->all(),
-                        ];
-                    })->values()->all(),
-                ];
-            })
-            ->values()
-            ->all();
+            $aktif     = $unit->pinjamanAktif;
+            $milikSaya = $aktif !== null
+                && $teknisi !== null
+                && (int) $aktif->technician_id === (int) $teknisi->id;
+            $menunggu = $aktif?->menungguPenerimaan() ?? false;
+
+            $hasil[$idLokasi] ??= ['id' => $idLokasi, 'name' => $lokasi?->name ?? 'Tanpa Lokasi', 'rak' => []];
+            $hasil[$idLokasi]['rak'][$idRak] ??= ['id' => $idRak, 'name' => $rak?->name ?? 'Tanpa Rak', 'tools' => []];
+            $hasil[$idLokasi]['rak'][$idRak]['tools'][] = [
+                'id'                => $unit->id,
+                'name'              => $unit->name,
+                'group_name'        => $unit->group?->name ?? $unit->name,
+                'type_name'         => $unit->group?->type?->name,
+                'code'              => $unit->code,
+                'status'            => $unit->status,
+                'status_label'      => $menunggu ? 'Menunggu diterima' : $unit->statusLabel(),
+                'menunggu_kembali'  => $menunggu,
+                'foto_url'          => $unit->foto_url,
+                'note'              => $unit->note,
+                'peminjam'          => $aktif?->peminjamLabel(),
+                'peminjam_terakhir' => $aktif === null && $unit->pinjamanTerakhir !== null
+                    ? $unit->pinjamanTerakhir->peminjamLabel()
+                    : null,
+                'pinjaman_aktif_id' => $aktif?->id,
+                'boleh_pinjam'      => $teknisi !== null && $aktif === null && $unit->status === Tool::STATUS_TERSEDIA,
+                'boleh_pinjamkan'   => $bolehMeminjamkan && $aktif === null && $unit->status === Tool::STATUS_TERSEDIA,
+                'boleh_kembalikan'  => $aktif !== null && ! $menunggu && ($admin || $bolehMeminjamkan || $milikSaya),
+            ];
+        }
+
+        return array_values(array_map(function (array $lokasi): array {
+            $lokasi['rak'] = array_values($lokasi['rak']);
+
+            return $lokasi;
+        }, $hasil));
+    }
+
+    /**
+     * @param  Collection<int,ToolLoan> $daftar
+     * @return array<int,array<string,mixed>>
+     */
+    private function grupKembaliDariKoleksi(Collection $daftar): array
+    {
+        $hasil = [];
+
+        foreach ($daftar as $pinjaman) {
+            $rak    = $pinjaman->tool?->rack;
+            $lokasi = $rak?->location;
+            $idLokasi = $lokasi?->id ?? 0;
+            $idRak    = $rak?->id ?? 0;
+
+            $hasil[$idLokasi] ??= ['id' => $idLokasi, 'name' => $lokasi?->name ?? 'Tanpa Lokasi', 'rak' => []];
+            $hasil[$idLokasi]['rak'][$idRak] ??= ['id' => $idRak, 'name' => $rak?->name ?? 'Tanpa Rak', 'loans' => []];
+            $hasil[$idLokasi]['rak'][$idRak]['loans'][] = [
+                'id'       => $pinjaman->id,
+                'tool_id'  => $pinjaman->tool_id,
+                'tool'     => $pinjaman->tool_name,
+                'code'     => $pinjaman->tool_code,
+                'group'    => $pinjaman->tool?->group?->name ?? $pinjaman->tool_name,
+                'type'     => $pinjaman->tool?->group?->type?->name,
+                'foto_url' => $pinjaman->tool?->foto_url,
+                'peminjam' => $pinjaman->peminjamLabel(),
+                'diminta'  => $pinjaman->return_requested_at?->format('d/m/Y H:i'),
+                'durasi'   => $pinjaman->durasiTeks(),
+                'pengaju'  => $pinjaman->returnRequesterTechnician?->name
+                    ?? $pinjaman->returnRequesterUser?->name
+                    ?? $pinjaman->peminjamLabel(),
+            ];
+        }
+
+        return array_values(array_map(function (array $lokasi): array {
+            $lokasi['rak'] = array_values($lokasi['rak']);
+
+            return $lokasi;
+        }, $hasil));
     }
 
     /**

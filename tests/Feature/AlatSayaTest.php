@@ -104,8 +104,9 @@ test('teknisi dapat membuka halaman peminjaman alat dan meminjam untuk diri send
         ->post(route('alat.kembali', $pinjaman->id))
         ->assertRedirect();
 
-    expect($pinjaman->fresh()->returned_at)->not->toBeNull()
-        ->and($this->alat->fresh()->status)->toBe(Tool::STATUS_TERSEDIA);
+    expect($pinjaman->fresh()->return_requested_at)->not->toBeNull()
+        ->and($pinjaman->fresh()->returned_at)->toBeNull()
+        ->and($this->alat->fresh()->status)->toBe(Tool::STATUS_DIPAKAI);
 });
 
 test('teknisi biasa tidak boleh meminjamkan alat', function () {

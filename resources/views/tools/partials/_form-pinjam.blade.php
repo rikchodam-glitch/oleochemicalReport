@@ -96,13 +96,13 @@
 
                                     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col"
                                          data-kartu-tool
-                                         data-cari="{{ strtolower($alat['name'] . ' ' . $alat['code']) }}"
+                                         data-cari="{{ strtolower(($alat['group_name'] ?? $alat['name']) . ' ' . $alat['code'] . ' ' . ($alat['type_name'] ?? '')) }}"
                                          data-lokasi="{{ $lokasi['id'] }}"
                                          data-rak="{{ $rak['id'] }}"
                                          data-status="{{ $alat['status'] }}">
                                         <div class="relative aspect-square bg-slate-100">
                                             @if($alat['foto_url'])
-                                                <img src="{{ $alat['foto_url'] }}" alt="{{ $alat['name'] }}"
+                                                <img src="{{ $alat['foto_url'] }}" alt="{{ $alat['group_name'] ?? $alat['name'] }}"
                                                      class="w-full h-full object-cover" loading="lazy">
                                             @else
                                                 <div class="w-full h-full flex items-center justify-center text-slate-300">
@@ -118,8 +118,8 @@
 
                                         <div class="p-3 space-y-2 flex-1 flex flex-col">
                                             <div>
-                                                <p class="text-sm font-semibold text-slate-900">{{ $alat['name'] }}</p>
-                                                <p class="text-xs text-slate-500">{{ $alat['code'] }}</p>
+                                                <p class="text-sm font-semibold text-slate-900">{{ $alat['group_name'] ?? $alat['name'] }}</p>
+                                                <p class="text-xs text-slate-500">{{ $alat['code'] }}{{ ! empty($alat['type_name']) ? ' · ' . $alat['type_name'] : '' }}</p>
                                             </div>
 
                                             <div class="text-xs text-slate-600 flex-1">
@@ -134,7 +134,7 @@
                                                 <button type="button"
                                                         class="pilih-alat w-full px-3 py-2 rounded-lg bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700"
                                                         data-id="{{ $alat['id'] }}"
-                                                        data-nama="{{ $alat['name'] }} ({{ $alat['code'] }})">
+                                                        data-nama="{{ $alat['group_name'] ?? $alat['name'] }} ({{ $alat['code'] }})">
                                                     Pilih Alat Ini
                                                 </button>
                                             @else

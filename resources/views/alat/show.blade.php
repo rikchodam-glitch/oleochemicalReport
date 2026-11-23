@@ -1,12 +1,12 @@
 @extends('layouts.app')
 
-@section('title', 'Log Alat - ' . $alat->name)
+@section('title', 'Detail Alat - ' . ($alat->group?->name ?? $alat->name))
 @section('breadcrumb')
     <a href="{{ route('dashboard') }}" class="hover:text-slate-700">Dashboard</a>
     <span class="text-slate-300">/</span>
     <a href="{{ route('alat.index') }}" class="hover:text-slate-700">Peminjaman Alat</a>
     <span class="text-slate-300">/</span>
-    <span class="text-slate-900 font-medium">{{ $alat->name }}</span>
+    <span class="text-slate-900 font-medium">{{ $alat->group?->name ?? $alat->name }}</span>
 @endsection
 
 @section('content')
@@ -33,14 +33,24 @@
         </x-alert>
     @endif
 
-    <div class="flex items-center justify-between gap-3">
+    <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-            <h2 class="text-lg font-semibold text-slate-900">{{ $alat->name }} ({{ $alat->code }})</h2>
-            <p class="text-xs text-slate-500">{{ $alat->rack?->location?->name ?? '-' }} / Rak {{ $alat->rack?->name ?? '-' }}</p>
+            <h2 class="text-lg font-semibold text-slate-900">{{ $alat->group?->name ?? $alat->name }} ({{ $alat->code }})</h2>
+            <p class="text-xs text-slate-500">
+                {{ $alat->rack?->location?->name ?? '-' }} / Rak {{ $alat->rack?->name ?? '-' }}
+                @if($alat->group?->type?->name) · {{ $alat->group->type->name }} @endif
+            </p>
         </div>
-        <a href="{{ route('alat.index') }}" class="text-sm font-semibold text-teal-700 hover:text-teal-800">
-            Kembali
-        </a>
+        <div class="flex items-center gap-3">
+            @if($bolehMeminjamkan)
+                <a href="{{ route('alat.returns.index') }}" class="text-sm font-semibold text-amber-700 hover:text-amber-800">
+                    Barang Kembali
+                </a>
+            @endif
+            <a href="{{ route('alat.index') }}" class="text-sm font-semibold text-teal-700 hover:text-teal-800">
+                Kembali
+            </a>
+        </div>
     </div>
 
     <div class="bg-white rounded-xl border border-slate-200 p-4">
@@ -59,10 +69,13 @@
 
             <div class="flex-1 space-y-3">
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold {{ $warna }}">
-                        {{ $alat->statusLabel() }}
+                    <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold {{ $menungguKembali ? 'bg-amber-100 text-amber-700' : $warna }}">
+                        {{ $menungguKembali ? 'Menunggu diterima' : $alat->statusLabel() }}
                     </span>
                     <span class="text-xs text-slate-500">Kode: {{ $alat->code }}</span>
+                    @if($alat->group?->type?->name)
+                        <span class="px-2 py-0.5 rounded bg-slate-100 text-[11px] font-medium text-slate-600">{{ $alat->group->type->name }}</span>
+                    @endif
                 </div>
 
                 @if($alat->note)
@@ -71,9 +84,15 @@
 
                 @if($aktif)
                     <div class="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">
-                        Dipakai oleh <span class="font-semibold">{{ $aktif->peminjamLabel() }}</span>
-                        sejak {{ $aktif->borrowed_at?->format('d/m/Y H:i') }}
-                        ({{ $aktif->durasiTeks() }}).
+                        @if($menungguKembali)
+                            Menunggu diterima tool keeper. Diajukan oleh
+                            <span class="font-semibold">{{ $aktif->returnRequesterTechnician?->name ?? $aktif->peminjamLabel() }}</span>
+                            pada {{ $aktif->return_requested_at?->format('d/m/Y H:i') }}.
+                        @else
+                            Dipakai oleh <span class="font-semibold">{{ $aktif->peminjamLabel() }}</span>
+                            sejak {{ $aktif->borrowed_at?->format('d/m/Y H:i') }}
+                            ({{ $aktif->durasiTeks() }}).
+                        @endif
                     </div>
                 @else
                     <p class="text-sm text-slate-600">
@@ -101,17 +120,17 @@
                         <button type="button"
                                 class="tombol-pinjamkan px-3 py-2 rounded-lg border border-teal-300 text-teal-700 text-sm font-semibold hover:bg-teal-50"
                                 data-id="{{ $alat->id }}"
-                                data-nama="{{ $alat->name }} ({{ $alat->code }})">
+                                data-nama="{{ $alat->group?->name ?? $alat->name }} ({{ $alat->code }})">
                             Pinjamkan
                         </button>
                     @endif
 
                     @if($bolehKembalikan && $aktif)
                         <form method="POST" action="{{ route('alat.kembali', $aktif->id) }}"
-                              onsubmit="return confirm('Kembalikan {{ $alat->name }} ({{ $alat->code }})?')">
+                              onsubmit="return confirm('{{ $bolehMeminjamkan ? 'Kembalikan' : 'Ajukan pengembalian' }} {{ $alat->name }} ({{ $alat->code }})?')">
                             @csrf
                             <button type="submit" class="px-3 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600">
-                                Kembalikan
+                                {{ $bolehMeminjamkan ? 'Kembalikan' : 'Ajukan Kembali' }}
                             </button>
                         </form>
                     @endif
@@ -120,7 +139,7 @@
                         <button type="button"
                                 class="tombol-edit-alat px-3 py-2 rounded-lg border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-50"
                                 data-id="{{ $alat->id }}"
-                                data-nama="{{ $alat->name }}"
+                                data-grup="{{ $alat->tool_group_id }}"
                                 data-kode="{{ $alat->code }}"
                                 data-rak="{{ $alat->tool_rack_id }}"
                                 data-status="{{ $alat->status }}"
@@ -188,6 +207,7 @@
                         <th class="text-left px-4 py-2 font-medium">Dipinjam</th>
                         <th class="text-left px-4 py-2 font-medium">Dikembalikan</th>
                         <th class="text-left px-4 py-2 font-medium">Durasi</th>
+                        <th class="text-left px-4 py-2 font-medium">Status</th>
                         <th class="text-left px-4 py-2 font-medium">Petugas</th>
                     </tr>
                 </thead>
@@ -209,13 +229,19 @@
                                 {{ $pinjaman->returned_at?->format('d/m/Y H:i') ?? '-' }}
                             </td>
                             <td class="px-4 py-2.5 text-xs text-slate-600">{{ $pinjaman->durasiTeks() }}</td>
+                            <td class="px-4 py-2.5">
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold
+                                    {{ $pinjaman->returned_at !== null ? 'bg-green-100 text-green-700' : ($pinjaman->menungguPenerimaan() ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700') }}">
+                                    {{ $pinjaman->statusLabel() }}
+                                </span>
+                            </td>
                             <td class="px-4 py-2.5 text-xs text-slate-600">
                                 {{ $pinjaman->handlerTechnician?->name ?? $pinjaman->handlerUser?->name ?? '-' }}
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="px-4 py-8 text-center text-sm text-slate-500">
+                            <td colspan="8" class="px-4 py-8 text-center text-sm text-slate-500">
                                 Belum ada log peminjaman pada filter ini.
                             </td>
                         </tr>
@@ -241,6 +267,6 @@
 @endif
 
 @if($bolehTulis)
-    @include('tools.partials._modal-alat', ['grup' => $grupRak])
+    @include('tools.partials._modal-alat', ['grup' => $grupRak, 'daftarKelompok' => $daftarKelompok])
 @endif
 @endsection

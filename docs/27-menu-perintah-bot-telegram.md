@@ -60,8 +60,9 @@ setelah handler tersedia.
   Lokasi > Rak > Alat.
 - `/pinjam` hanya untuk teknisi yang ditandai tool keeper; mengirim tautan form
   keeper yang bisa dipakai beberapa peminjaman sampai kedaluwarsa.
-- `/selesai` mengirim tautan form pengembalian untuk keeper, atau daftar
-  pinjaman dengan tombol kembalikan satu/semua untuk teknisi.
+- `/selesai` mengirim tautan **Barang Kembali** untuk keeper, atau daftar
+  pinjaman untuk teknisi. Teknisi hanya **mengajukan** pengembalian; alat tetap
+  dipakai sampai keeper/administrator menekan Terima.
 - Callback memakai prefix `alat:` dan hanya dilayani jalur polling. Rincian:
   `docs/33-management-tools.md`.
 

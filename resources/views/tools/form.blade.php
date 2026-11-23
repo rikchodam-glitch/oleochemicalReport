@@ -12,7 +12,9 @@
     $judul = in_array($purpose, [
         \App\Models\ToolToken::PURPOSE_KEEPER_PINJAM,
         \App\Models\ToolToken::PURPOSE_TEKNISI_PINJAM,
-    ], true) ? 'Form Peminjaman Alat' : 'Form Pengembalian Alat';
+    ], true)
+        ? 'Form Peminjaman Alat'
+        : ($modeKeeper ? 'Barang Kembali (Terima Alat)' : 'Form Pengembalian Alat');
 @endphp
 
 <div class="max-w-6xl mx-auto space-y-4">

@@ -34,6 +34,12 @@
 
 <div class="bg-white rounded-xl border border-slate-200 mb-5">
     <form method="GET" action="{{ $aksi }}" id="{{ $idForm }}" class="p-4 sm:p-5">
+        @foreach(($filterTersembunyi ?? []) as $namaFilter => $nilaiFilter)
+            @if($nilaiFilter !== null && $nilaiFilter !== '')
+                <input type="hidden" name="{{ $namaFilter }}" value="{{ $nilaiFilter }}">
+            @endif
+        @endforeach
+
         <div class="relative"
              x-data="pencarianEntitas(@js($saranUrl), @js($kataKunci), @js($idForm))"
              @click.outside="tutup()">
