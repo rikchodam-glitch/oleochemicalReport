@@ -95,7 +95,13 @@ class SpeechToTextService
             $latency = (int) round((microtime(true) - $mulai) * 1000);
 
             if (! $respons->successful()) {
-                $galatAkhir = 'Transkripsi gagal (HTTP ' . $respons->status() . ').';
+                $bodyProvider = $respons->json();
+                $pesanProvider = (string) ($bodyProvider['error']['message'] ?? '');
+
+                $galatAkhir = str_contains(strtolower($pesanProvider), 'file must be one of the following types')
+                    ? 'Format voice note tidak didukung. Coba kirim ulang.'
+                    : 'Transkripsi gagal (HTTP ' . $respons->status() . ').';
+
                 Log::warning('SpeechToText: provider menolak', [
                     'provider' => $provider->id,
                     'status'   => $respons->status(),
