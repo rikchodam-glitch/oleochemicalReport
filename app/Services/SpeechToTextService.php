@@ -142,7 +142,7 @@ class SpeechToTextService
 
         $batas = max(0, (int) config('voice.glossary_limit', 30));
 
-        if ($batas > 0) {
+        if ((bool) config('voice.glossary_enabled', false) && $batas > 0) {
             $alat = Tool::query()
                 ->orderBy('name')
                 ->limit($batas)

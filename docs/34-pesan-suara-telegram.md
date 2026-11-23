@@ -9,11 +9,14 @@ seperti teks yang diketik. Hasil akhir laporan tetap berupa teks.
 1. Teknisi mengirim voice note kapan saja, kecuali saat wizard sedang menunggu
    foto.
 2. Bot mengunduh audio, mengirim ke Groq Whisper, lalu menghapus audio lokal.
-3. Bot menampilkan transkrip + tombol **Gunakan**, **Ulangi**, **Batalkan**.
+3. Bot menampilkan transkrip + tombol **Gunakan**, **Ketik koreksi**,
+   **Ulangi**, **Batalkan**.
 4. **Gunakan** memproses transkrip:
    - jika wizard laporan/request aktif: menjadi jawaban langkah tersebut;
    - jika tidak ada wizard: menjadi teks biasa dan memulai laporan baru.
-5. **Ulangi** meminta voice note baru. **Batalkan** membuang transkrip.
+5. **Ketik koreksi** membuka mode edit: teks berikutnya menggantikan transkrip
+   dan ditampilkan ulang untuk disetujui.
+6. **Ulangi** meminta voice note baru. **Batalkan** membuang transkrip.
 
 Jalur webhook tidak mendukung inline keyboard; bot meminta balasan teks
 `GUNAKAN`, `ULANGI`, atau `BATAL`.
@@ -35,12 +38,16 @@ Jalur webhook tidak mendukung inline keyboard; bot meminta balasan teks
 - Telegram sering mengirim voice note dengan ekstensi `.oga`; file dinormalisasi
   menjadi `.ogg` karena Groq menolak `.oga` dengan pesan
   `unsupported_audio_format`.
-- Model bawaan `whisper-large-v3-turbo`; `whisper-large-v3` dapat dipilih lewat
-  konfigurasi bila akurasi perlu ditingkatkan.
-- Bahasa `id`, prompt berisi istilah alat/equipment dan kode agar istilah
-  teknis lebih akurat.
+- Model bawaan `whisper-large-v3`; `whisper-large-v3-turbo` dapat dipilih lewat
+  konfigurasi bila kecepatan lebih penting.
+- Bahasa `id`, prompt bersih tanpa daftar kode alat. Daftar kode yang panjang
+  membuat Whisper berhalusinasi kode pada voice note pendek (kejadian nyata:
+  "pengembangan sistem maintenance" menjadi "PENGTNPA-PROD-...").
+- Glossary nama alat/equipment dimatikan secara bawaan
+  (`VOICE_TRANSCRIPTION_GLOSSARY_ENABLED=false`); aktifkan hanya bila perlu.
 - confidence dihitung dari `no_speech_prob` dan `avg_logprob` segmen Whisper
-  (tinggi/sedang/rendah).
+  (tinggi/sedang/rendah). Transkrip hasil koreksi pengguna diberi label
+  "hasil koreksi".
 
 ## Batas operasional
 
@@ -78,8 +85,12 @@ Semua pengaturan ada di `config/voice.php`:
   callback, penolakan saat langkah foto, kegagalan Groq, serta jalur webhook.
 - Uji langsung Groq Whisper dengan audio WAV sintetis ~15 detik: transkripsi
   ~0,9 detik dan kode `BRBT001` terbaca benar.
-- Format voice note Telegram adalah OGG/Opus; uji dengan voice note asli tetap
-  diperlukan sebelum deploy.
+- Format voice note Telegram adalah OGG/Opus; voice note `.oga` dinormalisasi
+  menjadi `.ogg` karena Groq menolak `.oga`.
+- Voice note pendek 4 detik dengan prompt glossary sempat menghasilkan
+  halusinasi kode; prompt kini dibersihkan dan model default dinaikkan ke
+  `whisper-large-v3`, dengan tombol **Ketik koreksi** sebagai pengaman.
+- Seluruh suite: **880 test hijau, 4.549 assertions**.
 
 ## Deploy
 

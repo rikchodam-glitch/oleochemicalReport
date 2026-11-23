@@ -20,18 +20,66 @@ class PendingTranscriptService
      *
      * @param array<string,mixed> $hasil Hasil SpeechToTextService
      */
-    public function simpan(string $chatId, Technician $teknisi, array $hasil): void
+    public function simpan(string $chatId, Technician $teknisi, array $hasil, bool $dukungCallback = true): void
     {
         $ttl = max(1, (int) config('voice.pending_ttl_menit', 10));
 
         Cache::put(self::PREFIX . $chatId, [
-            'technician_id' => $teknisi->id,
-            'text'          => (string) ($hasil['text'] ?? ''),
-            'confidence'    => (string) ($hasil['confidence'] ?? 'sedang'),
-            'duration'      => (int) ($hasil['duration'] ?? 0),
-            'model'         => (string) ($hasil['model'] ?? ''),
-            'created_at'    => now()->toIso8601String(),
+            'technician_id'  => $teknisi->id,
+            'text'           => (string) ($hasil['text'] ?? ''),
+            'confidence'     => (string) ($hasil['confidence'] ?? 'sedang'),
+            'duration'       => (int) ($hasil['duration'] ?? 0),
+            'model'          => (string) ($hasil['model'] ?? ''),
+            'mode'           => 'confirm',
+            'dukung_callback' => $dukungCallback,
+            'created_at'     => now()->toIso8601String(),
         ], now()->addMinutes($ttl));
+    }
+
+    /**
+     * Ubah mode transkrip menunggu: confirm atau edit.
+     */
+    public function setMode(string $chatId, string $mode): void
+    {
+        $data = $this->ambil($chatId);
+
+        if ($data === null) {
+            return;
+        }
+
+        $data['mode'] = $mode;
+
+        Cache::put(
+            self::PREFIX . $chatId,
+            $data,
+            now()->addMinutes(max(1, (int) config('voice.pending_ttl_menit', 10)))
+        );
+    }
+
+    /**
+     * Ganti teks transkrip dengan koreksi pengguna.
+     *
+     * @return array<string,mixed>|null
+     */
+    public function gantiTeks(string $chatId, string $text): ?array
+    {
+        $data = $this->ambil($chatId);
+
+        if ($data === null) {
+            return null;
+        }
+
+        $data['text']       = trim($text);
+        $data['confidence'] = 'koreksi';
+        $data['mode']       = 'confirm';
+
+        Cache::put(
+            self::PREFIX . $chatId,
+            $data,
+            now()->addMinutes(max(1, (int) config('voice.pending_ttl_menit', 10)))
+        );
+
+        return $data;
     }
 
     /**

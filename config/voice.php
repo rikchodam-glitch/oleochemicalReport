@@ -12,7 +12,7 @@ return [
     */
     'provider_type' => env('VOICE_TRANSCRIPTION_PROVIDER', 'groq'),
     'endpoint'      => env('VOICE_TRANSCRIPTION_ENDPOINT', 'https://api.groq.com/openai/v1/audio/transcriptions'),
-    'model'         => env('VOICE_TRANSCRIPTION_MODEL', 'whisper-large-v3-turbo'),
+    'model'         => env('VOICE_TRANSCRIPTION_MODEL', 'whisper-large-v3'),
     'language'      => env('VOICE_TRANSCRIPTION_LANGUAGE', 'id'),
     'timeout_detik' => (int) env('VOICE_TRANSCRIPTION_TIMEOUT', 60),
 
@@ -22,8 +22,7 @@ return [
     */
     'prompt' => env(
         'VOICE_TRANSCRIPTION_PROMPT',
-        'Transkrip bahasa Indonesia untuk laporan maintenance pabrik oleochemical. '
-        . 'Pertahankan kode alat, nomor equipment, nama bagian, dan istilah teknis apa adanya.'
+        'Transkripsi bahasa Indonesia yang jelas dan alami. Pertahankan istilah teknis yang diucapkan.'
     ),
 
     /*
@@ -42,7 +41,11 @@ return [
     'rate_limit_per_menit' => (int) env('VOICE_TRANSCRIPTION_RATE_LIMIT', 5),
 
     /*
-    | Jumlah nama alat dan kode yang dimasukkan ke prompt Whisper.
+    | Glossary nama alat/equipment dimatikan secara bawaan. Daftar kode yang
+    | terlalu banyak membuat Whisper berhalusinasi kode pada voice note pendek
+    | (kejadian nyata: "pengembangan sistem maintenance" menjadi
+    | "PENGTNPA-PROD-..."). Aktifkan hanya bila benar-benar diperlukan.
     */
-    'glossary_limit' => (int) env('VOICE_TRANSCRIPTION_GLOSSARY_LIMIT', 30),
+    'glossary_enabled' => (bool) env('VOICE_TRANSCRIPTION_GLOSSARY_ENABLED', false),
+    'glossary_limit'   => (int) env('VOICE_TRANSCRIPTION_GLOSSARY_LIMIT', 30),
 ];

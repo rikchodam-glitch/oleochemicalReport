@@ -106,7 +106,7 @@ class VoiceTranscriptionService
             return;
         }
 
-        $this->pending->simpan($chat, $teknisi, $hasil);
+        $this->pending->simpan($chat, $teknisi, $hasil, $dukungCallback);
 
         $this->catat(
             $teknisi,
@@ -140,6 +140,29 @@ class VoiceTranscriptionService
         }
 
         $perintah = strtolower(trim($text));
+
+        // Mode koreksi: teks berikutnya menggantikan transkrip, bukan diproses
+        // sebagai isi laporan.
+        if (($data['mode'] ?? 'confirm') === 'edit') {
+            $baru = $this->pending->gantiTeks($chat, $text);
+
+            if ($baru !== null) {
+                $this->kirimKonfirmasi(
+                    $chatId,
+                    $baru,
+                    (bool) ($baru['dukung_callback'] ?? true)
+                );
+            }
+
+            return true;
+        }
+
+        if (in_array($perintah, ['koreksi', 'edit'], true)) {
+            $this->pending->setMode($chat, 'edit');
+            $this->telegram->sendMessage($chatId, 'Ketik teks yang benar. Teks yang Anda kirim akan menggantikan transkrip.');
+
+            return true;
+        }
 
         if (in_array($perintah, ['gunakan', 'pakai'], true)) {
             $this->pending->hapus($chat);
@@ -205,6 +228,13 @@ class VoiceTranscriptionService
             return;
         }
 
+        if ($data === 'suara:edit') {
+            $this->pending->setMode($chat, 'edit');
+            $this->telegram->editMessageText($chatId, $messageId, 'Ketik teks yang benar. Teks yang Anda kirim akan menggantikan transkrip.');
+
+            return;
+        }
+
         if ($data === 'suara:ulang') {
             $this->pending->hapus($chat);
             $this->telegram->editMessageText($chatId, $messageId, 'Silakan kirim voice note lagi.');
@@ -229,17 +259,18 @@ class VoiceTranscriptionService
      */
     private function kirimKonfirmasi(int|string $chatId, array $hasil, bool $dukungCallback): void
     {
-        $teks       = (string) ($hasil['text'] ?? '');
-        $keyakinan  = (string) ($hasil['confidence'] ?? 'sedang');
-        $durasi     = (int) ($hasil['duration'] ?? 0);
+        $teks      = (string) ($hasil['text'] ?? '');
+        $keyakinan = (string) ($hasil['confidence'] ?? 'sedang');
+        $durasi    = (int) ($hasil['duration'] ?? 0);
+        $label     = $keyakinan === 'koreksi' ? 'hasil koreksi' : 'keyakinan: ' . $keyakinan;
 
-        $pesan = "Transkrip suara (keyakinan: " . e($keyakinan) . "):\n\n"
+        $pesan = "Transkrip suara (" . e($label) . "):\n\n"
             . e($teks) . "\n\n"
             . 'Durasi audio: ' . $durasi . " detik.\n"
             . 'Gunakan teks ini?';
 
         if (! $dukungCallback) {
-            $pesan .= "\nBalas GUNAKAN, ULANGI, atau BATAL.";
+            $pesan .= "\nBalas GUNAKAN, KOREKSI, ULANGI, atau BATAL.";
 
             $this->telegram->sendMessage($chatId, $pesan);
 
@@ -250,9 +281,10 @@ class VoiceTranscriptionService
             'reply_markup' => ['inline_keyboard' => [
                 [
                     ['text' => 'Gunakan', 'callback_data' => 'suara:pakai'],
-                    ['text' => 'Ulangi', 'callback_data' => 'suara:ulang'],
+                    ['text' => 'Ketik koreksi', 'callback_data' => 'suara:edit'],
                 ],
                 [
+                    ['text' => 'Ulangi', 'callback_data' => 'suara:ulang'],
                     ['text' => 'Batalkan', 'callback_data' => 'suara:batal'],
                 ],
             ]],
