@@ -32,6 +32,9 @@ Jalur webhook tidak mendukung inline keyboard; bot meminta balasan teks
 
 - Provider/key diambil dari tabel `ai_providers` (`provider_type = groq`,
   `status = healthy`), bukan dari `.env` baru.
+- Telegram sering mengirim voice note dengan ekstensi `.oga`; file dinormalisasi
+  menjadi `.ogg` karena Groq menolak `.oga` dengan pesan
+  `unsupported_audio_format`.
 - Model bawaan `whisper-large-v3-turbo`; `whisper-large-v3` dapat dipilih lewat
   konfigurasi bila akurasi perlu ditingkatkan.
 - Bahasa `id`, prompt berisi istilah alat/equipment dan kode agar istilah

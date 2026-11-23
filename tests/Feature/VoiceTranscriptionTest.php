@@ -6,6 +6,7 @@ use App\Models\Technician;
 use App\Models\VoiceTranscription;
 use App\Services\Telegram\ReportWizardService;
 use App\Services\Telegram\SparepartRequestWizardService;
+use App\Services\Telegram\VoiceStorageService;
 use Illuminate\Console\OutputStyle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -117,6 +118,16 @@ function kirimCallbackVoice(string $chatId, string $data): void
         ],
     ]);
 }
+
+test('voice note Telegram .oga disimpan sebagai .ogg agar diterima Groq', function () {
+    $storage = app(VoiceStorageService::class);
+    $hasil   = $storage->store('voice-1', '33001');
+
+    expect($hasil)->not->toBeNull()
+        ->and($hasil['path'])->toEndWith('.ogg');
+
+    $storage->delete($hasil['path']);
+});
 
 test('voice note ditranskripsi dan menunggu persetujuan', function () {
     kirimUpdateVoice('33001', [

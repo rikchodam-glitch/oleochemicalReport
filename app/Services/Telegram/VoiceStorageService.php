@@ -76,6 +76,13 @@ class VoiceStorageService
 
             $ekstensi = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
 
+            // Telegram voice note sering memakai ekstensi .oga, sedangkan
+            // Groq Whisper hanya menerima daftar ekstensi resminya (ogg/opus/
+            // mp3/...). Normalisasi .oga -> .ogg agar file diterima.
+            if ($ekstensi === 'oga') {
+                $ekstensi = 'ogg';
+            }
+
             if (! in_array($ekstensi, $this->allowedExtensions, true)) {
                 Log::warning('VoiceStorage: ekstensi audio tidak didukung', ['ekstensi' => $ekstensi]);
 
