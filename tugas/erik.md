@@ -1,17 +1,15 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-11-23 10:03 WIB
+Diperbarui: 2026-11-23 10:26 WIB
 
-- Cabang aktif: `tugas/erik/pesan-suara-telegram`
-- Mulai: 2026-11-23 10:03
+- Cabang aktif: `tugas/erik/perbaiki-format-ogg-voice`
+- Mulai: 2026-11-23 10:26
 - Status: SELESAI (PR siap, menunggu review/merge integrator)
 - Modul/berkas yang disentuh:
-  - Voice-to-text Telegram via Groq Whisper (turbo), konfirmasi Gunakan/Ulangi/Batal
-  - Config voice, storage audio sementara, cache transkrip, log voice_transcriptions
-  - TelegramMessageHandlerTrait, PollTelegramUpdates, TelegramWebhookController
-  - Wizard report/request: penolakan voice saat langkah foto
-  - tests/Feature/VoiceTranscriptionTest.php, docs/34, AGENTS.md
-- Catatan: berkas kotor sesi lain TIDAK ikut di-commit. PR: tugas/pr-pesan-suara-telegram.md. Uji voice note OGG/Opus asli menunggu sampel.
+  - Normalisasi ekstensi voice Telegram .oga -> .ogg agar diterima Groq
+  - Pesan error format audio lebih jelas
+  - tests/Feature/VoiceTranscriptionTest.php, docs/34
+- Catatan: berkas kotor sesi lain TIDAK ikut di-commit. PR: tugas/pr-perbaiki-format-ogg-voice.md.
 
 ## Riwayat
-- tugas/erik/card-detail-alat-dan-collapse-rak (mulai 2026-11-20 15:43) -> dilanjutkan 2026-11-23 10:03
+- tugas/erik/pesan-suara-telegram (mulai 2026-11-23 10:03) -> dilanjutkan 2026-11-23 10:26
