@@ -576,6 +576,10 @@ trait ReportExportTrait
             $bagian[] = 'Kode Alat: ' . $request->input('asset_code');
         }
 
+        if ($this->pakaiSemuaTanggal($request)) {
+            $bagian[] = 'Cakupan: semua tanggal';
+        }
+
         if ($request->filled('search')) {
             $bagian[] = 'Pencarian: ' . $request->input('search');
         }

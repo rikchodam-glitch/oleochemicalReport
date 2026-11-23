@@ -142,12 +142,26 @@
 
     // Filter lanjutan dianggap aktif bila ada filter di dalam panelnya. Jenis
     // pekerjaan & status tidak dihitung karena sudah dipegang kartu ringkasan.
+    // Kata kunci utama tidak dihitung karena letaknya di kotak pencarian atas.
     $adaFilterLanjutan = collect([
-        request('search'), request('report_code'), request('asset_code'),
-        request('area_id'), request('technician_id'), request('report_type'),
-        request('work_classification'),
+        request('report_code'), request('asset_code'),
+        request('area_id'), request('funcloc_id'), request('technician_id'),
+        request('report_type'), request('work_classification'),
     ])->filter()->isNotEmpty();
+
+    // Kolom Tanggal wajib tampil saat memakai rentang ATAU saat hasil berasal
+    // dari seluruh tanggal (pencarian), karena baris tidak lagi satu hari.
+    $tampilKolomTanggal = $pakaiRentang || $cakupanSemua;
 @endphp
+
+{{-- Kotak pencarian utama: seluruh tanggal + kedua tab + saran langsung. --}}
+@include('reports.partials._pencarian-utama', [
+    'cariAktif'    => $cariAktif,
+    'cakupanSemua' => $cakupanSemua,
+    'kataKunci'    => $kataKunci,
+    'totalLaporan' => $totalLaporan,
+    'funclocAktif' => $funclocAktif,
+])
 
 {{-- ============================================================
      Panel utama: pilih tampilan (Reguler / Shift), status, dan tanggal kerja
@@ -157,6 +171,9 @@
 
         {{-- Tab tampilan, pemilih grub, dan kartu status (Continue / Done) --}}
         <div class="flex flex-wrap items-center justify-between gap-3">
+            {{-- Tab tampilan & grub hanya berlaku pada tampilan tanggal.
+                 Pada mode pencarian/semua tanggal keduanya tab ditampilkan. --}}
+            @if(! $cakupanSemua)
             <div class="flex flex-wrap items-center gap-3">
                 <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden">
                     <a href="{{ $tautanTampilan('reguler') }}"
@@ -205,6 +222,7 @@
                     </p>
                 @endif
             </div>
+            @endif
 
             {{-- Kartu total pekerjaan + kartu status pekerjaan: kartu status
                  bisa diklik sebagai filter cepat (klik ulang = semua status),
@@ -234,7 +252,9 @@
             </div>
         </div>
 
-        {{-- Navigasi tanggal: hari sebelumnya / hari berikutnya --}}
+        {{-- Navigasi tanggal: hari sebelumnya / hari berikutnya. Tidak dipakai
+             pada mode pencarian/semua tanggal. --}}
+        @if(! $cakupanSemua)
         <div class="flex flex-wrap items-center gap-2 pt-1">
             @if($tanggalSekitar['sebelumnya'])
                 <a href="{{ $tautanTanggal($tanggalSekitar['sebelumnya']) }}"
@@ -326,6 +346,7 @@
                 @endforeach
             </div>
         @endif
+        @endif
 
     </div>
 </div>
@@ -360,20 +381,29 @@
     </summary>
 
     <form method="GET" action="{{ route('reports.index') }}" class="px-5 pb-5 space-y-4 border-t border-slate-100 pt-5">
-        <input type="hidden" name="tampilan" value="{{ $tampilan }}">
-        @if($grubAktif)
-            <input type="hidden" name="grub" value="{{ $grubAktif }}">
+        @if($cakupanSemua)
+            {{-- Mode pencarian/semua tanggal: kata kunci & cakupan dibawa,
+                 sedangkan tanggal/tab tidak dikirim supaya hasil tetap lintas
+                 tanggal dan kedua tab. --}}
+            <input type="hidden" name="search" value="{{ $kataKunci }}">
+            <input type="hidden" name="cakupan" value="semua">
+        @else
+            <input type="hidden" name="tampilan" value="{{ $tampilan }}">
+            @if($grubAktif)
+                <input type="hidden" name="grub" value="{{ $grubAktif }}">
+            @endif
+            {{-- Tanggal aktif dipertahankan supaya menerapkan filter tidak melompat
+                 kembali ke hari ini (rentang tanggal tetap menang bila diisi). --}}
+            <input type="hidden" name="tanggal" value="{{ $tanggalAktifStr }}">
         @endif
-        {{-- Tanggal aktif dipertahankan supaya menerapkan filter tidak melompat
-             kembali ke hari ini (rentang tanggal tetap menang bila diisi). --}}
-        <input type="hidden" name="tanggal" value="{{ $tanggalAktifStr }}">
 
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Pekerjaan / Lokasi / Alat</label>
-                <input type="text" name="search" value="{{ request('search') }}" placeholder="Cari pekerjaan, kode lokasi, atau alat..."
-                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
-            </div>
+        {{-- Lokasi dari saran pencarian tidak punya kotak sendiri di form ini;
+             nilainya dibawa lewat isian tersembunyi agar tidak hilang. --}}
+        @if(request()->filled('funcloc_id'))
+            <input type="hidden" name="funcloc_id" value="{{ request('funcloc_id') }}">
+        @endif
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
                 <label class="block text-xs text-slate-500 mb-1">Kode Laporan</label>
                 <input type="text" name="report_code" value="{{ request('report_code') }}" placeholder="Cari kode laporan..."
@@ -474,7 +504,9 @@
                     class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
                 Terapkan Filter
             </button>
-            <a href="{{ route('reports.index', ['tampilan' => $tampilan, 'tanggal' => $tanggalAktifStr]) }}"
+            <a href="{{ $cakupanSemua
+                    ? route('reports.index', ['tanggal' => now()->toDateString()])
+                    : route('reports.index', ['tampilan' => $tampilan, 'tanggal' => $tanggalAktifStr]) }}"
                class="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors">
                 Reset Filter
             </a>
@@ -496,7 +528,7 @@
                     <th class="text-center text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Status</th>
                     <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Lokasi / Alat</th>
                     <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Waktu & Foto</th>
-                    @if($pakaiRentang)
+                    @if($tampilKolomTanggal)
                         <th class="text-left text-xs font-medium text-slate-500 uppercase tracking-wide px-4 py-3 whitespace-nowrap">Tanggal</th>
                     @endif
                 </tr>
@@ -593,7 +625,7 @@
                                 {{ $report->technician?->name ?? '-' }}
                             </p>
 
-                            @if($tampilan === 'shift' && ($report->technician?->group || $tampilKarenaKolaborasi))
+                            @if(($tampilan === 'shift' || $tampilan === 'semua') && ($report->technician?->group || $tampilKarenaKolaborasi))
                                 @if($tampilKarenaKolaborasi)
                                     <span class="inline-flex mt-1 px-2 py-0.5 rounded-md text-xs font-medium bg-violet-50 text-violet-700 border border-violet-100"
                                           title="Pelapor non-shift; laporan masuk tab Shift karena mencantumkan kolaborator shift/Staff Grub.">
@@ -725,7 +757,7 @@
                             </p>
                         </td>
 
-                        @if($pakaiRentang)
+                        @if($tampilKolomTanggal)
                             <td class="px-4 py-3.5 align-top whitespace-nowrap text-xs text-slate-600">
                                 {{ $report->report_date?->format('d/m/Y') ?? '-' }}
                             </td>
@@ -734,7 +766,7 @@
 
                 @empty
                     <tr>
-                        <td colspan="{{ $pakaiRentang ? 7 : 6 }}" class="px-5 py-16 text-center">
+                        <td colspan="{{ $tampilKolomTanggal ? 7 : 6 }}" class="px-5 py-16 text-center">
                             <div class="flex flex-col items-center gap-3">
                                 <svg class="w-12 h-12 text-slate-200" fill="none" viewBox="0 0 48 48">
                                     <rect x="8" y="6" width="32" height="36" rx="4" fill="currentColor" opacity=".4"/>
@@ -744,17 +776,31 @@
                                     <line x1="16" y1="30" x2="24" y2="30" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/>
                                 </svg>
                                 <div>
-                                    <p class="text-sm font-medium text-slate-500">
-                                        Belum ada pekerjaan pada {{ $labelTanggal }}
-                                        @if($tampilan === 'shift')
-                                            ({{ $grubAktif ? (\App\Models\Technician::GROUPS[$grubAktif] ?? $grubAktif) : 'semua grub' }})
-                                        @else
-                                            (reguler)
-                                        @endif
-                                    </p>
-                                    <p class="text-xs text-slate-400 mt-1">
-                                        Pilih tanggal lain lewat tombol tanggal di atas, atau tombol Hari Ini.
-                                    </p>
+                                    @if($cakupanSemua)
+                                        <p class="text-sm font-medium text-slate-500">
+                                            @if($cariAktif)
+                                                Tidak ada laporan yang cocok dengan "{{ $kataKunci }}"
+                                            @else
+                                                Belum ada pekerjaan pada filter ini
+                                            @endif
+                                            di seluruh tanggal.
+                                        </p>
+                                        <p class="text-xs text-slate-400 mt-1">
+                                            Coba kata kunci lain, atau longgarkan filter di panel Filter Lanjutan.
+                                        </p>
+                                    @else
+                                        <p class="text-sm font-medium text-slate-500">
+                                            Belum ada pekerjaan pada {{ $labelTanggal }}
+                                            @if($tampilan === 'shift')
+                                                ({{ $grubAktif ? (\App\Models\Technician::GROUPS[$grubAktif] ?? $grubAktif) : 'semua grub' }})
+                                            @else
+                                                (reguler)
+                                            @endif
+                                        </p>
+                                        <p class="text-xs text-slate-400 mt-1">
+                                            Pilih tanggal lain lewat tombol tanggal di atas, atau tombol Hari Ini.
+                                        </p>
+                                    @endif
                                 </div>
                             </div>
                         </td>
@@ -774,7 +820,9 @@
                 dari
                 <span class="font-medium text-slate-700">{{ number_format($reports->total()) }}</span>
                 pekerjaan
-                @if(! $pakaiRentang)
+                @if($cakupanSemua)
+                    di seluruh tanggal
+                @elseif(! $pakaiRentang)
                     pada {{ $labelTanggal }}
                 @endif
             </p>

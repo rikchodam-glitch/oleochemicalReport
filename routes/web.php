@@ -27,6 +27,7 @@ use App\Http\Controllers\ReportCollaborationController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReportFormController;
 use App\Http\Controllers\ReportMultiItemController;
+use App\Http\Controllers\ReportSearchController;
 use App\Http\Controllers\SparepartController;
 use App\Http\Controllers\SparepartPantauController;
 use App\Http\Controllers\SparepartRequestController;
@@ -199,6 +200,12 @@ Route::post('/assets/unlinked-funcloc/run-sync', [AssetController::class, 'runAu
     // Pemilih lokasi bertingkat (PT -> Departemen -> Area -> Section -> Alat)
     // pada mode edit laporan: satu permintaan mengembalikan node anak + alat.
     Route::get('/reports/locations/hirarki', [ReportController::class, 'anakLokasi'])->name('reports.locations.hirarki');
+    // Saran pencarian utama halaman Laporan (dropdown: laporan, teknisi,
+    // area, alat, lokasi). Dibatasi supaya ketikan cepat tidak membanjiri
+    // database.
+    Route::get('/reports/cari', ReportSearchController::class)
+        ->middleware('throttle:120,1')
+        ->name('reports.cari');
     // Export laporan: Excel (.xlsx, tiga lembar) dan CSV. Keduanya memakai
     // filter yang sama dengan halaman Laporan plus kunci khusus popup export
     // (jenis_pekerjaan_multi[], tanpa_batas).
