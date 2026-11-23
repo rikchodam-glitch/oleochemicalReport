@@ -20,6 +20,7 @@ use App\Models\SubArea;
 use App\Models\Technician;
 use App\Services\AssetNumberService;
 use App\Services\FuncLocSyncService;
+use App\Services\PencarianAsetService;
 use App\Services\LocationHierarchyService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -58,16 +59,15 @@ class AssetController extends Controller
      */
     public function index(Request $request, FuncLocSyncService $syncService, LocationHierarchyService $locations)
     {
-        $query = Asset::with(['company', 'department', 'area', 'subArea']);
+        $cariAktif = $request->filled('search');
+        $kataKunci = trim((string) $request->get('search', ''));
+        $query     = Asset::with(['company', 'department', 'area', 'subArea']);
 
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('equipment_no', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%")
-                  ->orWhere('tech_ident_no', 'like', "%{$search}%")
-                  ->orWhere('functional_loc', 'like', "%{$search}%");
-            });
+        if ($cariAktif) {
+            // Seluruh aturan kata kunci (multi-kata, sinonim, relasi) ada di
+            // PencarianAsetService supaya daftar hasil dan dropdown saran
+            // memakai aturan yang sama.
+            app(PencarianAsetService::class)->terapkan($query, $kataKunci);
         }
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -88,7 +88,23 @@ class AssetController extends Controller
             $query->where('equipment_type', $request->equipment_type);
         }
 
-        $assets      = $query->latest()->paginate(20)->withQueryString();
+        if ($cariAktif) {
+            // Pencarian: yang paling relevan di atas, lalu yang terbaru.
+            app(PencarianAsetService::class)->terapkanUrutan($query, $kataKunci);
+            $query->orderByDesc('created_at')->orderByDesc('id');
+        } else {
+            $query->latest();
+        }
+
+        $assets = $query->paginate(20)->withQueryString();
+
+        if ($cariAktif) {
+            // Kolom hitung urutan pencarian tidak perlu ikut tampil.
+            $assets->getCollection()->transform(
+                fn (Asset $asset) => $asset->makeHidden('relevansi')
+            );
+        }
+
         $companies   = Company::all();
         $equipmentTypes = Asset::select('equipment_type')
             ->distinct()
@@ -124,7 +140,7 @@ class AssetController extends Controller
 
         return view('assets.index', compact(
             'assets', 'companies', 'equipmentTypes', 'departments', 'areas', 'subAreas',
-            'unlinkedFuncLocCount', 'cmTanpaAsset'
+            'unlinkedFuncLocCount', 'cmTanpaAsset', 'cariAktif', 'kataKunci'
         ));
     }
 

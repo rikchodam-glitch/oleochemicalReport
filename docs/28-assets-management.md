@@ -4,9 +4,10 @@ Dokumen ini mencatat perubahan halaman Assets Management (22/10/2026).
 
 ## Daftar asset
 
-- Pencarian langsung: mengetik di kolom pencarian mengirim form setelah
-  pengguna berhenti mengetik (debounce 450 ms) sehingga equipment muncul tanpa
-  menekan Tombol Terapkan.
+- Pencarian memakai kotak utama di atas halaman: multi-kata, saran aset/tipe/
+  lokasi, dan Enter untuk mencari. Panel Filter tidak lagi memuat input
+  pencarian; kata kunci dibawa sebagai isian tersembunyi saat filter
+  diterapkan. Rincian: `docs/35-pencarian-asset-dan-it.md`.
 - Kolom **Status** dan **Aksi** dihapus dari tabel.
 - Baris tabel dapat diklik (atau tekan Enter) untuk membuka detail.
 - Kode alat juga berupa tautan langsung ke detail.
@@ -234,3 +235,12 @@ Perubahan:
 - Uji: `AssetExportLengkapTest` **3 test hijau, 32 assertions**; seluruh suite
   **777 test hijau, 3.908 assertions**; `view:cache` sukses (28/10/2026).
 - Tidak ada migrasi baru dan tidak ada perubahan data.
+
+## PENCARIAN UTAMA DI ATAS HALAMAN (23/11/2026)
+
+Halaman Assets kini memakai kotak pencarian global di atas halaman
+(multi-kata, saran aset/tipe/lokasi, prioritas kode alat). Input pencarian di
+panel Filter dihapus; menerapkan filter lokasi/tipe membawa kata kunci lewat
+isian tersembunyi. Halaman IT Assets mendapat kotak yang sama dengan saran
+perangkat/tipe/plant/lokasi/VLAN. Aturan lengkap ada di
+docs/35-pencarian-asset-dan-it.md.

@@ -3,6 +3,7 @@
 use App\Http\Controllers\AiProviderController;
 use App\Http\Controllers\AlatSayaController;
 use App\Http\Controllers\AssetController;
+use App\Http\Controllers\AssetSearchController;
 use App\Http\Controllers\BagianAccessController;
 use App\Http\Controllers\BotController;
 use App\Http\Controllers\CmController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\HariLiburController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\IpAddressController;
 use App\Http\Controllers\ItAssetController;
+use App\Http\Controllers\ItAssetSearchController;
 use App\Http\Controllers\ItLayoutController;
 use App\Http\Controllers\ItServiceController;
 use App\Http\Controllers\LoginController;
@@ -127,7 +129,12 @@ Route::middleware(['admin', 'akses', 'hanya_baca'])->group(function () {
     Route::get('/assets/locations/departments', [AssetController::class, 'getDepartments'])->name('assets.locations.departments');
     Route::get('/assets/locations/areas', [AssetController::class, 'getAreas'])->name('assets.locations.areas');
     Route::get('/assets/locations/subareas', [AssetController::class, 'getSubAreas'])->name('assets.locations.subareas');
-Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'nextEquipmentNo'])->name('assets.locations.next-equipment-no');
+    Route::get('/assets/locations/next-equipment-no', [AssetController::class, 'nextEquipmentNo'])->name('assets.locations.next-equipment-no');
+    // Saran pencarian utama halaman Asset Management (dropdown: aset, tipe,
+    // lokasi). Dibatasi supaya ketikan cepat tidak membanjiri database.
+    Route::get('/assets/cari', AssetSearchController::class)
+        ->middleware('throttle:120,1')
+        ->name('assets.cari');
 
     // Rekonsiliasi manual FuncLoc — WAJIB sebelum resource agar tidak
     // ditimpa wildcard {asset} milik resource (assets.show).
@@ -298,6 +305,11 @@ Route::post('/assets/unlinked-funcloc/run-sync', [AssetController::class, 'runAu
     Route::post('/it-assets', [ItAssetController::class, 'store'])->name('it-assets.store');
     Route::get('/it-assets/import', [ItAssetController::class, 'showImport'])->name('it-assets.import');
     Route::post('/it-assets/import', [ItAssetController::class, 'import'])->name('it-assets.import.execute');
+    // Saran pencarian utama halaman IT Assets (perangkat, tipe, plant,
+    // lokasi, VLAN). Dibatasi supaya ketikan cepat tidak membanjiri database.
+    Route::get('/it-assets/cari', ItAssetSearchController::class)
+        ->middleware('throttle:120,1')
+        ->name('it-assets.cari');
     // Denah / Peta Letak — penempatan perangkat IT di atas denah PDF/gambar.
     Route::get('/it-assets/layouts', [ItLayoutController::class, 'index'])->name('it-assets.layouts.index');
     Route::get('/it-assets/layouts/create', [ItLayoutController::class, 'create'])->name('it-assets.layouts.create');

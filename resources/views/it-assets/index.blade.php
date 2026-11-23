@@ -23,8 +23,8 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
         </svg>
         Filter
-        @if(request()->hasAny(['search', 'device_type', 'status']))
-            <span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-blue-500 rounded-full">{{ collect([request('search'), request('device_type'), request('status')])->filter()->count() }}</span>
+        @if(request()->hasAny(['device_type', 'status', 'plant', 'vlan']))
+            <span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-blue-500 rounded-full">{{ collect([request('device_type'), request('status'), request('plant'), request('vlan')])->filter()->count() }}</span>
         @endif
     </button>
     <a href="{{ route('it-assets.create') }}"
@@ -76,6 +76,10 @@
     if (request('plant')) $activeFilters[] = ['key' => 'plant', 'label' => 'Plant: ' . request('plant')];
     if (request('vlan')) $activeFilters[] = ['key' => 'vlan', 'label' => 'VLAN: ' . request('vlan')];
 
+    // Panel Filter tidak perlu terbuka otomatis hanya karena ada kata kunci;
+    // pencarian punya kotak sendiri di atas halaman.
+    $adaFilterPanel = collect($activeFilters)->contains(fn ($filter) => $filter['key'] !== 'search');
+
     $sortBy = request('sort');
     $sortDir = request('dir') === 'desc' ? 'desc' : 'asc';
 
@@ -103,6 +107,18 @@
 @endphp
 
 @section('content')
+    {{-- Kotak pencarian utama: global, saran perangkat/tipe/plant/lokasi/VLAN. --}}
+    @include('partials._pencarian-entitas', [
+        'aksi'        => route('it-assets.index'),
+        'saranUrl'    => route('it-assets.cari'),
+        'idInput'     => 'searchItAsset',
+        'placeholder' => 'Cari tag, nama, IP, tipe, plant, atau lokasi...',
+        'kataKunci'   => $kataKunci,
+        'total'       => $totalPerangkat,
+        'satuan'      => 'perangkat',
+        'petunjuk'    => 'Mencari di seluruh data perangkat IT. Filter tipe/status/plant/VLAN tetap bisa dipakai setelah mencari.',
+    ])
+
     <!-- Summary Cards per device_type -->
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         @foreach($deviceTypes as $type)
@@ -134,13 +150,13 @@
                 </button>
             </div>
             <form method="GET" action="{{ route('it-assets.index') }}" id="filterForm">
+                {{-- Kata kunci dari kotak pencarian utama dibawa saat filter
+                     tipe/status/plant/VLAN diterapkan. --}}
+                @if(request()->filled('search'))
+                    <input type="hidden" name="search" value="{{ request('search') }}">
+                @endif
+
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div>
-                        <label class="block text-xs font-medium text-slate-500 mb-1.5">Pencarian</label>
-                        <input type="text" name="search" value="{{ request('search') }}"
-                               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                               placeholder="Tag, nama, atau IP...">
-                    </div>
                     <div>
                         <label class="block text-xs font-medium text-slate-500 mb-1.5">Tipe Perangkat</label>
                         <select name="device_type" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
@@ -324,7 +340,11 @@
         </div>
         @empty
             <div class="bg-white rounded-xl border border-slate-200 py-10 text-center text-sm text-slate-400">
-                Belum ada data kamera CCTV untuk filter ini.
+                @if($kataKunci !== '')
+                    Tidak ada kamera CCTV yang cocok dengan "{{ $kataKunci }}".
+                @else
+                    Belum ada data kamera CCTV untuk filter ini.
+                @endif
             </div>
         @endforelse
     @else
@@ -428,7 +448,12 @@
                     @empty
                         <tr>
                             <td colspan="7" class="px-5 py-8 text-center text-sm text-slate-400">
-                                Belum ada data. <a href="{{ route('it-assets.import') }}" class="text-blue-600 hover:underline">Import dari Excel</a>
+                                @if($kataKunci !== '')
+                                    Tidak ada perangkat yang cocok dengan "{{ $kataKunci }}".
+                                    <a href="{{ route('it-assets.index') }}" class="text-blue-600 hover:underline">Hapus pencarian</a>
+                                @else
+                                    Belum ada data. <a href="{{ route('it-assets.import') }}" class="text-blue-600 hover:underline">Import dari Excel</a>
+                                @endif
                             </td>
                         </tr>
                     @endforelse
@@ -549,7 +574,7 @@ function toggleFilter() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    @if(count($activeFilters) > 0)
+    @if($adaFilterPanel)
     setTimeout(function() {
         toggleFilter();
     }, 100);

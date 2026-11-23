@@ -14,8 +14,8 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
         </svg>
         Filter
-        @if(request()->hasAny(['search', 'status', 'company_id', 'department_id', 'area_id', 'sub_area_id', 'equipment_type']))
-            <span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-blue-500 rounded-full">{{ collect([request('search'), request('company_id'), request('department_id'), request('area_id'), request('sub_area_id'), request('equipment_type')])->filter()->count() }}</span>
+        @if(request()->hasAny(['status', 'company_id', 'department_id', 'area_id', 'sub_area_id', 'equipment_type']))
+            <span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-blue-500 rounded-full">{{ collect([request('company_id'), request('department_id'), request('area_id'), request('sub_area_id'), request('equipment_type')])->filter()->count() }}</span>
         @endif
     </button>
     <a href="{{ route('assets.unlinked-funcloc') }}"
@@ -83,8 +83,10 @@
 @endsection
 
 @php
+    // Pencarian punya kotak sendiri di atas halaman; panel Filter hanya
+    // dihitung aktif oleh filter lokasi/tipe agar tidak ikut terbuka otomatis
+    // setiap kali mencari.
     $activeFilterCount = collect([
-        'search' => request('search'),
         'company_id' => request('company_id'),
         'department_id' => request('department_id'),
         'area_id' => request('area_id'),
@@ -114,6 +116,18 @@
 @endphp
 
 @section('content')
+    {{-- Kotak pencarian utama: global, saran aset/tipe/lokasi. --}}
+    @include('partials._pencarian-entitas', [
+        'aksi'        => route('assets.index'),
+        'saranUrl'    => route('assets.cari'),
+        'idInput'     => 'searchAsset',
+        'placeholder' => 'Cari kode alat, deskripsi, tipe, lokasi, atau pabrikan...',
+        'kataKunci'   => $kataKunci,
+        'total'       => $assets->total(),
+        'satuan'      => 'aset',
+        'petunjuk'    => 'Mencari di seluruh data aset. Filter lokasi/tipe di panel Filter tetap bisa dipakai setelah mencari.',
+    ])
+
     <!-- Filter Popup Panel -->
     <div id="filterPanel" class="bg-white rounded-xl border border-slate-200 mb-6 overflow-hidden transition-all duration-200 ease-in-out"
          style="max-height: 0; opacity: 0; padding: 0 0; border-width: 0; visibility: hidden;">
@@ -132,13 +146,13 @@
                 </button>
             </div>
             <form method="GET" action="{{ route('assets.index') }}" id="filterForm">
+                {{-- Kata kunci dari kotak pencarian utama dibawa saat filter
+                     lokasi/tipe diterapkan. --}}
+                @if(request()->filled('search'))
+                    <input type="hidden" name="search" value="{{ request('search') }}">
+                @endif
+
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                    <div>
-                        <label class="block text-xs font-medium text-slate-500 mb-1.5">Pencarian</label>
-                        <input type="text" name="search" id="searchAsset" value="{{ request('search') }}"
-                               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                               placeholder="Equipment, deskripsi, tech ident...">
-                    </div>
                     <div>
                         <label class="block text-xs font-medium text-slate-500 mb-1.5">Equipment Type</label>
                         <select name="equipment_type" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
@@ -292,7 +306,12 @@
                     @empty
                         <tr>
                             <td colspan="4" class="px-5 py-8 text-center text-sm text-slate-400">
-                                Belum ada asset. <a href="{{ route('assets.import') }}" class="text-blue-600 hover:underline">Import dari Excel</a>
+                                @if($kataKunci !== '')
+                                    Tidak ada asset yang cocok dengan "{{ $kataKunci }}".
+                                    <a href="{{ route('assets.index') }}" class="text-blue-600 hover:underline">Hapus pencarian</a>
+                                @else
+                                    Belum ada asset. <a href="{{ route('assets.import') }}" class="text-blue-600 hover:underline">Import dari Excel</a>
+                                @endif
                             </td>
                         </tr>
                     @endforelse
@@ -338,25 +357,6 @@ document.addEventListener('DOMContentLoaded', function() {
         toggleFilter();
     }, 100);
     @endif
-
-    // Pencarian langsung: kirim form setelah pengguna berhenti mengetik.
-    const cari = document.getElementById('searchAsset');
-    const form = document.getElementById('filterForm');
-
-    if (cari && form) {
-        let timer = null;
-
-        cari.addEventListener('input', function () {
-            clearTimeout(timer);
-            timer = setTimeout(function () {
-                if (typeof form.requestSubmit === 'function') {
-                    form.requestSubmit();
-                } else {
-                    form.submit();
-                }
-            }, 450);
-        });
-    }
 });
 </script>
 @endpush
