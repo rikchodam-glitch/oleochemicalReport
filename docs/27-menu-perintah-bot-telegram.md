@@ -44,6 +44,15 @@ setelah handler tersedia.
 - Token diambil dari `services.telegram.bot_token`; tanpa token tidak ada
   request ke Telegram.
 
+## Pesan suara
+
+- Voice note dapat dikirim kapan saja untuk menggantikan isian teks bebas.
+- Bot menampilkan transkrip + tombol **Gunakan/Ulangi/Batalkan**; transkrip
+  yang disetujui diproses seperti teks yang diketik.
+- Voice tidak boleh dipakai saat langkah wizard membutuhkan foto.
+- Perintah slash tetap diketik, bukan lewat suara.
+- Rincian: `docs/34-pesan-suara-telegram.md`.
+
 ## Management Tools
 
 - `/pakai` mencari alat lalu mengirim foto/status dan tautan dashboard
@@ -77,8 +86,11 @@ setelah handler tersedia.
 - `tests/Feature/TelegramMenuTest.php`
 - `app/Services/Telegram/SparepartRequestWizardService.php`
 - `app/Services/ToolTelegramService.php`
+- `app/Services/Telegram/VoiceTranscriptionService.php`
+- `app/Services/SpeechToTextService.php`
 - `docs/30-request-sparepart.md`
 - `docs/33-management-tools.md`
+- `docs/34-pesan-suara-telegram.md`
 
 ## Uji
 

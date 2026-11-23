@@ -289,6 +289,19 @@ class SparepartRequestWizardService
     }
 
     /**
+     * Apakah wizard request sedang menunggu foto.
+     *
+     * Voice-to-text tidak boleh dipakai pada langkah foto; pengguna harus
+     * mengirim foto atau mengetik "-" untuk melewati.
+     */
+    public function menungguFoto(string $chatId): bool
+    {
+        $state = $this->getState($chatId);
+
+        return $state !== null && ($state['step'] ?? '') === self::STEP_FOTO;
+    }
+
+    /**
      * Simpan state ke cache dan perbarui cap aktivitas.
      *
      * @param  string               $chatId

@@ -6,6 +6,8 @@ use App\Services\AiService;
 use App\Services\ReportFormService;
 use App\Services\Telegram\PhotoStorageService;
 use App\Services\Telegram\SparepartRequestWizardService;
+use App\Services\Telegram\PendingTranscriptService;
+use App\Services\Telegram\VoiceTranscriptionService;
 use App\Services\ToolTelegramService;
 use App\Models\BotRegistration;
 use App\Models\Report;
@@ -54,6 +56,22 @@ class TelegramWebhookController extends Controller
                 }
 
                 $technician->update(['last_active_at' => now()]);
+
+                // Voice note: transkripsi + konfirmasi teks (tanpa inline
+                // keyboard karena webhook tidak menerima callback).
+                if (! empty($message['voice'])) {
+                    app(VoiceTranscriptionService::class)->handleVoice($chatId, $technician, $message['voice'], false);
+
+                    return response('OK');
+                }
+
+                if (! isset($message['photo']) && $text !== '' && app(VoiceTranscriptionService::class)->handleTextDecision($chatId, $technician, $text)) {
+                    return response('OK');
+                }
+
+                if (isset($message['photo'])) {
+                    app(PendingTranscriptService::class)->hapus((string) $chatId);
+                }
 
                 if (preg_match('/^\/req(?:@\S+)?(?:\s+(.+))?$/isu', $text, $cocokReq)) {
                     return $this->handleRequestSparepart($chatId, $technician, trim((string) ($cocokReq[1] ?? '')));
