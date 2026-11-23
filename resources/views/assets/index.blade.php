@@ -261,6 +261,7 @@
                     @forelse($assets as $asset)
                         <tr class="hover:bg-slate-50 transition-colors cursor-pointer"
                             tabindex="0"
+                            data-buka-tab="{{ route('assets.show', $asset) }}"
                             onclick="window.location='{{ route('assets.show', $asset) }}'"
                             onkeydown="if(event.key === 'Enter') window.location='{{ route('assets.show', $asset) }}'">
                             <td class="px-5 py-3.5">
@@ -360,3 +361,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 @endpush
+
+{{-- Klik tengah pada baris aset membuka detail di tab baru. --}}
+@include('partials._buka-tab-tengah')
