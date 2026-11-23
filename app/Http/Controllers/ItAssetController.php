@@ -12,6 +12,7 @@ use App\Services\CctvSnapshotService;
 use App\Services\FunclocOptionService;
 use App\Services\ItAssetImportService;
 use App\Services\ItAssetSyncService;
+use App\Services\PencarianItAssetService;
 use App\Services\ItPingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -58,7 +59,9 @@ class ItAssetController extends Controller
      */
     public function index(Request $request): View
     {
-        $query = ItAsset::query();
+        $query     = ItAsset::query();
+        $cariAktif = $request->filled('search');
+        $kataKunci = trim((string) $request->get('search', ''));
 
         // Simpan filter daftar yang sedang aktif di session, supaya setelah
         // aksi tambah/edit/hapus user bisa kembali ke daftar dengan filter
@@ -87,13 +90,10 @@ class ItAssetController extends Controller
             $query->where('status', $request->string('status')->toString());
         }
 
-        if ($request->filled('search')) {
-            $search = $request->string('search')->toString();
-            $query->where(function ($sub) use ($search) {
-                $sub->where('tag_name', 'like', "%{$search}%")
-                    ->orWhere('name', 'like', "%{$search}%")
-                    ->orWhere('ip_address', 'like', "%{$search}%");
-            });
+        if ($cariAktif) {
+            // Aturan kata kunci (multi-kata, sinonim tipe, relasi) dipakai
+            // bersama dengan dropdown saran.
+            app(PencarianItAssetService::class)->terapkan($query, $kataKunci);
         }
 
         if ($request->filled('plant')) {
@@ -109,6 +109,10 @@ class ItAssetController extends Controller
             }
         }
 
+        // Mode tampilan: 'layout' (grid + snapshot per PT, collapsible) hanya
+        // saat filter Tipe = CCTV; selain itu memakai tabel.
+        $viewMode = $request->string('device_type')->toString() === 'CCTV' ? 'layout' : 'table';
+
         // Urutkan (sort) dari klik header tabel. Hanya kolom yang dikenal yang
         // boleh dipakai; kolom IP diurutkan secara numerik (INET_ATON) agar
         // 192.168.41.2 muncul sebelum .10.
@@ -122,13 +126,15 @@ class ItAssetController extends Controller
             } else {
                 $query->orderBy($sort, $dir);
             }
+        } elseif ($cariAktif && $viewMode === 'table') {
+            // Pencarian tanpa sort kolom: yang paling relevan di atas, lalu
+            // tag sebagai penentu. Mode layout CCTV tetap dikelompokkan per
+            // PT/switch.
+            app(PencarianItAssetService::class)->terapkanUrutan($query, $kataKunci);
+            $query->orderBy('tag_name');
         } else {
             $query->orderBy('device_type')->orderBy('tag_name');
         }
-
-        // Mode tampilan: 'layout' (grid + snapshot per PT, collapsible) hanya
-        // saat filter Tipe = CCTV; selain itu memakai tabel.
-        $viewMode = $request->string('device_type')->toString() === 'CCTV' ? 'layout' : 'table';
 
         if ($viewMode === 'layout') {
             // Mode layout CCTV: tampilkan SEMUA kamera yang cocok, dikelompokkan
@@ -148,13 +154,22 @@ class ItAssetController extends Controller
             $itAssets = collect();
         } else {
             $itAssets = $query->with('functionalLocation')
-                ->orderBy('device_type')
-                ->orderBy('tag_name')
                 ->paginate(20)
                 ->withQueryString();
 
+            if ($cariAktif && ! $sort) {
+                // Kolom hitung urutan pencarian tidak perlu ikut tampil.
+                $itAssets->getCollection()->transform(
+                    fn (ItAsset $aset) => $aset->makeHidden('relevansi')
+                );
+            }
+
             $cctvGroups = collect();
         }
+
+        $totalPerangkat = $viewMode === 'layout'
+            ? $cctvGroups->sum(fn ($switchGroups) => $switchGroups->flatten(1)->count())
+            : $itAssets->total();
 
         $summary = $this->buildDeviceTypeSummary();
 
@@ -179,6 +194,9 @@ class ItAssetController extends Controller
             'viewMode'                => $viewMode,
             'plants'                  => $plants,
             'vlans'                   => $vlans,
+            'cariAktif'               => $cariAktif,
+            'kataKunci'               => $kataKunci,
+            'totalPerangkat'          => $totalPerangkat,
         ]);
     }
 
