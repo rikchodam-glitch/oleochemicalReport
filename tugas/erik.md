@@ -1,16 +1,17 @@
 # Papan Klaim: erik
 
-Diperbarui: 2026-11-20 15:43 WIB
+Diperbarui: 2026-11-23 10:03 WIB
 
-- Cabang aktif: `tugas/erik/card-detail-alat-dan-collapse-rak`
-- Mulai: 2026-11-20 15:43
+- Cabang aktif: `tugas/erik/pesan-suara-telegram`
+- Mulai: 2026-11-23 10:03
 - Status: SELESAI (PR siap, menunggu review/merge integrator)
 - Modul/berkas yang disentuh:
-  - Card alat (admin dan /alat) dapat diklik ke halaman detail
-  - Halaman detail alat mendapat edit/hapus untuk admin
-  - Collapse rak di dashboard admin + script collapse bersama
-  - tools/index, alat/index, alat/show, partial collapse, docs/33
-- Catatan: berkas kotor sesi lain TIDAK ikut di-commit. PR: tugas/pr-card-detail-alat-dan-collapse-rak.md.
+  - Voice-to-text Telegram via Groq Whisper (turbo), konfirmasi Gunakan/Ulangi/Batal
+  - Config voice, storage audio sementara, cache transkrip, log voice_transcriptions
+  - TelegramMessageHandlerTrait, PollTelegramUpdates, TelegramWebhookController
+  - Wizard report/request: penolakan voice saat langkah foto
+  - tests/Feature/VoiceTranscriptionTest.php, docs/34, AGENTS.md
+- Catatan: berkas kotor sesi lain TIDAK ikut di-commit. PR: tugas/pr-pesan-suara-telegram.md. Uji voice note OGG/Opus asli menunggu sampel.
 
 ## Riwayat
-- tugas/erik/log-alat-dan-peminjaman-web (mulai 2026-11-20 15:26) -> dilanjutkan 2026-11-20 15:43
+- tugas/erik/card-detail-alat-dan-collapse-rak (mulai 2026-11-20 15:43) -> dilanjutkan 2026-11-23 10:03

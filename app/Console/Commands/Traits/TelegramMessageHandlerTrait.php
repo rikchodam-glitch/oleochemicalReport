@@ -6,6 +6,8 @@ use App\Models\BotRegistration;
 use App\Models\Technician;
 use App\Services\ReportFormService;
 use App\Services\Telegram\AssetInfoService;
+use App\Services\Telegram\PendingTranscriptService;
+use App\Services\Telegram\VoiceTranscriptionService;
 use App\Services\ToolTelegramService;
 use App\Services\Telegram\PhotoNotificationBuffer;
 use Illuminate\Support\Facades\Cache;
@@ -95,6 +97,25 @@ trait TelegramMessageHandlerTrait
 
         // Perbarui waktu aktif terakhir
         $technician->update(['last_active_at' => now()]);
+
+        // Pesan suara: transkripsi lalu minta persetujuan Gunakan/Ulangi/Batal.
+        // Foto memiliki alur sendiri dan tidak pernah ditranskripsi.
+        if (! empty($message['voice'])) {
+            app(VoiceTranscriptionService::class)->handleVoice($chatId, $technician, $message['voice'], true);
+
+            return;
+        }
+
+        // Balasan teks untuk transkrip menunggu (mis. GUNAKAN) diproses lebih
+        // dulu. Teks lain membuang transkrip lama lalu lanjut seperti biasa.
+        if (! $hasPhoto && $text !== '' && app(VoiceTranscriptionService::class)->handleTextDecision($chatId, $technician, $text)) {
+            return;
+        }
+
+        // Foto baru membatalkan transkrip yang belum disetujui.
+        if ($hasPhoto) {
+            app(PendingTranscriptService::class)->hapus((string) $chatId);
+        }
 
         // Asisten informasi perangkat: /info [kata kunci]. Berdiri sendiri dan
         // bisa dipakai kapan saja, termasuk saat wizard laporan sedang aktif.
@@ -218,6 +239,8 @@ trait TelegramMessageHandlerTrait
      */
     private function handleResetCommand(int|string $chatId): void
     {
+        app(PendingTranscriptService::class)->hapus((string) $chatId);
+
         $adaSesi    = $this->reportWizard->hasActiveWizard((string) $chatId);
         $adaRequest = $this->adaWizardRequest((string) $chatId);
 
@@ -641,6 +664,8 @@ trait TelegramMessageHandlerTrait
         ?string $username,
         string $firstName
     ): void {
+        app(PendingTranscriptService::class)->hapus((string) $chatId);
+
         $existing = Technician::where('telegram_id', $telegramId)->first();
         if ($existing) {
             if ($existing->status === 'active') {

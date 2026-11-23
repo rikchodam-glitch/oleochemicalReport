@@ -1683,4 +1683,24 @@ class ReportWizardService
     {
         return Cache::has(self::CACHE_PREFIX . $chatId);
     }
+
+    /**
+     * Apakah wizard sedang berada di langkah yang membutuhkan foto.
+     *
+     * Dipakai oleh voice-to-text: pesan suara tidak boleh menggantikan input
+     * foto pada Step 6/7. Langkah foto tetap menerima foto atau teks skip.
+     */
+    public function menungguFoto(string $chatId): bool
+    {
+        $state = $this->getState($chatId);
+
+        if ($state === null) {
+            return false;
+        }
+
+        return in_array($state['step'] ?? '', [
+            self::STEP_PHOTO_DOCUMENTATION,
+            self::STEP_PHOTO_HYGIENE,
+        ], true);
+    }
 }

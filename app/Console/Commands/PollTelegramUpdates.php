@@ -9,6 +9,7 @@ use App\Services\AiService;
 use App\Services\Telegram\PhotoStorageService;
 use App\Services\Telegram\ReportWizardService;
 use App\Services\Telegram\SparepartRequestWizardService;
+use App\Services\Telegram\VoiceTranscriptionService;
 use App\Services\ToolTelegramService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -308,6 +309,13 @@ class PollTelegramUpdates extends Command
                         $this->editMessageTextSimple($chatId, $messageId, $editMessage);
                     }
                 }
+
+                return;
+            }
+
+            // Tombol konfirmasi transkrip suara berdiri sendiri.
+            if (str_starts_with($data, 'suara:')) {
+                app(VoiceTranscriptionService::class)->handleCallback($callback, $chatId, $messageId);
 
                 return;
             }
